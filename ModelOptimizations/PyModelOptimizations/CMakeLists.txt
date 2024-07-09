@@ -60,23 +60,36 @@ set_target_properties(PyModelOptimizations
          OUTPUT_NAME "pymo"
          PREFIX "_lib"
          SUFFIX ".${Python3_SOABI}.so"
-         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts/aimet_common/"
       )
 
 add_dependencies(PyModelOptimizations generate_deps)
 
-install(TARGETS PyModelOptimizations
-        LIBRARY
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
-)
+if (SKBUILD)
+    set_target_properties(PyModelOptimizations PROPERTIES
+        INSTALL_RPATH "\$ORIGIN:\$ORIGIN/../../.."
+        )
+    install(TARGETS PyModelOptimizations
+        LIBRARY DESTINATION aimet_common
+        )
+else (SKBUILD)
+    set_target_properties(PyModelOptimizations
+          PROPERTIES
+             LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts/aimet_common/"
+          )
 
-add_custom_target(whl_prep_cp_common_PyModelOptimizations
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_COMMON_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:PyModelOptimizations> ${WHL_PREP_AIMET_COMMON_DIR}/$<TARGET_FILE_NAME:PyModelOptimizations>
-        DEPENDS PyModelOptimizations
-)
-add_custom_target(whl_prep_ln_common_PyModelOptimizations
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_COMMON_DIR}
-        COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:PyModelOptimizations> ${WHL_PREP_AIMET_COMMON_DIR}/$<TARGET_FILE_NAME:PyModelOptimizations>
-        DEPENDS PyModelOptimizations
-)
+    install(TARGETS PyModelOptimizations
+            LIBRARY
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
+    )
+
+    add_custom_target(whl_prep_cp_common_PyModelOptimizations
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_COMMON_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:PyModelOptimizations> ${WHL_PREP_AIMET_COMMON_DIR}/$<TARGET_FILE_NAME:PyModelOptimizations>
+            DEPENDS PyModelOptimizations
+    )
+    add_custom_target(whl_prep_ln_common_PyModelOptimizations
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_COMMON_DIR}
+            COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:PyModelOptimizations> ${WHL_PREP_AIMET_COMMON_DIR}/$<TARGET_FILE_NAME:PyModelOptimizations>
+            DEPENDS PyModelOptimizations
+    )
+endif (SKBUILD)

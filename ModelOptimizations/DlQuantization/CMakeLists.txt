@@ -129,11 +129,16 @@ if (ENABLE_CUDA)
 
 endif (ENABLE_CUDA)
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlQuantization
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/x86_64-linux-gnu/include)
-
 if (ENABLE_TESTS)
     add_subdirectory(test)
 endif()
 
-whl_add_whl_prep_common_target(DlQuantization)
+if (SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlQuantization
+            DESTINATION aimet_common/x86_64-linux-gnu/include)
+else (SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlQuantization
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/x86_64-linux-gnu/include)
+
+    whl_add_whl_prep_common_target(DlQuantization)
+endif (SKBUILD)

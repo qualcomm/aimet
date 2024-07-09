@@ -45,6 +45,15 @@ if(NOT TARGET PyModelOptimizations)
         DESTINATION ${CMAKE_INSTALL_PREFIX}
     )
 else()
+    if(SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/aimet_common
+        DESTINATION .
+        PATTERN "__pycache*" EXCLUDE
+        PATTERN "CMakeLists.txt" EXCLUDE
+        PATTERN "_deps.pyi" EXCLUDE
+        PATTERN "_gen.py" EXCLUDE
+       )
+    else()
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         PATTERN "__pycache*" EXCLUDE
@@ -52,4 +61,5 @@ else()
         PATTERN "_deps.pyi" EXCLUDE
         PATTERN "_gen.py" EXCLUDE
         )
+    endif()
 endif()

@@ -74,8 +74,14 @@ endif(ENABLE_CUDA)
 
 set_target_properties(TrainingExtensionsTf PROPERTIES
       OUTPUT_NAME "aimet_tf_ops"
-      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts/aimet_common"
       )
+
+if(SKBUILD)
+else(SKBUILD)
+    set_target_properties(TrainingExtensionsTf PROPERTIES
+          LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts/aimet_common"
+          )
+endif(SKBUILD)
 
 set(INIT_PY "\
 #==============================================================================\\n\
@@ -153,14 +159,23 @@ if (ENABLE_CUDA)
             )
 endif(ENABLE_CUDA)
 
+if(SKBUILD)
+    install(FILES $<TARGET_FILE:TrainingExtensionsTf>
+        DESTINATION aimet_common
+    )
 
-install(FILES $<TARGET_FILE:TrainingExtensionsTf>
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
-      )
+    install(DIRECTORY $<TARGET_FILE_DIR:TrainingExtensionsTf>/$<TARGET_FILE_PREFIX:TrainingExtensionsTf>$<TARGET_FILE_BASE_NAME:TrainingExtensionsTf>
+        DESTINATION aimet_common
+    )
+else(SKBUILD)
+    install(FILES $<TARGET_FILE:TrainingExtensionsTf>
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
+    )
 
-install(DIRECTORY $<TARGET_FILE_DIR:TrainingExtensionsTf>/$<TARGET_FILE_PREFIX:TrainingExtensionsTf>$<TARGET_FILE_BASE_NAME:TrainingExtensionsTf>
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
-)
+    install(DIRECTORY $<TARGET_FILE_DIR:TrainingExtensionsTf>/$<TARGET_FILE_PREFIX:TrainingExtensionsTf>$<TARGET_FILE_BASE_NAME:TrainingExtensionsTf>
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
+    )
+endif(SKBUILD)
 
 add_custom_target(whl_prep_cp_tensorflow
     COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_TENSORFLOW_DIR}

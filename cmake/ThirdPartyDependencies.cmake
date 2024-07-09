@@ -103,6 +103,7 @@ else ()
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG        release-1.12.1
+        EXCLUDE_FROM_ALL
     )
 
     # michof: We need to revert to this older style of getting the dependency to include the
@@ -153,6 +154,7 @@ if (NOT OPENCV_FOUND AND NOT OpenCV_FOUND)
     GIT_REPOSITORY https://github.com/opencv/opencv.git
     GIT_TAG        4.6.0
     GIT_SHALLOW    TRUE
+    EXCLUDE_FROM_ALL
   )
   FetchContent_MakeAvailable(opencv)
   set(OPENCV_LINK_LIBRARIES opencv_core)

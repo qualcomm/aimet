@@ -37,6 +37,8 @@
 add_custom_target(copy_examples
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE/examples)
 
+if(SKBUILD)
+else()
 #TODO Remove the OPTIONAL flag after Common Examples code gets added
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/common
     DESTINATION Examples
@@ -69,3 +71,4 @@ endif(ENABLE_TENSORFLOW)
 install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E tar cvzf ${CMAKE_INSTALL_PREFIX}/Examples.tar.gz .
                               WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})"
         )
+endif()

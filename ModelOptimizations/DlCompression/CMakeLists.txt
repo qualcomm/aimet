@@ -59,11 +59,16 @@ target_compile_options(MoDlCompression
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlCompression
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/x86_64-linux-gnu/include)
-
 if (ENABLE_TESTS)
     add_subdirectory(test)
 endif()
 
-whl_add_whl_prep_common_target(DlCompression)
+if (SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlCompression
+            DESTINATION aimet_common/x86_64-linux-gnu/include)
+else (SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlCompression
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/x86_64-linux-gnu/include)
+
+    whl_add_whl_prep_common_target(DlCompression)
+endif (SKBUILD)

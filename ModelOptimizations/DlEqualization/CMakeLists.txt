@@ -77,11 +77,16 @@ target_compile_options(MoDlEqualization
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlEqualization
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/x86_64-linux-gnu/include)
-
 if (ENABLE_TESTS)
     add_subdirectory(test)
 endif()
 
-whl_add_whl_prep_common_target(DlEqualization)
+if (SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlEqualization
+            DESTINATION aimet_common/x86_64-linux-gnu/include)
+else (SKBUILD)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlEqualization
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/x86_64-linux-gnu/include)
+
+    whl_add_whl_prep_common_target(DlEqualization)
+endif (SKBUILD)

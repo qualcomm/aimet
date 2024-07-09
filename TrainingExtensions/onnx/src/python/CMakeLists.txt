@@ -36,8 +36,15 @@
 #
 #=============================================================================
 
+if(SKBUILD)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/aimet_onnx
+        DESTINATION .
+        PATTERN "__pycache*" EXCLUDE
+       )
+else()
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         PATTERN "__pycache*" EXCLUDE
         PATTERN "CMakeLists.txt" EXCLUDE
         )
+endif()
