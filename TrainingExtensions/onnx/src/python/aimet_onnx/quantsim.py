@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import os
 from typing import Dict, List, Union, Tuple, Optional
+import itertools
 import json
 import warnings
 import numpy as np
@@ -204,10 +205,11 @@ class QuantizationSimModel:
 
         # Get names of parameters and activations to quantize
         self._get_param_names()
-        self._get_activations_to_quantize(dummy_input)
+        self._get_activations_to_quantize()
 
         # Disable bias quantization
         self._disable_bias_quantization()
+
         self._add_quantization_nodes()
 
         # Apply configurations based on provided config file.
@@ -264,13 +266,13 @@ class QuantizationSimModel:
         valid_ops = list(self.connected_graph.get_all_ops().values())
         return valid_ops
 
-    def _get_activations_to_quantize(self, dummy_input: Dict[str, np.ndarray]):
+    def _get_activations_to_quantize(self):
         """
         Get the names of activations to quantize
 
         :param dummy_input: Sample input to be run through the model
         """
-        self.fill_activation_dtypes(dummy_input)
+        self.fill_activation_dtypes()
         self.input_name_to_nodes = self.model.input_name_to_nodes()
         self.output_name_to_node = self.model.output_name_to_node()
 
@@ -369,21 +371,25 @@ class QuantizationSimModel:
     def fill_activation_dtypes(self, dummy_input: Dict[str, np.ndarray]):
         """
         Get the data type for each activation
-
-        :param dummy_input: Sample input to run through the model
         """
-        activations = utils.get_graph_intermediate_activations(self.model.graph())
-        hooks = []
-        for name in activations:
-            hooks.append(add_hook_to_get_activation(self.model.model, name))
-        sess = QuantizationSimModel.build_session(self.model.model, ['CPUExecutionProvider'],
-                                                  user_onnx_libs=self._user_onnx_libs, path=self._path)
-        outputs = sess.run(None, dummy_input)
-        for idx in range(len(self.model.graph().output)):
-            act_name = self.model.graph().output[idx].name
-            dtype = outputs[idx].dtype
+        if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
+            with tempfile.TemporaryDirectory(dir=self._path) as tempdir:
+                save_path = os.path.join(tempdir, "inferred_model.onnx")
+                onnx.save_model(self.model.model, save_path, save_as_external_data=True, location=Path(save_path).name + ".data")
+                # Load back weights which are rmoved when saving as external data
+                onnx.load_external_data_for_model(self.model.model, base_dir=tempdir)
+                onnx.shape_inference.infer_shapes_path(save_path)
+                # Do not load the weights for the shape inference model, we only need to access the graph's `value_info`
+                inferred_model = onnx.load(save_path, load_external_data=False)
+        else:
+            inferred_model = onnx.shape_inference.infer_shapes(self.model.model)
+
+        for val_info in itertools.chain(inferred_model.graph.value_info,
+                                        inferred_model.graph.input,
+                                        inferred_model.graph.output):
+            act_name = val_info.name
+            dtype = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[val_info.type.tensor_type.elem_type]
             self.activation_dtypes[act_name] = dtype
-        remove_activation_hooks(self.model.model, hooks)
 
     def _add_quantization_nodes(self):
         """
