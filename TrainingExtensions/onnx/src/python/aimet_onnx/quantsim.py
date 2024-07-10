@@ -67,7 +67,7 @@ from aimet_onnx.meta.utils import get_op_given_param_name, get_param_shape_using
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.qc_quantize_op import QcQuantizeOp, OpMode, TensorQuantizerParams, GroupedBlockQuantizeDequantize
 from aimet_onnx.quantsim_config.quantsim_config import QuantSimConfigurator
-from aimet_onnx.utils import make_dummy_input, add_hook_to_get_activation, remove_activation_hooks
+from aimet_onnx.utils import make_dummy_input
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
