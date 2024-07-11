@@ -688,6 +688,7 @@ class TestQuantSim:
             tracemalloc.start()
             sim = QuantizationSimModel(model, path=tempdir)
             current_mem, peak_mem = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
 
         assert peak_mem < current_mem + 0.25 * total_act_memory
         assert peak_mem < current_mem * 5

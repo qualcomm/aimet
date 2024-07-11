@@ -67,7 +67,7 @@ from aimet_onnx.meta.utils import get_op_given_param_name, get_param_shape_using
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.qc_quantize_op import QcQuantizeOp, OpMode, TensorQuantizerParams, GroupedBlockQuantizeDequantize
 from aimet_onnx.quantsim_config.quantsim_config import QuantSimConfigurator
-from aimet_onnx.utils import make_dummy_input
+from aimet_onnx.utils import make_dummy_input, save_model_with_external_weights
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -368,16 +368,14 @@ class QuantizationSimModel:
                 return True
         return False
 
-    def fill_activation_dtypes(self, dummy_input: Dict[str, np.ndarray]):
+    def fill_activation_dtypes(self):
         """
         Get the data type for each activation
         """
         if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
             with tempfile.TemporaryDirectory(dir=self._path) as tempdir:
                 save_path = os.path.join(tempdir, "inferred_model.onnx")
-                onnx.save_model(self.model.model, save_path, save_as_external_data=True, location=Path(save_path).name + ".data")
-                # Load back weights which are rmoved when saving as external data
-                onnx.load_external_data_for_model(self.model.model, base_dir=tempdir)
+                save_model_with_external_weights(self.model.model, save_path, location=Path(save_path).name + ".data")
                 onnx.shape_inference.infer_shapes_path(save_path)
                 # Do not load the weights for the shape inference model, we only need to access the graph's `value_info`
                 inferred_model = onnx.load(save_path, load_external_data=False)

@@ -403,6 +403,18 @@ def retrieve_constant_input(node: NodeProto, model: ModelProto, index: int
                 transposed = True
     return weight, transposed
 
+def save_model_with_external_weights(model: onnx.ModelProto, f: str, **kwargs):
+    """
+    Saves an onnx model with external weights without mutating the original model
+
+    :param model: ONNX ModelProto object to save
+    :param f: filename to save the model to
+    :param kwargs: Additional keyword arguments to pass to :func:`onnx.save_model`
+    """
+    onnx.save_model(model, f, save_as_external_data=True, **kwargs)
+    # Load back weights which are removed when saving as external data
+    onnx.load_external_data_for_model(model, os.path.dirname(f))
+
 
 class CachedDataset:
     """
