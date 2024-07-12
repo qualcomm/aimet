@@ -76,7 +76,17 @@ if (ENABLE_CUDA)
             )
 endif (ENABLE_CUDA)
 
-set_target_properties(OnnxCppOps PROPERTIES
+if (SKBUILD)
+    set_target_properties(OnnxCppOps PROPERTIES
+        OUTPUT_NAME "aimet_onnxrt_ops"
+        )
+
+    install(TARGETS OnnxCppOps
+        LIBRARY DESTINATION aimet_common
+        )
+
+else (SKBUILD)
+    set_target_properties(OnnxCppOps PROPERTIES
         OUTPUT_NAME "aimet_onnxrt_ops"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts/aimet_common"
         )
@@ -85,6 +95,8 @@ install(TARGETS OnnxCppOps
         LIBRARY
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
         )
+
+endif (SKBUILD)
 
 # ----
 
@@ -103,6 +115,17 @@ if (ENABLE_CUDA)
             )
 endif (ENABLE_CUDA)
 
+if (SKBUILD)
+    set_target_properties(quant_info
+        PROPERTIES
+        OUTPUT_NAME "quant_info"
+        )
+
+    install(TARGETS quant_info
+        LIBRARY DESTINATION aimet_common
+        )
+
+else (SKBUILD)
 set_target_properties(quant_info
         PROPERTIES
         OUTPUT_NAME "quant_info"
@@ -134,3 +157,5 @@ add_custom_target(whl_prep_ln_onnx
 
 add_dependencies(whl_prep_cp whl_prep_cp_onnx)
 add_dependencies(whl_prep_ln whl_prep_ln_onnx)
+
+endif (SKBUILD)
