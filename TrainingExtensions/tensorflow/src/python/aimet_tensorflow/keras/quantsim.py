@@ -825,10 +825,9 @@ class QuantizationSimModel(tf.keras.Model):
         This custom train_step function computes the missing gradients for encoding min/max of param quantizers
         """
         x, y = data
-
         with tf.GradientTape() as tape:
             predictions = self(x, training=True)
-            loss = self.compiled_loss(y, predictions)
+            loss = self.compute_loss(x=None, y=y, y_pred=predictions)
 
         gradients = tape.gradient(loss, self.model.trainable_weights)
 
