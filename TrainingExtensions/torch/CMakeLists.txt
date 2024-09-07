@@ -38,7 +38,11 @@ set(SETUP_PY "${CMAKE_CURRENT_BINARY_DIR}/src/setup.py")
 set(OUTPUT  "${CMAKE_CURRENT_BINARY_DIR}/build/timestamp"
       "${CMAKE_CURRENT_BINARY_DIR}/build"
       )
-set(DEPS "src/AimetTensorQuantizer.cpp")
+set(DEPS
+    "src/AimetTensorQuantizer.cpp"
+    "src/AimetEncodingRescaler.cpp"
+)
+
 
 get_target_property(DlQuantizationIncludes MoDlQuantization INCLUDE_DIRECTORIES)
 string(REPLACE ";" "','" DlQuantizationIncludePaths "${DlQuantizationIncludes}")
@@ -78,10 +82,12 @@ add_custom_target(TorchCppOps ALL
       src/AimetTensorQuantizer.cpp
       )
 
-set(FILE_PATH "${CMAKE_BINARY_DIR}/artifacts/aimet_tensor_quantizer*.egg/AimetTensorQuantizer*.so")
+set(FILE_PATH_TENSOR_QUANT "${CMAKE_BINARY_DIR}/artifacts/aimet_tensor_quantizer*.egg/AimetTensorQuantizer*.so")
+set(FILE_PATH_RESCALER "${CMAKE_BINARY_DIR}/artifacts/aimet_encoding_rescaler*.egg/AimetEncodingRescaler*.so")
 
 add_custom_target(BuildTorchExtensions ALL
-    COMMAND ${CMAKE_COMMAND} -E copy ${FILE_PATH} ${CMAKE_BINARY_DIR}/artifacts/aimet_common)
+    COMMAND ${CMAKE_COMMAND} -E copy ${FILE_PATH_TENSOR_QUANT} ${CMAKE_BINARY_DIR}/artifacts/aimet_common
+    COMMAND ${CMAKE_COMMAND} -E copy ${FILE_PATH_RESCALER} ${CMAKE_BINARY_DIR}/artifacts/aimet_common)
 
 add_dependencies(TorchCppOps PyModelOptimizations)
 add_dependencies(BuildTorchExtensions TorchCppOps)

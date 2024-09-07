@@ -55,6 +55,7 @@
 #include "DlQuantization/QuantizerFactory.hpp"
 #include "DlQuantization/TensorQuantizationSimForPython.h"
 #include "DlQuantization/TensorQuantizerOpFacade.h"
+#include "DlQuantization/EncodingRescale.hpp"
 #include "PyTensorQuantizer.hpp"
 
 namespace py = pybind11;
@@ -365,4 +366,7 @@ PYBIND11_MODULE(_libpymo, m)
         .value("relu", AimetEqualization::ActivationType::relu)
         .value("relu6", AimetEqualization::ActivationType::relu6)
         .value("noActivation", AimetEqualization::ActivationType::noActivation);
+
+    m.def("getScaleFactor", &getScaleFactor);
+    m.def("getRescaledOutputAndBias", &getRescaledOutputAndBias<float>);
 }

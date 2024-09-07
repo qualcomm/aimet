@@ -39,6 +39,8 @@ add_library(MoDlQuantization STATIC
       src/IQuantizationAlgorithm.hpp
       src/MainQuantizationClass.cpp
       src/MainQuantizationClass.hpp
+      src/spec_functions.hpp
+      src/spec_functions.cpp
       src/math_functions.cpp
       src/math_functions.hpp
       src/quantization_utils.cpp
@@ -81,7 +83,9 @@ add_library(MoDlQuantization STATIC
       include/DlQuantization/GraphQuantizer.h
       include/DlQuantization/Fp16Quantization.hpp
       include/DlQuantization/ParserModule.h
-      include/DlQuantization/XmlTypes.h )
+      include/DlQuantization/XmlTypes.h
+      include/DlQuantization/EncodingRescale.hpp
+      )
 
 
 if (ENABLE_CUDA)
@@ -105,11 +109,14 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 if (ENABLE_CUDA)
 
     add_library(MoDlQuantizationCuda
-      src/math_functions.cu
+      src/spec_functions.cuh
+      src/spec_functions.cu
+
       src/cuda_util.cu
       src/trim_functions.cu
       src/cuda_util.hpp
       src/trim_functions.cuh
+      src/math_functions.cu
       )
 
     target_compile_options(MoDlQuantizationCuda
@@ -117,6 +124,7 @@ if (ENABLE_CUDA)
             --generate-line-info
             --use_fast_math>
             -Xcompiler -fPIC
+            -DGPU_QUANTIZATION_ENABLED=1
             )
 
 endif (ENABLE_CUDA)

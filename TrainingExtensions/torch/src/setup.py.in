@@ -49,6 +49,22 @@ else:
     raise ValueError(f"Unexpected value for 'ENABLE_CUDA_PYTORCH'. Expected 0 or 1; got {enable_cuda}")
 
 setup(
+    name='aimet_encoding_rescaler',
+    ext_modules=[
+        extension_cls(
+            name='AimetEncodingRescaler',
+            sources=['${CMAKE_CURRENT_SOURCE_DIR}/src/AimetEncodingRescaler.cpp'],
+            include_dirs=['${DlQuantizationIncludePaths}'],
+            extra_objects=glob.glob('${CMAKE_BINARY_DIR}/artifacts/aimet_common/*libpymo*.so'),
+            extra_link_args=os.environ.get('EXTRA_LINK_ARGS', '').split(),
+            extra_compile_args=['-D_GLIBCXX_USE_CXX11_ABI=0', f'-DENABLE_CUDA_PYTORCH={enable_cuda}']),
+    ],
+    cmdclass={
+        'build_ext': BuildExtension
+    }
+)
+
+setup(
     name='aimet_tensor_quantizer',
     ext_modules=[
         extension_cls(
@@ -64,3 +80,5 @@ setup(
         'build_ext': BuildExtension
     }
 )
+
+

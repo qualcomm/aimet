@@ -209,6 +209,7 @@ void updateTensorHistogram_cpu(const DTYPE* data, int tensorSize, TensorProfilin
 std::vector<double> rescaleHistogram(const std::vector<double>& srcHist, const double srcHistMin,
                                      const double srcHistMax, const double destHistMin, const double destHistMax);
 
+
 // GPU implementations...
 #ifdef GPU_QUANTIZATION_ENABLED
 
