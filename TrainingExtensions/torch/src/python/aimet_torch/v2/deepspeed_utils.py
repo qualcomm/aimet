@@ -39,9 +39,32 @@
 """ Utilities to use deepspeed """
 import contextlib
 import torch
+from deepspeed import comm as dist
+from deepspeed.utils import safe_set_full_fp32_param
+
 
 try:
     from deepspeed.runtime.zero import ZeroParamStatus, GatheredParameters
+
+
+    class SafeGatheredParameters(GatheredParameters):
+        """
+        Ensure the synchronization of parameters in the bucket by overriding the `GatheredParameters`.
+        """
+        def __exit__(self, *exc):
+            if not self.enabled:
+                return
+            if self.src_rank is None:
+                self.params[0].partition(param_list=self.params, has_been_updated=False)
+                return
+
+            handles = [dist.broadcast(p.data, self.src_rank, group=p.ds_process_group, async_op=True) for p in self.params]
+            for h in handles:
+                h.wait()
+            for param in self.params:
+                safe_set_full_fp32_param(param, param.detach())
+            self.params[0].partition(param_list=self.params, has_been_updated=True)
+
 
     def gathered_parameters(params, *args, **kwargs):
         """
@@ -56,7 +79,7 @@ try:
             # and can fail if some of them were already "AVAILABLE".
             if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE
         ]
-        return GatheredParameters(params, *args, **kwargs)
+        return SafeGatheredParameters(params, *args, **kwargs)
 
     @contextlib.contextmanager
     def _do_patch_dummy_parameters(module):
