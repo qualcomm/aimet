@@ -53,7 +53,7 @@ from aimet_torch.v2.utils import (
     _ContextManager,
     flatten_nn_module_list,
 )
-from aimet_torch.v2.deepspeed_utils import gathered_parameters, _shallow_copy
+from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters, _shallow_copy
 
 def _no_op(in_tensor):
     return in_tensor
@@ -147,7 +147,7 @@ class BaseQuantizationMixin(abc.ABC):
         if not params:
             return
 
-        with gathered_parameters(params.values()):
+        with SafeGatheredParameters(params.values()):
             for param_qtzr, param in params.items():
                 with patch_attr(param_qtzr, "forward", _no_op), param_qtzr.compute_encodings():
                     _ = param_qtzr(param)

@@ -382,9 +382,8 @@ def test_deepspeed_zero3_offload(unlabeled_data_loader,
         output_baseline = sim_baseline.model(data.cuda())
         assert torch.allclose(output, output_baseline, rtol=1e-3)
         assert isinstance(output, DequantizedTensor)
-        # TODO: Fix it, The output.encoding will be deconstructed by DeepSpeed, and this issue needs to be resolved.
-        # assert output.encoding.scale.numel() == 1
-        # assert output.encoding.offset.numel() == 1
+        assert output.encoding.scale.numel() == 1
+        assert output.encoding.offset.numel() == 1
         loss = functional.mse_loss(output, target)
         loss_baseline = functional.mse_loss(output_baseline, target)
         engine.backward(loss)

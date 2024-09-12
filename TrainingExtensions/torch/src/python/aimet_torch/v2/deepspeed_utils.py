@@ -39,47 +39,39 @@
 """ Utilities to use deepspeed """
 import contextlib
 import torch
-from deepspeed import comm as dist
-from deepspeed.utils import safe_set_full_fp32_param
 
 
 try:
     from deepspeed.runtime.zero import ZeroParamStatus, GatheredParameters
+    from deepspeed import comm as dist
+    from deepspeed.utils import safe_set_local_fp32_param
 
 
     class SafeGatheredParameters(GatheredParameters):
         """
-        Ensure the synchronization of parameters in the bucket by overriding the `GatheredParameters`.
-        """
-        def __exit__(self, *exc):
-            if not self.enabled:
-                return
-            if self.src_rank is None:
-                self.params[0].partition(param_list=self.params, has_been_updated=False)
-                return
-
-            handles = [dist.broadcast(p.data, self.src_rank, group=p.ds_process_group, async_op=True) for p in self.params]
-            for h in handles:
-                h.wait()
-            for param in self.params:
-                safe_set_full_fp32_param(param, param.detach())
-            self.params[0].partition(param_list=self.params, has_been_updated=True)
-
-
-    def gathered_parameters(params, *args, **kwargs):
-        """
         Shallow wrapper around ref:`GatheredParameters`.
         Unlike ref:`GatheredParameters`, this function can be also called
         with parameters that are already all-gathered by deepspeed zero3 or zero-offload runtime.
+        Additionally, this function ensure the synchronization of parameters.
         """
-        params = [
-            p for p in params
-            # Ignore if the parameter is already all-gathered.
-            # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
-            # and can fail if some of them were already "AVAILABLE".
-            if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE
-        ]
-        return SafeGatheredParameters(params, *args, **kwargs)
+        def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
+            self.orig_params = [p for p in params if hasattr(p, "ds_tensor")]
+            self.modifier_rank = modifier_rank
+            params = [
+                p for p in self.orig_params
+                # Ignore if the parameter is already all-gathered.
+                # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
+                # and can fail if some of them were already "AVAILABLE".
+                if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE
+            ]
+            super().__init__(params, modifier_rank, fwd_module, enabled)
+
+        def __exit__(self, *exc):
+            super().__exit__(*exc)
+            if self.modifier_rank is not None:
+                for param in self.orig_params:
+                    safe_set_local_fp32_param(param, param.ds_tensor)
+
 
     @contextlib.contextmanager
     def _do_patch_dummy_parameters(module):
