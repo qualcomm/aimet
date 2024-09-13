@@ -883,20 +883,15 @@ def test_is_initialized_with_deepspeed_zero3(init_process_group, deepspeed_zero3
     qdq = QuantizeDequantize((10,), bitwidth=8, symmetric=True, encoding_analyzer=MinMaxEncodingAnalyzer((10,)))
     engine, *_ = ds.initialize(model=qdq, config=deepspeed_zero3_config)
     qdq_zero3 = engine.module
-    with ds.zero.GatheredParameters(qdq_zero3.parameters(), modifier_rank=0):
-        qdq_zero3.set_range(-1, 1)
-        assert qdq_zero3.is_initialized()
+    qdq_zero3.set_range(-1, 1)
     assert qdq_zero3.is_initialized()
 
-    # TODO (kyunggeu): Support the below use case
-    # qdq = QuantizeDequantize((10,), bitwidth=8, symmetric=True, encoding_analyzer=MinMaxEncodingAnalyzer((10,)))
-    # engine, *_ = ds.initialize(model=qdq, config=deepspeed_zero3_config)
-    # qdq_zero3 = engine.module
-    # with ds.zero.GatheredParameters(qdq_zero3.parameters(), modifier_rank=0):
-    #     with qdq_zero3.compute_encodings():
-    #         _ = qdq_zero3(torch.arange(-5, 5, dtype=torch.float, device='cuda:0'))
-    #     assert qdq_zero3.is_initialized()
-    # assert qdq_zero3.is_initialized()
+    qdq = QuantizeDequantize((10,), bitwidth=8, symmetric=True, encoding_analyzer=MinMaxEncodingAnalyzer((10,)))
+    engine, *_ = ds.initialize(model=qdq, config=deepspeed_zero3_config)
+    qdq_zero3 = engine.module
+    with qdq_zero3.compute_encodings():
+        _ = qdq_zero3(torch.arange(-5, 5, dtype=torch.float, device='cuda:0'))
+    assert qdq_zero3.is_initialized()
 
     """
     When: Gather the partitioned quantization parameters in writable mode but don't modify them

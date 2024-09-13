@@ -40,7 +40,6 @@
 import contextlib
 import torch
 
-
 try:
     from deepspeed.runtime.zero import ZeroParamStatus, GatheredParameters
     from deepspeed import comm as dist
@@ -55,7 +54,7 @@ try:
         Additionally, this function ensure the synchronization of parameters.
         """
         def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
-            self.orig_params = [p for p in params if hasattr(p, "ds_tensor")]
+            self.orig_params = [p for p in params]
             self.modifier_rank = modifier_rank
             params = [
                 p for p in self.orig_params
@@ -71,14 +70,15 @@ try:
                 for param in self.orig_params:
                     # Stage 3 will separate the tensor into multiple cards
                     # Pre-partition parameters for the safe_set_local_fp32_param function
-                    my_rank = dist.get_rank()
-                    if param.numel() == 1:
-                        value_partition = param.detach()
-                    else:
-                        value_partition = param.detach().flatten().narrow(0,
-                                                                          param.ds_tensor.ds_numel * my_rank,
-                                                                          param.ds_tensor.ds_numel)
-                    safe_set_local_fp32_param(param, value_partition)
+                    if hasattr(param, "_z3_optimizer"):
+                        my_rank = dist.get_rank()
+                        if param.numel() == 1:
+                            value_partition = param.detach()
+                        else:
+                            value_partition = param.detach().flatten().narrow(0,
+                                                                              param.ds_tensor.ds_numel * my_rank,
+                                                                              param.ds_tensor.ds_numel)
+                        safe_set_local_fp32_param(param, value_partition)
             super().__exit__(*exc)
 
 
@@ -106,6 +106,11 @@ try:
                 getattr(module, name).data = data
 
 except ImportError:
+    class SafeGatheredParameters(contextlib.nullcontext):
+        """ Dummy placeholder in case deepspeed doesn't exist """
+        pass
+
+
     def gathered_parameters(*args, **kwargs): # pylint: disable=unused-argument
         """ Dummy placeholder in case deepspeed doesn't exist """
         return contextlib.nullcontext()
@@ -118,7 +123,7 @@ except ImportError:
 _ds_ctx = {}
 
 def _all_gather(module, _):
-    ctx = gathered_parameters(module.parameters(recurse=False))
+    ctx = SafeGatheredParameters(module.parameters(recurse=False))
     ctx.__enter__()
     _ds_ctx[module] = ctx
 
