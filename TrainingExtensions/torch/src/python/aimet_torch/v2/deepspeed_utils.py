@@ -111,10 +111,6 @@ except ImportError:
         pass
 
 
-    def gathered_parameters(*args, **kwargs): # pylint: disable=unused-argument
-        """ Dummy placeholder in case deepspeed doesn't exist """
-        return contextlib.nullcontext()
-
     def _do_patch_dummy_parameters(module): # pylint: disable=unused-argument
         """ Dummy placeholder in case deepspeed doesn't exist """
         return contextlib.nullcontext()
