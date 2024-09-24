@@ -35,45 +35,8 @@
 
 """ Mapping information for AIMET and backend"""
 import torch
-from aimet_common.libpymo import QnnDatatype
-from aimet_common.defs import QuantizationDataType
 from aimet_torch._base.nn.modules import custom
 
-backend_datatype_to_aimet_map = {QnnDatatype.QNN_DATATYPE_INT_8: {'bitwidth': 8,
-                                                                  'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_INT_16: {'bitwidth': 16,
-                                                                   'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_INT_32: {'bitwidth': 32,
-                                                                   'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_INT_64: {'bitwidth': 64,
-                                                                   'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UINT_8: {'bitwidth': 8,
-                                                                   'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UINT_16: {'bitwidth': 16,
-                                                                    'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UINT_32: {'bitwidth': 32,
-                                                                    'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UINT_64: {'bitwidth': 64,
-                                                                    'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_FLOAT_16: {'bitwidth': 16,
-                                                                     'dtype': QuantizationDataType.float},
-                                 QnnDatatype.QNN_DATATYPE_FLOAT_32: {'bitwidth': 32,
-                                                                     'dtype': QuantizationDataType.float},
-                                 QnnDatatype.QNN_DATATYPE_SFIXED_POINT_8: {'bitwidth': 8,
-                                                                           'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_SFIXED_POINT_16: {'bitwidth': 16,
-                                                                            'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_SFIXED_POINT_32: {'bitwidth': 32,
-                                                                            'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UFIXED_POINT_8: {'bitwidth': 8,
-                                                                           'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UFIXED_POINT_16: {'bitwidth': 16,
-                                                                            'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_UFIXED_POINT_32: {'bitwidth': 32,
-                                                                            'dtype': QuantizationDataType.int},
-                                 QnnDatatype.QNN_DATATYPE_BOOL_8: {'bitwidth': 8,
-                                                                   'dtype': QuantizationDataType.int}
-                                 }
 aimet_op_to_backend_op_name_map = {
     torch.nn.Conv1d: "Conv1d",
     torch.nn.Conv2d: "Conv2d",
@@ -186,20 +149,3 @@ aimet_op_to_backend_op_name_map = {
     torch.nn.GroupNorm: "GroupNorm",
     custom.GroupNorm: "GroupNorm",
 }
-
-
-op_to_weight_index_map = {'Conv1d' : 1,
-                          'Conv2d': 1,
-                          'Conv3d': 1,
-                          'DepthWiseConv1d' : 1,
-                          'DepthWiseConv2d': 1,
-                          'TransposeConv1d' : 1,
-                          'TransposeConv2d': 1,
-                          'TransposeConv3d': 1,
-                          'Batchnorm': 1,
-                          'FullyConnected': 1,
-                          'LayerNorm': 1,
-                          'InstanceNorm': 1,
-                          'GroupNorm': 1,
-                          'MatMul': 1
-                          }
