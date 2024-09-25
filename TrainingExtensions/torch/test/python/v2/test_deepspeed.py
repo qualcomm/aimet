@@ -248,6 +248,14 @@ def test_deepspeed_zero3_offload(unlabeled_data_loader,
                                  per_channel_quantsim_config,
                                  init_process_group,
                                  deepspeed_zero3_offload_config):
+    """
+    This test case demonstrates how to train a model using DeepSpeed Zero3 Offload in regular mode.
+    This mode offers a performance improvement compared to the compatibility mode for PTQ operations.
+    Steps:
+    1. Create QuantSim
+    2. Initialize with ds.initialize
+    3. Compute encodings
+    """
     # Baseline model without deepsped
     model_baseline = Net().cuda().eval()
     baseline_state_dict = model_baseline.state_dict()
@@ -259,7 +267,7 @@ def test_deepspeed_zero3_offload(unlabeled_data_loader,
                                         in_place=True)
 
     """
-    Given: Model pre-partitioned with deepspeed zero3 offload
+    Given: Model pre-partitioned with DeepSpeed Zero3 offload
     """
     with ds.zero.Init(config_dict_or_path=deepspeed_zero3_offload_config):
         # ds.zero.Init context pre-partitoins the pytorch models at instantiation time.
@@ -330,7 +338,8 @@ def test_deepspeed_zero3_offload(unlabeled_data_loader,
                                              model_parameters=sim_deepspeed.model.parameters(),
                                              config=deepspeed_zero3_offload_config,
                                              mpu=CustomMPU(init_process_group))
-    assert all(hasattr(param, 'ds_shape') for param in model.parameters())
+    # Indicates that the model has been initialized with DeepSpeed ZeRO stage 3 if hasattr(param, 'ds_id') returns True
+    assert all(hasattr(param, 'ds_id') for param in model.parameters())
 
 
     """
@@ -412,6 +421,182 @@ def test_deepspeed_zero3_offload(unlabeled_data_loader,
         ds_after = ds_params_after[param_name]
         assert not torch.equal(ds_before, ds_after)
 
+@pytest.mark.cuda
+def test_deepspeed_zero3_offload_fallback(unlabeled_data_loader,
+                                          per_channel_quantsim_config,
+                                          init_process_group,
+                                          deepspeed_zero3_offload_config):
+    """
+    This test case demonstrates how to train a model using DeepSpeed Zero3 Offload in compatibility mode.
+    This mode will significantly decrease the performance of PTQ operations like compute_encodings.
+    However, compatibility will improve due to fewer hooks and functions being applied.
+    Steps:
+    1. Create QuantSim
+    2. Compute encodings
+    3. Initialize with ds.initialize
+    """
+    # Baseline model without deepsped
+    model_baseline = Net().cuda().eval()
+    baseline_state_dict = model_baseline.state_dict()
+    sim_baseline = QuantizationSimModel(model_baseline,
+                                        torch.randn(1, 1, 28, 28).cuda(),
+                                        default_param_bw=4,
+                                        config_file=per_channel_quantsim_config,
+                                        quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+                                        in_place=True)
+
+    """
+    Given: Model pre-partitioned with DeepSpeed Zero3 offload
+    """
+    with ds.zero.Init(config_dict_or_path=deepspeed_zero3_offload_config):
+        # ds.zero.Init context pre-partitoins the pytorch models at instantiation time.
+        # PyTorch modules instantiated under this context will only hold a partition
+        # of their parameters
+        model = Net().cuda().eval()
+        assert all(param.numel() == 0 for param in model.parameters())         # sanity check
+        assert all(hasattr(param, 'ds_shape') for param in model.parameters()) # sanity check
+
+    # Copy the parameters/buffers of baseline model to deepspeed pre-partitoined model to assert
+    # outputs to be equal with or without deepspeed
+    with ds.runtime.zero.GatheredParameters(model.parameters(), modifier_rank=0), torch.no_grad():
+        model.load_state_dict(baseline_state_dict)
+
+    """
+    When: Create quantsim with the model pre-partitioned model
+    Then: Quantizers should be instantiated with correct shape
+    """
+    sim_deepspeed = QuantizationSimModel(model,
+                                         torch.randn(1, 1, 28, 28).cuda(),
+                                         default_param_bw=4,
+                                         config_file=per_channel_quantsim_config,
+                                         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+                                         in_place=True)
+
+    assert isinstance(sim_deepspeed.model.conv1.input_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.conv1.param_quantizers['weight'], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.conv1.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.maxpool1.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.relu1.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.conv2.param_quantizers['weight'], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.conv2.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.maxpool2.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.relu2.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.fc1.param_quantizers['weight'], QuantizeDequantize)
+    assert sim_deepspeed.model.fc1.output_quantizers[0] is None
+    assert isinstance(sim_deepspeed.model.relu3.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.fc2.param_quantizers['weight'], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.fc2.output_quantizers[0], QuantizeDequantize)
+    assert isinstance(sim_deepspeed.model.log_softmax.output_quantizers[0], QuantizeDequantize)
+
+    assert sim_deepspeed.model.conv1.param_quantizers['weight'].shape == (32, 1, 1, 1)
+    assert sim_deepspeed.model.conv2.param_quantizers['weight'].shape == (32, 1, 1, 1)
+
+    # NOTE: default per-channel quantsim config doesn't apply per-channel qtzn to nn.Linear
+    assert sim_deepspeed.model.fc1.param_quantizers['weight'].shape == ()
+    assert sim_deepspeed.model.fc2.param_quantizers['weight'].shape == ()
+
+    assert sim_deepspeed.model.conv1.input_quantizers[0].shape ==\
+           sim_deepspeed.model.conv1.output_quantizers[0].shape ==\
+           sim_deepspeed.model.maxpool1.output_quantizers[0].shape ==\
+           sim_deepspeed.model.relu1.output_quantizers[0].shape ==\
+           sim_deepspeed.model.conv2.output_quantizers[0].shape ==\
+           sim_deepspeed.model.maxpool2.output_quantizers[0].shape ==\
+           sim_deepspeed.model.relu2.output_quantizers[0].shape ==\
+           sim_deepspeed.model.relu3.output_quantizers[0].shape ==\
+           sim_deepspeed.model.fc2.output_quantizers[0].shape ==\
+           sim_deepspeed.model.log_softmax.output_quantizers[0].shape == ()
+
+
+    """
+    When: Compute encodings after deepspeed initialization
+    Then:
+      1) All quantizer encodings must be inititalized
+      2) get_{encoding, scale, offset, min, max} returns real tensors, not empty tensors
+    """
+    with aimet.nn.compute_encodings(sim_deepspeed.model),\
+            aimet.nn.compute_encodings(sim_baseline.model):
+        for data in itertools.islice(unlabeled_data_loader, 3):
+            data = data.cuda()
+            _ = sim_deepspeed.model(data)
+            _ = sim_baseline.model(data)
+
+    for qtzr in sim_deepspeed.model.modules():
+        if isinstance(qtzr, QuantizerBase):
+            assert qtzr.is_initialized()
+
+    """
+    When: Initialize quantsim model with deepspeed zero3 offload
+    Then:
+      1) All parameters must be initialized with deepspeed zero3 parameter partitioning mechanism
+      2) Forward pass outputs must be equal with or without deepspeed
+    """
+    engine, ds_optimizer, *_ = ds.initialize(model=sim_deepspeed.model,
+                                             model_parameters=sim_deepspeed.model.parameters(),
+                                             config=deepspeed_zero3_offload_config,
+                                             mpu=CustomMPU(init_process_group))
+    assert all(hasattr(param, 'ds_id') for param in model.parameters())
+
+    with torch.no_grad():
+        for data in unlabeled_data_loader:
+            data = data.cuda()
+            assert torch.equal(sim_deepspeed.model(data), sim_baseline.model(data))
+
+    """
+    When: Run training loop
+    Then: All trainable parameters must be udpated by training in the (almost) same way
+          with or without deepspeed
+    """
+    with ds.runtime.zero.GatheredParameters(sim_deepspeed.model.parameters()):
+        ds_params_before = {
+            name: param.clone().detach() for name, param in sim_deepspeed.model.named_parameters()
+        }
+
+    target = torch.ones((1, 10)).float().cuda()
+    sim_deepspeed.model.train()
+    sim_baseline.model.train()
+    optimizer = torch.optim.AdamW([{
+        'params': sim_baseline.model.parameters(),
+        'lr': ds_optimizer.get_lr(),
+        'weight_decay': ds_optimizer.param_groups[0]['weight_decay'],
+        'betas': ds_optimizer.param_groups[0]['betas'],
+        'eps': ds_optimizer.param_groups[0]['eps'],
+        'bias_correction': True,
+    }])
+
+    for i, data in enumerate(unlabeled_data_loader):
+        output = sim_deepspeed.model(data.cuda())
+        output_baseline = sim_baseline.model(data.cuda())
+        assert torch.allclose(output, output_baseline, rtol=1e-3)
+        assert isinstance(output, DequantizedTensor)
+        assert output.encoding.scale.numel() == 1
+        assert output.encoding.offset.numel() == 1
+        loss = functional.mse_loss(output, target)
+        loss_baseline = functional.mse_loss(output_baseline, target)
+        engine.backward(loss)
+        loss_baseline.backward()
+
+        if i == 0:
+            # Gradient checker
+            for param_ds, param_baseline in zip(sim_deepspeed.model.parameters(),
+                                                sim_baseline.model.parameters()):
+                grad_ds = ds.utils.safe_get_full_grad(param_ds)
+                assert torch.allclose(grad_ds, param_baseline.grad, rtol=1e-3)
+
+        ds_optimizer.step()
+        optimizer.step()
+        ds_optimizer.zero_grad()
+        optimizer.zero_grad()
+
+    with ds.runtime.zero.GatheredParameters(sim_deepspeed.model.parameters()):
+        ds_params_after = {
+            name: param.clone().detach() for name, param in sim_deepspeed.model.named_parameters()
+        }
+
+    assert ds_params_before.keys() == ds_params_after.keys()
+    for param_name in ds_params_before:
+        ds_before = ds_params_before[param_name]
+        ds_after = ds_params_after[param_name]
+        assert not torch.equal(ds_before, ds_after)
 
 @pytest.mark.cuda
 def test_conv_transpose(per_channel_quantsim_config,

@@ -54,7 +54,8 @@ def compute_encodings(model: torch.nn.Module):
         Encodings of the quantizers loaded with :ref:`QuantizationSimModel.load_encodings`
         with ``allow_overwrite=False`` will be kept unchanged.
     """
-    with contextlib.ExitStack() as stack:
+    with _register_zero3_forward_hooks(model, use_dummy_params=False),\
+            contextlib.ExitStack() as stack:
         for module in model.modules():
             if isinstance(module, BaseQuantizationMixin): # pylint: disable=undefined-variable
                 ctx = module.compute_encodings()

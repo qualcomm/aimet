@@ -136,20 +136,23 @@ def _restore(module, *_):
 
 @contextlib.contextmanager
 def _register_zero3_forward_hooks(model: torch.nn.Module, use_dummy_params: bool):
-    handles = []
-
     # Temporarily materialize parameters to make forward runnable
-    materialize_parameters = _patch_dummy_parameters if use_dummy_params else _all_gather
-    try:
-        for module in model.modules():
-            handle = module.register_forward_pre_hook(materialize_parameters)
-            handles.append(handle)
-            handle = module.register_forward_hook(_restore)
-            handles.append(handle)
-        yield
-    finally:
-        for handle in handles:
-            handle.remove()
+    if not any(hasattr(param, 'ds_id') for name, param in model.named_parameters() if 'min' in name):
+        # Indicates that the model has been initialized with DeepSpeed ZeRO stage 3 if hasattr(param, 'ds_id') returns True
+        handles = []
+        materialize_parameters = _patch_dummy_parameters if use_dummy_params else _all_gather
+        try:
+            for module in model.modules():
+                handle = module.register_forward_pre_hook(materialize_parameters)
+                handles.append(handle)
+                handle = module.register_forward_hook(_restore)
+                handles.append(handle)
+            yield
+        finally:
+            for handle in handles:
+                handle.remove()
+    else:
+        yield None
 
 
 def _shallow_copy(dict_like):
