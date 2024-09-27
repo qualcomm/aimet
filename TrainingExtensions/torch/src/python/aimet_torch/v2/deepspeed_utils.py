@@ -76,7 +76,7 @@ try:
                 self.params = orig_params
 
         def __exit__(self, *exc):
-            if self.enabled and self.modifier_rank is not None:
+            if self.modifier_rank is not None:
                 for param in self.params:
                     # Stage 3 will separate the tensor into multiple cards
                     # Pre-partition parameters for the safe_set_local_fp32_param function
