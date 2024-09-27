@@ -64,6 +64,7 @@ from .models_.test_models import TransposedConvModel
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase
 from aimet_torch.v2.quantization import DequantizedTensor
+from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
 
 
 class Net(nn.Module):
@@ -420,6 +421,47 @@ def test_deepspeed_zero3_offload(unlabeled_data_loader,
         ds_before = ds_params_before[param_name]
         ds_after = ds_params_after[param_name]
         assert not torch.equal(ds_before, ds_after)
+
+@pytest.mark.cuda
+def test_deepspeed_zero3_offload_buckets_sync(unlabeled_data_loader,
+                                              per_channel_quantsim_config,
+                                              init_process_group,
+                                              deepspeed_zero3_offload_config):
+    """
+    Verify that the fp32_partitioned_groups_flat are synchronized with the written values
+    using SafeGatheredParameters.
+    """
+    # Given: Model pre-partitioned with DeepSpeed Zero3 offload
+    with ds.zero.Init(config_dict_or_path=deepspeed_zero3_offload_config):
+        # ds.zero.Init context pre-partitoins the pytorch models at instantiation time.
+        # PyTorch modules instantiated under this context will only hold a partition
+        # of their parameters
+        model = Net().cuda().eval()
+        assert all(param.numel() == 0 for param in model.parameters())         # sanity check
+        assert all(hasattr(param, 'ds_shape') for param in model.parameters()) # sanity check
+
+    """
+    When: Initialize quantsim model with deepspeed zero3 offload
+    Then:
+      1) All parameters must be initialized with deepspeed zero3 parameter partitioning mechanism
+      2) Forward pass outputs must be equal with or without deepspeed
+    """
+    engine, ds_optimizer, *_ = ds.initialize(model=model,
+                                             model_parameters=model.parameters(),
+                                             config=deepspeed_zero3_offload_config,
+                                             mpu=CustomMPU(init_process_group))
+    # Indicates that the model has been initialized with DeepSpeed ZeRO stage 3 if hasattr(param, 'ds_id') returns True
+    assert all(hasattr(param, 'ds_id') for param in model.parameters())
+
+    with SafeGatheredParameters(model.parameters(), modifier_rank=0), torch.no_grad():
+        for param in model.parameters():
+            param.data.zero_()
+    for param in model.parameters():
+        bucket_param, group_idx = param._z3_optimizer._get_fp32_opt_state_partition(param, None)
+        assert torch.all(bucket_param == 0)
+    with SafeGatheredParameters(model.parameters()):
+        for param in model.parameters():
+            assert torch.all(param == 0)
 
 @pytest.mark.cuda
 def test_deepspeed_zero3_offload_fallback(unlabeled_data_loader,
