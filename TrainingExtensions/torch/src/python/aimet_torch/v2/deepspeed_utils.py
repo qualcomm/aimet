@@ -54,20 +54,30 @@ try:
         Additionally, this function ensure the synchronization of parameters.
         """
         def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
-            self.orig_params = [p for p in params]
             self.modifier_rank = modifier_rank
-            params = [
-                p for p in self.orig_params
-                # Ignore if the parameter is already all-gathered.
-                # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
-                # and can fail if some of them were already "AVAILABLE".
-                if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE
-            ]
             super().__init__(params, modifier_rank, fwd_module, enabled)
 
+        def __enter__(self):
+            if not self.enabled:
+                return
+
+            orig_params = self.params
+
+            try:
+                self.params = [
+                    p for p in self.params
+                    # Ignore if the parameter is already all-gathered.
+                    # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
+                    # and can fail if some of them were already "AVAILABLE".
+                    if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE or True
+                ]
+                super().__enter__()
+            finally:
+                self.params = orig_params
+
         def __exit__(self, *exc):
-            if self.modifier_rank is not None:
-                for param in self.orig_params:
+            if self.enabled and self.modifier_rank is not None:
+                for param in self.params:
                     # Stage 3 will separate the tensor into multiple cards
                     # Pre-partition parameters for the safe_set_local_fp32_param function
                     if hasattr(param, "_z3_optimizer"):
@@ -137,22 +147,18 @@ def _restore(module, *_):
 @contextlib.contextmanager
 def _register_zero3_forward_hooks(model: torch.nn.Module, use_dummy_params: bool):
     # Temporarily materialize parameters to make forward runnable
-    if not any(hasattr(param, 'ds_id') for name, param in model.named_parameters() if 'min' in name):
-        # Indicates that the model has been initialized with DeepSpeed ZeRO stage 3 if hasattr(param, 'ds_id') returns True
-        handles = []
-        materialize_parameters = _patch_dummy_parameters if use_dummy_params else _all_gather
-        try:
-            for module in model.modules():
-                handle = module.register_forward_pre_hook(materialize_parameters)
-                handles.append(handle)
-                handle = module.register_forward_hook(_restore)
-                handles.append(handle)
-            yield
-        finally:
-            for handle in handles:
-                handle.remove()
-    else:
-        yield None
+    handles = []
+    materialize_parameters = _patch_dummy_parameters if use_dummy_params else _all_gather
+    try:
+        for module in model.modules():
+            handle = module.register_forward_pre_hook(materialize_parameters)
+            handles.append(handle)
+            handle = module.register_forward_hook(_restore)
+            handles.append(handle)
+        yield
+    finally:
+        for handle in handles:
+            handle.remove()
 
 
 def _shallow_copy(dict_like):
