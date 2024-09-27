@@ -54,30 +54,20 @@ try:
         Additionally, this function ensure the synchronization of parameters.
         """
         def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
+            self.orig_params = [p for p in params]
             self.modifier_rank = modifier_rank
+            params = [
+                p for p in self.orig_params
+                # Ignore if the parameter is already all-gathered.
+                # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
+                # and can fail if some of them were already "AVAILABLE".
+                if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE
+            ]
             super().__init__(params, modifier_rank, fwd_module, enabled)
-
-        def __enter__(self):
-            if not self.enabled:
-                return
-
-            orig_params = self.params
-
-            try:
-                self.params = [
-                    p for p in self.params
-                    # Ignore if the parameter is already all-gathered.
-                    # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
-                    # and can fail if some of them were already "AVAILABLE".
-                    if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE or True
-                ]
-                super().__enter__()
-            finally:
-                self.params = orig_params
 
         def __exit__(self, *exc):
             if self.modifier_rank is not None:
-                for param in self.params:
+                for param in self.orig_params:
                     # Stage 3 will separate the tensor into multiple cards
                     # Pre-partition parameters for the safe_set_local_fp32_param function
                     if hasattr(param, "_z3_optimizer"):
