@@ -53,27 +53,16 @@ try:
         with parameters that are already all-gathered by deepspeed zero3 or zero-offload runtime.
         Additionally, this function ensure the synchronization of parameters.
         """
-        def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
-            self.orig_params = [p for p in params]
-            self.modifier_rank = modifier_rank
-            params = [
-                p for p in self.orig_params
-                # Ignore if the parameter is already all-gathered.
-                # deepspeed.zero.runtime.GatheredParameters assumes all the parameters to be "NOT_AVAILABLE"
-                # and can fail if some of them were already "AVAILABLE".
-                if getattr(p, 'ds_status', None) == ZeroParamStatus.NOT_AVAILABLE
-            ]
-            super().__init__(params, modifier_rank, fwd_module, enabled)
-
         def __exit__(self, *exc):
             super().__exit__(*exc)
-            if self.modifier_rank is not None:
-                for param in self.orig_params:
+
+            if not self.enabled:
+                return
+
+            if self.src_rank is not None:
+                for param in self.params:
                     if hasattr(param, "_z3_optimizer"):
-                        # If param.ds_persist is true, the parameter might not be partitioned
-                        # Handle this scenario with the following condition
-                        target_tensor = param.ds_tensor if param.numel() == 0 else param
-                        safe_set_local_fp32_param(param, target_tensor)
+                        safe_set_local_fp32_param(param, param.ds_tensor)
 
 
     @contextlib.contextmanager

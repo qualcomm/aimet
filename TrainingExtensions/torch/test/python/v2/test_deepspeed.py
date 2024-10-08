@@ -479,9 +479,6 @@ def test_deepspeed_zero3_offload_buckets_sync(unlabeled_data_loader,
 
     param_coordinator = ds_optimizer._get_param_coordinator(False)
     assert param_coordinator.is_complete_trace()
-    for param in sim_deepspeed.model.parameters():
-        if param.ds_persist:
-            assert param.numel() != 0
 
     with SafeGatheredParameters(sim_deepspeed.model.parameters()), torch.no_grad():
         for param in sim_deepspeed.model.parameters():
