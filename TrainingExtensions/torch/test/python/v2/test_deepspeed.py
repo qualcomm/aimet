@@ -441,10 +441,20 @@ def test_deepspeed_zero3_offload_buckets_sync(unlabeled_data_loader,
         assert all(hasattr(param, 'ds_shape') for param in model.parameters()) # sanity check
 
     """
+    When: Create quantsim with the model pre-partitioned model
+    Then: Quantizers should be instantiated with correct shape
+    """
+    sim_deepspeed = QuantizationSimModel(model,
+                                         torch.randn(1, 1, 28, 28).cuda(),
+                                         default_param_bw=4,
+                                         config_file=per_channel_quantsim_config,
+                                         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+                                         in_place=True)
+
+    """
     When: Initialize quantsim model with deepspeed zero3 offload
     Then:
       1) All parameters must be initialized with deepspeed zero3 parameter partitioning mechanism
-      2) Forward pass outputs must be equal with or without deepspeed
     """
     engine, ds_optimizer, *_ = ds.initialize(model=model,
                                              model_parameters=model.parameters(),
@@ -453,15 +463,31 @@ def test_deepspeed_zero3_offload_buckets_sync(unlabeled_data_loader,
     # Indicates that the model has been initialized with DeepSpeed ZeRO stage 3 if hasattr(param, 'ds_id') returns True
     assert all(hasattr(param, 'ds_id') for param in model.parameters())
 
-    with SafeGatheredParameters(model.parameters(), modifier_rank=0), torch.no_grad():
-        for param in model.parameters():
-            param.data.zero_()
-    for param in model.parameters():
-        bucket_param, group_idx = param._z3_optimizer._get_fp32_opt_state_partition(param, None)
-        assert torch.all(bucket_param == 0)
-    with SafeGatheredParameters(model.parameters()):
-        for param in model.parameters():
-            assert torch.all(param == 0)
+    """
+    When: Compute encodings after deepspeed initialization
+    Then:
+      1) Trace mode are set to ZeRoTraceMode.COMPLETE: 2
+      2) Persistent params haven't been released
+      3) fp32_partitioned_groups_flat are synchronized with the written values
+    """
+
+    sim_deepspeed.model.eval()
+    with aimet.nn.compute_encodings(sim_deepspeed.model), torch.no_grad():
+        for data in unlabeled_data_loader:
+            data = data.cuda()
+            _ = sim_deepspeed.model(data)
+
+    param_coordinator = ds_optimizer._get_param_coordinator(False)
+    assert param_coordinator.is_complete_trace()
+    for param in sim_deepspeed.model.parameters():
+        if param.ds_persist:
+            assert param.numel() != 0
+
+    with SafeGatheredParameters(sim_deepspeed.model.parameters()), torch.no_grad():
+        for param in sim_deepspeed.model.parameters():
+            if param.requires_grad:
+                bucket_param, group_idx = param._z3_optimizer._get_fp32_opt_state_partition(param, None)
+                assert torch.all(bucket_param == param.flatten().cpu())
 
 @pytest.mark.cuda
 def test_deepspeed_zero3_offload_fallback(unlabeled_data_loader,

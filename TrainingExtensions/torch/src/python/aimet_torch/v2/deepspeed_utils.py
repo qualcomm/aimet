@@ -66,20 +66,14 @@ try:
             super().__init__(params, modifier_rank, fwd_module, enabled)
 
         def __exit__(self, *exc):
+            super().__exit__(*exc)
             if self.modifier_rank is not None:
                 for param in self.orig_params:
-                    # Stage 3 will separate the tensor into multiple cards
-                    # Pre-partition parameters for the safe_set_local_fp32_param function
                     if hasattr(param, "_z3_optimizer"):
-                        my_rank = dist.get_rank()
-                        if param.numel() == 1:
-                            value_partition = param.detach()
-                        else:
-                            value_partition = param.detach().flatten().narrow(0,
-                                                                              param.ds_tensor.ds_numel * my_rank,
-                                                                              param.ds_tensor.ds_numel)
-                        safe_set_local_fp32_param(param, value_partition)
-            super().__exit__(*exc)
+                        # If param.ds_persist is true, the parameter might not be partitioned
+                        # Handle this scenario with the following condition
+                        target_tensor = param.ds_tensor if param.numel() == 0 else param
+                        safe_set_local_fp32_param(param, target_tensor)
 
 
     @contextlib.contextmanager
