@@ -191,10 +191,10 @@ class QuantizedConcat(_DispatchMixin, QuantizationMixin, Concat):
 #     _builtin_torch_fn = torch.floor_divide
 #
 #
-# @QuantizationMixin.implements(Norm)
-# class QuantizedNorm(_DispatchMixin, QuantizationMixin, Norm):
-#     """ Quantized Norm """
-#     _builtin_torch_fn = torch.norm
+@QuantizationMixin.implements(Norm)
+class QuantizedNorm(_DispatchMixin, QuantizationMixin, Norm):
+    """ Quantized Norm """
+    _builtin_torch_fn = torch.norm
 #
 #
 # @QuantizationMixin.implements(Exponential)
@@ -538,22 +538,22 @@ class QuantizedRmsNorm(QuantizationMixin, RmsNorm):
 #     _builtin_torch_fn = torch.nn.functional.adaptive_avg_pool2d
 #
 #
-# @QuantizationMixin.implements(BatchNorm)
-# class QuantizedBatchNorm(_DispatchMixin, QuantizationMixin, BatchNorm):
-#     """ Quantized BatchNorm """
-#     _builtin_torch_fn = torch.nn.functional.batch_norm
+@QuantizationMixin.implements(BatchNorm)
+class QuantizedBatchNorm(_DispatchMixin, QuantizationMixin, BatchNorm):
+    """ Quantized BatchNorm """
+    _builtin_torch_fn = torch.nn.functional.batch_norm
 #
 #
-# @QuantizationMixin.implements(GroupNorm)
-# class QuantizedGroupNorm(_DispatchMixin, QuantizationMixin, GroupNorm):
-#     """ Quantized GroupNorm """
-#     _builtin_torch_fn = torch.nn.functional.group_norm
+@QuantizationMixin.implements(GroupNorm)
+class QuantizedGroupNorm(_DispatchMixin, QuantizationMixin, GroupNorm):
+    """ Quantized GroupNorm """
+    _builtin_torch_fn = torch.nn.functional.group_norm
 #
 #
-# @QuantizationMixin.implements(Normalize)
-# class QuantizedNormalize(_DispatchMixin, QuantizationMixin, Normalize):
-#     """ Quantized Normalize """
-#     _builtin_torch_fn = torch.nn.functional.normalize
+@QuantizationMixin.implements(Normalize)
+class QuantizedNormalize(_DispatchMixin, QuantizationMixin, Normalize):
+    """ Quantized Normalize """
+    _builtin_torch_fn = torch.nn.functional.normalize
 #
 #
 # @QuantizationMixin.implements(Pad)

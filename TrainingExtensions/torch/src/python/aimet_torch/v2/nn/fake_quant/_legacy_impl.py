@@ -820,7 +820,7 @@ class FakeQuantizedBatchNorm(FakeQuantizationMixin, custom.BatchNorm): # pylint:
         if bias is not None and self.input_quantizers[4]:
             bias = self.input_quantizers[4](bias)
 
-        output = super().forward(input, running_mean, running_var,
+        output = super().forward(input, running_mean.detach(), running_var.detach(),
                                      weight, bias, training, momentum, eps)
 
         if self.output_quantizers[0]:
