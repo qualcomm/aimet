@@ -467,8 +467,7 @@ def test_deepspeed_zero3_offload_buckets_sync(unlabeled_data_loader,
     When: Compute encodings after deepspeed initialization
     Then:
       1) Trace mode are set to ZeRoTraceMode.COMPLETE: 2
-      2) Persistent params haven't been released
-      3) fp32_partitioned_groups_flat are synchronized with the written values
+      2) fp32_partitioned_groups_flat are synchronized with the written values
     """
 
     sim_deepspeed.model.eval()

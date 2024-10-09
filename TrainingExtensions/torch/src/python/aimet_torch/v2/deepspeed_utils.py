@@ -42,7 +42,6 @@ import torch
 
 try:
     from deepspeed.runtime.zero import ZeroParamStatus, GatheredParameters
-    from deepspeed import comm as dist
     from deepspeed.utils import safe_set_local_fp32_param
 
 
