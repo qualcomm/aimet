@@ -99,3 +99,12 @@ jobs:
             VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
             VER_ONNX=${{ matrix.VER_ONNX }}
 
+  cleanup:
+    needs: [docker-tag, variants, docker-build-image]
+    if: ${{ needs.docker-tag.outputs.tag != 'latest' && needs.docker-build-image.result == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    steps:
+      - name: Delete temp docker image
+        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ secrets.DOCKER_REGISTRY }}/v2/${{ secrets.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" || true
