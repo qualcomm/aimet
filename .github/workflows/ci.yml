@@ -1,6 +1,9 @@
 name: CI pipeline
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches: [ develop ]
 
