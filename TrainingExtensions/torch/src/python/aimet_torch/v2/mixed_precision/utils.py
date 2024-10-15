@@ -39,24 +39,42 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Type, List, TypeAlias, Literal, Tuple, Optional, Union
+from typing import Dict, Type, List, TypeAlias, Literal, Tuple, Optional, Union, Generator
+import functools
 
 import torch
 
-from aimet_common.defs import QuantizationDataType
+from aimet_common.defs import QuantizationDataType, QuantScheme
 from aimet_common.utils import AimetLogger
+from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
+from aimet_torch.v2.quantization.float.quantizer import FloatQuantizeDequantize
+from aimet_torch.meta.operation import Op as CG_Op
+from aimet_torch.quantsim_config.builder import LazyQuantizer
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
 SupportedDType: TypeAlias = Literal['Int16', 'Int8', 'Int4', 'Fp16']
 
+@dataclass
+class Candidate:
+    """ Internal data structure to represent precision """
+    data_type: QuantizationDataType
+    bitwidth: int
+
+    def __lt__(self, other):
+        if self.bitwidth != other.bitwidth:
+            return self.bitwidth < other.bitwidth
+        else:
+            return self.data_type == QuantizationDataType.int and other.data_type != QuantizationDataType.int
+
+
 TranslateUserDtypes = {
-    'Int16': (QuantizationDataType.int, 16),
-    'Int8': (QuantizationDataType.int, 8),
-    'Int4': (QuantizationDataType.int, 4),
-    'Fp16': (QuantizationDataType.float, 16),
+    'Int16': Candidate(QuantizationDataType.int, 16),
+    'Int8': Candidate(QuantizationDataType.int, 8),
+    'Int4': Candidate(QuantizationDataType.int, 4),
+    'Fp16': Candidate(QuantizationDataType.float, 16),
 }
 
 
@@ -64,9 +82,9 @@ TranslateUserDtypes = {
 class MpRequest:
     """ Internal data structure to save the request to act upon"""
     id: int = None  # original request ID
-    input_candidates: List[Tuple[QuantizationDataType, int]] = field(default_factory=list)
-    output_candidates: List[Tuple[QuantizationDataType, int]] = field(default_factory=list)
-    param_candidate: Dict[str, Tuple[QuantizationDataType, int]] = field(default_factory=dict)
+    input_candidates: List[Candidate] = field(default_factory=list)
+    output_candidates: List[Candidate] = field(default_factory=list)
+    param_candidate: Dict[str, Candidate] = field(default_factory=dict)
 
 
 class RequestType(Enum):
@@ -85,6 +103,33 @@ class UserRequest:
     activation: Union[List[SupportedDType], SupportedDType, None] = None
     param: Optional[Dict[str, SupportedDType]] = None
 
+
+def _has_no_quantizers(module: BaseQuantizationMixin) -> bool:
+    """
+    Helper function to check if a module has any quantizers enabled
+    """
+    return (all(inp_qtzr is None for inp_qtzr in module.input_quantizers) and
+            all(out_qtzr is None for out_qtzr in module.output_quantizers) and
+            all(param_qtzr is None for param_qtzr in module.param_quantizers.values()))
+
+def _is_qtzr_higher_precision_than_candidate(qtzr: BaseQuantizationMixin, candidate: Candidate) -> bool:
+    """ Helper function to determine if qtzr is higher precision than candidate """
+    if isinstance(qtzr, FloatQuantizeDequantize):
+        generated_candidate = Candidate(QuantizationDataType.float, qtzr.mantissa_bits + qtzr.exponent_bits)
+    else:
+        generated_candidate = Candidate(QuantizationDataType.int, qtzr.bitwidth)
+
+    return generated_candidate > candidate
+
+# getattr replacement that can handle dotted strings
+def _rgetattr(obj, attr, *args):
+    return functools.reduce(getattr, [obj] + attr.split('.'))
+
+# setattr replacement that can handle dotted strings
+def _rsetattr(obj, attr, val):
+    pre, _, post = attr.rpartition('.')
+    pre_obj = _rgetattr(obj, pre) if pre else obj
+    return setattr(pre_obj, post, val)
 
 class MpHandler:
     """
@@ -144,9 +189,21 @@ class MpHandler:
             input_candidates = self._get_candidate_from_user_dtype(activation)
             output_candidates = self._get_candidate_from_user_dtype(activation[0]) \
                 if isinstance(activation, List) else self._get_candidate_from_user_dtype(activation)
-            param_candidate = {}
-            for param_name, dtype in param.items():
-                param_candidate = {param_name: self._get_candidate_from_user_dtype(dtype)}
+
+            # Expectation is that input_candidates and output_candidates are either None or a list with the same number
+            # of elements as input/output quantizers
+            if not isinstance(input_candidates, List):
+                input_candidates = [input_candidates] * len(torch_module.input_quantizers)
+            if not isinstance(output_candidates, List):
+                output_candidates = [output_candidates] * len(torch_module.output_quantizers)
+
+            if len(input_candidates) != len(torch_module.input_quantizers):
+                raise RuntimeError(f"Invalid number of activation candidates for module {module_name} provided.")
+
+            param_candidate = \
+                {param_name: self._get_candidate_from_user_dtype(dtype) for param_name, dtype in param.items()} \
+                if param is not None else None
+
             mp_requests[torch_module] = MpRequest(id=idx, input_candidates=input_candidates,
                                                   output_candidates=output_candidates,
                                                   param_candidate=param_candidate)
@@ -185,7 +242,172 @@ class MpHandler:
         """
         return mp_requests
 
-    def _propagate_requests(self, mp_requests: Dict, strict: bool = True) -> Dict:
+    @staticmethod
+    def _apply_request_to_quantizer(quantizer: QuantizerBase, candidate: Candidate):
+        """
+        Helper function to apply mixed precision candidate to a quantizer
+        :param quantizer: quantizer object
+        :param candidate: mixed precision candidate
+        """
+        if candidate.data_type == QuantizationDataType.float:
+            if not isinstance(quantizer, FloatQuantizeDequantize):
+                # convert to float QDQ
+                quantizer = LazyQuantizer(candidate.bitwidth,
+                                          'nearest',
+                                          QuantScheme.post_training_tf,
+                                          quantizer.symmetric,
+                                          enabled_by_default=True,
+                                          data_type=QuantizationDataType.float
+                                          ).realize()
+
+            if candidate.bitwidth == 16:
+                quantizer.exponent_bits = 5
+                quantizer.mantissa_bits = 10
+            elif candidate.bitwidth == 8:
+                quantizer.exponent_bits = 4
+                quantizer.mantissa_bits = 3
+            else:
+                assert False, "FP16 and FP8 are the only supported float quantization types."
+        else:
+            if isinstance(quantizer, FloatQuantizeDequantize):
+                # convert to int QDQ
+                quantizer = LazyQuantizer(candidate.bitwidth,
+                                          'nearest',
+                                          QuantScheme.post_training_tf,
+                                          quantizer.symmetric,
+                                          enabled_by_default=True,
+                                          data_type=QuantizationDataType.int
+                                          ).realize()
+
+            quantizer.bitwidth = candidate.bitwidth
+
+        return quantizer
+
+    def _get_module_from_cg_op(self, cg_op: CG_Op) -> Optional[torch.nn.Module]:
+        if cg_op is None:
+            return None
+
+        module = cg_op.get_module()
+
+        if module is None:
+            return None
+
+        fully_qualified_name = self._sim.connected_graph._module_to_name[module]
+        _, name = fully_qualified_name.split('.', maxsplit=1)
+        quant_module = _rgetattr(self._sim.model, name)
+        return quant_module
+
+    @functools.cached_property
+    def _module_to_cg_op_mapping(self) -> Dict[torch.nn.Module, CG_Op]:
+        module_to_op_dict = {}
+        for cg_op in self._sim.connected_graph.ordered_ops:
+            module = self._get_module_from_cg_op(cg_op)
+            if module is not None:
+                module_to_op_dict[module] = cg_op
+        return module_to_op_dict
+
+    def _get_cg_op_from_module(self, module):
+        return self._module_to_cg_op_mapping[module]
+
+    def _get_parent_module_at_input_idx(self, module, input_idx) -> torch.nn.Module:
+        """
+        Traverses upstream to determine the parent module provided input idx
+        :param module: torch.nn.Module contained within the QuantSim object
+        :param input_idx: input idx to determine the parent module
+        :return: parent torch.nn.Module providing input idx
+        """
+        cg_op = self._get_cg_op_from_module(module)
+        parent_cg_op = cg_op.inputs[input_idx].producer
+        parent_module = self._get_module_from_cg_op(parent_cg_op)
+
+        while parent_module is None and parent_cg_op is not None:
+            parent_cg_op = parent_cg_op.inputs[0].producer
+            parent_module = self._get_module_from_cg_op(parent_cg_op)
+
+        return parent_module
+
+    def _get_child_module_at_output(self, module):
+        """
+        Traverses downstream to determine the child modules consuming output
+        :param module: torch.nn.Module contained within the QuantSim object
+        :return: List of (child torch.nn.Module consuming output, input idx that it is consuming output at)
+        """
+
+        def _get_child_modules_from_cg_op(cg_op: CG_Op):
+            output_ops = []
+            for output_op in cg_op.output_ops:
+                output_tensor_name = cg_op.output.name
+                output_module = self._get_module_from_cg_op(output_op)
+
+                # this means that the output is being consumed by an implicit op or a data movement op
+                if output_module is None or _has_no_quantizers(output_module):
+                    output_ops.extend(_get_child_modules_from_cg_op(output_op))
+                else:
+                    for idx, input_tensor in enumerate(output_op.inputs):
+                        if input_tensor.name == output_tensor_name:
+                            output_ops.append((output_module, idx))
+            return output_ops
+
+        cg_op = self._get_cg_op_from_module(module)
+        return _get_child_modules_from_cg_op(cg_op)
+
+    def _topographically_ordered_modules(self) -> Generator[torch.nn.Module, None, None]:
+        """
+        Generator function to yield all layers in the graph in topographical order
+        """
+        for cg_op in self._sim.connected_graph.ordered_ops:
+            module = self._get_module_from_cg_op(cg_op)
+            if module is not None:
+                yield module
+
+    @staticmethod
+    def _get_request_at_module(mp_requests, module):
+        """
+        :param module: torch.nn.Module contained within the QuantSim object
+        :return: MpRequest associated with the current module, or None if no request present
+        """
+        try:
+            return mp_requests[module]
+        except KeyError:
+            return None
+
+    @staticmethod
+    def _update_request_at_module(mp_requests, module, input_candidates=None, param_candidate=None,
+                                  output_candidates=None, strict=False):
+        """
+        Helper function to update MpRequest for the provided module. If there is already a request for this module,
+        it will be updated with the provided fields. Otherwise, a new request will be created
+        :param module: torch.nn.Module contained within the QuantSim object
+        :param input_candidates: List of tuples containing the input candidates for the module
+        :param param_candidate: Dict of tuples containing the param candidates for the module
+        :param output_candidates: Tuple containing the output candidate for the module
+        """
+
+        # create a new request for this module if one does not already exist
+        if module not in mp_requests:
+            mp_requests[module] = MpRequest(param_candidate=None, input_candidates=None, output_candidates=None)
+
+        if input_candidates is not None:
+            if isinstance(input_candidates, Candidate):
+                input_candidates = [input_candidates] * len(module.input_quantizers)
+            assert len(input_candidates) == len(module.input_quantizers)
+            mp_requests[module].input_candidates = input_candidates
+
+        if param_candidate is not None:
+            assert isinstance(param_candidate, dict)
+            for key in module.param_quantizers.keys():
+                if key not in param_candidate:
+                    param_candidate[key] = None
+            assert param_candidate.keys() == module.param_quantizers.keys()
+            mp_requests[module].param_candidate = param_candidate
+
+        if output_candidates is not None:
+            if isinstance(output_candidates, Candidate):
+                output_candidates = [output_candidates] * len(module.output_quantizers)
+            assert len(output_candidates) == len(module.output_quantizers)
+            mp_requests[module].output_candidates = output_candidates
+
+    def _propagate_requests_upstream(self, mp_requests: Dict, strict: bool = True):
         """
         Propagate requests to parent modules to achieve precision at given module
 
@@ -193,15 +415,110 @@ class MpHandler:
         :param strict: Boolean flag to indicate whether to fail (strict=True) on incorrect/conflicting inputs made by
         the user or (strict=False) take a best-effort approach to realize the MP settings
         """
+        def _propagate_request_upstream_helper(module):
+            request = self._get_request_at_module(mp_requests, module)
+            if request is None:
+                return
+
+            for in_idx, input_candidate in enumerate(request.input_candidates):
+                # Do not traverse upward if there is no candidate for this input
+                if input_candidate is None:
+                    continue
+
+                # Do not traverse upward if this input already has an input quantizer at this module
+                if module.input_quantizers[in_idx] is not None:
+                    continue
+
+                parent_module = self._get_parent_module_at_input_idx(module, in_idx)
+                if parent_module is None:
+                    continue
+
+                if any(out_qtzr is not None for out_qtzr in parent_module.output_quantizers):
+                    # If the parent layer has output quantizers, then we only need to propagate the request until there
+                    self._update_request_at_module(mp_requests,
+                                                   parent_module,
+                                                   output_candidates=input_candidate,
+                                                   strict=strict)
+                else:
+                    # If the parent layer does not have an output quantizer, then we need to propagate the request up to
+                    # that layer's inputs
+                    self._update_request_at_module(mp_requests,
+                                                   parent_module,
+                                                   input_candidates=input_candidate,
+                                                   output_candidates=input_candidate,
+                                                   strict=strict)
+
+                # If the parent layer has no input or output quantizers, then propagate this request further upstream
+                # This should only happen if the parent layer is a data movement op
+                if _has_no_quantizers(parent_module):
+                    _propagate_request_upstream_helper(parent_module)
+
+        for module in self._topographically_ordered_modules():
+            _propagate_request_upstream_helper(module)
         return mp_requests
 
-    def _apply_to_sim(self, mp_requests: Dict):
+    def _resolve_request_outputs(self, mp_requests):
+        """
+        Determine if output candidates from request at the provided module should be applied or discarded
+        :param module: torch.nn.Module contained within the QuantSim object
+        """
+        def _resolve_request_outputs_helper(module):
+            request = self._get_request_at_module(mp_requests, module)
+            if request is None or request.output_candidates is None or module.output_quantizers[0] is None:
+                return
+
+            # If the output request at this module came from a downstream consumer, return without changing candidate
+            child_modules_and_idxs = self._get_child_module_at_output(module)
+            for child_module, input_idx in child_modules_and_idxs:
+                child_request = self._get_request_at_module(mp_requests, child_module)
+                if child_request is not None and \
+                        child_request.input_candidates[input_idx] == request.output_candidates[0]:
+                    return
+
+            # If this output is a model output, return without changing output candidate
+            # TODO in subsequent PR (once details of setting model input/output precisions has been resolved)
+
+            # If the output quantizer at this module has a higher precision than the output candidate, return without
+            # changing output candidate
+            if _is_qtzr_higher_precision_than_candidate(module.output_quantizers[0], request.output_candidates[0]):
+                return
+
+            # None of above conditions were met, so discard output_candidate at this module
+            request.output_candidates = None
+
+        for module in self._topographically_ordered_modules():
+            _resolve_request_outputs_helper(module)
+
+        return mp_requests
+
+    def _apply_requests_to_sim(self, mp_requests: Dict):
         """
         Apply MP configuration to the sim object
 
         :param mp_requests: MP requests after preprocessing, applying backend awareness(if present), propagating to
         parent modules
         """
+        for module, request in mp_requests.items():
+            if request.input_candidates is not None:
+                assert len(module.input_quantizers) == len(request.input_candidates)
+                for idx in range(len(module.input_quantizers)):
+                    if request.input_candidates[idx] is not None and module.input_quantizers[idx] is not None:
+                        module.input_quantizers[idx] = self._apply_request_to_quantizer(module.input_quantizers[idx],
+                                                                                        request.input_candidates[idx])
+
+            if request.param_candidate is not None:
+                assert all(param_key in module.param_quantizers for param_key in request.param_candidate.keys())
+                for param_key, param_candidate in request.param_candidate.items():
+                    if param_candidate is not None and module.param_quantizers[param_key] is not None:
+                        module.param_quantizers[param_key] = \
+                            self._apply_request_to_quantizer(module.param_quantizers[param_key], param_candidate)
+
+            if request.output_candidates is not None:
+                assert len(module.output_quantizers) == len(request.output_candidates)
+                for idx in range(len(module.output_quantizers)):
+                    if request.output_candidates[idx] is not None and module.output_quantizers[idx] is not None:
+                        module.output_quantizers[idx] = self._apply_request_to_quantizer(module.output_quantizers[idx],
+                                                                                        request.output_candidates[idx])
 
     def apply(self, user_requests: Dict[int, UserRequest], config: str = "", strict: bool = True,
               log_file: str = './mmp_log.txt'):
@@ -217,5 +534,6 @@ class MpHandler:
         """
         mp_requests = self._process_user_requests(user_requests)
         mp_requests = self._apply_backend_awareness(mp_requests, config, strict)
-        mp_requests = self._propagate_requests(mp_requests, strict)
-        self._apply_to_sim(mp_requests)
+        mp_requests = self._propagate_requests_upstream(mp_requests, strict)
+        mp_requests = self._resolve_request_outputs(mp_requests)
+        self._apply_requests_to_sim(mp_requests)
