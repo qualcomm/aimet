@@ -43,12 +43,17 @@ runs:
     - name: "Get list of changes files in the docker build context"
       shell: bash
       run: |
-        git branch --delete --force ${{ github.event.repository.default_branch }} || true
-        git fetch --no-tags --force --prune --no-recurse-submodules --depth=1 origin ${{ github.event.repository.default_branch }}:refs/remotes/origin/${{ github.event.repository.default_branch }}
-        echo "DOCKER_BUILD_CONTEXT_FILES=$(git diff --name-only origin/${{ github.event.repository.default_branch }} -- $DOCKER_BUILD_CONTEXT_FILES | tr '\n' ' ')" >> $GITHUB_ENV
+        # check if any files are changed in docker context unless it is not a default branch.
+        # for the default branch we still rebuild images every time (yet)
+        if [[ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]] ; then
+          set -x
+          git config extensions.partialClone true
+          git fetch --no-tags --unshallow --filter=tree:0
+          echo "DOCKER_BUILD_CONTEXT_FILES=$(git diff --name-only $(git merge-base origin/${{ github.event.repository.default_branch }} origin/${{ github.ref_name }})..origin/${{ github.ref_name }} -- $DOCKER_BUILD_CONTEXT_FILES | tr '\n' ' ')" >> $GITHUB_ENV
+        fi
 
     - name: "Set a docker image tag"
       id: tag
       shell: bash
-      run: echo "value=$([[ ! -z \"$DOCKER_BUILD_CONTEXT_FILES\" ]] && echo $(git rev-parse --short HEAD) || echo ${{ inputs.defaulttag }})" >> $GITHUB_OUTPUT
+      run: set -x; echo "value=$([[ \"$DOCKER_BUILD_CONTEXT_FILES\" != \"\" ]] && echo $(git rev-parse --short HEAD) || echo ${{ inputs.defaulttag }})" >> $GITHUB_OUTPUT
 
