@@ -14,7 +14,10 @@ RUN apt update && \
         g++-10 \
         git \
         jq \
+        libeigen3-dev \
+        libz-dev \
         make \
+        pkg-config \
         sudo \
     && rm -rf /var/lib/apt/lists/* \
     && echo '%users ALL = (ALL) NOPASSWD: ALL' > /etc/sudoers.d/passwordless \
@@ -53,7 +56,7 @@ RUN --mount=type=bind,target=/workspace \
     echo "Install all required dependencies" \
     && export PIP_CACHE_DIR=/tmp/pip-cache BUILD_DIR=/tmp/build \
     && mkdir -p $BUILD_DIR \
-    && export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl" \
+    && export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo $VER_CUDA | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')" \
     && export CMAKE_ARGS="\
         -DENABLE_TENSORFLOW=$([ -z ${VER_TENSORFLOW} ]; echo $?) \
         -DENABLE_TORCH=$([ -z ${VER_TORCH} ]; echo $?) \
