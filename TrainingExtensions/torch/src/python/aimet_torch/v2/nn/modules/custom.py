@@ -560,6 +560,9 @@ class QuantizedBatchNorm(_DispatchMixin, QuantizationMixin, BatchNorm):
             momentum: float = 0.1,
             eps: float = 1e-5,
         ) -> Tensor:
+            if training:
+                if self.input_quantizers[1] is not None or self.input_quantizers[2] is not None:
+                    raise RuntimeError(f"{self.__class__} doesn't support quantizing running_mean or running_var in training mode")
 
             input = _quantize_dequantize_if_applicable(input, self.input_quantizers[0])
             running_mean = _quantize_dequantize_if_applicable(running_mean, self.input_quantizers[1])
@@ -587,6 +590,7 @@ class QuantizedBatchNorm(_DispatchMixin, QuantizationMixin, BatchNorm):
             momentum: float = 0.1,
             eps: float = 1e-5,
         ) -> Tensor:
+
             input = _quantize_if_applicable(input, self.input_quantizers[0])
             running_mean = _quantize_if_applicable(running_mean, self.input_quantizers[1])
             running_var = _quantize_if_applicable(running_var, self.input_quantizers[2])
