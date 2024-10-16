@@ -59,7 +59,7 @@ SupportedDType: TypeAlias = Literal['Int16', 'Int8', 'Int4', 'Fp16']
 
 @dataclass
 class Candidate:
-    """ Internal data structure to represent precision """
+    """ Internal data structure to represent quantization data type and bitwidth """
     data_type: QuantizationDataType
     bitwidth: int
 
@@ -361,17 +361,6 @@ class MpHandler:
                 yield module
 
     @staticmethod
-    def _get_request_at_module(mp_requests, module):
-        """
-        :param module: torch.nn.Module contained within the QuantSim object
-        :return: MpRequest associated with the current module, or None if no request present
-        """
-        try:
-            return mp_requests[module]
-        except KeyError:
-            return None
-
-    @staticmethod
     def _update_request_at_module(mp_requests, module, input_candidates=None, param_candidate=None,
                                   output_candidates=None, strict=False):
         """
@@ -416,7 +405,7 @@ class MpHandler:
         the user or (strict=False) take a best-effort approach to realize the MP settings
         """
         def _propagate_request_upstream_helper(module):
-            request = self._get_request_at_module(mp_requests, module)
+            request = mp_requests.get(module)
             if request is None:
                 return
 
@@ -463,14 +452,14 @@ class MpHandler:
         :param module: torch.nn.Module contained within the QuantSim object
         """
         def _resolve_request_outputs_helper(module):
-            request = self._get_request_at_module(mp_requests, module)
+            request = mp_requests.get(module)
             if request is None or request.output_candidates is None or module.output_quantizers[0] is None:
                 return
 
             # If the output request at this module came from a downstream consumer, return without changing candidate
             child_modules_and_idxs = self._get_child_module_at_output(module)
             for child_module, input_idx in child_modules_and_idxs:
-                child_request = self._get_request_at_module(mp_requests, child_module)
+                child_request = mp_requests.get(child_module)
                 if child_request is not None and \
                         child_request.input_candidates[input_idx] == request.output_candidates[0]:
                     return
