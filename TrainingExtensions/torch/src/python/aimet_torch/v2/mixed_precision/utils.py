@@ -82,9 +82,9 @@ TranslateUserDtypes = {
 class MpRequest:
     """ Internal data structure to save the request to act upon"""
     id: int = None  # original request ID
-    input_candidates: List[Candidate] = field(default_factory=list)
-    output_candidates: List[Candidate] = field(default_factory=list)
-    param_candidate: Dict[str, Candidate] = field(default_factory=dict)
+    input_candidates: List[Candidate] = None
+    output_candidates: List[Candidate] = None
+    param_candidate: Dict[str, Candidate] = None
 
 
 class RequestType(Enum):
