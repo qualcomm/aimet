@@ -662,7 +662,6 @@ class TestManualMixedPrecisionConfigurator:
                         assert module.bitwidth == 16
 
 
-    @pytest.mark.skip("Skipping this test until support for strict mode is implemented")
     def test_mp_21(self):
         """
         Tests that contending requests produce an error in strict mode

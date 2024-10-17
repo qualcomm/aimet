@@ -372,6 +372,29 @@ class MpHandler:
         :param output_candidates: Tuple containing the output candidate for the module
         """
 
+        def _check_for_overwrites(existing_requests, new_requests):
+            """ Helper function to check if new requests are overwriting existing requests"""
+            # overwrite not possible if one or both parameters are None
+            if existing_requests is None or new_requests is None:
+                return False
+
+            if isinstance(existing_requests, dict):
+                assert existing_requests.keys() == new_requests.keys()
+                for key, candidate in existing_requests.items():
+                    # f there are distinct non-None candidates with the same key then there is overwrite
+                    if candidate is not None and new_requests[key] is not None:
+                        if new_requests[key] != candidate:
+                            return True
+            elif isinstance(existing_requests, list):
+                assert len(existing_requests) == len(new_requests)
+                for new_candidate, existing_candidate in zip(new_requests, existing_requests):
+                    if new_candidate is not None and existing_candidate is not None:
+                        # if there are distinct non-None candidates at the same position then there is overwrite
+                        if new_candidate != existing_candidate:
+                            return True
+
+            return False
+
         # create a new request for this module if one does not already exist
         if module not in mp_requests:
             mp_requests[module] = MpRequest(param_candidate=None, input_candidates=None, output_candidates=None)
@@ -380,6 +403,8 @@ class MpHandler:
             if isinstance(input_candidates, Candidate):
                 input_candidates = [input_candidates] * len(module.input_quantizers)
             assert len(input_candidates) == len(module.input_quantizers)
+            if strict and _check_for_overwrites(mp_requests[module].input_candidates, input_candidates):
+                raise RuntimeError("Overlapping requests not permitted in strict mode.")
             mp_requests[module].input_candidates = input_candidates
 
         if param_candidate is not None:
@@ -388,12 +413,17 @@ class MpHandler:
                 if key not in param_candidate:
                     param_candidate[key] = None
             assert param_candidate.keys() == module.param_quantizers.keys()
-            mp_requests[module].param_candidate = param_candidate
+            if strict and _check_for_overwrites(mp_requests[module].param_candidates, param_candidate):
+                raise RuntimeError("Overlapping requests not permitted in strict mode.")
+            param_candidate = {k:v for (k,v) in param_candidate.items() if v}
+            mp_requests[module].param_candidate = mp_requests[module].param_candidate | param_candidate
 
         if output_candidates is not None:
             if isinstance(output_candidates, Candidate):
                 output_candidates = [output_candidates] * len(module.output_quantizers)
             assert len(output_candidates) == len(module.output_quantizers)
+            if strict and _check_for_overwrites(mp_requests[module].output_candidates, output_candidates):
+                raise RuntimeError("Overlapping requests not permitted in strict mode.")
             mp_requests[module].output_candidates = output_candidates
 
     def _propagate_requests_upstream(self, mp_requests: Dict, strict: bool = True):
