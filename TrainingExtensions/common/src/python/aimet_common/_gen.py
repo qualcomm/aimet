@@ -61,6 +61,7 @@ def main(output_dir):
         ""
     ]
 
+    os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "_deps.py"), "w") as f:
         f.write('\n'.join(copyright_string + content))
 

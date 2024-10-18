@@ -10,10 +10,6 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - run: |
-          sudo apt update -qq
-          sudo apt install -y git curl jq sudo ca-certificates
-          sudo update-ca-certificates
       - uses: actions/checkout@v4
       - uses: ./.github/actions/docker-tag
         id: tag
@@ -26,32 +22,22 @@ jobs:
     outputs:
       matrix: ${{ steps.final.outputs.value }}
     steps:
-      - run: |
-          sudo apt update -qq
-          sudo apt install -y git curl jq sudo ca-certificates
-          sudo update-ca-certificates
-
       - name: Torch variants
         run: |
-          set -x
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"", "VER_CUDA":""       },
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"", "VER_CUDA":"11.8.0" }
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":""       },
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":"11.8.0" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
-
       - name: Tensorflow variants
         run: |
-          set -x
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"2.10.1", "VER_TORCH":"",      "VER_ONNX":"", "VER_CUDA":"" },
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"2.10.1", "VER_TORCH":"",      "VER_ONNX":"", "VER_CUDA":"11.8.0" }
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"2.10.1", "VER_TORCH":"",      "VER_ONNX":"",        "VER_CUDA":"" },
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"2.10.1", "VER_TORCH":"",      "VER_ONNX":"",        "VER_CUDA":"11.8.0" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
-
       - name: ONNX variants
         run: |
-          set -x
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":""       },
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":"11.7.1" }
@@ -61,7 +47,6 @@ jobs:
       - name: (Last step) Generate few extra properties for each variant
         id: final
         run: |
-          set -x
           VALUE=$(echo "$VALUE" | jq -c '.include[] |= . + {
             "runs-on":(if .VER_CUDA != "" then "k8s-gpu" else "ubuntu-latest" end),
             "id":(""
@@ -79,10 +64,6 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     steps:
-      - run: |
-          sudo apt update -qq
-          sudo apt install -y git curl jq sudo ca-certificates
-          sudo update-ca-certificates
       - uses: actions/checkout@v4
       - uses: ./.github/actions/docker-build-image
         with:
@@ -98,6 +79,62 @@ jobs:
             VER_TORCH=${{ matrix.VER_TORCH }}
             VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
             VER_ONNX=${{ matrix.VER_ONNX }}
+
+  build-wheel:
+    name: Build AIMET wheels
+    runs-on: ${{ matrix.runs-on }}
+    needs: [docker-tag, variants, docker-build-image]
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}:${{ needs.docker-tag.outputs.tag }}"
+      credentials:
+        username: ${{ secrets.DOCKER_LOGIN }}
+        password: ${{ secrets.DOCKER_CREDENTIALS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Generate CMAKE_ARGS"
+        run: |
+          CMAKE_ARGS=""
+          CMAKE_ARGS="-DENABLE_CUDA=$([ "${{ matrix.VER_CUDA }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TORCH=$([ "${{ matrix.VER_TORCH }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNX }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
+      - name: "Exclude Torch libraries from dependencies for manylinux"
+        if: matrix.VER_TORCH
+        run: |
+          . /etc/profile.d/conda.sh
+          TORCH_DIR=$(python3 -c 'import torch; print(f"{torch.utils.cmake_prefix_path}/../../lib")')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TORCH_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Exclude Tensorflow libraries from dependencies for manylinux"
+        if: matrix.VER_TENSORFLOW
+        run: |
+          . /etc/profile.d/conda.sh
+          TF_DIR=$(python3 -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+          CUBLAS_DIR=$(python3 -c 'import tensorflow as tf; print(f"{tf.sysconfig.get_lib()}/../../../../lib")')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TF_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf --  '--exclude %s ')"
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Build AIMET wheel package"
+        run: |
+          rm -rf build dist
+          . /etc/profile.d/conda.sh
+          export CMAKE_ARGS="$AIMET_CMAKE_ARGS"
+          python3 -m build --wheel --no-isolation .
+          auditwheel repair --plat manylinux_2_34_x86_64 $MANYLINUX_EXCLUDE_LIBS dist/aimet*.whl
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "${{ matrix.id }}"
+          path: "wheelhouse/aimet*.whl"
+          if-no-files-found: error
+          retention-days: 1d
 
   docker-push-latest:
     needs: [docker-tag, variants, docker-build-image]
