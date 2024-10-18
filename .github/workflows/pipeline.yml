@@ -89,8 +89,8 @@ jobs:
           dockerfile: Jenkins/fast-release/Dockerfile.ci
           docker-login: ${{ secrets.DOCKER_LOGIN }}
           docker-password: ${{ secrets.DOCKER_CREDENTIALS }}
-          docker-registry: ${{ secrets.DOCKER_REGISTRY }}
-          image-name: "${{ secrets.DOCKER_IMAGE }}-${{ matrix.id }}"
+          docker-registry: ${{ vars.DOCKER_REGISTRY }}
+          image-name: "${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}"
           image-tag: ${{ needs.docker-tag.outputs.tag }}
           build-args: |
             VER_PYTHON=${{ matrix.VER_PYTHON }}
@@ -107,7 +107,7 @@ jobs:
     steps:
       - name: Create the 'latest' docker image tag
         if: ${{ github.ref_name == github.event.repository.default_branch && needs.docker-tag.outputs.tag != 'latest' }}
-        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X GET "https://${{ secrets.DOCKER_REGISTRY }}/v2/${{ secrets.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" | curl -k -d "@-" -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X PUT "https://${{ secrets.DOCKER_REGISTRY }}/v2/${{ secrets.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/latest"
+        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X GET "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" | curl -k -d "@-" -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X PUT "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/latest"
 
   cleanup:
     needs: [docker-tag, variants, docker-push-latest]
@@ -117,4 +117,4 @@ jobs:
     steps:
       - name: Delete temp docker image
         if: needs.docker-tag.outputs.tag != 'latest'
-        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ secrets.DOCKER_REGISTRY }}/v2/${{ secrets.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" || true
+        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" || true
