@@ -16,7 +16,17 @@ dev = [
   # and the rest
 ]
 test = [
+  "beautifulsoup4",
+  "deepspeed",
+  "matplotlib",
+  "onnxruntime",
+  "peft",
   "pytest",
+  "pytest-github-report",
+  "pytorch-ignite",
+  "safetensors",
+  "spconv",
+  "transformers",
 ]
 docs = [
 ]
@@ -38,3 +48,9 @@ CMAKE_BUILD_TYPE="RelWithDebInfo"
 CMAKE_CUDA_ARCHITECTURES="70;75;80"
 CMAKE_CUDA_FLAGS="--threads=8"
 
+[tool.pytest.ini_options]
+xfail_strict = true
+addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config", "-m", "not cuda"]
+markers = [
+    "cuda: test that require CUDA to be installed",
+]

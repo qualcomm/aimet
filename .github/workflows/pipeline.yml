@@ -136,8 +136,62 @@ jobs:
           if-no-files-found: error
           retention-days: 1d
 
+  test:
+    name: Run AIMET unit tests
+    runs-on: ${{ matrix.runs-on }}
+    needs: [variants, build-wheel]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    env:
+      pytest_github_report: true
+      pytest_use_zeros: true
+    container:
+      image: "ubuntu:22.04"
+    steps:
+      - run: |
+          apt update -qq
+          apt install --no-install-recommends -y git curl g++ ca-certificates
+          curl -sSL 'https://pki.qualcomm.com/{qc_root_g2_cert.crt,ssl_v3_cert.crt,ssl_v4_cert.crt}' > qualcomm.crt
+          update-ca-certificates
+          rm -rf wheelhouse
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
+        with:
+          name: "${{ matrix.id }}"
+          path: "wheelhouse"
+      - name: Try to load python virtual environment from the cache
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: ./.conda
+          key: ${{ matrix.id }}-${{ hashFiles('pyproject.toml', 'packaging/dependencies/**/*.txt', 'packaging/dependencies/plugins/**/*.py') }}
+      - name: Create python virtial environment
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
+          bash ./conda.sh -u -b -p ./.conda
+          sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
+          ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find wheelhouse -name '*.whl')[test]" --extra-index-url="https://download.pytorch.org/whl/$(echo ${{ matrix.VER_CUDA}} | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
+      - run: |
+          TEST_DIR=""
+          if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
+              TEST_DIR="$TEST_DIR ./TrainingExtensions/tensorflow/test"
+          fi
+          if [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+              TEST_DIR="$TEST_DIR ./TrainingExtensions/onnx/test"
+          elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
+              TEST_DIR="$TEST_DIR ./TrainingExtensions/torch/test"
+          fi
+          TEST_ARGS=""
+          if [ "${{ matrix.VER_CUDA }}" != "" ] ; then
+              TEST_ARGS="$TEST_ARGS -m cuda"
+          fi
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $TEST_ARGS  $TEST_DIR
+
   docker-push-latest:
-    needs: [docker-tag, variants, docker-build-image]
+    needs: [docker-tag, variants, test]
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
