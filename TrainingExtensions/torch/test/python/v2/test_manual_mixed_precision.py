@@ -217,11 +217,13 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator = MixedPrecisionConfigurator(sim)
 
         # 3. Make set_precision/set_model_input_precision/set_model_output_precision calls
-        mp_configurator.set_precision(sim.model.conv1, 'Int16', {'weight': 'Int16'})
-        mp_configurator.set_precision(torch.nn.Conv2d, 'Int8', {'weight': 'Int8'})
+        mp_configurator.set_precision(sim.model.conv1, 'int16', {'weight': 'int16'})
+        mp_configurator.set_precision(torch.nn.Conv2d, 'int8', {'weight': 'int8'})
 
         # 4. Call apply() method by passing in the config file and strict flag
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
         assert mp_configurator
 
         # 5. compute encodings and export
@@ -236,14 +238,14 @@ class TestManualMixedPrecisionConfigurator:
 
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_precision(sim.model.conv1, 'Int16', {'weight': 'Int16'})
+        mp_configurator.set_precision(sim.model.conv1, 'int16', {'weight': 'int16'})
         with pytest.raises(ValueError):
-            mp_configurator.set_precision(sim.model.maxpool, activation='Int2')
+            mp_configurator.set_precision(sim.model.maxpool, activation='int2')
 
     def test_mp_4(self):
         """
         Test over-writing old requests with new requests
-        - test over-writing all Conv2d modules with Int8/Int8, after setting one to Int16/Int16
+        - test over-writing all Conv2d modules with int8/int8, after setting one to int16/int16
         """
         model = SingleResidual()
 
@@ -253,10 +255,13 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.conv1, 'Int16', {'weight': 'Int16'})
-        mp_configurator.set_precision(torch.nn.Conv2d, 'Int8', {'weight': 'Int8'})
+        mp_configurator.set_precision(sim.model.conv1, 'int16', {'weight': 'int16'})
+        mp_configurator.set_precision(torch.nn.Conv2d, 'int8', {'weight': 'int8'})
 
-        mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+
         assert len(mp_requests) == 4
         for m, request in mp_requests.items():
             assert all(input_candidate ==
@@ -269,7 +274,7 @@ class TestManualMixedPrecisionConfigurator:
     def test_mp_5(self):
         """
         Test over-writing old requests with new requests
-        - test over-writing all modules with Fp16/Fp16, after setting few of them to different configurations
+        - test over-writing all modules with fp16/fp16, after setting few of them to different configurations
         """
         model = SingleResidual()
 
@@ -279,23 +284,28 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.conv1, 'Int16', {'weight': 'Int16'})
-        mp_configurator.set_precision(torch.nn.Conv2d, 'Int8', {'weight': 'Int8'})
-        mp_configurator.set_precision(sim.model, 'Fp16', {'weight': 'Fp16'})
+        mp_configurator.set_precision(sim.model.conv1, 'int16', {'weight': 'int16'})
+        mp_configurator.set_precision(torch.nn.Conv2d, 'int8', {'weight': 'int8'})
+        mp_configurator.set_precision(sim.model, 'fp16', {'weight': 'fp16'})
 
-        mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
+
         assert len(mp_requests) == 13
         for m, request in mp_requests.items():
             assert all(input_candidate ==
                        Precision(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
             assert all(output_candidate ==
                        Precision(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
-            assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
+            if 'weight' in m.param_quantizers:
+                assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
 
     def test_mp_6(self):
         """
         Test over-writing old requests with new requests
-        - test over-riding Conv2d to Int8 after setting entire model to FP16
+        - test over-riding Conv2d to int8 after setting entire model to FP16
         """
         model = SingleResidual()
 
@@ -305,10 +315,13 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model, 'Fp16', {'weight': 'Fp16'})
-        mp_configurator.set_precision(torch.nn.Conv2d, 'Int8', {'weight': 'Int8'})
+        mp_configurator.set_precision(sim.model, 'fp16', {'weight': 'fp16'})
+        mp_configurator.set_precision(torch.nn.Conv2d, 'int8', {'weight': 'int8'})
 
-        mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+
         assert len(mp_requests) == 13
         for m, request in mp_requests.items():
             if isinstance(m.get_original_module(), torch.nn.modules.Conv2d):
@@ -316,17 +329,17 @@ class TestManualMixedPrecisionConfigurator:
                            Precision(QuantizationDataType.int, 8) for input_candidate in request.input_candidates)
                 assert all(output_candidate ==
                            Precision(QuantizationDataType.int, 8) for output_candidate in request.output_candidates)
-                assert request.param_candidate == {'weight': Precision(QuantizationDataType.int, 8)}
+                if 'weight' in m.param_quantizers:
+                    assert request.param_candidate == {'weight': Precision(QuantizationDataType.int, 8)}
             else:
                 assert all(input_candidate ==
                            Precision(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
                 assert all(output_candidate ==
                            Precision(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
-                assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
+                if 'weight' in m.param_quantizers:
+                    assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
 
-        mp_configurator.mp_handler.mp_requests = {}
-
-    @pytest.mark.parametrize("candidate, qsim_bw", [('Int16', 8), ('Fp16', 8), ('Fp16', 16)])
+    @pytest.mark.parametrize("candidate, qsim_bw", [('int16', 8), ('fp16', 8), ('fp16', 16)])
     def test_mp_7(self, candidate: SupportedDType, qsim_bw: int):
         """ Basic test that user request was applied to model correctly """
         model = SingleResidual()
@@ -339,7 +352,9 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator = MixedPrecisionConfigurator(sim)
 
         mp_configurator.set_precision(sim.model.conv1, candidate, {'weight': candidate})
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -348,7 +363,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == qsim_bw
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_8(self, candidate: SupportedDType):
         """
         Test that requests increasing bitwidth are applied properly
@@ -365,7 +380,9 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator = MixedPrecisionConfigurator(sim)
 
         mp_configurator.set_precision(sim.model.conv3, candidate, {'weight': candidate})
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -389,8 +406,10 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor, default_param_bw=16, default_output_bw=16)
 
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_precision(sim.model.conv3, 'Int8', {'weight': 'Int8'})
-        mp_configurator.apply()
+        mp_configurator.set_precision(sim.model.conv3, 'int8', {'weight': 'int8'})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -401,7 +420,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 16
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_10(self, candidate: SupportedDType):
         """
         Test to make sure that requests at module inputs that have input quantizers do not propagate upwards
@@ -415,7 +434,9 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.conv2, candidate, {'weight': candidate})
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -425,7 +446,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_11(self, candidate: SupportedDType):
         """
         Test that requests are propagated to all parent modules
@@ -439,12 +460,15 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.add_ab, candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
                 if module in [sim.model.relu1_a.output_quantizers[0],
-                              sim.model.relu1_b.output_quantizers[0]]:
+                              sim.model.relu1_b.output_quantizers[0],
+                              sim.model.relu1_c.output_quantizers[0]]:
                     assert module.bitwidth == 16
                 else:
                     assert module.bitwidth == 8
@@ -461,8 +485,10 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, dummy_input, default_param_bw=16, default_output_bw=16)
 
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_precision(sim.model.conv2_a, 'Int8', {'weight': 'Int8'})
-        mp_configurator.apply()
+        mp_configurator.set_precision(sim.model.conv2_a, 'int8', {'weight': 'int8'})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -473,8 +499,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 16
 
-    @pytest.mark.skip("Skipping this test until a request from one child op generates a matching request at the other child op")
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_13(self, candidate: SupportedDType):
         """
         Test that a request at a sibling op will affect the parent and the other sibling
@@ -489,20 +514,20 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.add_ab, candidate, {'weight':candidate})
 
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
                 if module in [sim.model.relu1_a.output_quantizers[0],
                               sim.model.relu1_b.output_quantizers[0],
-                              sim.model.add_ab.output_quantizers[0],
-                              sim.model.add_bc.output_quantizers[0]]:
+                              sim.model.relu1_c.output_quantizers[0]]:
                     assert module.bitwidth == 16
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.skip("Skipping this test until a contending child requests will raise an exception")
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_14(self, candidate: SupportedDType):
         """
         Test that contending sibling requests will produce an error
@@ -515,13 +540,15 @@ class TestManualMixedPrecisionConfigurator:
 
         sim = QuantizationSimModel(model, dummy_input)
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_precision(sim.model.add_ab, candidate, {'weight': candidate})
-        mp_configurator.set_precision(sim.model.add_bc, candidate, {'weight': candidate})
+        mp_configurator.set_precision(sim.model.add_ab, candidate)
+        mp_configurator.set_precision(sim.model.add_bc, 'int8')
 
         with pytest.raises(RuntimeError):
-            mp_configurator.apply()
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f)
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_15(self, candidate: SupportedDType):
         """
         Test that requests at model output layers will be resolved even if they are at a higher precision than the
@@ -536,7 +563,9 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.fc, candidate, {'weight': candidate})
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -547,7 +576,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_16(self, candidate: SupportedDType):
         """
         Test that request at node with multiple inputs will propagate up to parent nodes correctly, even if one of the
@@ -563,7 +592,9 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.add, candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -573,7 +604,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_17(self, candidate: SupportedDType):
         """
         Test that requests at model output layers will be resolved even if they are at a higher precision than the
@@ -587,7 +618,9 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.relu_1, candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         assert sim.model.relu_1.output_quantizers[0].bitwidth == 16
 
@@ -607,8 +640,10 @@ class TestManualMixedPrecisionConfigurator:
 
         config = "" #TODO specify backend awareness in correct format (only allow 8x8 and 16x16 conv layers)
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_precision(sim.model.conv2, 'Int16')
-        mp_configurator.apply(config)
+        mp_configurator.set_precision(sim.model.conv2, 'int16')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f, config)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -634,8 +669,10 @@ class TestManualMixedPrecisionConfigurator:
 
         config = "" #TODO specify backend awareness in correct format (only allow inputs at same bitwidth in add layers)
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_precision(sim.model.add_ab, 'Int16', {'weight': 'Int16'})
-        mp_configurator.apply()
+        mp_configurator.set_precision(sim.model.add_ab, 'int16', {'weight': 'int16'})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -648,8 +685,8 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.skip("Skipping this test until MMP can handle supergroups correctly")
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_20(self, candidate: SupportedDType):
         """
         Test that settings are applied to quantizer supergroups correctly
@@ -692,36 +729,18 @@ class TestManualMixedPrecisionConfigurator:
             mp_configurator = MixedPrecisionConfigurator(sim)
 
             mp_configurator.set_precision(sim.model.conv2, candidate, {'weight': candidate})
-            mp_configurator.apply()
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f)
 
             for module in sim.model.modules():
                 if isinstance(module, QuantizerBase):
                     if module in [sim.model.maxpool.output_quantizers[0],
-                                  sim.model.conv2.param_quantizers['weight'],
-                                  sim.model.relu2.output_quantizers[0]]:
-                        assert module.bitwidth == 8
-                    else:
+                                  sim.model.conv2.param_quantizers['weight']]:
                         assert module.bitwidth == 16
+                    else:
+                        assert module.bitwidth == 8
 
-
-    def test_mp_21(self):
-        """
-        Tests that contending requests produce an error in strict mode
-        """
-        model = SingleResidual()
-        input_shape = (1, 3, 32, 32)
-
-        torch.manual_seed(0)
-        input_tensor = torch.randn(*input_shape)
-
-        sim = QuantizationSimModel(model, input_tensor)
-        mp_configurator = MixedPrecisionConfigurator(sim)
-
-        mp_configurator.set_precision(sim.model.conv1, 'Int16', {'weight': 'Int16'})
-        mp_configurator.set_precision(sim.model.relu1, 'Int4')
-
-        with pytest.raises(RuntimeError):
-            mp_configurator.apply()
 
     def test_mp_22(self):
         """
@@ -736,10 +755,13 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.conv3, 'Int16', {'weight': 'Int16'})
-        mp_configurator.set_precision(sim.model.relu3, 'Int4')
+        mp_configurator.set_precision(sim.model.conv3, 'int16', {'weight': 'int16'})
+        mp_configurator.set_precision(sim.model.relu3, 'int4')
 
-        mp_configurator.apply(strict=False)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f, strict=False)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -768,8 +790,10 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.conv1, 'Fp16', {'weight': 'Fp16'})
-        mp_configurator.apply()
+        mp_configurator.set_precision(sim.model.conv1, 'fp16', {'weight': 'fp16'})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -779,7 +803,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_24(self, candidate: SupportedDType):
         """
         Test that upstream propagation can successfully skip explicit data movement ops
@@ -792,12 +816,15 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_precision(sim.model.fc_2, candidate, {'weight': candidate})
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
                 if module in [sim.model.fc_2.param_quantizers['weight'],
-                              sim.model.relu_1.output_quantizers[0]]:
+                              sim.model.relu_1.output_quantizers[0],
+                              sim.model.relu_2.output_quantizers[0]]:
                     assert module.bitwidth == 16
                 else:
                     assert module.bitwidth == 8
@@ -815,11 +842,13 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.conv3, ['Int16', 'Int16'])
+        mp_configurator.set_precision(sim.model.conv3, ['int16', 'int16'])
         with pytest.raises(RuntimeError):
-            mp_configurator.apply()
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f)
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_26(self, candidate: SupportedDType):
         """
         Test that set_model_input_precision API functions correctly on single input model
@@ -834,7 +863,9 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator = MixedPrecisionConfigurator(sim)
 
         mp_configurator.set_model_input_precision(candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -843,7 +874,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_27(self, candidate: SupportedDType):
         """
         Test that set_model_input_precision API functions correctly on multiple input model with single precision
@@ -857,7 +888,9 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_model_input_precision(candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -880,8 +913,10 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, dummy_input)
 
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_model_input_precision(['Int16', None, 'Int4'])
-        mp_configurator.apply()
+        mp_configurator.set_model_input_precision(['int16', None, 'int4'])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -892,7 +927,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_29(self, candidate: SupportedDType):
         """
         Test that set_model_output_precision API functions correctly on single input model
@@ -907,7 +942,9 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator = MixedPrecisionConfigurator(sim)
 
         mp_configurator.set_model_output_precision(candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -916,7 +953,7 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    @pytest.mark.parametrize("candidate", ['int16', 'fp16'])
     def test_mp_30(self, candidate: SupportedDType):
         """
         Test that set_model_output_precision API functions correctly on multiple output model with single precision.
@@ -931,7 +968,9 @@ class TestManualMixedPrecisionConfigurator:
 
         mp_configurator = MixedPrecisionConfigurator(sim)
         mp_configurator.set_model_output_precision(candidate)
-        mp_configurator.apply()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -957,8 +996,10 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, dummy_input)
 
         mp_configurator = MixedPrecisionConfigurator(sim)
-        mp_configurator.set_model_output_precision(['Int16', None, 'Int16', None, 'Int16'])
-        mp_configurator.apply()
+        mp_configurator.set_model_output_precision(['int16', None, 'int16', None, 'int16'])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -982,9 +1023,11 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_model_input_precision('Int4')
-        mp_configurator.set_precision(sim.model.conv1, activation='Int16')
-        mp_configurator.apply()
+        mp_configurator.set_model_input_precision('int4')
+        mp_configurator.set_precision(sim.model.conv1, activation='int16')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -994,7 +1037,8 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    def test_mp_33(self):
+    @pytest.mark.parametrize("strict", [True, False])
+    def test_mp_33(self, strict):
         """
         Test that set_model_input_precision and set_precision on same module functions correctly
         """
@@ -1007,18 +1051,28 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.conv1, activation='Int16')
-        mp_configurator.set_model_input_precision('Int4')
-        mp_configurator.apply()
+        mp_configurator.set_precision(sim.model.conv1, activation='int16')
+        mp_configurator.set_model_input_precision('int4')
 
-        for module in sim.model.modules():
-            if isinstance(module, QuantizerBase):
-                if module in [sim.model.conv1.output_quantizers[0]]:
-                    assert module.bitwidth == 16
-                elif module in [sim.model.conv1.input_quantizers[0]]:
-                    assert module.bitwidth == 4
-                else:
-                    assert module.bitwidth == 8
+
+        if strict:
+            with pytest.raises(RuntimeError):
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                        mp_configurator.apply(f, strict=strict)
+
+        else:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f, strict=strict)
+
+            for module in sim.model.modules():
+                if isinstance(module, QuantizerBase):
+                    if module in [sim.model.conv1.output_quantizers[0],
+                                  sim.model.conv1.input_quantizers[0]]:
+                        assert module.bitwidth == 16
+                    else:
+                        assert module.bitwidth == 8
 
     def test_mp_34(self):
         """
@@ -1033,9 +1087,11 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_model_output_precision('Int4')
-        mp_configurator.set_precision(sim.model.fc, activation='Int16')
-        mp_configurator.apply()
+        mp_configurator.set_model_output_precision('int4')
+        mp_configurator.set_precision(sim.model.fc, activation='int16')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -1057,9 +1113,11 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_precision(sim.model.fc, activation='Int16')
-        mp_configurator.set_model_output_precision('Int4')
-        mp_configurator.apply()
+        mp_configurator.set_precision(sim.model.fc, activation='int16')
+        mp_configurator.set_model_output_precision('int4')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
@@ -1111,8 +1169,10 @@ class TestManualMixedPrecisionConfigurator:
             sim = QuantizationSimModel(model, torch.randn(*input_shape), config_file=os.path.join(temp_dir, 'config.json'))
 
             mp_configurator = MixedPrecisionConfigurator(sim)
-            mp_configurator.set_model_output_precision('Int16')
-            mp_configurator.apply()
+            mp_configurator.set_model_output_precision('int16')
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f)
 
             for module in sim.model.modules():
                 if isinstance(module, QuantizerBase):
@@ -1135,9 +1195,11 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_model_output_precision('Int16')
-        mp_configurator.set_model_input_precision('Int4')
-        mp_configurator.apply()
+        mp_configurator.set_model_output_precision('int16')
+        mp_configurator.set_model_input_precision('int4')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         assert sim.model.fc.input_quantizers[0].bitwidth == 4
         assert sim.model.fc.output_quantizers[0].bitwidth == 16
@@ -1156,9 +1218,11 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_model_input_precision('Int4')
-        mp_configurator.set_model_output_precision('Int16')
-        mp_configurator.apply()
+        mp_configurator.set_model_input_precision('int4')
+        mp_configurator.set_model_output_precision('int16')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         assert sim.model.fc.input_quantizers[0].bitwidth == 4
         assert sim.model.fc.output_quantizers[0].bitwidth == 16
@@ -1178,8 +1242,10 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_model_input_precision(['Int4', 'Int16'])
-        mp_configurator.apply()
+        mp_configurator.set_model_input_precision(['int4', 'int16'])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         assert sim.model.matmul.input_quantizers[0].bitwidth == 16
         assert sim.model.matmul.input_quantizers[1].bitwidth == 4
@@ -1198,8 +1264,92 @@ class TestManualMixedPrecisionConfigurator:
         sim = QuantizationSimModel(model, input_tensor)
         mp_configurator = MixedPrecisionConfigurator(sim)
 
-        mp_configurator.set_model_input_precision([None, 'Int16'])
-        mp_configurator.apply()
+        mp_configurator.set_model_input_precision([None, 'int16'])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_configurator.apply(f)
 
         assert sim.model.matmul.input_quantizers[0].bitwidth == 16
         assert sim.model.matmul.input_quantizers[1].bitwidth == 8
+
+    def test_mp_41(self):
+        """
+        Test resolving contentions
+        """
+
+        class TestModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = nn.Linear(10, 10)
+                self.reshape1 = aimet_elementwise.Reshape()
+                self.fc2 = nn.Linear(5, 5)
+
+            def forward(self, *inputs):
+                x = self.fc1(inputs[0])
+                x = self.reshape1(x, [20, 5])
+                return self.fc2(x)
+
+        model = TestModel()
+        input_shape = (10, 10)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        sim.model.reshape1.output_quantizers[0] = None
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_precision(sim.model.fc2, 'int16', {'weight': 'int16'})
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                assert len(mp_requests) == 1
+                mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
+                assert len(mp_requests) == 2  # new request for reshape added
+
+    @pytest.mark.parametrize("reverse", [True, False])
+    def test_mp_42(self, reverse):
+        """
+        Test resolving contentions
+        """
+
+        class TestModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = nn.Linear(10, 10)
+                self.reshape1 = aimet_elementwise.Reshape()
+                self.fc2 = nn.Linear(5, 5)
+                self.fc3 = nn.Linear(5, 5)
+                self.add = aimet_elementwise.Add()
+
+            def forward(self, *inputs):
+                x = self.fc1(inputs[0])
+                x = self.reshape1(x, [20, 5])
+                x1 = self.fc2(x)
+                x2 = self.fc3(x)
+                return self.add(x1, x2)
+
+        model = TestModel()
+        input_shape = (10, 10)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        sim.model.reshape1.output_quantizers[0] = None
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        if reverse:
+            mp_configurator.set_precision(sim.model.fc2, 'int16', {'weight': 'int16'})
+            mp_configurator.set_precision(sim.model.fc3, 'int8', {'weight': 'int8'})
+        else:
+            mp_configurator.set_precision(sim.model.fc2, 'int8', {'weight': 'int8'})
+            mp_configurator.set_precision(sim.model.fc3, 'int16', {'weight': 'int16'})
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                assert len(mp_requests) == 2
+                mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
+                assert len(mp_requests) == 3  # new request for reshape added
+                for mp_request in mp_requests.values():
+                    assert mp_request.id == 1  # all the modules have been updated with request_id == 1.

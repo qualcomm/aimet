@@ -37,7 +37,7 @@
 # =============================================================================
 """ Manual mixed precision configurator """
 
-from typing import overload, Union, List, Tuple, Dict, get_args, Type, Optional
+from typing import overload, Union, List, Tuple, Dict, get_args, Type, Optional, IO
 import torch
 
 from aimet_common.utils import AimetLogger
@@ -66,18 +66,16 @@ class MixedPrecisionConfigurator:
         :param sim: QuantSim object
         """
         self._sim = sim
-        self.request_count = 0
-        self.user_requests: Dict[int, UserRequest] = {}
+        self.user_requests = []
         self.mp_handler = MpHandler(sim)
 
     def _store_user_request(self, request_type: RequestType, module: Union[torch.nn.Module, Type, ModuleProduct],
                             activation: Union[List[SupportedDType], SupportedDType] = None,
                             param: Optional[Dict[str, SupportedDType]] = None):
-        self.user_requests[self.request_count] = UserRequest(request_type=request_type,
-                                                             module=module,
-                                                             activation=activation,
-                                                             param=param)
-        self.request_count += 1
+        self.user_requests.append(UserRequest(request_type=request_type,
+                                              module=module,
+                                              activation=activation,
+                                              param=param))
 
     @overload
     def set_precision(self, module: torch.nn.Module,
@@ -96,7 +94,7 @@ class MixedPrecisionConfigurator:
                       param: Optional[Dict[str, SupportedDType]] = None):
         """
         :param arg: Module can be of type torch.nn.Module or the type of the module.
-        :param activation: A string representing the activation dtype of the module(s)
+        :param activation: A string representing the activation dtype of the module input(s)
         :param param: Dict with name of the param as key and its dtype as value
 
         - If the 'module' is a leaf-module(the module doesnt compose of other torch.nn.module), the specified settings
@@ -160,15 +158,29 @@ class MixedPrecisionConfigurator:
                     raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
                 self._store_user_request(RequestType.set_model_output_precision, model_output, activation)
 
-    def apply(self, config: str = "", strict: bool = True, log_file: str = './mmp_log.txt'):
+    @overload
+    def apply(self, log_file: str = './mmp_log.txt', config: str = "", strict: bool = True):
+        ...
+
+    @overload
+    def apply(self, log_file: IO, config: str = "", strict: bool = True):
+        ...
+
+
+    def apply(self, log_file: Optional[Union[IO, str]] = './mmp_log.txt', config: str = "", strict: bool = True):
         """
         Apply the mp settings specified through the set_precision/set_model_input_precision/set_model_output_precision
         calls to the QuantSim object
+        :param log_file: log_file to store the logs. log_file can either be a string representing the path or the IO
+                        object to write the logs into.
         :param config: Config file to be used for backend awareness. If empty no backend awareness would be checked
         :param strict: Boolean flag to indicate whether to fail (strict=True) on incorrect/conflicting inputs made by
         the user or (strict=False) take a best-effort approach to realize the MP settings
-        :param log_file: Log file to store the logs
         """
-        self.mp_handler.apply(self.user_requests, config, strict, log_file)
-        self.user_requests = {}
-        self.request_count = 0
+        if isinstance(log_file, str):
+            with open(log_file, 'w') as f:
+                self.mp_handler.apply(f, self.user_requests, config, strict)
+        else:
+            self.mp_handler.apply(log_file, self.user_requests, config, strict)
+
+        self.user_requests = []
