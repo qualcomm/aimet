@@ -34,13 +34,18 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to legacy nn.modules.custom """
-from ...v1.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import
+""" Alias to v1/v2 nn.modules.custom """
+from ...utils import _get_default_api
 
-from ...utils import _warn_replaced_in_v2
-from ...v1.nn.modules import custom as _v1_api
-from ...v2.nn.modules import custom as _v2_api
+if _get_default_api() == "v1":
+    from ...v1.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import
 
-_warn_replaced_in_v2(__name__,
-                     v2_new_api=_v2_api.__name__,
-                     v1_legacy_api=_v1_api.__name__)
+    from ...utils import _warn_replaced_in_v2
+    from ...v1.nn.modules import custom as _v1_api
+    from ...v2.nn.modules import custom as _v2_api
+
+    _warn_replaced_in_v2(__name__,
+                         v2_new_api=_v2_api.__name__,
+                         v1_legacy_api=_v1_api.__name__)
+else:
+    from ...v2.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import

@@ -39,8 +39,8 @@
 from typing import List, Tuple, Iterable
 import torch
 from aimet_torch import utils
-from aimet_torch.batch_norm_fold import BatchNormFold as BatchNormFoldV1
-from aimet_torch.batch_norm_fold import _BatchNormFoldingNotSupported
+from aimet_torch.v1.batch_norm_fold import BatchNormFold as BatchNormFoldV1
+from aimet_torch.v1.batch_norm_fold import _BatchNormFoldingNotSupported
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from torch.nn.modules.conv import _ConvTransposeNd

@@ -34,13 +34,19 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to legacy quantsim """
-from .v1.quantsim import * # pylint: disable=wildcard-import, unused-wildcard-import
+""" Alias to v1/v2 quantsim """
 
-from .utils import _warn_replaced_in_v2
-from .v1 import quantsim as _v1_quantsim
-from .v2 import quantsim as _v2_quantsim
+from .utils import _get_default_api
 
-_warn_replaced_in_v2(__name__,
-                     v2_new_api=_v2_quantsim.__name__,
-                     v1_legacy_api=_v1_quantsim.__name__)
+if _get_default_api() == "v1":
+    from .v1.quantsim import * # pylint: disable=wildcard-import, unused-wildcard-import
+
+    from .utils import _warn_replaced_in_v2
+    from .v1 import quantsim as _v1_quantsim
+    from .v2 import quantsim as _v2_quantsim
+
+    _warn_replaced_in_v2(__name__,
+                         v2_new_api=_v2_quantsim.__name__,
+                         v1_legacy_api=_v1_quantsim.__name__)
+else:
+    from .v2.quantsim import * # pylint: disable=wildcard-import, unused-wildcard-import
