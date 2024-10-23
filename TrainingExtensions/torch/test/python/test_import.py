@@ -107,3 +107,15 @@ def test_default_import():
     from aimet_torch.quant_analyzer    import QuantAnalyzer
     from aimet_torch.v1.quant_analyzer import QuantAnalyzer as v1_QuantAnalyzer
     assert QuantAnalyzer is v1_QuantAnalyzer
+
+    """
+    When: Import from aimet_torch.batch_norm_fold
+    Then: Import should be redirected to aimet_torch.v1.batch_norm_fold
+    """
+    from aimet_torch    import batch_norm_fold
+    from aimet_torch.v1 import batch_norm_fold as v1_batch_norm_fold
+    assert batch_norm_fold.fold_all_batch_norms_to_scale is v1_batch_norm_fold.fold_all_batch_norms_to_scale
+
+    from aimet_torch.batch_norm_fold    import fold_all_batch_norms_to_scale
+    from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms_to_scale as v1_fold_all_batch_norms_to_scale
+    assert fold_all_batch_norms_to_scale is v1_fold_all_batch_norms_to_scale
