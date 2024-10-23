@@ -637,10 +637,13 @@ class TestQuantizedLayers:
 
 
 def test_dispatch_sanity():
+    """
+    Given: custom_add(x, y) := x + y + 1
+    """
     custom_add = lambda *args, **kwargs: torch.add(*args, **kwargs) + 1
 
     """
-    When: Dispatch torch.add with custom_add(x, y) := x + y + 1
+    When: Dispatch custom_add in place of torch.add(x, y)
     Then: Output of torch.add(x, y) should be equal to x + y + 1
     """
     zeros = torch.zeros(10)
@@ -653,7 +656,7 @@ def test_dispatch_sanity():
     assert torch.all(out == 1)
 
     """
-    When: Dispatch torch.add with custom_add(x, y) := x + y + 1
+    When: Dispatch custom_add in place of torch.add
     Then: Output of the other functions should not be affected
     """
     with _dispatch(torch.add, custom_add):
@@ -677,6 +680,25 @@ def test_dispatch_sanity():
         dummy_impl = lambda *args, **kwargs: func(*args, **kwargs)
         with pytest.raises(RuntimeError):
             with _dispatch(func, dummy_impl): pass
+
+    """
+    When: Dispatch custom_addmm in place of torch.addmm in which
+          custom_add will be dispatched in place of torch.add in a nested fashion
+    Then: Output of torch.addmm(x, y, z) should be equal to x + (y @ z) + 1
+    """
+    x = torch.randn(10, 10)
+    y = torch.randn(10, 10)
+    z = torch.randn(10, 10)
+
+    def custom_addmm(x, y, z):
+        with _dispatch(torch.add, custom_add):
+            return torch.add(x, torch.matmul(y, z))
+
+    with _dispatch(torch.addmm, custom_addmm):
+        out = torch.addmm(x, y, z)
+
+    expected = x + (y @ z) + 1
+    assert torch.all(out == expected)
 
 
 def _create_legacy_fake_quantized_module(module):

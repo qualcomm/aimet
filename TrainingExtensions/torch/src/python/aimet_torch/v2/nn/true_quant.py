@@ -424,15 +424,8 @@ class _Dispatcher(BaseTorchFunctionMode):
         return super().__torch_function__(impl, types, args, kwargs)
 
 
-_dispatcher = _Dispatcher()
-_stack_level = 0
-
 @contextlib.contextmanager
 def _dispatch(torch_func: Callable, custom_impl: Callable):
-    # pylint: disable=global-statement
-    global _stack_level
-    orig_level = _stack_level
-
     try:
         orig = _dispatch_table[torch_func]
     except KeyError as e:
@@ -441,17 +434,10 @@ def _dispatch(torch_func: Callable, custom_impl: Callable):
     try:
         _dispatch_table[torch_func] = custom_impl
 
-        if _stack_level == 0:
-            _dispatcher.__enter__()
-        _stack_level += 1
-
-        yield
+        with _Dispatcher():
+            yield
     finally:
         _dispatch_table[torch_func] = orig
-        _stack_level = orig_level
-
-        if _stack_level == 0:
-            _dispatcher.__exit__(None, None, None)
 
 
 class _DispatchMeta(QuantizationMixinMeta):
