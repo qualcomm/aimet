@@ -917,10 +917,10 @@ def _create_quantized_module(module):
     (lambda: custom.Divide(),                         lambda: (randn(100), randn(100))),
     (lambda: custom.Concat(),                         lambda: (randn(1, 100), randn(3, 100))),
     # (lambda: custom.FloorDivide(),                  lambda: ...),
-    (lambda: custom.Norm(),                         lambda: randn(100)),
-    # (lambda: custom.Exponential(),                  lambda: ...),
-    # (lambda: custom.Erf(),                          lambda: ...),
-    # (lambda: custom.Sqrt(),                         lambda: ...),
+    # (lambda: custom.Norm(),                         lambda: ...),
+    (lambda: custom.Exponential(),                    lambda: randn(100)),
+    (lambda: custom.Erf(),                            lambda: randn(100)),
+    (lambda: custom.Sqrt(),                           lambda: randn(100).abs()),
     # (lambda: custom.Maximum(),                      lambda: ...),
     # (lambda: custom.Max(),                          lambda: ...),
     # (lambda: custom.AMax(),                         lambda: ...),
@@ -940,13 +940,13 @@ def _create_quantized_module(module):
     # (lambda: custom.Mean(),                         lambda: ...),
     # (lambda: custom.Sum(),                          lambda: ...),
     # (lambda: custom.Prod(),                         lambda: ...),
-    # (lambda: custom.Log(),                          lambda: ...),
-    # (lambda: custom.Abs(),                          lambda: ...),
-    # (lambda: custom.Neg(),                          lambda: ...),
+    (lambda: custom.Log(),                            lambda: randint(1, 1000, (10,10))),
+    (lambda: custom.Abs(),                            lambda: randn(100)),
+    (lambda: custom.Neg(),                            lambda: randn(100)),
     # (lambda: custom.Argmin(),                       lambda: ...),
     # (lambda: custom.Argmax(),                       lambda: ...),
-    # (lambda: custom.ElementwiseCeil(),              lambda: ...),
-    # (lambda: custom.ElementwiseFloor(),             lambda: ...),
+    (lambda: custom.ElementwiseCeil(),                lambda: randn(100)),
+    (lambda: custom.ElementwiseFloor(),               lambda: randn(100)),
     # (lambda: custom.Asin(),                         lambda: ...),
     # (lambda: custom.Atan(),                         lambda: ...),
     # (lambda: custom.Round(),                        lambda: ...),
@@ -963,7 +963,7 @@ def _create_quantized_module(module):
     # (lambda: custom.TopK(),                         lambda: ...),
     # (lambda: custom.Shape(),                        lambda: ...),
     # (lambda: custom.Tile(),                         lambda: ...),
-    # (lambda: custom.ElementwiseUnarySign(),         lambda: ...),
+    (lambda: custom.ElementwiseUnarySign(),           lambda: randn(100)),
     (lambda: custom.Baddbmm(),                        lambda: (randn(1, 100, 100), randn(1, 100, 100), randn(1, 100, 100))),
     (lambda: custom.Addmm(),                          lambda: (randn(100, 100), randn(100, 100), randn(100, 100))),
     # (lambda: custom.Square(),                       lambda: ...),
@@ -1026,7 +1026,7 @@ def test_default_kernels(module_factory, input_factory):
 
 
     with qmodule.compute_encodings():
-        torch.manual_seed(0);
+        torch.manual_seed(0)
         _ = qmodule(*inputs)
 
     torch.manual_seed(0)

@@ -191,28 +191,28 @@ class QuantizedConcat(_DispatchMixin, QuantizationMixin, Concat):
 #     _builtin_torch_fn = torch.floor_divide
 #
 #
-@QuantizationMixin.implements(Norm)
-class QuantizedNorm(_DispatchMixin, QuantizationMixin, Norm):
-    """ Quantized Norm """
-    _builtin_torch_fn = torch.norm
-#
-#
-# @QuantizationMixin.implements(Exponential)
-# class QuantizedExponential(_DispatchMixin, QuantizationMixin, Exponential):
-#     """ Quantized Exponential """
-#     _builtin_torch_fn = torch.exp
-#
-#
-# @QuantizationMixin.implements(Erf)
-# class QuantizedErf(_DispatchMixin, QuantizationMixin, Erf):
-#     """ Quantized Erf """
-#     _builtin_torch_fn = torch.erf
-#
-#
-# @QuantizationMixin.implements(Sqrt)
-# class QuantizedSqrt(_DispatchMixin, QuantizationMixin, Sqrt):
-#     """ Quantized Sqrt """
-#     _builtin_torch_fn = torch.sqrt
+# @QuantizationMixin.implements(Norm)
+# class QuantizedNorm(_DispatchMixin, QuantizationMixin, Norm):
+#     """ Quantized Norm """
+#     _builtin_torch_fn = torch.norm
+
+
+@QuantizationMixin.implements(Exponential)
+class QuantizedExponential(_DispatchMixin, QuantizationMixin, Exponential):
+    """ Quantized Exponential """
+    _builtin_torch_fn = torch.exp
+
+
+@QuantizationMixin.implements(Erf)
+class QuantizedErf(_DispatchMixin, QuantizationMixin, Erf):
+    """ Quantized Erf """
+    _builtin_torch_fn = torch.erf
+
+
+@QuantizationMixin.implements(Sqrt)
+class QuantizedSqrt(_DispatchMixin, QuantizationMixin, Sqrt):
+    """ Quantized Sqrt """
+    _builtin_torch_fn = torch.sqrt
 #
 #
 # @QuantizationMixin.implements(Maximum)
@@ -328,22 +328,22 @@ class QuantizedCumSum(_DispatchMixin, QuantizationMixin, CumSum):
 #     _builtin_torch_fn = torch.prod
 #
 #
-# @QuantizationMixin.implements(Log)
-# class QuantizedLog(_DispatchMixin, QuantizationMixin, Log):
-#     """ Quantized Log """
-#     _builtin_torch_fn = torch.log
-#
-#
-# @QuantizationMixin.implements(Abs)
-# class QuantizedAbs(_DispatchMixin, QuantizationMixin, Abs):
-#     """ Quantized Abs """
-#     _builtin_torch_fn = torch.abs
-#
-#
-# @QuantizationMixin.implements(Neg)
-# class QuantizedNeg(_DispatchMixin, QuantizationMixin, Neg):
-#     """ Quantized Neg """
-#     _builtin_torch_fn = torch.neg
+@QuantizationMixin.implements(Log)
+class QuantizedLog(_DispatchMixin, QuantizationMixin, Log):
+    """ Quantized Log """
+    _builtin_torch_fn = torch.log
+
+
+@QuantizationMixin.implements(Abs)
+class QuantizedAbs(_DispatchMixin, QuantizationMixin, Abs):
+    """ Quantized Abs """
+    _builtin_torch_fn = torch.abs
+
+
+@QuantizationMixin.implements(Neg)
+class QuantizedNeg(_DispatchMixin, QuantizationMixin, Neg):
+    """ Quantized Neg """
+    _builtin_torch_fn = torch.neg
 #
 #
 # @QuantizationMixin.implements(Argmin)
@@ -358,16 +358,16 @@ class QuantizedCumSum(_DispatchMixin, QuantizationMixin, CumSum):
 #     _builtin_torch_fn = torch.argmax
 #
 #
-# @QuantizationMixin.implements(ElementwiseCeil)
-# class QuantizedElementwiseCeil(_DispatchMixin, QuantizationMixin, ElementwiseCeil):
-#     """ Quantized ElementwiseCeil """
-#     _builtin_torch_fn = torch.ceil
-#
-#
-# @QuantizationMixin.implements(ElementwiseFloor)
-# class QuantizedElementwiseFloor(_DispatchMixin, QuantizationMixin, ElementwiseFloor):
-#     """ Quantized ElementwiseFloor """
-#     _builtin_torch_fn = torch.floor
+@QuantizationMixin.implements(ElementwiseCeil)
+class QuantizedElementwiseCeil(_DispatchMixin, QuantizationMixin, ElementwiseCeil):
+    """ Quantized ElementwiseCeil """
+    _builtin_torch_fn = torch.ceil
+
+
+@QuantizationMixin.implements(ElementwiseFloor)
+class QuantizedElementwiseFloor(_DispatchMixin, QuantizationMixin, ElementwiseFloor):
+    """ Quantized ElementwiseFloor """
+    _builtin_torch_fn = torch.floor
 #
 #
 # @QuantizationMixin.implements(Asin)
@@ -464,12 +464,12 @@ class QuantizedCumSum(_DispatchMixin, QuantizationMixin, CumSum):
 # class QuantizedTile(_DispatchMixin, QuantizationMixin, Tile):
 #     """ Quantized Tile """
 #     _builtin_torch_fn = torch.tile
-#
-#
-# @QuantizationMixin.implements(ElementwiseUnarySign)
-# class QuantizedElementwiseUnarySign(_DispatchMixin, QuantizationMixin, ElementwiseUnarySign):
-#     """ Quantized ElementwiseUnarySign """
-#     _builtin_torch_fn = torch.sign
+
+
+@QuantizationMixin.implements(ElementwiseUnarySign)
+class QuantizedElementwiseUnarySign(_DispatchMixin, QuantizationMixin, ElementwiseUnarySign):
+    """ Quantized ElementwiseUnarySign """
+    _builtin_torch_fn = torch.sign
 
 
 @QuantizationMixin.implements(Baddbmm)
