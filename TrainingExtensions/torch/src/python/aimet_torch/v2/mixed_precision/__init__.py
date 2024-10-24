@@ -38,4 +38,4 @@
 # pylint: disable=all
 
 from .manual_mixed_precision import MixedPrecisionConfigurator
-from .utils import Candidate, SupportedDType
+from .utils import Precision, SupportedDType
