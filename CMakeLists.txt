@@ -146,7 +146,7 @@ if (ENABLE_TENSORFLOW)
 endif()
 
 if(DEFINED CMAKE_CXX_FLAGS)
-    if(NOT CMAKE_CXX_FLAGS MATCHES "-O[0-3sfast]")
+    if(NOT CMAKE_CXX_FLAGS MATCHES "-O(0|1|2|3|s|fast)")
         message(NOTICE "No optimization flag found. Setting optimization to -O3.")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
     endif()
