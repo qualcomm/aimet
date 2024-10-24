@@ -594,11 +594,11 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
             moving_mean_tensor = ParamUtils.get_param(self.model, op, RUNNING_MEAN_INDEX)
             if moving_mean_tensor:
-                create_and_connect_product(moving_mean_tensor.name, moving_mean_tensor.dims, my_op, moving_mean_tensor, None)
+                create_and_connect_product(moving_mean_tensor.name, moving_mean_tensor.dims, my_op, moving_mean_tensor, "running_mean")
 
             moving_variance_tensor = ParamUtils.get_param(self.model, op, RUNNING_VAR_INDEX)
             if moving_variance_tensor:
-                create_and_connect_product(moving_variance_tensor.name, moving_variance_tensor.dims, my_op, moving_variance_tensor, None)
+                create_and_connect_product(moving_variance_tensor.name, moving_variance_tensor.dims, my_op, moving_variance_tensor, "running_var")
 
         def handle_default(my_op: Op):
             """ Handler for other modules """

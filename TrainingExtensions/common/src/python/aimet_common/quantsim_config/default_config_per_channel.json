@@ -24,6 +24,17 @@
 
   "op_type":
   {
+    "BatchNormalization":
+    {
+      "params": {
+        "running_mean": {
+          "is_quantized": "False"
+        },
+        "running_var": {
+          "is_quantized": "False"
+        }
+      }
+    },
     "Cast":
     {
       "is_output_quantized": "False"

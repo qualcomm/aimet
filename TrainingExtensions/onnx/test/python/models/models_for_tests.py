@@ -2488,3 +2488,30 @@ def softmax_model():
     )
     onnx.checker.check_model(model, True)
     return model
+
+
+def batchnorm_model():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name='BatchnormModel',
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            initializer=[
+                numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32'), name='batchnorm.weight'),
+                numpy_helper.from_array(np.random.randn(10, ).astype('float32'), name='batchnorm.bias'),
+                numpy_helper.from_array(np.random.randn(10, ).astype('float32'), name='batchnorm.input_mean'),
+                numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32'), name='batchnorm.input_var')
+            ],
+            nodes=[
+                helper.make_node(
+                    'BatchNormalization',
+                    inputs=['model_input', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm.input_mean', 'batchnorm.input_var'],
+                    outputs=['model_output'],
+                    name='batchnorm'
+                ),
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model
+

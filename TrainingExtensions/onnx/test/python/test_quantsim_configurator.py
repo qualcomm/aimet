@@ -36,6 +36,7 @@
 # =============================================================================
 import json
 import os
+import pytest
 from aimet_common.defs import QuantizationDataType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_onnx.quantsim import QuantizationSimModel
@@ -401,3 +402,13 @@ class TestQuantSimConfig:
         model = models_for_tests.weight_matmul_model(in_features=10, out_features=20)
         sim = QuantizationSimModel(model, config_file=get_path_for_per_channel_config())
         assert not sim.qc_quantize_op_dict["weight"].quant_info.usePerChannelMode
+
+    @pytest.mark.parametrize("config", (None, get_path_for_per_channel_config()))
+    def test_disable_batchnorm_stats_quantization(self, config):
+        model = models_for_tests.batchnorm_model()
+        sim = QuantizationSimModel(model, config_file=config)
+        assert not sim.qc_quantize_op_dict["batchnorm.input_mean"].enabled
+        assert not sim.qc_quantize_op_dict["batchnorm.input_var"].enabled
+        assert not sim.qc_quantize_op_dict["batchnorm.bias"].enabled
+        assert sim.qc_quantize_op_dict["batchnorm.weight"].enabled
+        assert sim.qc_quantize_op_dict["model_output"].enabled
