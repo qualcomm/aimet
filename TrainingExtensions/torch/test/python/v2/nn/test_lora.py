@@ -43,6 +43,7 @@ import peft.tuners.lora.layer as lora
 
 import aimet_torch.v2 as aimet
 from aimet_torch.v2.quantization import affine
+from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.experimental import lora as qlora
 
@@ -57,17 +58,37 @@ class TestQuantizedLinear:
         When: Create quantsim with lora.Linear
         Then: 1) lora.Linear should be converted to QuantizedLinear
               2) Mul and Add modules should have input and output quantizers as necessary
+              3) All lora adapters (lora_A, B) and base layer should be converted to aimet.nn.QuantizedLinear
         """
         assert isinstance(sim.model, qlora.QuantizedLinear)
         assert isinstance(sim.model.mul['adapter_0'].input_quantizers[1], affine.QuantizeDequantize)
         assert isinstance(sim.model.mul['adapter_0'].output_quantizers[0], affine.QuantizeDequantize)
         assert isinstance(sim.model.add['adapter_0'].output_quantizers[0], affine.QuantizeDequantize)
 
-        sim.compute_encodings(lambda model, _: model(dummy_input), None)
-        assert sim.model.mul['adapter_0'].input_quantizers[1].is_initialized()
-        assert sim.model.mul['adapter_0'].output_quantizers[0].is_initialized()
-        assert sim.model.add['adapter_0'].output_quantizers[0].is_initialized()
+        lora_A = sim.model.lora_A["adapter_0"]
+        assert isinstance(lora_A, aimet.nn.QuantizedLinear)
+        assert isinstance(lora_A.param_quantizers['weight'], affine.QuantizeDequantize)
+        assert isinstance(lora_A.output_quantizers[0], affine.QuantizeDequantize)
 
+        lora_B = sim.model.lora_B["adapter_0"]
+        assert isinstance(lora_B, aimet.nn.QuantizedLinear)
+        assert isinstance(lora_B.param_quantizers['weight'], affine.QuantizeDequantize)
+        assert isinstance(lora_B.output_quantizers[0], affine.QuantizeDequantize)
+
+        base_layer = sim.model.base_layer
+        assert isinstance(base_layer, aimet.nn.QuantizedLinear)
+        assert isinstance(base_layer.param_quantizers['weight'], affine.QuantizeDequantize)
+        assert isinstance(base_layer.output_quantizers[0], affine.QuantizeDequantize)
+
+        """
+        When: compute_encodings
+        Then: All quantizers should be initialized
+        """
+        sim.compute_encodings(lambda model, _: model(dummy_input), None)
+
+        for qtzr in sim.model.modules():
+            if isinstance(qtzr, QuantizerBase):
+                assert qtzr.is_initialized()
 
     @pytest.mark.skip(reason="To be discussed")
     def test_update_layer(self):
