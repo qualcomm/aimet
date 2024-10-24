@@ -37,7 +37,7 @@
 """ Top level API for performing quantization simulation of a pytorch model """
 
 import copy
-from typing import Union, Tuple, Optional, TypeVar, Any, Callable, overload
+from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload
 import warnings
 import itertools
 import io
@@ -97,11 +97,44 @@ def _convert_to_qmodule(module: torch.nn.Module):
 
 class QuantizationSimModel(V1QuantizationSimModel):
     """
-    Overriden QuantizationSimModel that does off-target quantization simulation using v2 quantsim blocks.
+    Class that simulates the quantized model execution on a target hardware backend.
+
+    QuantizationSimModel simulates quantization of a given model by converting
+    all PyTorch modules into :ref:`quantized modules<api-torch-quantized-modules>`
+    with input/output/parameter :ref:`quantizers<api-torch-quantizers>` as necessary.
+
+    Example:
+
+        >>> model = torchvision.models.resnet18()
+        >>> dummy_input = torch.randn(1, 3, 224, 224)
+        >>> sim = QuantizationSimModel(model, dummy_input)
+        >>> print(model)
+        ResNet(
+          (conv1): Conv2d(
+            3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+          )
+          ...
+        )
+        >>> print(sim.model)
+        ResNet(
+          (conv1): QuantizedConv2d(
+            3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+            (param_quantizers): ModuleDict(
+              (weight): QuantizeDequantize(shape=(), qmin=-128, qmax=127, symmetric=True)
+            )
+            (input_quantizers): ModuleList(
+              (0): QuantizeDequantize(shape=(), qmin=0, qmax=255, symmetric=False)
+            )
+            (output_quantizers): ModuleList(
+              (0): None
+            )
+          )
+          ...
+        )
     """
     def __init__(self, # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
                  model: torch.nn.Module,
-                 dummy_input: Union[torch.Tensor, Tuple],
+                 dummy_input: Union[torch.Tensor, Sequence[torch.Tensor]],
                  quant_scheme: Union[str, QuantScheme] = None, # NOTE: Planned to be deprecated
                  rounding_mode: Optional[str] = None, # NOTE: Planned to be deprecated
                  default_output_bw: int = 8,
@@ -109,6 +142,36 @@ class QuantizationSimModel(V1QuantizationSimModel):
                  in_place: bool = False,
                  config_file: Optional[str] = None,
                  default_data_type: QuantizationDataType = QuantizationDataType.int):
+        """
+        .. warning::
+           `rounding_mode` parameter is deprecated.
+           Passing `rounding_mode` will throw runtime error in >=1.35.
+
+        .. warning::
+           The default value of `quant_scheme` will change
+           from `QuantScheme.post_training_tf_enhanced` to `QuantScheme.training_range_learning_with_tf_init`
+           in the future versions, and will be deprecated in the longer term.
+
+        Args:
+            model (torch.nn.Module): Model to simulate the quantized execution of
+            dummy_input (Tensor | Sequence[Tensor]): Dummy input to be used to capture
+                the computational graph of the model. All input tensors are expected to be
+                already placed on the appropriate devices to run forward pass of the model.
+            quant_scheme (QuantScheme, optional): Quantization scheme that indicates
+                how to observe and calibrate the quantization encodings (Default: `QuantScheme.post_training_tf_enhanced`)
+            rounding_mode: Deprecated
+            default_output_bw (int, optional): Default bitwidth (4-31) to use for quantizing all layer inputs and outputs
+                unless otherwise specified in the config file. (Default: 8)
+            default_param_bw (int, optional): Default bitwidth (4-31) to use for quantizing all layer parameters
+                unless otherwise specified in the config file. (Default: 8)
+            in_place (bool, optional): If True, then the given model is modified in-place into a quantized model. (Default: `False`)
+            config_file (str, optional): Path to the quantization simulation config file (Default: `None`)
+            default_data_type (QuantizationDataType, optional): Default data type to use for quantizing all
+                inputs, outputs and parameters unless otherwise specified in the config file.
+                Possible options are QuantizationDataType.int and QuantizationDataType.float.
+                Note that the mode default_data_type=QuantizationDataType.float is only supported with
+                default_output_bw=16 or 32 and default_param_bw=16 or 32. (Default: `QuantizationDataType.int`)
+        """
         if not quant_scheme:
             old_default = QuantScheme.post_training_tf_enhanced
             new_default = QuantScheme.training_range_learning_with_tf_init
@@ -206,7 +269,6 @@ class QuantizationSimModel(V1QuantizationSimModel):
             # Set quantization parameters to the device of the original module
             module.to(device=device)
 
-
     @overload
     def compute_encodings(self, forward_pass_callback: Callable[[torch.nn.Module], Any]): # pylint: disable=arguments-differ
         ...
@@ -222,21 +284,46 @@ class QuantizationSimModel(V1QuantizationSimModel):
     del T
 
     def compute_encodings(self, forward_pass_callback, forward_pass_callback_args=_NOT_SPECIFIED):
-        """
-        Computes encodings for all quantization sim nodes in the model. It is also used to find initial encodings for
-        Range Learning
+        r"""
+        Computes encodings for all quantizers in the model.
 
-        :param forward_pass_callback: A callback function that simply runs forward passes on the model. This callback
-            function should use representative data for the forward pass, so the calculated encodings work for all
-            data samples. This callback internally chooses the number of data samples it wants to use for calculating
-            encodings.
-        :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is. Up to
-            the user to determine the type of this parameter. E.g. could be simply an integer representing the number
-            of data samples to use. Or could be a tuple of parameters or an object representing something more complex.
-            If set to None, forward_pass_callback will be invoked with no parameters.
-        :return: None
+        This API will invoke `forward_pass_callback`, a function written by the user that runs
+        forward pass(es) of the quantized model with a small, representative subset of the training dataset.
+        By doing so, the quantizers in the quantized model will observe the inputs and initialize
+        their quantization encodings according to the observed input statistics.
 
+        This function is overloaded with the following signatures:
+
+        .. function:: compute_encodings(forward_pass_callback)
+           :noindex:
+
+           :param forward_pass_callback_: A function that takes a quantized model and runs forward passes
+               with a small, representative subset of training dataset
+           :type forward_pass_callback_: Callable[[torch.nn.Module], Any]
+
+        .. function:: compute_encodings(forward_pass_callback, forward_pass_callback_args)
+           :noindex:
+
+           :param forward_pass_callback_: A function that takes a quantized model and runs forward passes
+               with a small, representative subset of training dataset
+           :type forward_pass_callback_: Callable[[torch.nn.Module, T], Any]
+           :param T forward_pass_callback_args: The second argument to `forward_pass_callback`.
+
+        Example:
+
+            >>> sim = QuantizationSimModel(...)
+            >>> _ = sim.model(input) # Can't run forward until quantizer encodings are initialized
+            RuntimeError: Failed to run QuantizeDequantize since quantization parameters are not initialized.
+            Please initialize the quantization parameters using `compute_encodings()`.
+            >>> def run_forward_pass(quantized_model: torch.nn.Module):
+            ...     for input in train_datalaoder:
+            ...         with torch.no_grad():
+            ...             _ = quantized_model(input)
+            ...
+            >>> sim.compute_encodings(run_forward_pass)
+            >>> _ = sim.model(input) # Now runs successfully!
         """
+
         if forward_pass_callback_args is _NOT_SPECIFIED:
             args = (self.model,)
         else:

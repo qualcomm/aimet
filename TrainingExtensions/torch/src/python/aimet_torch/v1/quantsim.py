@@ -255,11 +255,14 @@ class QuantizationSimModel:
                              There are multiple schemes available. Please refer the QuantScheme enum definition.
         :param rounding_mode: Rounding mode. Supported options are 'nearest' or 'stochastic'
         :param default_output_bw: Default bitwidth (4-31) to use for quantizing all layer inputs and outputs
+                unless otherwise specified in the config file.
         :param default_param_bw: Default bitwidth (4-31) to use for quantizing all layer parameters
+                unless otherwise specified in the config file.
         :param in_place: If True, then the given 'model' is modified in-place to add quant-sim nodes.
                 Only suggested use of this option is when the user wants to avoid creating a copy of the model
         :param config_file: Path to Configuration file for model quantizers
-        :param default_data_type: Default data type to use for quantizing all layer inputs, outputs and parameters.
+        :param default_data_type: Default data type to use for quantizing all inputs, outputs and parameters.
+                                 unless otherwise specified in the config file.
                                  Possible options are QuantizationDataType.int and QuantizationDataType.float.
                                  Note that the mode default_data_type=QuantizationDataType.float is only supported with
                                  default_output_bw=16 or 32 and default_param_bw=16 or 32.
