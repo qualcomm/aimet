@@ -46,7 +46,7 @@ from torch import nn
 from aimet_common.defs import QuantizationDataType
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.mixed_precision import MixedPrecisionConfigurator, SupportedDType, Candidate
+from aimet_torch.v2.mixed_precision import MixedPrecisionConfigurator, SupportedDType, Precision
 import aimet_torch.v1.nn.modules.custom as aimet_elementwise
 from .models_.test_models import SingleResidual, ModelWithTwoInputs
 
@@ -210,10 +210,10 @@ class TestManualMixedPrecisionConfigurator:
         assert len(mp_requests) == 4
         for m, request in mp_requests.items():
             assert all(input_candidate ==
-                       Candidate(QuantizationDataType.int, 8) for input_candidate in request.input_candidates)
+                       Precision(QuantizationDataType.int, 8) for input_candidate in request.input_candidates)
             assert all(output_candidate ==
-                       Candidate(QuantizationDataType.int, 8) for output_candidate in request.output_candidates)
-            assert request.param_candidate == {'weight': Candidate(QuantizationDataType.int, 8)}
+                       Precision(QuantizationDataType.int, 8) for output_candidate in request.output_candidates)
+            assert request.param_candidate == {'weight': Precision(QuantizationDataType.int, 8)}
 
 
     def test_mp_5(self):
@@ -237,10 +237,10 @@ class TestManualMixedPrecisionConfigurator:
         assert len(mp_requests) == 13
         for m, request in mp_requests.items():
             assert all(input_candidate ==
-                       Candidate(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
+                       Precision(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
             assert all(output_candidate ==
-                       Candidate(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
-            assert request.param_candidate == {'weight': Candidate(QuantizationDataType.float, 16)}
+                       Precision(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
+            assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
 
     def test_mp_6(self):
         """
@@ -263,16 +263,16 @@ class TestManualMixedPrecisionConfigurator:
         for m, request in mp_requests.items():
             if isinstance(m.get_original_module(), torch.nn.modules.Conv2d):
                 assert all(input_candidate ==
-                           Candidate(QuantizationDataType.int, 8) for input_candidate in request.input_candidates)
+                           Precision(QuantizationDataType.int, 8) for input_candidate in request.input_candidates)
                 assert all(output_candidate ==
-                           Candidate(QuantizationDataType.int, 8) for output_candidate in request.output_candidates)
-                assert request.param_candidate == {'weight': Candidate(QuantizationDataType.int, 8)}
+                           Precision(QuantizationDataType.int, 8) for output_candidate in request.output_candidates)
+                assert request.param_candidate == {'weight': Precision(QuantizationDataType.int, 8)}
             else:
                 assert all(input_candidate ==
-                           Candidate(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
+                           Precision(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
                 assert all(output_candidate ==
-                           Candidate(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
-                assert request.param_candidate == {'weight': Candidate(QuantizationDataType.float, 16)}
+                           Precision(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
+                assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
 
         mp_configurator.mp_handler.mp_requests = {}
 

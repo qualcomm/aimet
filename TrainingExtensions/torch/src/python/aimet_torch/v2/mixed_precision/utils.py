@@ -58,23 +58,25 @@ logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 SupportedDType: TypeAlias = Literal['Int16', 'Int8', 'Int4', 'Fp16']
 
 @dataclass
-class Candidate:
+class Precision:
     """ Internal data structure to represent quantization data type and bitwidth """
     data_type: QuantizationDataType
     bitwidth: int
 
     def __lt__(self, other):
-        if self.bitwidth != other.bitwidth:
+        if self == other:
+            return False
+        elif self.bitwidth != other.bitwidth:
             return self.bitwidth < other.bitwidth
         else:
             return self.data_type == QuantizationDataType.int and other.data_type != QuantizationDataType.int
 
 
 TranslateUserDtypes = {
-    'Int16': Candidate(QuantizationDataType.int, 16),
-    'Int8': Candidate(QuantizationDataType.int, 8),
-    'Int4': Candidate(QuantizationDataType.int, 4),
-    'Fp16': Candidate(QuantizationDataType.float, 16),
+    'Int16': Precision(QuantizationDataType.int, 16),
+    'Int8': Precision(QuantizationDataType.int, 8),
+    'Int4': Precision(QuantizationDataType.int, 4),
+    'Fp16': Precision(QuantizationDataType.float, 16),
 }
 
 
@@ -82,9 +84,9 @@ TranslateUserDtypes = {
 class MpRequest:
     """ Internal data structure to save the request to act upon"""
     id: int = None  # original request ID
-    input_candidates: List[Candidate] = None
-    output_candidates: List[Candidate] = None
-    param_candidate: Dict[str, Candidate] = None
+    input_candidates: List[Precision] = None
+    output_candidates: List[Precision] = None
+    param_candidate: Dict[str, Precision] = None
 
 
 class RequestType(Enum):
@@ -112,12 +114,12 @@ def _has_no_quantizers(module: BaseQuantizationMixin) -> bool:
             all(out_qtzr is None for out_qtzr in module.output_quantizers) and
             all(param_qtzr is None for param_qtzr in module.param_quantizers.values()))
 
-def _is_qtzr_higher_precision_than_candidate(qtzr: BaseQuantizationMixin, candidate: Candidate) -> bool:
+def _is_qtzr_higher_precision_than_candidate(qtzr: BaseQuantizationMixin, candidate: Precision) -> bool:
     """ Helper function to determine if qtzr is higher precision than candidate """
     if isinstance(qtzr, FloatQuantizeDequantize):
-        generated_candidate = Candidate(QuantizationDataType.float, qtzr.mantissa_bits + qtzr.exponent_bits)
+        generated_candidate = Precision(QuantizationDataType.float, qtzr.mantissa_bits + qtzr.exponent_bits)
     else:
-        generated_candidate = Candidate(QuantizationDataType.int, qtzr.bitwidth)
+        generated_candidate = Precision(QuantizationDataType.int, qtzr.bitwidth)
 
     return generated_candidate > candidate
 
@@ -243,7 +245,7 @@ class MpHandler:
         return mp_requests
 
     @staticmethod
-    def _apply_request_to_quantizer(quantizer: QuantizerBase, candidate: Candidate):
+    def _apply_request_to_quantizer(quantizer: QuantizerBase, candidate: Precision):
         """
         Helper function to apply mixed precision candidate to a quantizer
         :param quantizer: quantizer object
@@ -400,7 +402,7 @@ class MpHandler:
             mp_requests[module] = MpRequest(param_candidate=None, input_candidates=None, output_candidates=None)
 
         if input_candidates is not None:
-            if isinstance(input_candidates, Candidate):
+            if isinstance(input_candidates, Precision):
                 input_candidates = [input_candidates] * len(module.input_quantizers)
             assert len(input_candidates) == len(module.input_quantizers)
             if strict and _check_for_overwrites(mp_requests[module].input_candidates, input_candidates):
@@ -419,7 +421,7 @@ class MpHandler:
             mp_requests[module].param_candidate = mp_requests[module].param_candidate | param_candidate
 
         if output_candidates is not None:
-            if isinstance(output_candidates, Candidate):
+            if isinstance(output_candidates, Precision):
                 output_candidates = [output_candidates] * len(module.output_quantizers)
             assert len(output_candidates) == len(module.output_quantizers)
             if strict and _check_for_overwrites(mp_requests[module].output_candidates, output_candidates):
