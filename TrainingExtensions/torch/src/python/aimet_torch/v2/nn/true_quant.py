@@ -516,7 +516,7 @@ class _DispatchMixin(metaclass=_DispatchMeta):
             )
             others = args[len(self.input_quantizers):]
 
-            output_encodings = self.output_quantizers[0].get_encoding() if self.output_quantizers[0] else None
+            output_encodings = self.output_quantizers[0].get_encodings() if self.output_quantizers[0] else None
             kwargs.update(output_encodings=output_encodings)
             return fn(*qtzd_args, *others, **kwargs)
 
@@ -897,7 +897,7 @@ class QuantizedEmbeddingBag(_DispatchMixin, QuantizationMixin, nn.EmbeddingBag):
                 qtzr = self.input_quantizers[0]
                 per_sample_weights = _quantize_if_applicable(per_sample_weights, qtzr)
 
-            output_encodings = self.output_quantizers[0].get_encoding() if self.output_quantizers[0] else None
+            output_encodings = self.output_quantizers[0].get_encodings() if self.output_quantizers[0] else None
 
             return fn(input,
                       weight,
@@ -1010,7 +1010,7 @@ class QuantizedGRU(_DispatchMixin, QuantizationMixin, nn.GRU):
 
         def gru(*args):
             args = self._quantize_inputs(args, apply)
-            output_encodings = tuple(qtzr and qtzr.get_encoding() for qtzr in self.output_quantizers)
+            output_encodings = tuple(qtzr and qtzr.get_encodings() for qtzr in self.output_quantizers)
             return fn(*args, output_encodings=output_encodings)
 
         return gru
@@ -1045,7 +1045,7 @@ class QuantizedGRUCell(_DispatchMixin, QuantizationMixin, nn.GRUCell):
         def gru_cell(input, hx, *args, **kwargs):
             input = apply(input, self.input_quantizers[0])
             hx = apply(hx, self.input_quantizers[1])
-            output_encodings = self.output_quantizers[0] and self.output_quantizers[0].get_encoding()
+            output_encodings = self.output_quantizers[0] and self.output_quantizers[0].get_encodings()
             return fn(input, hx, *args, **kwargs, output_encodings=output_encodings)
 
         return gru_cell
@@ -1209,7 +1209,7 @@ class QuantizedLSTM(_DispatchMixin, QuantizationMixin, nn.LSTM):
 
         def lstm(*args):
             args = self._quantize_inputs(args, apply)
-            output_encodings = tuple(qtzr and qtzr.get_encoding() for qtzr in self.output_quantizers)
+            output_encodings = tuple(qtzr and qtzr.get_encodings() for qtzr in self.output_quantizers)
             return fn(*args, output_encodings=output_encodings)
 
         return lstm
@@ -1253,7 +1253,7 @@ class QuantizedLSTMCell(_DispatchMixin, QuantizationMixin, nn.LSTMCell):
             h_qtzr, c_qtzr = self.input_quantizers[1:]
             hx = (apply(h, h_qtzr), apply(c, c_qtzr))
 
-            output_encodings = tuple(qtzr and qtzr.get_encoding() for qtzr in self.output_quantizers)
+            output_encodings = tuple(qtzr and qtzr.get_encodings() for qtzr in self.output_quantizers)
             return fn(input, hx, *args, **kwargs, output_encodings=output_encodings)
 
         return lstm_cell
@@ -1609,7 +1609,7 @@ class QuantizedRNN(_DispatchMixin, QuantizationMixin, nn.RNN):
 
         def rnn(*args):
             args = self._quantize_inputs(args, apply)
-            output_encodings = tuple(qtzr and qtzr.get_encoding() for qtzr in self.output_quantizers)
+            output_encodings = tuple(qtzr and qtzr.get_encodings() for qtzr in self.output_quantizers)
             return fn(*args, output_encodings=output_encodings)
 
         return rnn
@@ -1655,7 +1655,7 @@ class QuantizedRNNCell(_DispatchMixin, QuantizationMixin, nn.RNNCell):
         def rnn_cell(input, hx, *args, **kwargs):
             input = apply(input, self.input_quantizers[0])
             hx = apply(hx, self.input_quantizers[1])
-            output_encodings = self.output_quantizers[0] and self.output_quantizers[0].get_encoding()
+            output_encodings = self.output_quantizers[0] and self.output_quantizers[0].get_encodings()
             return fn(input, hx, *args, **kwargs, output_encodings=output_encodings)
 
         return rnn_cell

@@ -173,10 +173,10 @@ class TestSeqMse:
         xq = torch.randn(32, 4, 32, 64)
         with wrapper.param_quantizers['weight'].compute_encodings():
             _ = wrapper.param_quantizers['weight'](wrapper.weight.data)
-        before = wrapper.param_quantizers['weight'].get_encoding()
+        before = wrapper.param_quantizers['weight'].get_encodings()
         params = SeqMseParams(num_batches=32, loss_fn=loss_fn)
         optimize_module(wrapper, xq, xq, params)
-        after = wrapper.param_quantizers['weight'].get_encoding()
+        after = wrapper.param_quantizers['weight'].get_encodings()
 
         # If we use higher param_bw (for example 16, 31), then it should always choose larger candidates so
         # before and after param encodings should be almost same.
@@ -203,10 +203,10 @@ class TestSeqMse:
         xq = torch.randn(32, 1, 6, 10, 10)
         with wrapper.param_quantizers['weight'].compute_encodings():
             _ = wrapper.param_quantizers['weight'](wrapper.weight.data)
-        before = wrapper.param_quantizers['weight'].get_encoding()
+        before = wrapper.param_quantizers['weight'].get_encodings()
         params = SeqMseParams(num_batches=32, loss_fn=loss_fn)
         optimize_module(wrapper, xq, xq, params)
-        after = wrapper.param_quantizers['weight'].get_encoding()
+        after = wrapper.param_quantizers['weight'].get_encodings()
 
         # If we use higher param_bw (for example 16, 31), then it should always choose larger candidates so
         # before and after param encodings should be almost same.
@@ -238,9 +238,9 @@ class TestSeqMse:
         assert not sim.model.fc2.param_quantizers['weight']._allow_overwrite
 
         # Compute encodings for all the activations and remaining non-supported modules
-        enc_before = sim.model.fc1.param_quantizers['weight'].get_encoding()
+        enc_before = sim.model.fc1.param_quantizers['weight'].get_encodings()
         sim.compute_encodings(calibrate, dummy_input)
-        enc_after = sim.model.fc1.param_quantizers['weight'].get_encoding()
+        enc_after = sim.model.fc1.param_quantizers['weight'].get_encodings()
         assert enc_before.scale == enc_after.scale
 
     @pytest.mark.parametrize("inp_symmetry", ['asym', 'symfp', 'symqt'])
@@ -269,7 +269,7 @@ class TestSeqMse:
         assert not sim_without.model.fc2.param_quantizers['weight'].min.requires_grad
         assert not sim_without.model.fc2.param_quantizers['weight'].max.requires_grad
         assert not sim_without.model.fc2.param_quantizers['weight']._allow_overwrite
-        without_checkpoints_enc = sim_without.model.fc2.param_quantizers['weight'].get_encoding()
+        without_checkpoints_enc = sim_without.model.fc2.param_quantizers['weight'].get_encodings()
 
         # Apply Sequential MSE with checkpoints config
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -283,7 +283,7 @@ class TestSeqMse:
             assert not sim_with.model.fc2.param_quantizers['weight'].min.requires_grad
             assert not sim_with.model.fc2.param_quantizers['weight'].max.requires_grad
             assert not sim_with.model.fc2.param_quantizers['weight']._allow_overwrite
-            with_checkpoints_enc = sim_with.model.fc2.param_quantizers['weight'].get_encoding()
+            with_checkpoints_enc = sim_with.model.fc2.param_quantizers['weight'].get_encodings()
 
         # encodings should be bit-exact
         assert without_checkpoints_enc.min == with_checkpoints_enc.min

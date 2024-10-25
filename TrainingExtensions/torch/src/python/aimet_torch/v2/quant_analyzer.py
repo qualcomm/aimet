@@ -137,7 +137,7 @@ class QuantAnalyzer(V1QuantAnalyzer):
     def _get_quantizer_encodings(cls, quantizer: QuantizerBase) -> Optional[List]:
         v1_encodings = []
 
-        encoding = quantizer.get_encoding()
+        encoding = quantizer.get_encodings()
         if not encoding:
             return None
 

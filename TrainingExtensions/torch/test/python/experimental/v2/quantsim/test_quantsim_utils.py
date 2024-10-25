@@ -85,7 +85,7 @@ def test_clip_weights_to_7f7f():
     affected_quant_layers = []
     for _, quant_layer in qsim.named_qmodules():
         if 'weight' in quant_layer.param_quantizers and quant_layer.param_quantizers['weight'] is not None:
-            encoding = quant_layer.param_quantizers['weight'].get_encoding()
+            encoding = quant_layer.param_quantizers['weight'].get_encodings()
             quantized_weight = quantize(quant_layer.weight, encoding.scale, encoding.offset, -32768, 32767)
             assert torch.equal(torch.max(quantized_weight), torch.tensor(32767))
             affected_quant_layers.append(quant_layer)
@@ -94,6 +94,6 @@ def test_clip_weights_to_7f7f():
     clip_weights_to_7f7f(qsim)
 
     for quant_layer in affected_quant_layers:
-        encoding = quant_layer.param_quantizers['weight'].get_encoding()
+        encoding = quant_layer.param_quantizers['weight'].get_encodings()
         quantized_weight = quantize(quant_layer.weight, encoding.scale, encoding.offset, -32768, 32767)
         assert torch.equal(torch.max(quantized_weight), torch.tensor(32639))

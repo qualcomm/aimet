@@ -209,7 +209,7 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):
         Set quantization parameters to the given min-max range
         """
 
-    def get_encoding(self) -> Optional[AffineEncoding]:
+    def get_encodings(self) -> Optional[AffineEncoding]:
         """
         Return the quantizer's encodings as an AffineEncoding object
         """
@@ -229,7 +229,7 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):
         if not self.is_initialized():
             return None
 
-        return self.get_encoding()._to_legacy_format()
+        return self.get_encodings()._to_legacy_format()
 
     @torch.no_grad()
     def set_legacy_encodings(self, encodings: List[Dict]):
@@ -545,7 +545,7 @@ class Quantize(MinMaxQuantizer):
                 ' Please initialize the quantization parameters using `compute_encodings()`.'
             )
 
-        encoding = self.get_encoding()
+        encoding = self.get_encodings()
 
         # Subclasses of torch.Tensor with custom __torch_function__ (in our case, QuantizedTensorBase)
         # is known to introduce substantial CPU overhead.
@@ -679,7 +679,7 @@ class QuantizeDequantize(MinMaxQuantizer):
                 ' Please initialize the quantization parameters using `compute_encodings()`.'
             )
 
-        encoding = self.get_encoding()
+        encoding = self.get_encodings()
 
         # Subclasses of torch.Tensor with custom __torch_function__ (in our case, QuantizedTensorBase)
         # is known to introduce substantial CPU overhead.

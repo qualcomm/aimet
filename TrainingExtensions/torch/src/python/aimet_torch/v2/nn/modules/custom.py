@@ -179,7 +179,7 @@ class QuantizedConcat(_DispatchMixin, QuantizationMixin, Concat):
         def cat(tensors, dim=0, *, out=None):
             input_qtzr = self.input_quantizers[0]
             tensors = tuple(_quantize_if_applicable(x, input_qtzr) for x in tensors)
-            output_encodings = self.output_quantizers[0].get_encoding() if self.output_quantizers[0] else None
+            output_encodings = self.output_quantizers[0].get_encodings() if self.output_quantizers[0] else None
             return fn(tensors, dim=dim, out=out, output_encodings=output_encodings)
 
         return cat

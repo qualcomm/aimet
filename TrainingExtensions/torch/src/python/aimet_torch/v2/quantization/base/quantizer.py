@@ -51,6 +51,7 @@ from torch.utils._pytree import tree_map
 from packaging import version  # pylint: disable=wrong-import-order
 from aimet_torch.v2.quantization.base import EncodingBase
 from aimet_torch.v2.quantization.encoding_analyzer import EncodingAnalyzer
+from aimet_torch.utils import deprecated
 
 
 __all__ = ['QuantizerBase']
@@ -91,10 +92,17 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         """
 
     @abc.abstractmethod
-    def get_encoding(self) -> Optional[EncodingBase]:
+    def get_encodings(self) -> Optional[EncodingBase]:
         """
         Return the quantizer's encodings as an EncodingBase object
         """
+
+    @deprecated(f"Use {get_encodings.__qualname__} instead")
+    def get_encoding(self) -> Optional[EncodingBase]:
+        """
+        Alias of get_encodings
+        """
+        return self.get_encodings()
 
     def register_quantization_parameter(self, name: str, param: nn.Parameter):
         """

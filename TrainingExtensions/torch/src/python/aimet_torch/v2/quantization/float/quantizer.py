@@ -242,7 +242,7 @@ class FloatQuantizeDequantize(QuantizerBase): # pylint: disable=abstract-method
         self.exponent_bits = 5
         self.mantissa_bits = 10
 
-    def get_encoding(self) -> Optional[FloatEncoding]:
+    def get_encodings(self) -> Optional[FloatEncoding]:
         if self.is_initialized():
             return FloatEncoding(self.mantissa_bits, self.exponent_bits, self.maxval)
         return None

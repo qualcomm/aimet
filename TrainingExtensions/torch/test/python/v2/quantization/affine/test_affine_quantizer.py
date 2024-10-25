@@ -1009,7 +1009,7 @@ def test_quantized_tensor_with_block_size():
                   block_size=(2, 4, 3))
     with bq.compute_encodings():
         _ = bq(tensor)
-    assert bq.get_encoding().block_size == bq.block_size
+    assert bq.get_encodings().block_size == bq.block_size
     q = bq(tensor)
     assert q.encoding.block_size == bq.block_size
     assert torch.equal(q.dequantize(), affine.dequantize(q, bq.get_scale(), bq.get_offset(), bq.block_size))
