@@ -1127,6 +1127,30 @@ class TestQuantsim:
         assert sim.model.module.input_quantizers[1] is not None
         assert not sim.model.module.input_quantizers[1].is_initialized()
 
+    def test_compute_encodings_optional_arg(self):
+        """
+        Given: Two quantsims created with identical model & config
+        """
+        model = test_models.BasicConv2d(kernel_size=3)
+        dummy_input = torch.rand(1, 64, 16, 16)
+        sim_a = QuantizationSimModel(model, dummy_input)
+        sim_b = QuantizationSimModel(model, dummy_input)
+
+        """
+        When: Run compute_encodings with second argument omitted in one quantsim and not in the other
+        Then: The quantizers in both quantsims should have the same encodings
+        """
+        sim_a.compute_encodings(lambda model: model(dummy_input))
+        sim_b.compute_encodings(lambda model, x: model(x),
+                                forward_pass_callback_args=dummy_input)
+
+        for qtzr_a, qtzr_b in zip(sim_a.model.modules(), sim_b.model.modules()):
+            if isinstance(qtzr_a, AffineQuantizerBase):
+                assert torch.equal(qtzr_a.get_scale(), qtzr_b.get_scale())
+                assert torch.equal(qtzr_a.get_offset(), qtzr_b.get_offset())
+                assert torch.equal(qtzr_a.get_min(), qtzr_b.get_min())
+                assert torch.equal(qtzr_a.get_max(), qtzr_b.get_max())
+
 
 class TestQuantsimUtilities:
 

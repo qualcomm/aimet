@@ -37,7 +37,7 @@
 """ Top level API for performing quantization simulation of a pytorch model """
 
 import copy
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, Optional, TypeVar, Any, Callable, overload
 import warnings
 import itertools
 import io
@@ -69,6 +69,10 @@ containers = (
     torch.nn.ParameterList,
     torch.nn.ParameterDict,
 )
+
+
+class _NOT_SPECIFIED:
+    pass
 
 
 def _convert_to_qmodule(module: torch.nn.Module):
@@ -202,7 +206,22 @@ class QuantizationSimModel(V1QuantizationSimModel):
             # Set quantization parameters to the device of the original module
             module.to(device=device)
 
-    def compute_encodings(self, forward_pass_callback, forward_pass_callback_args):
+
+    @overload
+    def compute_encodings(self, forward_pass_callback: Callable[[torch.nn.Module], Any]): # pylint: disable=arguments-differ
+        ...
+
+    T = TypeVar('T')
+
+    @overload
+    def compute_encodings(self,
+                          forward_pass_callback: Callable[[torch.nn.Module, T], Any],
+                          forward_pass_callback_args: T):
+        ...
+
+    del T
+
+    def compute_encodings(self, forward_pass_callback, forward_pass_callback_args=_NOT_SPECIFIED):
         """
         Computes encodings for all quantization sim nodes in the model. It is also used to find initial encodings for
         Range Learning
@@ -218,10 +237,15 @@ class QuantizationSimModel(V1QuantizationSimModel):
         :return: None
 
         """
+        if forward_pass_callback_args is _NOT_SPECIFIED:
+            args = (self.model,)
+        else:
+            args = (self.model, forward_pass_callback_args)
+
         # Run forward iterations so we can collect statistics to compute the appropriate encodings
         with utils.in_eval_mode(self.model), torch.no_grad():
             with aimet_nn.compute_encodings(self.model):
-                _ = forward_pass_callback(self.model, forward_pass_callback_args)
+                _ = forward_pass_callback(*args)
 
     def export(self, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple],
                *args, **kwargs):
