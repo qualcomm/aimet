@@ -233,16 +233,6 @@ autoclass_content = 'both'
 nbsphinx_allow_errors = True
 nbsphinx_execute = 'never'
 
-docs_root_url = "https://quic.github.io/aimet-pages/releases/latest/"
-
-# Version here refers to the AIMET torch v1/v2 version, not the AIMET release number
-html_context = {
-  'current_version' : "Universal",
-  'versions' : [["Universal", docs_root_url + "user_guide/index.html"],
-                ["PyTorch", docs_root_url + "torch_v2/torch_docs/index.html"]],
-  'display_version_tab': False
-}
-
 autosummary_generate = False
 
 # contains a list of modules to be mocked up which are not available during docs build time

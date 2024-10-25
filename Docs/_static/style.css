@@ -221,37 +221,6 @@ padding: .4045em 1.618em;
   font-size: 14px;
 }
 
-
-/*
- * Version selector color configuration
- */
-.rst-versions {
-    position: sticky;
-    background: var(--aimet-white);
-}
-
-.rst-versions .rst-current-version {
-    text-align: center;
-    background-color: var(--aimet-white);
-    color: black;
-}
-
-.rst-versions .rst-current-version-name {
-    color: var(--aimet-menu-font-active);
-}
-
-.rst-versions .rst-current-version .fa-caret-down {
-    color: black;
-}
-
-.rst-versions .rst-other-versions dd a {
-    color: var(--aimet-menu-font-active)
-}
-
-.rst-versions .rst-other-versions dt {
-    color: black;
-}
-
 /*
  * Highlight color for code segments
  */

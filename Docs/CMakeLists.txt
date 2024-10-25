@@ -52,23 +52,5 @@ add_custom_target(doc
 add_dependencies(doc
     copy_doc_source copy_examples)
 
-# Only build torch v2 documentation if torch is enabled
-if(ENABLE_TORCH)
-    # Separate build for v2 documentation
-    # This prevents v1 documents from appearing in the TOC and search results of the v2 documentation
-    # Specify the config file for the v2 docs as Docs/torch_docs instead of the default source path
-    add_custom_target(doc_v2
-          COMMAND ${CMAKE_COMMAND} -E env
-          "${AIMET_PYTHONPATH}"
-          "SW_VERSION=${SW_VERSION}"
-          sphinx-build -v -T -b html ${CMAKE_BINARY_DIR}/Docs_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/torch_v2 -c ${CMAKE_BINARY_DIR}/Docs_SOURCE/torch_docs)
-
-    add_dependencies(doc_v2
-        copy_doc_source)
-
-    add_dependencies(doc
-        doc_v2)
-endif(ENABLE_TORCH)
-
 add_custom_target(copy_doc_source
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE)
