@@ -41,7 +41,7 @@ import copy
 from collections import OrderedDict
 import contextlib
 import weakref
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TYPE_CHECKING
 import functools
 
 import torch
@@ -52,6 +52,9 @@ from packaging import version  # pylint: disable=wrong-import-order
 from aimet_torch.v2.quantization.base import EncodingBase
 from aimet_torch.v2.quantization.encoding_analyzer import EncodingAnalyzer
 from aimet_torch.utils import deprecated
+
+if TYPE_CHECKING:
+    from aimet_torch.v2.quantization.tensor import QuantizedTensorBase
 
 
 __all__ = ['QuantizerBase']
@@ -71,6 +74,16 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         # initialized after it was instantiated.
         self._initial_parameters = OrderedDict()
         self._allow_overwrite = True
+
+    def forward(self, input: torch.Tensor) -> 'QuantizedTensorBase':
+        """
+        Quantize the input tensor
+
+        Args:
+            input (torch.Tensor): Input tensor to quantize
+        """
+        # Call parent's forward to throw NotImplementedError
+        return super().forward(input)
 
     @abc.abstractmethod
     @contextlib.contextmanager
