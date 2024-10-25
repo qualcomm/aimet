@@ -54,7 +54,7 @@ import torch.utils.data as torch_data
 import aimet_common
 from aimet_common.defs import QuantScheme
 from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.v1.quantsim import QuantizationSimModel
 
 # imports for data pipelines

@@ -54,7 +54,7 @@ from torchvision import models
 
 # imports for AIMET
 from aimet_common.defs import QuantScheme, EvalFunction
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.cross_layer_equalization import equalize_model
 from aimet_torch.v1.quantsim import QuantizationSimModel
 

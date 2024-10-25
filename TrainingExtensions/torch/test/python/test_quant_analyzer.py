@@ -43,7 +43,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from aimet_common.defs import QuantScheme
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from models.test_models import TinyModel
 from aimet_torch.v1.tensor_quantizer import TensorQuantizer
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper

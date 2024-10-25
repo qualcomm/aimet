@@ -52,7 +52,7 @@ from aimet_common.utils import AimetLogger
 from aimet_common.cross_layer_equalization import ClsLayerType, ClsSetInfo, ClsImpl, HbfImpl
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.utils import (get_device, get_ordered_list_of_modules, create_rand_tensors_given_shapes,
                                place_model)
 

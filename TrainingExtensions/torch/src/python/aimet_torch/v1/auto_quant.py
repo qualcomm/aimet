@@ -63,7 +63,7 @@ from tqdm import tqdm
 from aimet_torch import utils
 from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters
 from aimet_torch.cross_layer_equalization import equalize_model
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.utils import get_all_quantizers, in_eval_mode
 from aimet_torch.onnx_utils import OnnxExportApiArgs

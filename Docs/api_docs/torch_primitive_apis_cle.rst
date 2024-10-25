@@ -36,7 +36,7 @@ Higher Level APIs for Cross Layer Equalization
 
 **API for Batch Norm Folding**
 
-.. autofunction:: aimet_torch.batch_norm_fold.fold_all_batch_norms
+.. autofunction:: aimet_torch.v1.batch_norm_fold.fold_all_batch_norms
 
 |
 
@@ -79,7 +79,7 @@ Lower Level APIs for Cross Layer Equalization
 
 **API for Batch Norm Folding**
 
-.. autofunction:: aimet_torch.batch_norm_fold.fold_given_batch_norms
+.. autofunction:: aimet_torch.v1.batch_norm_fold.fold_given_batch_norms
 
 |
 

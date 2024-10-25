@@ -50,7 +50,7 @@ from aimet_common.graph_pattern_matcher import PatternType
 from aimet_common.utils import AimetLogger
 
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.batch_norm_fold import find_standalone_batchnorm_ops
+from aimet_torch.v1.batch_norm_fold import find_standalone_batchnorm_ops
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 

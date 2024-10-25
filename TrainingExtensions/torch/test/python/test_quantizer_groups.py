@@ -40,7 +40,7 @@ import torch
 
 from aimet_common.defs import QuantizationDataType
 from aimet_common.amp.quantizer_groups import reformat_supported_kernels
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.examples.test_models import SingleResidual, ConcatModel
 from aimet_torch.quantsim import QuantizationSimModel
 from aimet_torch.amp.quantizer_groups import find_quantizer_group, find_op_groups, find_supported_candidates, \

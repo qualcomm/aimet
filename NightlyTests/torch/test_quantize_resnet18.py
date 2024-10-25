@@ -57,7 +57,7 @@ from aimet_torch.utils import IterFirstX
 from models.supervised_classification_pipeline import create_stand_alone_supervised_classification_evaluator,\
     create_supervised_classification_trainer
 from aimet_torch.bn_reestimation import reestimate_bn_stats
-from aimet_torch.batch_norm_fold import fold_all_batch_norms_to_scale
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms_to_scale
 from aimet_torch.model_preparer import prepare_model
 
 two_class_image_dir = './data/tiny-imagenet-2'

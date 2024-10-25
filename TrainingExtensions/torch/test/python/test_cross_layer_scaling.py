@@ -45,7 +45,7 @@ from torchvision import models
 
 from aimet_common.utils import AimetLogger
 from aimet_torch import batch_norm_fold
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 import aimet_torch.cross_layer_equalization as cle
 from aimet_torch.cross_layer_equalization import CrossLayerScaling, HighBiasFold, equalize_model,\
     ClsSetInfo, GraphSearchUtils

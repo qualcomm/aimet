@@ -235,7 +235,7 @@ def call_bn_reestimation_apis(quant_sim, use_cuda):
 
     # Call fold_all_batch_norms_to_scale
 
-    from aimet_torch.batch_norm_fold import fold_all_batch_norms_to_scale
+    from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms_to_scale
 
     fold_all_batch_norms_to_scale(quant_sim)
 

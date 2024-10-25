@@ -24,7 +24,7 @@ Top-level APIs
 
 **API for BatchNorm fold to scale**
 
-.. autofunction:: aimet_torch.batch_norm_fold.fold_all_batch_norms_to_scale
+.. autofunction:: aimet_torch.v1.batch_norm_fold.fold_all_batch_norms_to_scale
 
 Code Example - BN-Reestimation
 ==============================
