@@ -83,6 +83,8 @@ libpymo_functions = [
     'scaleDepthWiseSeparableLayer',
     'fold',
     'updateBias',
+    'getScaleFactor',
+    'getRescaledOutputAndBias'
 ]
 
 
