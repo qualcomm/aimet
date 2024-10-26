@@ -456,9 +456,11 @@ def _update_standalone_batchnorm_ops(model: ModelProto):
             init_b = model.graph.initializer[idx_b]
             init_rm = model.graph.initializer[idx_rm]
             init_rv = model.graph.initializer[idx_rv]
+            attr = get_node_attribute(node, "epsilon")
+            if attr is None:
+                attr = onnx.helper.make_attribute("epsilon", 1e-5) # Default epsilon value
+                node.attribute.append(attr)
 
-            attr = node.attribute[0]
-            assert attr.name == 'epsilon'
             epsilon = attr.f
             tensor_w = numpy_helper.to_array(init_w)
             tensor_b = numpy_helper.to_array(init_b)

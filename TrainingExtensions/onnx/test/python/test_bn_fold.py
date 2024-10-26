@@ -45,9 +45,11 @@ import torchvision
 import pytest
 import torch
 
-from aimet_onnx.batch_norm_fold import _find_conv_bn_pairs, find_all_batch_norms_to_fold, fold_all_batch_norms_to_weight
+from aimet_onnx.batch_norm_fold import _find_conv_bn_pairs, find_all_batch_norms_to_fold, fold_all_batch_norms_to_weight, _update_standalone_batchnorm_ops
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
+from aimet_onnx.utils import make_dummy_input
 
+from models import models_for_tests
 from models.models_for_tests import BNAfterConv, BNBeforeConv, BNAfterDynamicMatMul, BNAfterConvTranspose, BNAfterConv1d, \
                         BNAfterLinear, BNBeforeLinear, BNBeforeFlattenLinear, BNBeforeConv1d, BNBeforeConvTranspose, \
                         MyModel, _convert_to_onnx_no_fold, _convert_to_onnx, initialize_bn_params,  \
@@ -516,3 +518,19 @@ class TestBatchNormFold:
 
         assert len(model.graph().node) == layers_orig
         assert np.allclose(baseline_output[0], folded_output[0], rtol=1e-2, atol=1e-6)
+
+    def test_single_batchnorm_layer(self):
+        np.random.seed(0)
+        model = models_for_tests.batchnorm_model()
+        dummy_input = make_dummy_input(model)
+        output = rt.InferenceSession(model.SerializeToString(), providers=providers).run(None, dummy_input)[0]
+        _update_standalone_batchnorm_ops(model)
+        output_after_update = rt.InferenceSession(model.SerializeToString(), providers=providers).run(None, dummy_input)[0]
+        assert np.allclose(output, output_after_update, atol=1e-4)
+        for tensor in model.graph.initializer:
+            if tensor.name == "batchnorm.input_var":
+                np_tensor = onnx.numpy_helper.to_array(tensor)
+                assert np.all(np_tensor == np.ones_like(np_tensor))
+            if tensor.name == "batchnorm.input_mean":
+                np_tensor = onnx.numpy_helper.to_array(tensor)
+                assert np.all(np_tensor == np.zeros_like(np_tensor))
