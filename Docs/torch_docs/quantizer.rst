@@ -292,7 +292,7 @@ Blockwise quantization can be also easily done by creating the quantizer with th
   .. code-block:: none
 
 
-    QuantizeDequantize(shape=(1, 3, 4, 1), qmin=0, qmax=255, symmetric=False)
+    QuantizeDequantize(shape=(1, 3, 4, 1), block_size=(-1, 1, 8, 32), qmin=0, qmax=255, symmetric=False)
       * scale: tensor([[[[0.0039],
                          [0.0078],
                          [0.0117],

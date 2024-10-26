@@ -264,7 +264,13 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):
         self.set_range(min_, max_)
 
     def extra_repr(self) -> str:
-        return f'shape={self.shape}, qmin={self.qmin}, qmax={self.qmax}, symmetric={self.symmetric}'
+        extra_repr = f'shape={self.shape}'
+
+        if self.block_size is not None:
+            extra_repr += f", block_size={self.block_size}"
+
+        extra_repr += f', qmin={self.qmin}, qmax={self.qmax}, symmetric={self.symmetric}'
+        return extra_repr
 
     @property
     def symmetric(self) -> bool:
