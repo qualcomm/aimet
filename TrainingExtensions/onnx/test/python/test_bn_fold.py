@@ -534,3 +534,19 @@ class TestBatchNormFold:
             if tensor.name == "batchnorm.input_mean":
                 np_tensor = onnx.numpy_helper.to_array(tensor)
                 assert np.all(np_tensor == np.zeros_like(np_tensor))
+
+    def test_single_bn_layer_with_constants(self):
+        np.random.seed(0)
+        model = models_for_tests.batchnorm_model_constants()
+        dummy_input = make_dummy_input(model)
+        output = rt.InferenceSession(model.SerializeToString(), providers=providers).run(None, dummy_input)[0]
+        _update_standalone_batchnorm_ops(model)
+        output_after_update = rt.InferenceSession(model.SerializeToString(), providers=providers).run(None, dummy_input)[0]
+        assert np.allclose(output, output_after_update, atol=1e-4)
+        for node in model.graph.node:
+            if node.name == "input_var":
+                np_tensor = onnx.numpy_helper.to_array(node.attribute[0].t)
+                assert np.all(np_tensor == np.ones_like(np_tensor))
+            if node.name == "input_mean":
+                np_tensor = onnx.numpy_helper.to_array(node.attribute[0].t)
+                assert np.all(np_tensor == np.zeros_like(np_tensor))

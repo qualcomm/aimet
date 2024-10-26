@@ -2515,3 +2515,31 @@ def batchnorm_model():
     onnx.checker.check_model(model, True)
     return model
 
+def batchnorm_model_constants():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name='BatchnormModel',
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            initializer=[],
+            nodes=[
+                helper.make_node('Constant', inputs=[], outputs=["batchnorm.weight"],
+                                 value=numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32')), name='weight'),
+                helper.make_node('Constant', inputs=[], outputs=["batchnorm.bias"],
+                                 value=numpy_helper.from_array(np.random.randn(10, ).astype('float32')), name='bias'),
+                helper.make_node('Constant', inputs=[], outputs=["batchnorm.input_mean"],
+                                 value=numpy_helper.from_array(np.random.randn(10, ).astype('float32')), name="input_mean"),
+                helper.make_node('Constant', inputs=[], outputs=["batchnorm.input_var"],
+                                 value=numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32')), name='input_var'),
+                helper.make_node(
+                    'BatchNormalization',
+                    inputs=['model_input', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm.input_mean', 'batchnorm.input_var'],
+                    outputs=['model_output'],
+                    name='batchnorm'
+                ),
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model
+

@@ -442,24 +442,20 @@ def _update_standalone_batchnorm_ops(model: ModelProto):
     Update weight and bias of standalone batchnorm ops in the model.
     :param model: onnx Model for which batchnorm parameters are to be updated.
     """
-    initalizer_dict = {initializer.name: idx for idx, initializer in enumerate(model.graph.initializer)}
 
     for node in model.graph.node:
         if node.op_type in BatchNormType:
 
             # get parameter names and indices
             weight_name, bias_name, running_mean_name, running_var_name = node.input[1:]
-            idx_w, idx_b = initalizer_dict[weight_name], initalizer_dict[bias_name]
-            idx_rm, idx_rv = initalizer_dict[running_mean_name], initalizer_dict[running_var_name]
+            init_w, init_b, init_rm, init_rv = [ParamUtils.get_param(model, node, idx) for idx in range(1, 5)]
 
-            init_w = model.graph.initializer[idx_w]
-            init_b = model.graph.initializer[idx_b]
-            init_rm = model.graph.initializer[idx_rm]
-            init_rv = model.graph.initializer[idx_rv]
-            attr = get_node_attribute(node, "epsilon")
-            if attr is None:
+            attr = [item for item in node.attribute if item.name == "epsilon"]
+            if not attr:
                 attr = onnx.helper.make_attribute("epsilon", 1e-5) # Default epsilon value
                 node.attribute.append(attr)
+            else:
+                attr = attr[0]
 
             epsilon = attr.f
             tensor_w = numpy_helper.to_array(init_w)
@@ -475,13 +471,13 @@ def _update_standalone_batchnorm_ops(model: ModelProto):
             tensor_rv = np.ones(tensor_w.shape, tensor_w.dtype)
             attr.f = 0.
 
-            init_w = numpy_helper.from_array(tensor_w, weight_name)
-            init_b = numpy_helper.from_array(tensor_b, bias_name)
-            init_rm = numpy_helper.from_array(tensor_rm, running_mean_name)
-            init_rv = numpy_helper.from_array(tensor_rv, running_var_name)
+            init_w_ = numpy_helper.from_array(tensor_w, weight_name)
+            init_b_ = numpy_helper.from_array(tensor_b, bias_name)
+            init_rm_ = numpy_helper.from_array(tensor_rm, running_mean_name)
+            init_rv_ = numpy_helper.from_array(tensor_rv, running_var_name)
 
             # update initializers
-            model.graph.initializer[idx_w].CopyFrom(init_w)
-            model.graph.initializer[idx_b].CopyFrom(init_b)
-            model.graph.initializer[idx_rm].CopyFrom(init_rm)
-            model.graph.initializer[idx_rv].CopyFrom(init_rv)
+            init_w.CopyFrom(init_w_)
+            init_b.CopyFrom(init_b_)
+            init_rm.CopyFrom(init_rm_)
+            init_rv.CopyFrom(init_rv_)
