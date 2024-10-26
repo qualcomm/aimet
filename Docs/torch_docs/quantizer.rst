@@ -321,10 +321,10 @@ Blockwise quantization can be also easily done by creating the quantizer with th
 Note that:
 
 * The shape :math:`(1, C, 4, 1)` of scale and offset is equal to that of the quantizer
-* In runtime, scale and offset will be (theoretically but not literally) tiled by the factor of block size :math:`(-1, 1, B, 32)`
-  to construct the tiled scale and offset of shape :math:`(-1, C \times 1, 4 \times B, 1 \times 32)`,
-  which is equal to the shape of the input :math:`(-1, 3, 32, 32)`
-* As a result, for every channel :math:`c \in [0, C)`, each block :math:`b \in [0, B)` is in the quantization grid of :math:`[0, 255]`, associated with :math:`scale_{:, c, b, :}` respectively
+* For every channel :math:`c \in [0, C)`, each block :math:`b \in [0, B)` is in the quantization grid of :math:`[0, 255]`, associated with :math:`scale_{:, c, b, :}` respectively
+* In theory, blockwise quantization is equivalent to expanding the scale and offset by the factor of block size :math:`(-1, 1, B, 32)`
+  to construct the expanded scale and offset of shape :math:`(-1, C \times 1, 4 \times B, 1 \times 32)`, which is equal to the input shape :math:`(-1, 3, 32, 32)`.
+  **If the expanded scale and offset does not match the input shape, the quantizer will throw shape mismatch error in runtime.**
 
 .. code-block:: Python
 
