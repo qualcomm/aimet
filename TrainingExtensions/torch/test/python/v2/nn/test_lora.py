@@ -50,8 +50,8 @@ from aimet_torch.v2.experimental import lora as qlora
 
 class TestQuantizedLinear:
     def test_quantsim_construction(self):
-        model = lora.Linear(nn.Linear(10, 10), adapter_name='adapter_0', r=1).cuda()
-        dummy_input = torch.randn(10, 10, device="cuda:0")
+        model = lora.Linear(nn.Linear(10, 10), adapter_name='adapter_0', r=1)
+        dummy_input = torch.randn(10, 10)
         sim = QuantizationSimModel(model, dummy_input)
 
         """
@@ -97,8 +97,8 @@ class TestQuantizedLinear:
         Then: The new added adapters should be aimet.nn.QuantizedLinear with
               param and output quantizers instantiated as necessary
         """
-        model = lora.Linear(nn.Linear(10, 10), adapter_name='adapter_0', r=1).cuda()
-        dummy_input = torch.randn(10, 10, device="cuda:0")
+        model = lora.Linear(nn.Linear(10, 10), adapter_name='adapter_0', r=1)
+        dummy_input = torch.randn(10, 10)
         sim = QuantizationSimModel(model, dummy_input)
 
         sim.model.update_layer("new_adapter", ...)
