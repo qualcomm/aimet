@@ -454,20 +454,16 @@ def find_supported_candidates(quantizer_groups: List[QuantizerGroup],
         supported_kernel_types = set()
         for supported_kernel_op in quantizer_group.supported_kernel_ops:
             module = module_name_to_module_dict[supported_kernel_op]._module_to_wrap
-            try:
-                backend_type = aimet_op_to_backend_op_name_map[module.__class__]
-            except KeyError:
-                backend_type = aimet_op_to_backend_op_name_map.get(module.__class__.__name__)
+            backend_type = aimet_op_to_backend_op_name_map.get(type(module))
 
             if backend_type in supported_kernels:
                 supported_kernel_types.add(backend_type)
             else:
-                onnx_types = onnx_utils.map_torch_types_to_onnx.get(
-                    type(module_name_to_module_dict[supported_kernel_op]._module_to_wrap), [])
+                onnx_types = onnx_utils.map_torch_types_to_onnx.get(type(module), [])
 
                 if not onnx_types:
                     logger.warning("No mapping found for %s in the torch to onnx op type mapping dictionary.",
-                                   str(type(module_name_to_module_dict[supported_kernel_op]._module_to_wrap)))
+                                   type(module))
 
                 supported_kernel_types.update(onnx_types)
 
