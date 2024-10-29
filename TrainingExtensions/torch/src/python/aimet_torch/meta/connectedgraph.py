@@ -719,27 +719,36 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         input_structure = {}
         output_structure = {}
         for name, op in self.get_all_ops().items():
+            # If there is an unpack op that takes in a model input, then "flatten" that op to find all downstream
+            # consumers
             if op.type in ['TupleUnpack', 'ListUnpack']:
                 if len(op.inputs) == 1 and not op.inputs[0].producer:
                     input_structure[op.inputs[0].name] = flatten_unpack_consumers(op)
+            # If there is a pack op that produces a model outputs, then "flatten" that op to find all the upstream
+            # nodes that produced the components
             if op.type in ['TupleConstruct', 'ListConstruct']:
                 if len(op.output_products) == 1 and not op.output_products[0].consumers:
                     output_structure[name] = flatten_pack_producers(op)
 
         for name, product in self.get_all_products().items():
+            # If there is a model input that has not already been captured, then store its consumer ops
             if product.is_model_input and name not in input_structure:
                 input_structure[name] = list(filter(
                     lambda consumer: consumer and consumer.type not in ['TupleConstruct', 'ListConstruct'],
                     product.consumers))
                 input_structure[name] = input_structure[name] if len(input_structure[name]) > 0 else [None]
-            if not product.consumers and product.producer.name not in output_structure and len(output_structure) == 0:
+            # If there is a model outputs that has not already been captured, then store its producer ops
+            if not product.consumers and product.producer.name not in output_structure:
                 output_structure[product.producer.name] = product.producer
 
+        # graph should only have one model output (could be a tuple or single item). If a single model output cannot
+        # be isolated then we do not know which one is correct.
         if len(output_structure) == 1:
             self._output_structure = next(iter(output_structure.values()))
         else:
             self._output_structure = None
 
+        # Remove inputs called "input_i" and populate their contents into a list based on their index
         self._input_structure = [input_structure.pop(f'input_{i}') for i in range(len(input_structure))]
         self._input_structure = self._input_structure[0] if len(self._input_structure) == 1 else self._input_structure
         if len(input_structure) != 0:
