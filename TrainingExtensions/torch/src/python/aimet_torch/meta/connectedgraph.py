@@ -291,6 +291,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         module_tensor_shapes_map = ConnectedGraph._generate_module_tensor_shapes_lookup_table(model, model_input)
         trace = torch.jit.trace(model, model_input, **jit_trace_args)
         self._parse_top_level_trace(trace, model)
+        self._recover_input_output_structure()
         self._optimize_connected_graph()
         self._transform_ops_and_products_to_connected_graph_convention()
         self._fill_op_and_product_properties(module_tensor_shapes_map)
@@ -694,6 +695,63 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         if op_module:
             op.model_module = PytorchModelModule(op_module)
         return op
+
+    def _recover_input_output_structure(self):
+        """
+        pass through constructed graph to recover structure of input and output tensors. Creates a map of each input
+        tensor to its first consumer op, and each output tensor to its last producer op.
+        """
+
+        def flatten_unpack_consumers(construct_op: Op):
+            collapsed_outputs = []
+            for product in construct_op.output_products:
+                consumers = [flatten_unpack_consumers(consumer) \
+                                 if consumer and consumer.type in ['TupleUnpack', 'ListUnpack'] \
+                                 else consumer for consumer in product.consumers]
+                collapsed_outputs.append(consumers if len(consumers) > 0 else None)
+            return collapsed_outputs
+
+        def flatten_pack_producers(deconstruct_op: Op):
+            return [flatten_pack_producers(product.producer) \
+                        if product.producer and product.producer.type in ['TupleConstruct', 'ListConstruct'] \
+                        else product.producer for product in deconstruct_op.inputs]
+
+        input_structure = {}
+        output_structure = {}
+        for name, op in self.get_all_ops().items():
+            if op.type in ['TupleUnpack', 'ListUnpack']:
+                if len(op.inputs) == 1 and not op.inputs[0].producer:
+                    input_structure[op.inputs[0].name] = flatten_unpack_consumers(op)
+            if op.type in ['TupleConstruct', 'ListConstruct']:
+                if len(op.output_products) == 1 and not op.output_products[0].consumers:
+                    output_structure[name] = flatten_pack_producers(op)
+
+        for name, product in self.get_all_products().items():
+            if product.is_model_input and name not in input_structure:
+                input_structure[name] = list(filter(
+                    lambda consumer: consumer and consumer.type not in ['TupleConstruct', 'ListConstruct'],
+                    product.consumers))
+                input_structure[name] = input_structure[name] if len(input_structure[name]) > 0 else [None]
+            if not product.consumers and product.producer.name not in output_structure and len(output_structure) == 0:
+                output_structure[product.producer.name] = product.producer
+
+        if len(output_structure) == 1:
+            self._output_structure = next(iter(output_structure.values()))
+        else:
+            self._output_structure = None
+
+        self._input_structure = [input_structure.pop(f'input_{i}') for i in range(len(input_structure))]
+        self._input_structure = self._input_structure[0] if len(self._input_structure) == 1 else self._input_structure
+        if len(input_structure) != 0:
+            self._input_structure = None
+
+    @property
+    def input_structure(self):
+        return self._input_structure
+
+    @property
+    def output_structure(self):
+        return self._output_structure
 
     def _optimize_connected_graph(self):
         """

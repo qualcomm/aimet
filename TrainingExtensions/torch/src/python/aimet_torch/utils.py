@@ -675,7 +675,10 @@ def create_rand_tensors_given_shapes(input_shape: Union[Tuple, List[Tuple]], dev
 
     rand_tensors = []
     for shape in input_shapes:
-        rand_tensors.append(torch.rand(shape).to(device))
+        if isinstance(shape, List):
+            rand_tensors.append(create_rand_tensors_given_shapes(shape, device))
+        else:
+            rand_tensors.append(torch.rand(shape).to(device))
 
     return rand_tensors
 
