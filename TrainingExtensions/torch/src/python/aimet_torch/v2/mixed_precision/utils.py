@@ -116,15 +116,12 @@ def _has_no_quantizers(module: BaseQuantizationMixin) -> bool:
 
 def _is_qtzr_higher_precision_than_candidate(qtzr: BaseQuantizationMixin, candidate: Precision) -> bool:
     """ Helper function to determine if qtzr is higher precision than candidate """
-    if isinstance(qtzr, FloatQuantizeDequantize):
-        generated_candidate = Precision(QuantizationDataType.float, qtzr.mantissa_bits + qtzr.exponent_bits)
-    else:
-        generated_candidate = Precision(QuantizationDataType.int, qtzr.bitwidth)
-
+    qtzr_dtype = QuantizationDataType.float if isinstance(qtzr, FloatQuantizeDequantize) else QuantizationDataType.int
+    generated_candidate = Precision(qtzr_dtype, qtzr.bitwidth)
     return generated_candidate > candidate
 
 # getattr replacement that can handle dotted strings
-def _rgetattr(obj, attr, *args):
+def _rgetattr(obj, attr):
     return functools.reduce(getattr, [obj] + attr.split('.'))
 
 # setattr replacement that can handle dotted strings
@@ -193,7 +190,8 @@ class MpHandler:
                 if isinstance(activation, List) else self._get_candidate_from_user_dtype(activation)
 
             # Expectation is that input_candidates and output_candidates are either None or a list with the same number
-            # of elements as input/output quantizers
+            # of elements as input/output quantizers (note that each of these list elements could either be a candidate
+            # object or None)
             if not isinstance(input_candidates, List):
                 input_candidates = [input_candidates] * len(torch_module.input_quantizers)
             if not isinstance(output_candidates, List):
@@ -452,6 +450,8 @@ class MpHandler:
 
                 parent_module = self._get_parent_module_at_input_idx(module, in_idx)
                 if parent_module is None:
+                    logger.warning(f"Warning: unable to propagate request at {module} upward. "
+                                   f"Parent module could not be found.")
                     continue
 
                 if any(out_qtzr is not None for out_qtzr in parent_module.output_quantizers):
