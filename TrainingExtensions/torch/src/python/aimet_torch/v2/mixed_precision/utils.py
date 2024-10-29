@@ -454,6 +454,11 @@ class MpHandler:
                                    f"Parent module could not be found.")
                     continue
 
+                # TODO: remove this once ops with multiple outputs are supported
+                if len(parent_module.output_quantizers) > 1:
+                    raise RuntimeError(f"Unable to propagate request at {module} upward. "
+                                       f"Parent module has more than one output quantizer.")
+
                 if any(out_qtzr is not None for out_qtzr in parent_module.output_quantizers):
                     # If the parent layer has output quantizers, then we only need to propagate the request until there
                     self._update_request_at_module(mp_requests,
