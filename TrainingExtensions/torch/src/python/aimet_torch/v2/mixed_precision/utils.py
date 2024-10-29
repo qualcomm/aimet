@@ -106,13 +106,13 @@ class UserRequest:
     param: Optional[Dict[str, SupportedDType]] = None
 
 
-def _has_no_quantizers(module: BaseQuantizationMixin) -> bool:
+def _has_no_quantizers(module: BaseQuantizationMixin, ignore_params: bool = False) -> bool:
     """
     Helper function to check if a module has any quantizers enabled
     """
     return (all(inp_qtzr is None for inp_qtzr in module.input_quantizers) and
             all(out_qtzr is None for out_qtzr in module.output_quantizers) and
-            all(param_qtzr is None for param_qtzr in module.param_quantizers.values()))
+            (ignore_params or all(param_qtzr is None for param_qtzr in module.param_quantizers.values())))
 
 def _is_qtzr_higher_precision_than_candidate(qtzr: BaseQuantizationMixin, candidate: Precision) -> bool:
     """ Helper function to determine if qtzr is higher precision than candidate """
@@ -476,7 +476,7 @@ class MpHandler:
 
                 # If the parent layer has no input or output quantizers, then propagate this request further upstream
                 # This should only happen if the parent layer is a data movement op
-                if _has_no_quantizers(parent_module):
+                if _has_no_quantizers(parent_module, ignore_params=True):
                     _propagate_request_upstream_helper(parent_module)
 
         for module in self._topographically_ordered_modules():
