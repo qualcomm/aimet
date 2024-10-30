@@ -103,7 +103,7 @@ setup(
     license="NOTICE.txt",
     long_description=(PACKAGING_DIR / "README.txt").read_text(),
     name="AimetTorch",
-    package_data={"": ["*.json", "*.html"], },
+    package_data={"": ["*.json", "*.html", "*.js", "*.xml"], },
     package_dir={"": ".", },
     packages=find_namespace_packages(where=".", exclude=["build"]),
     platforms="x86",
