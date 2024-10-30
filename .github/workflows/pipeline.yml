@@ -112,6 +112,14 @@ jobs:
           MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TORCH_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
           set -x
           echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Exclude CUDA libraries from dependencies for manylinux"
+        if: matrix.VER_CUDA
+        run: |
+          . /etc/profile.d/conda.sh
+          CUBLAS_DIR=$(python3 -c 'import sysconfig ; from pathlib import Path; print(Path(sysconfig.get_config_var("prefix"), "lib"))')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
       - name: "Exclude Tensorflow libraries from dependencies for manylinux"
         if: matrix.VER_TENSORFLOW
         run: |
