@@ -21,9 +21,6 @@ dependencies:
   - python-build
   - pip
 {% if CU != 'cpu' %}
-  - cuda-gdb
-  - cuda-nvcc
-  - cuda-nvtx
-  - cuda-libraries-dev
+  - cuda-toolkit
   - cudnn
 {% endif %}

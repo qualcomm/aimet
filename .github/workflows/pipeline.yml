@@ -26,7 +26,7 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":""       },
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":"11.8.0" }
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":"12.1.1" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
       - name: Tensorflow variants
@@ -40,7 +40,7 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":""       },
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":"11.7.1" }
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":"11.8.0" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
 
