@@ -738,7 +738,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                     product.consumers))
                 input_structure[name] = input_structure[name] if len(input_structure[name]) > 0 else [None]
             # If there is a model outputs that has not already been captured, then store its producer ops
-            if not product.consumers and product.producer.name not in output_structure:
+            elif not product.consumers and product.producer.name not in output_structure:
                 output_structure[product.producer.name] = product.producer
 
         # graph should only have one model output (could be a tuple or single item). If a single model output cannot

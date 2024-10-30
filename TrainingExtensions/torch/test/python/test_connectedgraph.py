@@ -655,6 +655,30 @@ class TestConnectedGraph(unittest.TestCase):
         self.assertEqual(model.conv, conn_graph.output_structure[0].get_module())
         self.assertEqual(None, conn_graph.output_structure[1])
 
+    def test_graph_input_output_with_conditional(self):
+        class LinearConditionalModel(torch.nn.Module):
+            def __init__(self):
+                super(LinearConditionalModel, self).__init__()
+                self.l1 = torch.nn.Linear(in_features=128, out_features=128)
+                self.l2 = torch.nn.Linear(in_features=128, out_features=128)
+                self.l3 = torch.nn.Linear(in_features=128, out_features=128)
+
+            def forward(self, x, y):
+                if y:
+                    return self.l1(x)
+                else:
+                    return self.l2(x) + self.l3(x)
+
+        model = LinearConditionalModel()
+        model.eval()
+
+        dummy_input = (torch.randn(128, 128), torch.tensor(data=True, dtype=torch.bool))
+        conn_graph = ConnectedGraph(model, dummy_input)
+
+        self.assertEqual(model.l1, conn_graph.input_structure[0][0].get_module())
+        self.assertEqual(model.l1, conn_graph.output_structure.get_module())
+
+
 class ModelWithMultipleActivations(nn.Module):
     def __init__(self):
         super(ModelWithMultipleActivations, self).__init__()
