@@ -339,13 +339,18 @@ class MpHandler:
                 output_tensor_name = cg_op.output.name
                 output_module = self._get_module_from_cg_op(output_op)
 
-                # this means that the output is being consumed by an implicit op or a data movement op
+                # this means that the output is being consumed by an implicit op (if output_module is None) OR
+                # an op that has no quantizers because it is a data movement or is in a supergroup
                 if output_module is None or _has_no_quantizers(output_module):
                     output_ops.extend(_get_child_modules_from_cg_op(output_op))
                 else:
                     for idx, input_tensor in enumerate(output_op.inputs):
                         if input_tensor.name == output_tensor_name:
                             output_ops.append((output_module, idx))
+                            break
+                    else:
+                        # condition is triggered if break statement in loop is not encountered
+                        assert False, "Could not match inputs and outputs at adjacent ops. Indicates CG is broken."
             return output_ops
 
         cg_op = self._get_cg_op_from_module(module)
