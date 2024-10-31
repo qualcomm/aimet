@@ -104,6 +104,12 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         """
         return self.get_encodings()
 
+    def set_encodings(self, encodings: EncodingBase):
+        """
+        Set the quantizer's encodings
+        """
+        raise NotImplementedError
+
     def register_quantization_parameter(self, name: str, param: nn.Parameter):
         """
         Register quantization parameter.

@@ -53,6 +53,7 @@ import aimet_torch.v1.quantsim_straight_through_grad as grad_fn
 from aimet_torch.v1.quantsim_straight_through_grad import IntermediateResult
 from aimet_torch.fp_quantization import fp8_quantizer, INIT_MAP
 from aimet_torch.v1.tensor_factory_utils import constant_like
+from aimet_torch.v2.quantization.base import EncodingBase
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -124,6 +125,18 @@ class TensorQuantizer:
     def encoding_min_max_fixed_vals(self, min_max_vals: Optional[Tuple[float, float]]):
         """ self._encoding_min_max_fixed_vals setter """
 
+    def get_encodings(self) -> Optional[EncodingBase]:
+        """
+        Return the quantizer's encodings as an EncodingBase object
+        """
+        raise NotImplementedError
+
+    def set_encodings(self, encodings: EncodingBase):
+        """
+        Set the quantizer's encodings
+        """
+        raise NotImplementedError
+
 
 class PickableState:
     """
@@ -140,7 +153,7 @@ class PickableState:
                 self.encodings.append((enc.min, enc.max, enc.delta, enc.offset, enc.bw))
 
 
-class StaticGridTensorQuantizer(TensorQuantizer):
+class StaticGridTensorQuantizer(TensorQuantizer): # pylint: disable=abstract-method
     """
     Simulates quantization for the given tensor post training.
     """
@@ -400,7 +413,7 @@ class StaticGridTensorQuantizer(TensorQuantizer):
             self.fp8_maxval = 0.9 * self.fp8_maxval + 0.1 * maxval
 
 
-class StaticGridPerTensorQuantizer(StaticGridTensorQuantizer):
+class StaticGridPerTensorQuantizer(StaticGridTensorQuantizer): # pylint: disable=abstract-method
     """
     Simulates quantization for the given tensor using a per-tensor scale/offset
     """
@@ -480,7 +493,7 @@ class StaticGridPerTensorQuantizer(StaticGridTensorQuantizer):
                     op.updateStats(tensor, tensor.is_cuda)
 
 
-class StaticGridPerChannelQuantizer(StaticGridTensorQuantizer):
+class StaticGridPerChannelQuantizer(StaticGridTensorQuantizer): # pylint: disable=abstract-method
     """
     Simulates quantization for the given tensor using a per-channel scale/offset
     """
@@ -570,7 +583,7 @@ class StaticGridPerChannelQuantizer(StaticGridTensorQuantizer):
                         op.updateStats(tensor_slice, tensor.is_cuda)
 
 
-class LearnedGridTensorQuantizer(TensorQuantizer):
+class LearnedGridTensorQuantizer(TensorQuantizer): # pylint: disable=abstract-method
     """
     Simulates quantization for a given tensor in the model, such that the scale/offset encodings are
     initialized and then "learnt" during training

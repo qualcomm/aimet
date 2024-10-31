@@ -78,6 +78,7 @@ from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
+from aimet_torch.v2.quantization.base.encoding import EncodingBase
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -129,11 +130,26 @@ class QuantParams:
         self.config_file = config_file
 
 
+class QuantizerProtocol(Protocol):
+    def get_encodings(self) -> Optional[EncodingBase]:
+        """
+        Return the quantizer's encodings as an EncodingBase object
+        """
+
+    def set_encodings(self, encoding: EncodingBase):
+        """
+        Set the quantizer's encodings
+        """
+
+
 @runtime_checkable
 class QuantizedModuleProtocol(Protocol):
     """
     Defines the minimum interface requirements for exporting encodings from a module.
     """
+    input_quantizers: List[QuantizerProtocol]
+    output_quantizers: List[QuantizerProtocol]
+    param_quantizers: OrderedDict[str, QuantizerProtocol]
 
     def export_input_encodings(self) -> List[List[Dict]]:
         """
