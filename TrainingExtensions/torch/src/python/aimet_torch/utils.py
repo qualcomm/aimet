@@ -663,8 +663,10 @@ def replace_modules_with_instances_of_new_type(model: torch.nn.Module, modules_t
 def create_rand_tensors_given_shapes(input_shape: Union[Tuple, List[Tuple]], device: torch.device) \
         -> List[torch.Tensor]:
     """
-    Given shapes of some tensors, create one or more random tensors and return them as a list of tensors
-    :param input_shape: Shapes of tensors to create
+    Given shapes of some tensors, create one or more random tensors and return them as a list of tensors. Note that
+    tensor shapes must expressed as Tuples. A collection of tensor shapes may be represented as List or nested List of
+    tuples.
+    :param input_shape: Shapes of tensors to create (expressed as a Tuple, a List of Tuples, or a nested List of Tuples)
     :param device: Device to create tensors on
     :return: Created list of tensors
     """

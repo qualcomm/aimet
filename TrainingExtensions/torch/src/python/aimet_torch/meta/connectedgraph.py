@@ -746,12 +746,14 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         if len(output_structure) == 1:
             self._output_structure = next(iter(output_structure.values()))
         else:
+            logger.warning("Unable to isolate model outputs.")
             self._output_structure = None
 
         # Remove inputs called "input_i" and populate their contents into a list based on their index
         self._input_structure = [input_structure.pop(f'input_{i}') for i in range(len(input_structure))]
         self._input_structure = self._input_structure[0] if len(self._input_structure) == 1 else self._input_structure
         if len(input_structure) != 0:
+            logger.warning("Unable to isolate model inputs.")
             self._input_structure = None
 
     @property
