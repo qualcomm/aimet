@@ -47,7 +47,7 @@ from ..true_quant import (
     QuantizationMixin,
     _DispatchMixin,
     _quantize_if_applicable,
-    _quantize_dequantize_if_applicable,
+    _quantize_dequantize_if_applicable
 )
 
 
@@ -358,16 +358,16 @@ class QuantizedNeg(_DispatchMixin, QuantizationMixin, Neg):
 #     _builtin_torch_fn = torch.argmax
 #
 #
-@QuantizationMixin.implements(ElementwiseCeil)
-class QuantizedElementwiseCeil(_DispatchMixin, QuantizationMixin, ElementwiseCeil):
-    """ Quantized ElementwiseCeil """
-    _builtin_torch_fn = torch.ceil
-
-
-@QuantizationMixin.implements(ElementwiseFloor)
-class QuantizedElementwiseFloor(_DispatchMixin, QuantizationMixin, ElementwiseFloor):
-    """ Quantized ElementwiseFloor """
-    _builtin_torch_fn = torch.floor
+# @QuantizationMixin.implements(ElementwiseCeil)
+# class QuantizedElementwiseCeil(_DispatchMixin, QuantizationMixin, ElementwiseCeil):
+#     """ Quantized ElementwiseCeil """
+#     _builtin_torch_fn = torch.ceil
+#
+#
+# @QuantizationMixin.implements(ElementwiseFloor)
+# class QuantizedElementwiseFloor(_DispatchMixin, QuantizationMixin, ElementwiseFloor):
+#     """ Quantized ElementwiseFloor """
+#     _builtin_torch_fn = torch.floor
 #
 #
 # @QuantizationMixin.implements(Asin)
@@ -464,7 +464,6 @@ class QuantizedElementwiseFloor(_DispatchMixin, QuantizationMixin, ElementwiseFl
 # class QuantizedTile(_DispatchMixin, QuantizationMixin, Tile):
 #     """ Quantized Tile """
 #     _builtin_torch_fn = torch.tile
-
 
 @QuantizationMixin.implements(ElementwiseUnarySign)
 class QuantizedElementwiseUnarySign(_DispatchMixin, QuantizationMixin, ElementwiseUnarySign):
