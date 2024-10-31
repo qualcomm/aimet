@@ -198,13 +198,14 @@ void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const Broadcas
     const int64_t* encodingStrides = shapeInfo.encodingStrides.data();
 
     // Kernels expect separate lists for each encoding type
-    T encVec[4][numEncodings];
+    std::vector<T> encVec(4 * numEncodings);
+
     for (int i = 0; i < numEncodings; i++)
     {
-        encVec[0][i] = encodings[i]->min;
-        encVec[1][i] = encodings[i]->max;
-        encVec[2][i] = encodings[i]->delta;
-        encVec[3][i] = encodings[i]->offset;
+        encVec[i] = encodings[i]->min;
+        encVec[numEncodings + i] = encodings[i]->max;
+        encVec[2 * numEncodings + i] = encodings[i]->delta;
+        encVec[3 * numEncodings + i] = encodings[i]->offset;
     }
     T* encodingVectorDevice;
     int64_t* stridesDevice = nullptr;
@@ -217,7 +218,7 @@ void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const Broadcas
         encodingVectorDevice = static_cast<T*>(allocator->allocateRaw(4 * numEncodings * sizeof(T)));
 
         // Send encoding information to device
-        cudaMemcpyAsync(encodingVectorDevice, encVec, 4 * numEncodings * sizeof(T), cudaMemcpyHostToDevice,
+        cudaMemcpyAsync(encodingVectorDevice, encVec.data(), 4 * numEncodings * sizeof(T), cudaMemcpyHostToDevice,
                         static_cast<cudaStream_t>(stream));
 
         // Send stride information to device
@@ -237,7 +238,7 @@ void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const Broadcas
     else
     {
         mode                 = DlQuantization::ComputationMode::COMP_MODE_CPU;
-        encodingVectorDevice = (T*) (encVec);
+        encodingVectorDevice = encVec.data();
     }
 
     T* encodingMin    = encodingVectorDevice;
