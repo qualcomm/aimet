@@ -130,7 +130,7 @@ class QuantParams:
 
 
 @runtime_checkable
-class ExportableQuantModule(Protocol):
+class QuantizedModuleProtocol(Protocol):
     """
     Defines the minimum interface requirements for exporting encodings from a module.
     """
@@ -210,7 +210,7 @@ quantized_modules = (
     QcQuantizeWrapper,
     QcQuantizeStandAloneBase,
     QcQuantizeRecurrent,
-    ExportableQuantModule,
+    QuantizedModuleProtocol,
     LazyQuantizeWrapper,
 )
 
@@ -699,7 +699,7 @@ class QuantizationSimModel:
         param_encodings = OrderedDict()
 
         for module_name, module in self.model.named_modules():
-            if not isinstance(module, ExportableQuantModule):
+            if not isinstance(module, QuantizedModuleProtocol):
                 continue
 
             activation_encodings[module_name] = defaultdict(OrderedDict)
@@ -740,7 +740,7 @@ class QuantizationSimModel:
         quant_layers_to_exclude = []
         quant_cls = (QcQuantizeRecurrent,
                      LazyQuantizeWrapper,
-                     ExportableQuantModule)
+                     QuantizedModuleProtocol)
         for layer in layers_to_exclude:
             for module in layer.modules():
                 if isinstance(module, quant_cls):
@@ -881,7 +881,7 @@ class QuantizationSimModel:
 
 
     @staticmethod
-    def _get_torch_encodings_for_missing_layers(layer: ExportableQuantModule, layer_name: str,# pylint: disable=too-many-branches
+    def _get_torch_encodings_for_missing_layers(layer: QuantizedModuleProtocol, layer_name: str,# pylint: disable=too-many-branches
                                                 missing_activation_encodings_torch: Dict,
                                                 missing_param_encodings: Dict,
                                                 valid_param_set: set):
@@ -893,7 +893,7 @@ class QuantizationSimModel:
         :param missing_param_encodings: dictionary of param encodings
         :param valid_param_set: a set of valid param input names in model
         """
-        if isinstance(layer, ExportableQuantModule):
+        if isinstance(layer, QuantizedModuleProtocol):
             # --------------------------------------
             # Update encodings for Input activations
             # --------------------------------------
@@ -969,14 +969,14 @@ class QuantizationSimModel:
         tensor_to_quantizer_map = {}
 
         for layer_name, layer in sim_model.named_modules():
-            if not isinstance(layer, (ExportableQuantModule, QcQuantizeRecurrent)):
+            if not isinstance(layer, (QuantizedModuleProtocol, QcQuantizeRecurrent)):
                 continue
             if not has_valid_encodings(layer):
                 continue
             # TODO: specifically call out dropout layers here since they are specifically switched out during export.
             # These ops should eventually be reworked as part of math invariant ops to ignore quantization altogether.
             # pylint: disable=protected-access
-            if isinstance(layer, ExportableQuantModule) and isinstance(layer.get_original_module(), utils.DROPOUT_TYPES):
+            if isinstance(layer, QuantizedModuleProtocol) and isinstance(layer.get_original_module(), utils.DROPOUT_TYPES):
                 continue
 
             if layer_name not in layers_to_onnx_op_names.keys():
@@ -1042,7 +1042,7 @@ class QuantizationSimModel:
         save_json_yaml(encoding_file_path_pytorch, encodings_dict_pytorch)
 
     @staticmethod
-    def _update_param_encodings_dict_for_layer(layer: ExportableQuantModule, layer_name: str, param_encodings: Dict,
+    def _update_param_encodings_dict_for_layer(layer: QuantizedModuleProtocol, layer_name: str, param_encodings: Dict,
                                                valid_param_set: set, tensor_to_quantizer_map: Dict):
         """
         :param layer: layer as torch.nn.Module
@@ -1062,7 +1062,7 @@ class QuantizationSimModel:
             tensor_to_quantizer_map[param_name] = layer.param_quantizers[orig_param_name]
 
     @staticmethod
-    def _update_encoding_dicts_for_layer(layer: ExportableQuantModule, layer_name: str, activation_encodings_onnx: Dict,
+    def _update_encoding_dicts_for_layer(layer: QuantizedModuleProtocol, layer_name: str, activation_encodings_onnx: Dict,
                                          activation_encodings_torch: Dict, param_encodings: Dict,
                                          op_to_io_tensor_map: Dict, valid_param_set: set, propagate_encodings: bool,
                                          tensor_to_consumer_map: Dict[str, str],
@@ -1084,7 +1084,7 @@ class QuantizationSimModel:
         :param layers_to_onnx_op_names: Dictionary mapping PyTorch layer names to names of corresponding ONNX ops
         """
 
-        if isinstance(layer, ExportableQuantModule):
+        if isinstance(layer, QuantizedModuleProtocol):
 
             # --------------------------------------
             # Update encodings for Input activations
@@ -1167,7 +1167,7 @@ class QuantizationSimModel:
         return end_op_names, op_names
 
     @staticmethod
-    def _update_encoding_dict_for_output_activations(layer: ExportableQuantModule, layer_name: str, op_to_io_tensor_map: Dict,
+    def _update_encoding_dict_for_output_activations(layer: QuantizedModuleProtocol, layer_name: str, op_to_io_tensor_map: Dict,
                                                      activation_encodings_onnx: Dict, activation_encodings_torch: Dict,
                                                      propagate_encodings: bool, tensor_to_consumer_map: Dict[str, str],
                                                      layers_to_onnx_op_names: Dict[str, str],
@@ -1204,7 +1204,7 @@ class QuantizationSimModel:
 
 
     @staticmethod
-    def _update_encoding_dict_for_input_activations(layer: ExportableQuantModule, layer_name: str, op_to_io_tensor_map: Dict,
+    def _update_encoding_dict_for_input_activations(layer: QuantizedModuleProtocol, layer_name: str, op_to_io_tensor_map: Dict,
                                                     activation_encodings_onnx: Dict, activation_encodings_torch: Dict,
                                                     layers_to_onnx_op_names: Dict[str, str],
                                                     tensor_to_quantizer_map: Dict):
@@ -1393,7 +1393,7 @@ class QuantizationSimModel:
     def _get_qc_quantized_layers(model) -> List[Tuple[str, QcQuantizeWrapper]]:
         quantized_layers = []
         for name, module in model.named_modules():
-            if isinstance(module, (QcQuantizeRecurrent, LazyQuantizeWrapper, ExportableQuantModule)):
+            if isinstance(module, (QcQuantizeRecurrent, LazyQuantizeWrapper, QuantizedModuleProtocol)):
                 quantized_layers.append((name, module))
         return quantized_layers
 
@@ -1500,7 +1500,7 @@ class QuantizationSimModel:
             # If modules is in the exclude list, remove the wrapper
             if module_ref in list_of_modules_to_exclude:
 
-                if isinstance(module_ref, ExportableQuantModule):
+                if isinstance(module_ref, QuantizedModuleProtocol):
                     # Remove the wrapper, gets auto-deleted
                     # pylint: disable=protected-access
                     setattr(starting_module, module_name, module_ref.get_original_module())
@@ -1568,12 +1568,12 @@ class QuantizationSimModel:
 
     def _get_leaf_module_to_name_map(self):
         """
-        Returns a mapping from leaf modules to module name, where any ExportableQuantModule is considered a leaf module,
+        Returns a mapping from leaf modules to module name, where any QuantizedModuleProtocol is considered a leaf module,
         and is therefore not further recursed (since we do not want to retrieve all internal quantizers/modules).
         """
         def recursively_populate_map(starting_module, module_map, start_str):
             for name, module in starting_module.named_children():
-                if isinstance(module, ExportableQuantModule) or utils.is_leaf_module(module):
+                if isinstance(module, QuantizedModuleProtocol) or utils.is_leaf_module(module):
                     module_map[module] = start_str + name
                 else:
                     recursively_populate_map(module, module_map, start_str + name + ".")
@@ -1590,7 +1590,7 @@ class QuantizationSimModel:
             hooks[module_ref].remove()
             del hooks[module_ref]
             module_name = module_to_name_map[module_ref]
-            if isinstance(module_ref, ExportableQuantModule):
+            if isinstance(module_ref, QuantizedModuleProtocol):
                 module_ref = module_ref.get_original_module()
             marker_layer = torch.jit.trace(CustomMarker(module_ref, module_name, 'True'),
                                            inputs)
@@ -1780,7 +1780,7 @@ class QuantizationSimModel:
                              requires_grad: Optional[bool],
                              allow_overwrite: bool):
         for name, quant_module in self.model.named_modules():
-            if isinstance(quant_module, ExportableQuantModule):
+            if isinstance(quant_module, QuantizedModuleProtocol):
                 param_encoding = {
                     param_name: encoding_dict[f'{name}.{param_name}']
                     for param_name, _ in quant_module.param_quantizers.items()
@@ -1803,7 +1803,7 @@ class QuantizationSimModel:
                                   requires_grad: Optional[bool],
                                   allow_overwrite: bool):
         for module_name, module in self.model.named_modules():
-            if not isinstance(module, ExportableQuantModule):
+            if not isinstance(module, QuantizedModuleProtocol):
                 continue
 
             try:
@@ -1858,7 +1858,7 @@ class QuantizationSimModel:
         """Generator that yields all quantized modules in the model and their names
         """
         for name, module in self.model.named_modules():
-            if isinstance(module, (QcQuantizeRecurrent, LazyQuantizeWrapper, ExportableQuantModule)):
+            if isinstance(module, (QcQuantizeRecurrent, LazyQuantizeWrapper, QuantizedModuleProtocol)):
                 yield name, module
 
     def qmodules(self):
@@ -1883,7 +1883,7 @@ class QuantizationSimModel:
             # Only perform init and trace if the given module is a leaf module, and we have not recorded it before
             if module in module_to_name_map and module_to_name_map[module] not in self._module_marker_map:
                 name = module_to_name_map[module]
-                module = module.get_original_module() if isinstance(module, ExportableQuantModule) else module
+                module = module.get_original_module() if isinstance(module, QuantizedModuleProtocol) else module
                 with utils.in_eval_mode(module), torch.no_grad():
                     marker_layer = torch.jit.trace(CustomMarker(module, name, True), dummy_input)
                     self._module_marker_map[name] = marker_layer
@@ -2299,18 +2299,18 @@ def load_encodings_to_sim(quant_sim_model: QuantizationSimModel, pytorch_encodin
         quant_sim_model.replace_wrappers_for_quantize_dequantize()
 
 
-def has_valid_encodings(qc_quantize_op: ExportableQuantModule) -> bool:
+def has_valid_encodings(qc_quantize_op: QuantizedModuleProtocol) -> bool:
     """
     Utility for determining whether a given qc_quantize_op has any valid encodings.
 
     :param qc_quantize_op: Qc quantize op to evaluate
     :return: True if any input, param, or output quantizers have valid encodings, False otherwise
     """
-    if not isinstance(qc_quantize_op, (ExportableQuantModule, QcQuantizeRecurrent)):
+    if not isinstance(qc_quantize_op, (QuantizedModuleProtocol, QcQuantizeRecurrent)):
         logger.error("has_valid_encodings only supported for QcQuantizeWrapper and QcQuantizeRecurrent "
                      "modules")
-        assert isinstance(qc_quantize_op, (ExportableQuantModule, QcQuantizeRecurrent))
-    if isinstance(qc_quantize_op, ExportableQuantModule):
+        assert isinstance(qc_quantize_op, (QuantizedModuleProtocol, QcQuantizeRecurrent))
+    if isinstance(qc_quantize_op, QuantizedModuleProtocol):
         all_encodings = qc_quantize_op.export_output_encodings() + qc_quantize_op.export_input_encodings() + \
                         list(qc_quantize_op.export_param_encodings().values())
         return any([encoding is not None for encoding in all_encodings])  # pylint: disable=consider-using-generator,use-a-generator
