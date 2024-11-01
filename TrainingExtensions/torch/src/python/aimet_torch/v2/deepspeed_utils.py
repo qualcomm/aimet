@@ -90,7 +90,8 @@ try:
 except ImportError:
     class SafeGatheredParameters(contextlib.nullcontext):
         """ Dummy placeholder in case deepspeed doesn't exist """
-        pass
+        def __init__(self, *args, **kwargs):
+            super().__init__()
 
 
     def _do_patch_dummy_parameters(module): # pylint: disable=unused-argument
