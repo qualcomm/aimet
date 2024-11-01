@@ -43,7 +43,7 @@ import os
 import io
 import copy
 import pickle
-from typing import Tuple, List, Union, Dict, Callable, Optional, Any, runtime_checkable, Protocol, Mapping
+from typing import Tuple, List, Union, Dict, Callable, Optional, Any, runtime_checkable, Protocol, Mapping, TYPE_CHECKING
 from collections import OrderedDict, defaultdict
 import json
 import warnings
@@ -78,7 +78,8 @@ from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
-from aimet_torch.v2.quantization.base.encoding import EncodingBase
+if TYPE_CHECKING:
+    from aimet_torch.v2.quantization.base.encoding import EncodingBase
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -131,12 +132,12 @@ class QuantParams:
 
 
 class QuantizerProtocol(Protocol):
-    def get_encodings(self) -> Optional[EncodingBase]:
+    def get_encodings(self) -> Optional["EncodingBase"]:
         """
         Return the quantizer's encodings as an EncodingBase object
         """
 
-    def set_encodings(self, encoding: EncodingBase):
+    def set_encodings(self, encoding: "EncodingBase"):
         """
         Set the quantizer's encodings
         """

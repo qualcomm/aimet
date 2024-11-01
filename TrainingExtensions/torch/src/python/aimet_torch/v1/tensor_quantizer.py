@@ -39,7 +39,7 @@
 import functools
 import io
 import math
-from typing import List, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 import abc
 
 import torch
@@ -53,7 +53,8 @@ import aimet_torch.v1.quantsim_straight_through_grad as grad_fn
 from aimet_torch.v1.quantsim_straight_through_grad import IntermediateResult
 from aimet_torch.fp_quantization import fp8_quantizer, INIT_MAP
 from aimet_torch.v1.tensor_factory_utils import constant_like
-from aimet_torch.v2.quantization.base import EncodingBase
+if TYPE_CHECKING:
+    from aimet_torch.v2.quantization.base import EncodingBase
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -125,13 +126,13 @@ class TensorQuantizer:
     def encoding_min_max_fixed_vals(self, min_max_vals: Optional[Tuple[float, float]]):
         """ self._encoding_min_max_fixed_vals setter """
 
-    def get_encodings(self) -> Optional[EncodingBase]:
+    def get_encodings(self) -> Optional["EncodingBase"]:
         """
         Return the quantizer's encodings as an EncodingBase object
         """
         raise NotImplementedError
 
-    def set_encodings(self, encodings: EncodingBase):
+    def set_encodings(self, encodings: "EncodingBase"):
         """
         Set the quantizer's encodings
         """
