@@ -73,7 +73,9 @@ class MaskPropagationWinnower(AimetCommonMaskPropagationWinnower):
         """
 
         super().__init__(list_of_modules_to_winnow, reshape, in_place, verbose)
-        model.apply(has_hooks)
+
+        if any(has_hooks(module) for module in model.modules()):
+            logger.warning("The specified model has registered hooks which might break winnowing")
 
         debug_level = logger.getEffectiveLevel()
         logger.debug("Current log level: %s", debug_level)

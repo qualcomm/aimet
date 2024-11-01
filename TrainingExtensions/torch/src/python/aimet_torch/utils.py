@@ -54,6 +54,12 @@ from safetensors.numpy import load as load_safetensor
 import torch.nn
 import torch
 from torch.utils.data import DataLoader, Dataset
+from torch.nn.modules.module import (
+    _global_backward_pre_hooks,
+    _global_backward_hooks,
+    _global_forward_pre_hooks,
+    _global_forward_hooks,
+)
 from torchvision import datasets, transforms
 
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_QUANT_SCHEME_TO_PYMO
@@ -543,14 +549,15 @@ def get_input_shape_batch_size(data_loader):
 
 def has_hooks(module: torch.nn.Module):
     """ Returns True if the module uses hooks. """
-
-    for hooks in (module._forward_pre_hooks,                       # pylint: disable=protected-access
-                  module._forward_hooks, module._backward_hooks):  # pylint: disable=protected-access
-        if hooks:
-            logger.warning("The specified model has registered hooks which might break winnowing")
-            return True
-    return False
-
+    # pylint: disable=protected-access
+    return module._backward_hooks or\
+           module._backward_pre_hooks or\
+           module._forward_hooks or\
+           module._forward_pre_hooks or\
+           _global_backward_pre_hooks or\
+           _global_backward_hooks or\
+           _global_forward_hooks or\
+           _global_forward_pre_hooks
 
 def get_one_positions_in_binary_mask(mask):
     """
