@@ -2577,3 +2577,61 @@ def integer_concat_model():
     onnx.checker.check_model(model, True)
     return model
 
+
+def shared_stat_batchnorm_model():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name='BatchnormModel',
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            initializer=[
+                numpy_helper.from_array(np.random.randn(10, 10, 1, 1).astype('float32'), name='conv_1.weight'),
+                numpy_helper.from_array(np.random.randn(10, 10, 1, 1).astype('float32'), name='conv_2.weight'),
+                numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32'), name='batchnorm.weight'),
+                numpy_helper.from_array(np.random.randn(10, ).astype('float32'), name='batchnorm.bias'),
+                numpy_helper.from_array(np.random.randn(10, ).astype('float32'), name='batchnorm.input_mean'),
+                numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32'), name='batchnorm.input_var')
+            ],
+            nodes=[
+                helper.make_node(
+                    'Conv',
+                    inputs=['model_input', 'conv_1.weight'],
+                    outputs=['conv_1.output'],
+                    name='conv_1'
+                ),
+                helper.make_node(
+                    'Identity',
+                    inputs=['batchnorm.input_mean'],
+                    outputs=['batchnorm1.input_mean'],
+                    name='identity_1'
+                ),
+                helper.make_node(
+                    'BatchNormalization',
+                    inputs=['conv_1.output', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm1.input_mean', 'batchnorm.input_var'],
+                    outputs=['batch_norm_1.output'],
+                    name='batchnorm_1'
+                ),
+                helper.make_node(
+                    'Conv',
+                    inputs=['batch_norm_1.output', 'conv_2.weight'],
+                    outputs=['conv_2.output'],
+                    name='conv_2'
+                ),
+                helper.make_node(
+                    'Identity',
+                    inputs=['batchnorm.input_mean'],
+                    outputs=['batchnorm2.input_mean'],
+                    name='identity_2'
+                ),
+                helper.make_node(
+                    'BatchNormalization',
+                    inputs=['conv_2.output', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm2.input_mean',
+                            'batchnorm.input_var'],
+                    outputs=['model_output'],
+                    name='batchnorm_2'
+                ),
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model

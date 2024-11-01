@@ -550,3 +550,13 @@ class TestBatchNormFold:
             if node.name == "input_mean":
                 np_tensor = onnx.numpy_helper.to_array(node.attribute[0].t)
                 assert np.all(np_tensor == np.zeros_like(np_tensor))
+
+    def test_fold_with_shared_stats(self):
+        torch.manual_seed(0)
+        model = models_for_tests.shared_stat_batchnorm_model()
+        test_data = np.random.randn(10, 10, 8, 8).astype(np.float32)
+        baseline_output, folded_output, pairs = get_outputs_after_fold(ONNXModel(model), test_data)
+
+        bns_after_fold = {node for node in model.graph.node if node.op_type == "BatchNormalization"}
+        assert len(bns_after_fold) == 0
+        assert np.allclose(baseline_output[0], folded_output[0], rtol=1e-2, atol=1e-6)

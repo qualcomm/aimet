@@ -86,7 +86,21 @@ def remove_nodes_with_type(node_type: str, onnx_graph: onnx.GraphProto):
                 node.output[0] = outputs.name
 
 
-def remove_node(node: ModelProto, onnx_graph: onnx.GraphProto):
+def _prune_unused_initializer(graph: onnx.GraphProto, init_name):
+    """
+    Remove initializer from graph if it is unused
+    """
+    for node in graph.node:
+        if init_name in node.input:
+            return # Don't prune if initializer is still used
+
+    for initializer in graph.initializer:
+        if initializer.name == init_name:
+            graph.initializer.remove(initializer)
+            break
+
+
+def remove_node(node: NodeProto, onnx_graph: onnx.GraphProto):
     """
     Remove a specific node from graph along with associated initializers
 
@@ -105,13 +119,9 @@ def remove_node(node: ModelProto, onnx_graph: onnx.GraphProto):
             for outputs in onnx_graph.output:
                 if outputs.name == node.output[0] and other_node.output[0] == node.input[0]:
                     other_node.output[0] = outputs.name
-    inits_to_remove = []
-    # Remove the node's initializers
-    for item in onnx_graph.initializer:
-        if item.name in node.input:
-            inits_to_remove.append(item)
-    for item in inits_to_remove:
-        onnx_graph.initializer.remove(item)
+
+    for input_name in node.input:
+        _prune_unused_initializer(onnx_graph, input_name)
 
 
 def transpose_tensor(t: TensorProto, axes: Union[List, Tuple]) -> TensorProto:
@@ -345,9 +355,10 @@ class ParamUtils:
                             param = attribute.t
                             param.name = param_name
                             return param
+                if node.op_type == 'Identity' and param_name == node.output[0]:
+                    return ParamUtils.get_param(model, node, 0)
             return None
 
-        assert node.op_type in OP_TYPES_WITH_PARAMS, "Node type not in allowed op types with param list"
         if len(node.input) >= param_index + 1:
             param_name = node.input[param_index]
             param = find_param_in_model_initializers(param_name, model)

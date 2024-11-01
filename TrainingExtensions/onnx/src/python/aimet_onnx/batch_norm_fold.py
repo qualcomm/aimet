@@ -363,6 +363,8 @@ def get_bn_params(model: ModelProto, bn: NodeProto, channels: int) -> libpymo.BN
     runningVar = numpy_helper.to_array(ParamUtils.get_param(model, bn, RUNNING_VAR_INDEX))
 
     epsilon = get_node_attribute(bn, "epsilon")
+    if epsilon is None:
+        epsilon = 1e-5 # Default onnx epsilon value
     sigma = np.sqrt(runningVar + epsilon)
     bn_params.runningVar = np.repeat(sigma.reshape(-1), resize)
 
