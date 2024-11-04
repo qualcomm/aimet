@@ -88,7 +88,7 @@ op_params_to_ignore = ['Resize']
 allowed_op_type_for_per_channel = ['Conv', 'Gemm', 'MatMul', 'ConvTranspose']
 
 # List of op types whose input and output quantizers to be tied
-op_types_to_tie_qtzrs = ['Concat', 'MaxPool', 'AveragePool', 'Resize']
+op_types_to_tie_qtzrs = ['Concat', 'MaxPool', 'AveragePool', 'Resize', 'Max', 'ReduceMax', 'Min', 'ReduceMin']
 _tie_qtzrs = False
 
 data_types_to_quantize = [np.float32]
