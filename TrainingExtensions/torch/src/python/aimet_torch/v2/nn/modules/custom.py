@@ -47,7 +47,7 @@ from ..true_quant import (
     QuantizationMixin,
     _DispatchMixin,
     _quantize_if_applicable,
-    _quantize_dequantize_if_applicable
+    _quantize_dequantize_if_applicable,
 )
 
 
@@ -191,10 +191,10 @@ class QuantizedConcat(_DispatchMixin, QuantizationMixin, Concat):
 #     _builtin_torch_fn = torch.floor_divide
 #
 #
-# @QuantizationMixin.implements(Norm)
-# class QuantizedNorm(_DispatchMixin, QuantizationMixin, Norm):
-#     """ Quantized Norm """
-#     _builtin_torch_fn = torch.norm
+@QuantizationMixin.implements(Norm)
+class QuantizedNorm(_DispatchMixin, QuantizationMixin, Norm):
+    """ Quantized Norm """
+    _builtin_torch_fn = torch.norm
 
 
 @QuantizationMixin.implements(Exponential)
@@ -465,10 +465,10 @@ class QuantizedNeg(_DispatchMixin, QuantizationMixin, Neg):
 #     """ Quantized Tile """
 #     _builtin_torch_fn = torch.tile
 
-@QuantizationMixin.implements(ElementwiseUnarySign)
-class QuantizedElementwiseUnarySign(_DispatchMixin, QuantizationMixin, ElementwiseUnarySign):
-    """ Quantized ElementwiseUnarySign """
-    _builtin_torch_fn = torch.sign
+# @QuantizationMixin.implements(ElementwiseUnarySign)
+# class QuantizedElementwiseUnarySign(_DispatchMixin, QuantizationMixin, ElementwiseUnarySign):
+#     """ Quantized ElementwiseUnarySign """
+#     _builtin_torch_fn = torch.sign
 
 
 @QuantizationMixin.implements(Baddbmm)
