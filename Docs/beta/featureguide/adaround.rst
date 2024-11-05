@@ -65,9 +65,11 @@ Step 1
 
 Prepare the model for quantization.
 
-.. tabs::
+.. tab-set::
+    :sync-group: platform
 
-    .. tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: torch
 
         .. container:: tab-heading
     
@@ -80,16 +82,19 @@ Prepare the model for quantization.
 
         .. literalinclude:: ../snippets/torch/prepare_model.py
             :language: python
-            :lines: 38-
 
         For details of the model preparer API see the 
         :ref:`Model Preparer API <apiref-torch-model-preparer>`.
 
-    .. tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: tf
+
 
         Tensorflow has no preparation requirements.
 
-    .. tab:: ONNX
+    .. tab-item:: ONNX
+        :sync: onnx
+
 
         ONNX has no preparation requirements.
 
@@ -99,20 +104,23 @@ Step 2
 
 Apply AdaRound to the model.
 
-.. tabs::
+.. tab-set::
+    :sync-group: platform
 
-    .. tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
-            :lines: 38-
 
-    .. tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: tf
 
         .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
 
-    .. tab:: ONNX
+    .. tab-item:: ONNX
+        :sync: onnx
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
@@ -122,20 +130,24 @@ Step 3
 
 Evaluate the model.
 
-.. tabs::
+.. tab-set::
+    :sync-group: platform
 
-    .. tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: torch
+
 
         .. literalinclude:: ../snippets/torch/evaluate.py
             :language: python
-            :lines: 38-
 
-    .. tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: tf
 
         .. literalinclude:: ../snippets/tensorflow/evaluate.py
             :language: python
 
-    .. tab:: ONNX
+    .. tab-item:: ONNX
+        :sync: onnx
 
         .. literalinclude:: ../snippets/onnx/evaluate.py
             :language: python
@@ -152,20 +164,24 @@ Next steps
 
 If AdaRound resulted in satisfactory accuracy, export the model.
 
-.. tabs::
+.. tab-set::
+    :sync-group: platform
 
-    .. tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: torch
+
 
         .. literalinclude:: ../snippets/torch/export.py
             :language: python
-            :lines: 38-
 
-    .. tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: tf
 
         .. literalinclude:: ../snippets/tensorflow/export.py
             :language: python
 
-    .. tab:: ONNX
+    .. tab-item:: ONNX
+        :sync: onnx
 
         .. literalinclude:: ../snippets/onnx/export.py
             :language: python
@@ -176,16 +192,23 @@ If the model is still not accurate enough, the next step is typically to try :re
 API
 ===
 
-.. tabs::
+.. tab-set::
+    :sync-group: platform
 
-    .. tab:: PyTorch
+    .. tab-item:: PyTorch
+        :sync: torch
 
-       .. include:: ../apiref/torch/adaround.rst
+        .. include:: ../apiref/torch/adaround.rst
+            :start-after: _apiref-torch-adaround:
 
-    .. tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: tf
 
-       .. include:: ../apiref/tensorflow/adaround.rst
+        .. include:: ../apiref/tensorflow/adaround.rst
+           :start-after: _apiref-keras-adaround:
 
-    .. tab:: ONNX
+    .. tab-item:: ONNX
+        :sync: onnx
 
-       .. include:: ../apiref/onnx/adaround.rst
+        .. include:: ../apiref/onnx/adaround.rst
+           :start-after: _apiref-onnx-adaround:

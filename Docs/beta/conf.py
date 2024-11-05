@@ -78,6 +78,7 @@ def setup(app):
 # If your documentation needs a minimal Sphinx version, state it here.
 #
 # needs_sphinx = '5.3.0'
+needs_sphinx = '7.3.7'
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -93,8 +94,8 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
-     'sphinx_tabs.tabs',
-     'sphinx_design'
+    'sphinx_design',
+    'sphinx_copybutton'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -132,9 +133,9 @@ autosectionlabel_prefix_document = True
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'piccolo_theme'
-html_title = 'AI Model Efficiency Toolkit Documentation version ' + version
-html_short_title = 'AIMET Docs v. ' + version
+html_theme = 'furo'
+html_title = 'AI Model Efficiency Toolkit v. ' + release
+# html_short_title = 'AIMET Docs v. ' + version
 # html_logo = 'images/brain_logo.png'
 # html_favicon = 'images/brain_logo16.png'
 
@@ -143,21 +144,29 @@ html_short_title = 'AIMET Docs v. ' + version
 # documentation.
 #
 html_theme_options = {
-    'banner_hiding': "temporary",
-    'banner_text': "",
-    'display_version': True,
-    'source_url': "https://github.com/quic/aimet",
-    'localtoc_maxdepth': 2,
-    'globaltoc_includehidden': True,
-    'globaltoc_maxdepth': 2,
-    'globaltoc_collapse': False
+    "sidebar_hide_name": False,                  # Default is False
+    "top_of_page_buttons": [],
+    "navigation_with_keys": True,
+#    "announcement": "<em>Important</em> announcement!",
+    "footer_icons": [                            # This is ugly. Will fix later.
+        {
+            "name": "GitHub",
+            "url": "https://github.com/quic/aimet",
+            "html": """
+                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
+                </svg>
+            """,
+            "class": "",
+        },
+    ],
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files = ['style.css']
+html_css_files = ['aimet-furo.css']    # Changes from default theme file.
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -167,7 +176,16 @@ html_css_files = ['style.css']
 # default: ``['localtoc.html', 'relations.html', 'sourcelink.html',
 # 'searchbox.html']``.
 #
-html_sidebars = {'**': ['globaltoc.html', 'localtoc.html', 'searchbox.html'] }
+# furo theme sidebars
+html_sidebars = {
+    "**": [
+        "sidebar/brand.html",
+        "sidebar/scroll-start.html",
+        "sidebar/navigation.html",
+#        "sidebar/search.html",
+        "sidebar/scroll-end.html",
+    ]
+}
 
 # -- Options for HTMLHelp output ---------------------------------------------
 
@@ -207,7 +225,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (root_doc, 'AIMET.tex', 'AI Model Efficiency Toolkit Documentation',
-     'Qualcomm Innovation Center, Inc.', 'manual'),
+     'Qualcomm Innovation Center, Inc.', 'manual')
 ]
 
 
@@ -217,7 +235,7 @@ latex_documents = [
 # (source start file, name, description, authors, manual section).
 man_pages = [
     (root_doc, 'aimet', 'AI Model Efficiency Toolkit Documentation',
-     [author], 1)
+     author, 1)
 ]
 
 
@@ -238,6 +256,16 @@ autoclass_content = 'both'
 
 nbsphinx_allow_errors = True
 nbsphinx_execute = 'never'
+
+docs_root_url = "https://quic.github.io/aimet-pages/releases/latest/"
+
+# Version here refers to the AIMET torch v1/v2 version, not the AIMET release number
+html_context = {
+  'current_version' : "Universal",
+  'versions' : [["Universal", docs_root_url + "features/index.html"],
+                ["PyTorch", docs_root_url + "torch_v2/torch_docs/index.html"]],
+  'display_version_tab': False
+}
 
 docs_root_url = "https://quic.github.io/aimet-pages/releases/latest/"
 

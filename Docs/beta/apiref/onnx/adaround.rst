@@ -1,5 +1,4 @@
 .. _apiref-onnx-adaround:
-   :orphan:
 
 #######################
 AIMET ONNX AdaRound API
