@@ -1,0 +1,5 @@
+.. _install-index:
+
+#########
+Installation
+#########
