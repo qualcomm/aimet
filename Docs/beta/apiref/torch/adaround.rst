@@ -1,14 +1,12 @@
 .. _apiref-torch-adaround:
-   :orphan:
 
 ##########################
 AIMET PyTorch AdaRound API
 ##########################
 
 
-.. container:: tab-heading
-   
-   Top-level API
+Top-level API
+=============
 
 .. note::
 
@@ -19,17 +17,15 @@ AIMET PyTorch AdaRound API
 .. autofunction:: aimet_torch.v1.adaround.adaround_weight.Adaround.apply_adaround
 
 
-.. container:: tab-heading
-
-    Adaround Parameters
+Adaround Parameters
+===================
 
 .. autoclass:: aimet_torch.v1.adaround.adaround_weight.AdaroundParameters
     :members:
 
 
-.. container:: tab-heading
-
-    Enum Definition
+Enum Definition
+===============
 
 **Quant Scheme Enum**
 

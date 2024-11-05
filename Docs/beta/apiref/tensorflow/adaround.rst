@@ -1,5 +1,4 @@
 .. _apiref-keras-adaround:
-   :orphan:
 
 #############################
 AIMET TensorFlow AdaRound API

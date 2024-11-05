@@ -19,17 +19,17 @@ Optimization Techniques
     Channel pruning <cp>
 
 :ref:`Quantization aware training (QAT) <featureguide-qat>`
-======================================================
+===========================================================
 
 Fine-tunes the model parameters in the presence of quantization noise.
 
 :ref:`Automatic quantization (AutoQuant) <featureguide-autoquant>`
-=============================================================
+==================================================================
 
 Analyzes the model, determines the best sequence of AIMET post-training quantization techniques, and applies these techniques.
 
 :ref:`Adaptive rounding (Adaround) <featureguide-adaround>`
-======================================================
+===========================================================
 
 Uses training data to improve accuracy over naïve rounding.
 
