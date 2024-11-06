@@ -294,7 +294,7 @@ def callAimetExtra(target_branch) {
             using_linaro=""
         }
     
-    if (target_branch.startswith("release-aimet")) {
+    if (target_branch.startsWith("release-aimet")) {
         echo "Running AIMET additional stages on ${CHANGE_TARGET} branch ..."
         build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'PROJECT_BRANCH', value: target_branch), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}"), string(name: 'AIMETPRO_BRANCH', value: target_branch)]
     }
