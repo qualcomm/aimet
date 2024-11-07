@@ -1,7 +1,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -48,7 +48,6 @@ from aimet_common.libpymo import TfEncoding
 from packaging import version
 from tensorflow import keras
 
-import aimet_common.utils
 from aimet_common.defs import QuantScheme, RANGE_LEARNING_SCHEMES
 from aimet_common import quantsim
 from aimet_tensorflow.examples.test_models import keras_model
@@ -480,57 +479,47 @@ def test_model_with_tf_op_lambda_operators_multi_tf_static_inputs():
 
 def test_qat():
     if version.parse(tf.version.VERSION) >= version.parse("2.00"):
+        model = dense_functional()
+        rand_inp = np.random.randn(10, 5)
+        rand_out = np.random.randn(10, 2)
+        qsim = QuantizationSimModel(model, quant_scheme='tf', default_param_bw=8, default_output_bw=8)
+        qsim.compute_encodings(lambda m, _: m.predict(rand_inp), None)
+        qsim.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+                           loss=tf.keras.losses.MeanSquaredError())
+        # Track weights for dense layer to check that they are updated during fit
+        running_weights = [tf.keras.backend.get_value(param) for
+                           param in qsim.model.layers[1]._layer_to_wrap.weights]
+        # Track encoding max for dense output quantizer to check that it is not updated during fit
+        running_dense_output_quantizer_encoding_max = \
+            tf.keras.backend.get_value(qsim.model.layers[1].output_quantizers[0]._encoding_max)
 
-        saved_flag = aimet_common.utils.SAVE_TO_YAML
-        aimet_common.utils.SAVE_TO_YAML = True
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            epochs = 10
+            save_model_callback = SaveModelWithoutQuantsimWrappersCallback(qsim, tmp_dir, "test_qat")
+            for i in range(epochs):
+                _ = qsim.model.fit(x=rand_inp, y=rand_out, batch_size=1, callbacks=save_model_callback)
+                ending_weights = [tf.keras.backend.get_value(param) for
+                                  param in qsim.model.layers[1]._layer_to_wrap.weights]
+                new_dense_output_quantizer_encoding_max = \
+                    tf.keras.backend.get_value(qsim.model.layers[1].output_quantizers[0]._encoding_max)
+                for idx, weight in enumerate(running_weights):
+                    assert not np.array_equal(weight, ending_weights[idx])
+                assert np.array_equal(new_dense_output_quantizer_encoding_max,
+                                      running_dense_output_quantizer_encoding_max)
+                running_weights = ending_weights
+                running_dense_output_quantizer_encoding_max = new_dense_output_quantizer_encoding_max
 
-        try:
-            model = dense_functional()
-            rand_inp = np.random.randn(10, 5)
-            rand_out = np.random.randn(10, 2)
-            qsim = QuantizationSimModel(model, quant_scheme='tf', default_param_bw=8, default_output_bw=8)
-            qsim.compute_encodings(lambda m, _: m.predict(rand_inp), None)
-            qsim.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                               loss=tf.keras.losses.MeanSquaredError())
-            # Track weights for dense layer to check that they are updated during fit
-            running_weights = [tf.keras.backend.get_value(param) for
-                               param in qsim.model.layers[1]._layer_to_wrap.weights]
-            # Track encoding max for dense output quantizer to check that it is not updated during fit
-            running_dense_output_quantizer_encoding_max = \
-                tf.keras.backend.get_value(qsim.model.layers[1].output_quantizers[0]._encoding_max)
+            h5s = encodings = saved_models_folders = 0
+            for file in os.listdir(tmp_dir):
+                if file.endswith('h5'):
+                    h5s += 1
+                elif file.endswith('encodings'):
+                    encodings += 1
+                else:
+                    saved_models_folders += 1
 
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                epochs = 10
-                save_model_callback = SaveModelWithoutQuantsimWrappersCallback(qsim, tmp_dir, "test_qat")
-                for i in range(epochs):
-                    _ = qsim.model.fit(x=rand_inp, y=rand_out, batch_size=1, callbacks=save_model_callback)
-                    ending_weights = [tf.keras.backend.get_value(param) for
-                                      param in qsim.model.layers[1]._layer_to_wrap.weights]
-                    new_dense_output_quantizer_encoding_max = \
-                        tf.keras.backend.get_value(qsim.model.layers[1].output_quantizers[0]._encoding_max)
-                    for idx, weight in enumerate(running_weights):
-                        assert not np.array_equal(weight, ending_weights[idx])
-                    assert np.array_equal(new_dense_output_quantizer_encoding_max,
-                                          running_dense_output_quantizer_encoding_max)
-                    running_weights = ending_weights
-                    running_dense_output_quantizer_encoding_max = new_dense_output_quantizer_encoding_max
-
-                h5s = encodings = yamls = saved_models_folders = 0
-                for file in os.listdir(tmp_dir):
-                    if file.endswith('h5'):
-                        h5s += 1
-                    elif file.endswith('encodings'):
-                        encodings += 1
-                    elif file.endswith('yaml'):
-                        yamls += 1
-                    else:
-                        saved_models_folders += 1
-
-                for file_count in [h5s, encodings, yamls, saved_models_folders]:
-                    assert file_count == 1, f"QAT Save Callback did not work"
-
-        finally:
-            aimet_common.utils.SAVE_TO_YAML = saved_flag
+            for file_count in [h5s, encodings, saved_models_folders]:
+                assert file_count == 1, f"QAT Save Callback did not work"
 
 def test_range_learning():
     if version.parse(tf.version.VERSION) >= version.parse("2.00"):

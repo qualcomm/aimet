@@ -526,11 +526,6 @@ class QuantizationSimModel:
                        "from aimet_common import quantsim\n"
                        "quantsim.encoding_version = '1.0.0'")
             warnings.warn(msg, DeprecationWarning, stacklevel=2)
-        warning_str = 'Exporting encodings to yaml will be deprecated in a future release. Ensure that your ' \
-                      'code can work with the exported files ending in ".encodings" which are saved using json ' \
-                      'format. For the time being, if yaml export is needed, set aimet_common.utils.SAVE_TO_YAML to ' \
-                      'True.'
-        logger.warning(warning_str)
 
         if not filename_prefix_encodings:
             filename_prefix_encodings = filename_prefix

@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -710,9 +710,9 @@ class QuantizationSimModel:
 
     def _export_encodings(self, encoding_file_path):
         """
-        Export encodings to json and yaml file
+        Export encodings to json file
 
-        :param encoding_file_path: path to save the encoding files
+        :param encoding_file_path: path to save the encoding file
         """
         enc_version = quantsim.encoding_version
         if enc_version not in VALID_ENCODING_VERSIONS:

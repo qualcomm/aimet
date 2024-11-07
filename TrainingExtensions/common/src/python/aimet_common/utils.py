@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2018-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2018-2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -54,12 +54,10 @@ import warnings
 from enum import Enum
 from typing import Callable, Dict, List, Optional, TextIO, Union, Any
 import multiprocessing
-import yaml
 from tqdm import tqdm
 from bokeh.server.server import Server
 from bokeh.application import Application
 
-SAVE_TO_YAML = False
 
 try:
     # The build system updates Product, Version and Feature set information in the package_info file.
@@ -344,20 +342,17 @@ def log_package_info():
         logging.info("%s", Product)
 
 
+@deprecated("This function will be made private in a future AIMET release. Saving to YAML has also been deprecated and"
+            " only a json file will be saved.")
 def save_json_yaml(file_path: str, dict_to_save: dict):
     """
-    Function which saves encoding in YAML and JSON file format
-    :param file_path: file name to use to generate the yaml and json file
+    Function which saves encoding in JSON file format
+    :param file_path: file name to use to generate the json file
     :param dict_to_save: dictionary to save
     """
     encoding_file_path_json = file_path
     with open(encoding_file_path_json, 'w') as encoding_fp_json:
         json.dump(dict_to_save, encoding_fp_json, sort_keys=True, indent=4)
-
-    if SAVE_TO_YAML:
-        encoding_file_path_yaml = file_path + '.yaml'
-        with open(encoding_file_path_yaml, 'w') as encoding_fp_yaml:
-            yaml.dump(dict_to_save, encoding_fp_yaml, default_flow_style=False, allow_unicode=True)
 
 
 class TqdmStreamHandler(logging.StreamHandler):

@@ -447,11 +447,7 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
 
         # Removing the files created by _export_encodings function
         os.remove(param_path)
-        if os.path.exists(param_path+".yaml"):
-            os.remove(param_path+".yaml")
         os.remove(act_path)
-        if os.path.exists(act_path+".yaml"):
-            os.remove(act_path+".yaml")
 
     def _evaluate_model(self, eval_callback: CallbackFunc) -> float:
         """

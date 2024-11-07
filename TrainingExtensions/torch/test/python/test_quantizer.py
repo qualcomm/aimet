@@ -49,13 +49,11 @@ import onnx
 import pytest
 import torch
 import torch.nn as nn
-import yaml
 from packaging.version import Version
 from torchvision import models
 
 import aimet_common.libpymo as libpymo
 
-import aimet_common.utils
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_common.utils import AimetLogger
@@ -965,110 +963,72 @@ class TestQuantizationSimStaticGrad:
 
     def test_export_to_torch_script(self):
         """ test export functionality on ResNet18 """
+        resnet50 = models.resnet50()
+        resnet50.eval()
 
-        saved_flag = aimet_common.utils.SAVE_TO_YAML
-        aimet_common.utils.SAVE_TO_YAML = True
+        dummy_input = torch.randn(1, 3, 224, 224)
 
-        try:
-            resnet50 = models.resnet50()
-            resnet50.eval()
+        # Get Dict mapping node name to the input and output names
+        sim = QuantizationSimModel(resnet50, dummy_input)
 
-            dummy_input = torch.randn(1, 3, 224, 224)
+        def forward_pass(model, args):
+            model.eval()
+            with torch.no_grad():
+                model(torch.randn(1, 3, 224, 224))
 
-            # Get Dict mapping node name to the input and output names
-            sim = QuantizationSimModel(resnet50, dummy_input)
+        # Quantize
+        sim.compute_encodings(forward_pass, None)
 
-            def forward_pass(model, args):
-                model.eval()
-                with torch.no_grad():
-                    model(torch.randn(1, 3, 224, 224))
+        with tempfile.TemporaryDirectory() as temp_dir:
 
-            # Quantize
-            sim.compute_encodings(forward_pass, None)
+            sim.export(temp_dir, 'resnet50', dummy_input, export_to_torchscript=True)
+            with open(os.path.join(temp_dir, 'resnet50.encodings')) as json_file:
+                encoding_data = json.load(json_file)
 
-            with tempfile.TemporaryDirectory() as temp_dir:
+            activation_keys = list(encoding_data["activation_encodings"].keys())
+            assert isinstance(encoding_data["activation_encodings"][activation_keys[0]], list)
 
-                sim.export(temp_dir, 'resnet50', dummy_input, export_to_torchscript=True)
-                with open(os.path.join(temp_dir, 'resnet50.encodings')) as json_file:
-                    encoding_data = json.load(json_file)
-
-                activation_keys = list(encoding_data["activation_encodings"].keys())
-                assert isinstance(encoding_data["activation_encodings"][activation_keys[0]], list)
-
-                param_keys = list(encoding_data["param_encodings"].keys())
-                assert param_keys[0] == "conv1.weight"
-                assert isinstance(encoding_data["param_encodings"]["conv1.weight"], list)
-
-                with open(os.path.join(temp_dir, 'resnet50.encodings.yaml')) as yaml_file:
-                    encoding_data = yaml.load(yaml_file, Loader=yaml.FullLoader)
-
-                activation_keys = list(encoding_data["activation_encodings"].keys())
-                assert activation_keys[0] == "103"
-                assert isinstance(encoding_data["activation_encodings"]["103"], list)
-
-                param_keys = list(encoding_data["param_encodings"].keys())
-                assert param_keys[0] == "conv1.weight"
-                assert isinstance(encoding_data["param_encodings"]["conv1.weight"], list)
-
-        finally:
-            aimet_common.utils.SAVE_TO_YAML = saved_flag
-    # -------------------------------------------
+            param_keys = list(encoding_data["param_encodings"].keys())
+            assert param_keys[0] == "conv1.weight"
+            assert isinstance(encoding_data["param_encodings"]["conv1.weight"], list)
 
     def test_export_to_onnx(self):
         """Exporting encodings and model"""
+        dummy_input = (torch.rand(32, 1, 28, 28), torch.rand(32, 1, 28, 28))
 
-        saved_flag = aimet_common.utils.SAVE_TO_YAML
-        aimet_common.utils.SAVE_TO_YAML = True
+        def forward_pass(model, args):
+            model.eval()
+            with torch.no_grad():
+                model(*dummy_input)
 
-        try:
-            dummy_input = (torch.rand(32, 1, 28, 28), torch.rand(32, 1, 28, 28))
+        model = ModelWithTwoInputs()
+        sim = QuantizationSimModel(model, dummy_input=dummy_input)
 
-            def forward_pass(model, args):
-                model.eval()
-                with torch.no_grad():
-                    model(*dummy_input)
+        # Quantize
+        sim.compute_encodings(forward_pass, None)
 
-            model = ModelWithTwoInputs()
-            sim = QuantizationSimModel(model, dummy_input=dummy_input)
+        sim.model.conv1_a.param_quantizers['weight'].encoding.max = 10
+        sim.model.conv1_a.output_quantizers[0].encoding.max = 30
 
-            # Quantize
-            sim.compute_encodings(forward_pass, None)
+        with tempfile.TemporaryDirectory() as temp_dir:
 
-            sim.model.conv1_a.param_quantizers['weight'].encoding.max = 10
-            sim.model.conv1_a.output_quantizers[0].encoding.max = 30
+            # save encodings
+            sim.export(temp_dir, 'two_input_model', dummy_input)
 
-            with tempfile.TemporaryDirectory() as temp_dir:
+            # check the encodings
+            with open(os.path.join(temp_dir, 'two_input_model.encodings'), 'r') as fp:
+                encodings = json.load(fp)
 
-                # save encodings
-                sim.export(temp_dir, 'two_input_model', dummy_input)
+                activation_encodings = encodings['activation_encodings']
+                param_encodings = encodings['param_encodings']
+                assert 16 == len(activation_encodings)
+                assert 7 == len(param_encodings['conv1_a.weight'][0])
+                assert 10 == param_encodings['conv1_a.weight'][0]['max']
 
-                # check the encodings
-                with open(os.path.join(temp_dir, 'two_input_model.encodings'), 'r') as fp:
-                    encodings = json.load(fp)
+            # check the exported model
+            loaded_model = torch.load(os.path.join(temp_dir, 'two_input_model.pth'))
+            loaded_model(torch.rand(1, 1, 28, 28), torch.rand(1, 1, 28, 28))
 
-                    activation_encodings = encodings['activation_encodings']
-                    param_encodings = encodings['param_encodings']
-                    assert 16 == len(activation_encodings)
-                    assert 7 == len(param_encodings['conv1_a.weight'][0])
-                    assert 10 == param_encodings['conv1_a.weight'][0]['max']
-
-                with open(os.path.join(temp_dir, 'two_input_model.encodings.yaml'), 'r') as fp_yaml:
-                    encodings = yaml.load(fp_yaml, Loader=yaml.FullLoader)
-
-                    activation_encodings = encodings['activation_encodings']
-                    param_encodings = encodings['param_encodings']
-                    assert 16 == len(activation_encodings)
-                    assert 7 == len(param_encodings['conv1_a.weight'][0])
-                    assert 10 == param_encodings['conv1_a.weight'][0]['max']
-
-                # check the exported model
-                loaded_model = torch.load(os.path.join(temp_dir, 'two_input_model.pth'))
-                loaded_model(torch.rand(1, 1, 28, 28), torch.rand(1, 1, 28, 28))
-
-        finally:
-            aimet_common.utils.SAVE_TO_YAML = saved_flag
-
-    # -------------------------------------------
     def test_no_fine_tuning_tf_enhanced(self):
         """"""
         model = SmallMnist()
