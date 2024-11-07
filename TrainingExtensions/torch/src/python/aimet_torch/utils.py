@@ -55,11 +55,15 @@ import torch.nn
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.modules.module import (
-    _global_backward_pre_hooks,
     _global_backward_hooks,
     _global_forward_pre_hooks,
     _global_forward_hooks,
 )
+try:
+    from torch.nn.modules.module import _global_backward_pre_hooks
+except ImportError:
+    _global_backward_pre_hooks = None
+
 from torchvision import datasets, transforms
 
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_QUANT_SCHEME_TO_PYMO
