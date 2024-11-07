@@ -1,7 +1,7 @@
-.. _feature-bn:
+.. _featureguide-quant-sim:
 
 #################
-Batch norm re-estimation
+Quantization simulation
 #################
 
 Context

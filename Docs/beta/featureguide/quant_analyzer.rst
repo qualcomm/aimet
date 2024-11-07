@@ -1,7 +1,7 @@
-.. _feature-cp:
+.. _featureguide-quant-analyzer:
 
 #################
-Channel pruning
+Quantization analyzer
 #################
 
 Context

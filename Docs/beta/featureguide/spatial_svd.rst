@@ -1,7 +1,7 @@
-.. _feature-quant-analyzer:
+.. _featureguide-spatial-svd:
 
 #################
-Quantization analyzer
+Spatial SVD
 #################
 
 Context

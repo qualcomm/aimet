@@ -1,7 +1,7 @@
-.. _feature-qat:
+.. _featureguide-visualization:
 
 #################
-Quantization aware training
+Visualization
 #################
 
 Context

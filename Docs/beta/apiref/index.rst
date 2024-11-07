@@ -1,4 +1,4 @@
-.. _api-index:
+.. _apiref-index:
 
 #########
 AIMET API
