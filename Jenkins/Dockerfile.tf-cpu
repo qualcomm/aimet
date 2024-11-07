@@ -169,6 +169,10 @@ RUN python3 -m pip --no-cache-dir install \
         sphinx-jinja \
         sphinx-autodoc-typehints \
         sphinx-rtd-theme \
+        sphinx-tabs \
+        sphinx-design \
+        piccolo-theme \
+        furo \
         tensorboard==2.10.1 \
         tensorboardX==2.6 \
         tensorflow-cpu==2.10.1 \

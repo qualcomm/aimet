@@ -192,6 +192,10 @@ RUN python3 -m pip --no-cache-dir install \
         sphinx-autodoc-typehints==1.6.0 \
         sphinx-jinja==1.1.1 \
         sphinx-rtd-theme \
+        sphinx-tabs \
+        sphinx-design \
+        piccolo-theme \
+        furo \
         tensorboard==2.4.0 \
         tensorboardX==2.4 \
         timm==0.4.12 \
