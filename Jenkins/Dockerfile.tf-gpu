@@ -147,6 +147,7 @@ RUN python3 -m pip --no-cache-dir install \
         dataclasses \
         Deprecated \
         docutils \
+        furo \
         graphviz \
         h5py \
         ipykernel \
@@ -160,6 +161,7 @@ RUN python3 -m pip --no-cache-dir install \
         'numpy<1.24,>=1.20.0' \
         onnx==1.12.0 \
         opencv-python \
+        piccolo-theme \
         Pillow==9.3.0 \
         pluggy==0.12.0 \
         progressbar2 \
@@ -177,13 +179,11 @@ RUN python3 -m pip --no-cache-dir install \
         scikit-learn==1.1.3 \
         scipy==1.8.1 \
         sphinx \
-        sphinx-jinja \
         sphinx-autodoc-typehints \
+        sphinx-design \
+        sphinx-jinja \
         sphinx-rtd-theme \
         sphinx-tabs \
-        sphinx-design \
-        piccolo-theme \
-        furo \
         tensorboard==2.10.1 \
         tensorboardX==2.6 \
         tensorflow-gpu==2.10.1 \

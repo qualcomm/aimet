@@ -143,6 +143,7 @@ RUN python3 -m pip --no-cache-dir install \
         Deprecated \
         deepspeed \
         docutils \
+        furo \
         graphviz \
         grpcio \
         grpcio-tools \
@@ -165,6 +166,7 @@ RUN python3 -m pip --no-cache-dir install \
         onnxruntime-extensions \
         opencv-python \
         peft \
+        piccolo-theme \
         Pillow==9.3.0 \
         pluggy==0.12.0 \
         progressbar2 \
@@ -185,12 +187,10 @@ RUN python3 -m pip --no-cache-dir install \
         spconv==2.1.20 \
         sphinx \
         sphinx-autodoc-typehints \
+        sphinx-design \
         sphinx-jinja \
         sphinx-rtd-theme \
         sphinx-tabs \
-        sphinx-design \
-        piccolo-theme \
-        furo \
         tensorboard==2.4.0 \
         tensorboardX==2.4 \
         timm==0.4.12 \

@@ -149,6 +149,7 @@ RUN python3 -m pip --no-cache-dir install \
         dataclasses \
         Deprecated \
         docutils \
+        furo \
         graphviz \
         grpcio \
         grpcio-tools \
@@ -170,6 +171,7 @@ RUN python3 -m pip --no-cache-dir install \
         onnxruntime==1.15.1 \
         onnxruntime-extensions \
         opencv-python \
+        piccolo-theme \
         Pillow==9.3.0 \
         pluggy==0.12.0 \
         progressbar2 \
@@ -190,12 +192,10 @@ RUN python3 -m pip --no-cache-dir install \
         spconv-cu116 \
         sphinx==3.5.3 \
         sphinx-autodoc-typehints==1.6.0 \
+        sphinx-design \
         sphinx-jinja==1.1.1 \
         sphinx-rtd-theme \
         sphinx-tabs \
-        sphinx-design \
-        piccolo-theme \
-        furo \
         tensorboard==2.4.0 \
         tensorboardX==2.4 \
         timm==0.4.12 \
