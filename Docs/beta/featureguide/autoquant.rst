@@ -1,7 +1,7 @@
-.. _feature-visualization:
+.. _featureguide-autoquant:
 
 #################
-Visualization
+Automatic quantization
 #################
 
 Context

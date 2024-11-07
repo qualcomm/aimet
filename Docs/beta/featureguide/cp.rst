@@ -1,7 +1,7 @@
-.. _feature-weight-svd:
+.. _featureguide-cp:
 
 #################
-Weight SVD
+Channel pruning
 #################
 
 Context

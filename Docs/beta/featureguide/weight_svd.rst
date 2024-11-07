@@ -1,7 +1,7 @@
-.. _feature-cle:
+.. _featureguide-weight-svd:
 
 #################
-Cross-layer equalization
+Weight SVD
 #################
 
 Context

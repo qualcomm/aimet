@@ -1,7 +1,7 @@
-.. _feature-autoquant:
+.. _featureguide-qat:
 
 #################
-Automatic quantization
+Quantization aware training
 #################
 
 Context

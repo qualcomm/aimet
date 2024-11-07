@@ -1,7 +1,7 @@
-.. _feature-spatial-svd:
+.. _featureguide-bn:
 
 #################
-Spatial SVD
+Batch norm re-estimation
 #################
 
 Context

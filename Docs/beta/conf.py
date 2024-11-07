@@ -147,6 +147,7 @@ html_theme_options = {
     'banner_text': "",
     'display_version': True,
     'source_url': "https://github.com/quic/aimet",
+    'localtoc_maxdepth': 2,
     'globaltoc_includehidden': True,
     'globaltoc_maxdepth': 2,
     'globaltoc_collapse': False

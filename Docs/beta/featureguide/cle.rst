@@ -1,7 +1,7 @@
-.. _feature-quant-sim:
+.. _featureguide-cle:
 
 #################
-Quantization simulation
+Cross-layer equalization
 #################
 
 Context

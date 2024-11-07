@@ -298,7 +298,7 @@ div.document {
 }
 div.document section,
 div.document div.section {
-  margin: 4rem 0;
+  margin: 2rem 0;
 }
 div.document section:first-child,
 div.document div.section:first-child {
@@ -306,7 +306,7 @@ div.document div.section:first-child {
 }
 div.document section > section,
 div.document div.section > div.section {
-  margin: 4rem 0;
+  margin: 2rem 0;
 }
 div.document section > section > section,
 div.document div.section > div.section > div.section {
@@ -585,6 +585,20 @@ div.document div.admonition.attention p.admonition-title, div.document div.admon
 }
 
 /*****************************************************************************/
+/* Custom classes for UI control extensions: tabs, grids, cards.             */
+
+/* tab-heading: Heading for use inside tabs, since underline     */
+/* notation doesn't work there. Invoke with:                     */
+/* .. container:: .tab-heading                                   */
+/*    Heading text                                               */
+
+.tab-heading p {
+  font-size: 1.2em !important;
+  font-weight: bold;
+}
+
+
+/*****************************************************************************/
 /* Sidebar */
 div.sphinxsidebar {
   background-color: var(--sidebarColor);
@@ -606,6 +620,14 @@ div.sphinxsidebar {
 div.sphinxsidebar div.sphinxsidebarwrapper {
   height: 100%;
   overflow-y: auto;
+}
+/* This is a total hack to remove the inexplicable ToC from the left sidebar */
+div.sphinxsidebar div.sphinxsidebarwrapper > div {
+  display: none;
+}
+/* Format the TOC caption (title) */
+div.sphinxsidebar span.caption-text {
+  font-weight: bold;
 }
 div.sphinxsidebar ul {
   padding-left: 0rem;
@@ -713,6 +735,11 @@ div#right_sidebar p {
   div#right_sidebar {
     display: none;
   }
+}
+
+/* Limit the TOC depth in the right sidebar */
+div.page_toc ul ul ul {
+  display: none;
 }
 
 /*****************************************************************************/
