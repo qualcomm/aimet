@@ -146,7 +146,7 @@ RUN python3 -m pip --no-cache-dir install \
         cython \
         dataclasses \
         Deprecated \
-        docutils==0.16 \
+        docutils \
         graphviz \
         h5py \
         ipykernel \
