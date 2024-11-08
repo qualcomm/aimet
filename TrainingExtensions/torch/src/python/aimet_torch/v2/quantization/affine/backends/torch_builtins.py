@@ -108,9 +108,9 @@ def _validate_arguments(tensor: torch.Tensor, scale: torch.Tensor,
         msg = f"Scale of shape {scale.shape} cannot be expanded like input tensor of shape {tensor.shape}. "
         # Additional message if the tensor is empty
         if tensor.numel() == 0:
-            msg += (f"Detected that the tensor is empty, which may be caused by the following reasons: "
-                    f"1. The input tensor is incorrect. "
-                    f"2. Improper use of model inference without initializing DeepSpeed after offloading parameters.")
+            msg += ("Detected that the tensor is empty, which may be caused by the following reasons: "
+                    "1. The input tensor is incorrect. "
+                    "2. Improper use of model inference without initializing DeepSpeed after offloading parameters.")
         raise RuntimeError(msg)
 
     if qmin is not None and qmax is not None:

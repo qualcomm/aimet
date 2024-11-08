@@ -37,9 +37,11 @@
 # =============================================================================
 """Utilities to achieve mixed precision"""
 
-from dataclasses import dataclass, field
+# pylint: disable=logging-fstring-interpolation
+
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Type, List, TypeAlias, Literal, Tuple, Optional, Union, Generator
+from typing import Dict, Type, List, TypeAlias, Literal, Optional, Union, Generator
 import functools
 
 import torch
@@ -66,10 +68,9 @@ class Precision:
     def __lt__(self, other):
         if self == other:
             return False
-        elif self.bitwidth != other.bitwidth:
+        if self.bitwidth != other.bitwidth:
             return self.bitwidth < other.bitwidth
-        else:
-            return self.data_type == QuantizationDataType.int and other.data_type != QuantizationDataType.int
+        return self.data_type == QuantizationDataType.int and other.data_type != QuantizationDataType.int
 
 
 TranslateUserDtypes = {
@@ -231,6 +232,7 @@ class MpHandler:
                     raise RuntimeError(f"Unsupported request type {user_request.request_type} encountered")
         return mp_requests
 
+    # pylint: disable=unused-argument, no-self-use
     def _apply_backend_awareness(self, mp_requests: Dict, config: str = "", strict: bool = True) -> Dict:
         """
         Apply backend awareness to the requests from the user
@@ -292,7 +294,7 @@ class MpHandler:
         if module is None:
             return None
 
-        fully_qualified_name = self._sim.connected_graph._module_to_name[module]
+        fully_qualified_name = self._sim.connected_graph._module_to_name[module] # pylint: disable=protected-access
         _, name = fully_qualified_name.split('.', maxsplit=1)
         quant_module = _rgetattr(self._sim.model, name)
         return quant_module
@@ -456,7 +458,7 @@ class MpHandler:
                 parent_module = self._get_parent_module_at_input_idx(module, in_idx)
                 if parent_module is None:
                     logger.warning(f"Warning: unable to propagate request at {module} upward. "
-                                   f"Parent module could not be found.")
+                                    "Parent module could not be found.")
                     continue
 
                 # TODO: remove this once ops with multiple outputs are supported
@@ -552,7 +554,7 @@ class MpHandler:
                                                                                         request.output_candidates[idx])
 
     def apply(self, user_requests: Dict[int, UserRequest], config: str = "", strict: bool = True,
-              log_file: str = './mmp_log.txt'):
+              log_file: str = './mmp_log.txt'): # pylint: disable=unused-argument
         """
         Apply the mp settings specified through the set_precision/set_model_input_precision/set_model_output_precision
         calls to the QuantSim object

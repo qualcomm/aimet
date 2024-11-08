@@ -109,7 +109,7 @@ class MixedPrecisionConfigurator:
         Examples: TODO
 
         """
-
+        # pylint: disable=too-many-branches
         if activation:
             if isinstance(activation, List):
                 for act in activation:
