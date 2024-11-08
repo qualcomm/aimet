@@ -210,25 +210,20 @@ class MpHandler:
 
         mp_requests = {}
         for request_id, user_request in user_requests.items():
-            match user_request.request_type:
-                case RequestType.set_precision_by_module_type:
-                    for name, module in self._get_modules_of_type(user_request.module):
-                        create_mp_request(module, name, request_id, user_request.activation,
-                                          user_request.param)
-
-                case RequestType.set_precision_by_module:
-                    for name, module in self._get_leaf_modules(user_request.module):
-                        create_mp_request(module, name, request_id, user_request.activation,
-                                          user_request.param)
-
-                case RequestType.set_model_input_precision:
-                    ...
-
-                case RequestType.set_model_output_precision:
-                    ...
-
-                case _:
-                    raise RuntimeError(f"Unsupported request type {user_request.request_type} encountered")
+            if user_request.request_type == RequestType.set_precision_by_module_type:
+                for name, module in self._get_modules_of_type(user_request.module):
+                    create_mp_request(module, name, request_id, user_request.activation,
+                                      user_request.param)
+            elif user_request.request_type == RequestType.set_precision_by_module:
+                for name, module in self._get_leaf_modules(user_request.module):
+                    create_mp_request(module, name, request_id, user_request.activation,
+                                      user_request.param)
+            elif user_request.request_type == RequestType.set_model_input_precision:
+                ...
+            elif user_request.request_type == RequestType.set_model_output_precision:
+                ...
+            else:
+                raise RuntimeError(f"Unsupported request type {user_request.request_type} encountered")
         return mp_requests
 
     def _apply_backend_awareness(self, mp_requests: Dict, config: str = "", strict: bool = True) -> Dict:
