@@ -342,7 +342,7 @@ def log_package_info():
         logging.info("%s", Product)
 
 
-@deprecated("This function will be made private in a future AIMET release. Saving to YAML has also been deprecated and"
+@deprecated("This function will be deprecated in a future AIMET release. Saving to YAML has also been deprecated and"
             " only a json file will be saved.")
 def save_json_yaml(file_path: str, dict_to_save: dict):
     """
