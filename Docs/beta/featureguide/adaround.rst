@@ -80,6 +80,7 @@ Prepare the model for quantization.
 
         .. literalinclude:: ../snippets/torch/prepare_model.py
             :language: python
+            :lines: 38-
 
         For details of the model preparer API see the 
         :ref:`Model Preparer API <apiref-torch-model-preparer>`.
@@ -104,6 +105,7 @@ Apply AdaRound to the model.
 
         .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
+            :lines: 38-
 
     .. tab:: TensorFlow
 
@@ -126,6 +128,7 @@ Evaluate the model.
 
         .. literalinclude:: ../snippets/torch/evaluate.py
             :language: python
+            :lines: 38-
 
     .. tab:: TensorFlow
 
@@ -155,6 +158,7 @@ If AdaRound resulted in satisfactory accuracy, export the model.
 
         .. literalinclude:: ../snippets/torch/export.py
             :language: python
+            :lines: 38-
 
     .. tab:: TensorFlow
 
