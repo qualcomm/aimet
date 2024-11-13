@@ -7,4 +7,3 @@ pandas==1.4.3
 protobuf==3.20.1
 tensorflow-hub
 tensorflow-model-optimization
-transformers==4.11.3

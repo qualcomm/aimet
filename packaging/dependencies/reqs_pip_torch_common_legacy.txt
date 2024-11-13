@@ -12,4 +12,3 @@ pandas==1.4.3
 protobuf==3.20.2
 psutil
 tensorboardX==2.4
-transformers==4.27.4

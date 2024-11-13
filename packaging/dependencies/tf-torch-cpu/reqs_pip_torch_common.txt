@@ -7,4 +7,3 @@ onnxsim
 pandas==1.4.3
 psutil
 tensorboardX==2.4
-transformers==4.38.1
