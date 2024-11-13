@@ -49,6 +49,7 @@ import torch.distributed as dist
 import deepspeed as ds
 import tempfile
 import json
+from packaging import version
 
 from torch.utils.data import Dataset, DataLoader, RandomSampler
 
@@ -476,7 +477,12 @@ def test_deepspeed_zero3_offload_buckets_sync(unlabeled_data_loader,
             data = data.cuda()
             _ = sim_deepspeed.model(data)
 
-    param_coordinator = ds_optimizer._get_param_coordinator(False)
+    # NOTE: Some backwards-incompatible changes were made in deepspeed 0.15.4
+    if version.parse(ds.__version__) < version.parse("0.15.4"):
+        param_coordinator = ds_optimizer.parameter_offload.get_param_coordinator(False)
+    else:
+        param_coordinator = ds_optimizer.parameter_offload.get_param_coordinator()
+
     assert param_coordinator.is_complete_trace()
 
     with SafeGatheredParameters(sim_deepspeed.model.parameters()), torch.no_grad():
