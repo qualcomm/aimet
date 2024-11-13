@@ -35,7 +35,6 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=redefined-builtin
 """ Sequential MSE implementation """
 
 from typing import List, Optional, Tuple
@@ -45,9 +44,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from aimet_common.utils import AimetLogger
-from aimet_torch.v1.seq_mse import SequentialMse as V1SequentialMse
-from aimet_torch.v1.seq_mse import SeqMseParams as V1SeqMseParams
-from aimet_torch.v1.seq_mse import SUPPORTED_MODULES
+from aimet_torch._base.seq_mse import SequentialMseBase, SeqMseParams, SUPPORTED_MODULES
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase, QuantizeDequantize, GroupedBlockQuantizeDequantize
 from aimet_torch.v2.quantization.affine.backends import torch_builtins
@@ -56,10 +53,9 @@ from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.utils import reduce, _is_reducible
 
 
-SeqMseParams = V1SeqMseParams
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SeqMse)
 
-class SequentialMse(V1SequentialMse):
+class SequentialMse(SequentialMseBase):
     """
     Sequentially minimizing activation MSE loss in layer-wise way to decide optimal param quantization encodings.
     """
@@ -107,8 +103,8 @@ class SequentialMse(V1SequentialMse):
         for (module, block_grouping) in grouped_block_quantize_dequantizers:
             module.block_grouping = block_grouping
 
-    @staticmethod
-    def compute_all_param_encodings(sim: QuantizationSimModel):
+    @classmethod
+    def compute_all_param_encodings(cls, sim: QuantizationSimModel):
         """
         Compute encodings for all parameters, needed for initializing Sequential MSE
 
@@ -117,9 +113,10 @@ class SequentialMse(V1SequentialMse):
         for _, qmodule in sim.named_qmodules():
             qmodule._compute_param_encodings(overwrite=True) # pylint: disable=protected-access
 
-    @staticmethod
+    @classmethod
     @contextlib.contextmanager
     def temporarily_disable_quantizers(
+            cls,
             model: torch.nn.Module,
             sim: QuantizationSimModel,
             modules_to_exclude: Optional[List[torch.nn.Module]],
@@ -167,8 +164,9 @@ class SequentialMse(V1SequentialMse):
             if name in original_param_quantizers:
                 qmodule.param_quantizers = original_param_quantizers[name]
 
-    @staticmethod
-    def compute_param_encodings(quantizer: QuantizerBase,
+    @classmethod
+    def compute_param_encodings(cls,
+                                quantizer: QuantizerBase,
                                 x_min: torch.Tensor,
                                 x_max: torch.Tensor):
         """
@@ -188,24 +186,24 @@ class SequentialMse(V1SequentialMse):
             quantizer.min.copy_(quantize_dequantize.min)
             quantizer.max.copy_(quantize_dequantize.max)
 
-    @staticmethod
-    def _is_symmetric_quantizer(quantizer: AffineQuantizerBase):
+    @classmethod
+    def _is_symmetric_quantizer(cls, quantizer: AffineQuantizerBase):
         # pylint: disable=protected-access
         return quantizer._symmetric
 
-    @staticmethod
-    def _freeze_quantizer_encoding(quantizer: QuantizerBase):
+    @classmethod
+    def _freeze_quantizer_encoding(cls, quantizer: QuantizerBase):
         # pylint: disable=protected-access
         quantizer.requires_grad_(False)
         quantizer.allow_overwrite(False)
 
-    @staticmethod
-    def _get_quantized_weight(quant_module: BaseQuantizationMixin):
+    @classmethod
+    def _get_quantized_weight(cls, quant_module: BaseQuantizationMixin):
         w = quant_module.weight
         return quant_module.param_quantizers['weight'](w)
 
-    @staticmethod
-    def _get_original_module(quant_module: BaseQuantizationMixin):
+    @classmethod
+    def _get_original_module(cls, quant_module: BaseQuantizationMixin):
         return quant_module
 
     @staticmethod
