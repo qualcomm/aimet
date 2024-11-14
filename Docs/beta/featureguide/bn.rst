@@ -6,42 +6,198 @@ Batch norm re-estimation
 
 Context
 =======
+If applying batch norm folding to your model negatively impacts performance, the batch norm re-estimation feature may be of use. This feature uses a small subset of training data to re-estimate the statistics of the batch norm (BN) layers in a model. Using the re-estimated statistics, the BN layers are folded into the preceding convolution or linear layers. 
 
-Prerequisites
-=============
+BN re-estimation is also recommended in the following cases:
+
+- Models where the main issue is weight quantization
+- Quantization of depthwise separable layers as their batch norm statistics are sensitive to oscillations
 
 Workflow
 ========
 
-.. tabs::
+Prerequisites
+-------------
+To use BN re-estimation, you must:
 
-    .. tab:: PyTorch
+- Load a trained model
+- Create a training dataloader for the model
+- Hold off on folding the batch norm layers until after quantization aware training (QAT)
 
-        PyTorch code example.
+Setup
+--------
 
-        .. literalinclude:: ../torch_code_examples/adaround.py
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../snippets/torch/apply_bn.py
             :language: python
-            :pyobject: apply_adaround_example
+            :start-after: [setup]
+            :end-before: [step_1]
 
-    .. tab:: TensorFlow
+    .. tab-item:: TensorFlow
+        :sync: tf
 
-        Keras code example.
-
-        .. literalinclude:: ../keras_code_examples/adaround.py
+        .. literalinclude:: ../snippets/tensorflow/apply_bn.py
             :language: python
-            :pyobject: apply_adaround_example
+            :start-after: # pylint: disable=missing-docstring
 
-    .. tab:: ONNX
+    .. tab-item:: ONNX
+        :sync: onnx
 
-        ONNX code example.
-
-        .. literalinclude:: ../onnx_code_examples/adaround.py
+        .. literalinclude:: ../snippets/onnx/apply_bn.py
             :language: python
-            :pyobject: apply_adaround_example
+            :start-after: # pylint: disable=missing-docstring
 
 
-Results
-=======
+Step 1
+--------
+Create the QuantizationSimModel 
 
-Next steps
-==========
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        When creating the QuantizationSimModel model, ensure that per channel quantization is enabled. Please update the config file if needed. 
+
+        .. literalinclude:: ../snippets/torch/apply_bn.py
+            :language: python
+            :start-after: [step_1]
+            :end-before: [step_2]
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../snippets/onnx/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+
+Step 2
+--------
+
+Perform QAT 
+
+This involves training your model for a few additional epochs (usually around 15-20). When training, be aware of the hyper-parameters being used. 
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../snippets/torch/apply_bn.py
+            :language: python
+            :start-after: [step_2]
+            :end-before: [step_3]
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../snippets/onnx/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+
+Step 3
+--------
+
+Re-estimate the BN statistics and fold the BN layers. 
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../snippets/torch/apply_bn.py
+            :language: python
+            :start-after: [step_3]
+            :end-before: [step_4]
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../snippets/onnx/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+
+Step 4
+----------
+
+If BN re-estimation resulted in satisfactory accuracy, export the model.
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../snippets/torch/apply_bn.py
+            :language: python
+            :start-after: [step_4]
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../snippets/onnx/apply_bn.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+
+API
+===
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. include:: ../apiref/torch/bn.rst
+            :start-after: _apiref-torch-bn:
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. include:: ../apiref/tensorflow/bn.rst
+            :start-after: _apiref-keras-bn:
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. include:: ../apiref/onnx/bn.rst
+            :start-after: _apiref-onnx-bn:
