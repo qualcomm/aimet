@@ -2050,6 +2050,15 @@ class QuantizationSimModel:
                 target_quantizer_for_first_input = self._get_target_quantizer(first_input_quantizer, first_input_op, module_to_quant_wrapper)
                 target_quantizer_for_second_input = self._get_target_quantizer(second_input_quantizer, second_input_op, module_to_quant_wrapper)
 
+                # We don't need to apply exception rule when both first and second inputs are FP quantization
+                if (
+                    target_quantizer_for_first_input
+                    and target_quantizer_for_first_input.data_type == QuantizationDataType.float
+                    and target_quantizer_for_second_input
+                    and target_quantizer_for_second_input.data_type == QuantizationDataType.float
+                ):
+                    continue
+
                 # According to opdef for Matmul in HTP:
                 # 16bit Weight(second input for dynamic MatMul) must have 16bit Activation(first input for dynamic MatMul).
                 # 16bit Activation and 16bit Weight require minimum arch V73.
