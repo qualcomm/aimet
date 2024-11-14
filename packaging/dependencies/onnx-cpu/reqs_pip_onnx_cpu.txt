@@ -1,4 +1,2 @@
-cumm
-spconv
 torch
 torchvision

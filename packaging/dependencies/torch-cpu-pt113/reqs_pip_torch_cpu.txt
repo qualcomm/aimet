@@ -1,4 +1,2 @@
-cumm==0.2.8
-spconv==2.1.20
 torch==1.13.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
 torchvision==0.14.1+cpu -f https://download.pytorch.org/whl/torch_stable.html

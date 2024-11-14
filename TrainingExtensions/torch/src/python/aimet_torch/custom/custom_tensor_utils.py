@@ -36,43 +36,48 @@
 # =============================================================================
 """ Utils for handling custom tensor types """
 
-from typing import List, Union, Tuple
-import spconv.pytorch as spconv
-import torch
+try:
+    import spconv.pytorch as spconv
+except ImportError as e:
+    to_torch_tensor = None
+    to_custom_tensor = None
+else:
+    from typing import List, Union, Tuple
+    import torch
 
 
-def to_torch_tensor(original: Union[List, Tuple]) -> List[torch.Tensor]:
-    """
-    Convert custom tensors to torch tensors
-    :param original: List of original tensors
-    :return: List of tensors in torch tensor type
-    """
+    def to_torch_tensor(original: Union[List, Tuple]) -> List[torch.Tensor]:
+        """
+        Convert custom tensors to torch tensors
+        :param original: List of original tensors
+        :return: List of tensors in torch tensor type
+        """
 
-    outputs = []
+        outputs = []
 
-    for tensor in original:
-        if isinstance(tensor, spconv.SparseConvTensor):
-            tensor = tensor.features
-        outputs.append(tensor)
+        for tensor in original:
+            if isinstance(tensor, spconv.SparseConvTensor):
+                tensor = tensor.features
+            outputs.append(tensor)
 
-    return outputs
+        return outputs
 
 
-def to_custom_tensor(original: Union[List, Tuple], torch_tensors: List[torch.Tensor]) -> List:
-    """
-    Convert torch tensors to original custom tensors
-    :param original: List of original tensors
-    :param torch_tensors: List of torch tensors
-    :return: List of tensors in original type
-    """
+    def to_custom_tensor(original: Union[List, Tuple], torch_tensors: List[torch.Tensor]) -> List:
+        """
+        Convert torch tensors to original custom tensors
+        :param original: List of original tensors
+        :param torch_tensors: List of torch tensors
+        :return: List of tensors in original type
+        """
 
-    outputs = []
+        outputs = []
 
-    for orig, torch_tensor in zip(original, torch_tensors):
-        tensor = torch_tensor
-        if isinstance(orig, spconv.SparseConvTensor):
-            tensor = orig.replace_feature(torch_tensor)
+        for orig, torch_tensor in zip(original, torch_tensors):
+            tensor = torch_tensor
+            if isinstance(orig, spconv.SparseConvTensor):
+                tensor = orig.replace_feature(torch_tensor)
 
-        outputs.append(tensor)
+            outputs.append(tensor)
 
-    return outputs
+        return outputs
