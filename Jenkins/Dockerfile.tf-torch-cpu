@@ -141,7 +141,7 @@ RUN python3 -m pip --no-cache-dir install \
         h5py \
         ipykernel \
         ipython \
-        Jinja2==3.0.3 \
+        Jinja2>=3.0.3 \
         jupyter \
         keras==2.10.0 \
         lmdb==1.2.1 \
@@ -171,7 +171,7 @@ RUN python3 -m pip --no-cache-dir install \
         pytorch-ignite \
         PyYAML \
         safetensors \
-        scikit-learn==1.1.3 \
+        scikit-learn \
         scipy==1.8.1 \
         spconv==2.1.20 \
         sphinx \

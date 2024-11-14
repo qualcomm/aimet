@@ -162,7 +162,7 @@ RUN python3 -m pip --no-cache-dir install \
         h5py \
         ipykernel \
         ipython \
-        Jinja2==3.0.3 \
+        Jinja2>=3.0.3 \
         jupyter \
         keras==2.2.4 \
         lmdb==1.2.1 \
@@ -171,17 +171,16 @@ RUN python3 -m pip --no-cache-dir install \
         nbsphinx==0.8.12 \
         networkx \
         'numpy<1.24,>=1.20.5' \
-        onnx==1.16.1 \
+        onnx~=1.16.1 \
         onnxscript \
         onnxsim \
-        onnxruntime==1.18.1 \
+        onnxruntime~=1.18.1 \
         onnxruntime-extensions \
         opencv-python \
         peft \
         piccolo-theme \
         Pillow==9.3.0 \
         pluggy==0.12.0 \
-        protobuf==3.20.2 \
         psutil \
         ptflops \
         pybind11 \
@@ -194,7 +193,7 @@ RUN python3 -m pip --no-cache-dir install \
         pytorch-ignite \
         PyYAML \
         safetensors \
-        scikit-learn==1.1.3 \
+        scikit-learn \
         scipy==1.8.1 \
         spconv-cu120 \
         sphinx \
@@ -203,8 +202,7 @@ RUN python3 -m pip --no-cache-dir install \
         sphinx-jinja \
         sphinx-rtd-theme \
         sphinx-tabs \
-        tensorboard==2.4.0 \
-        tensorboardX==2.4 \
+        tensorboard \
         timm==0.4.12 \
         torch==2.1.2+cu121 -f https://download.pytorch.org/whl/torch_stable.html \
         torchaudio==2.1.2+cu121 -f https://download.pytorch.org/whl/torch_stable.html \
