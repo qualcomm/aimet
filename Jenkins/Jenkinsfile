@@ -293,10 +293,16 @@ def callAimetExtra(target_branch) {
             // setting USE LINARO value to EMPTY to rebuild docker image
             using_linaro=""
         }
-    if (target_branch != "develop") {
+    
+    if (target_branch.startsWith("release-aimet")) {
+        echo "Running AIMET additional stages on ${CHANGE_TARGET} branch ..."
+        build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'PROJECT_BRANCH', value: target_branch), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}"), string(name: 'AIMETPRO_BRANCH', value: target_branch)]
+    }
+    else if (target_branch != "develop") {
         echo "Running AIMET additional stages on ${CHANGE_TARGET} branch ..."
         build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'PROJECT_BRANCH', value: target_branch), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}")]
-    }    else {
+    }    
+    else {
         echo "Running AIMET additional stages on develop branch ..."
         build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}")]
     }
