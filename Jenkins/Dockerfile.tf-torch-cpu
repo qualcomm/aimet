@@ -150,6 +150,7 @@ RUN python3 -m pip --no-cache-dir install \
         nbsphinx \
         'numpy<1.24,>=1.20.5' \
         onnx==1.12.0 \
+        onnxscript \
         onnxsim \
         onnxruntime==1.18.1 \
         onnxruntime-extensions \
@@ -170,6 +171,7 @@ RUN python3 -m pip --no-cache-dir install \
         pytest-cov \
         pytorch-ignite \
         PyYAML \
+        safetensors \
         scikit-learn==1.1.3 \
         scipy==1.8.1 \
         spconv==2.1.20 \
