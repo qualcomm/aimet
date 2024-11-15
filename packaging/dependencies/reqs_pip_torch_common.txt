@@ -11,4 +11,5 @@ onnxsim
 pandas==1.5.3
 protobuf==3.20.2
 psutil
+safetensors
 tensorboardX==2.4
