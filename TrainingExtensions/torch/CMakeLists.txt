@@ -80,6 +80,7 @@ add_custom_target(TorchCppOps ALL
       DEPENDS ${OUTPUT}
       SOURCES
       src/AimetTensorQuantizer.cpp
+      src/AimetEncodingRescaler.cpp
       )
 
 set(FILE_PATH_TENSOR_QUANT "${CMAKE_BINARY_DIR}/artifacts/aimet_tensor_quantizer*.egg/AimetTensorQuantizer*.so")
@@ -111,7 +112,9 @@ endif()
 
 install(DIRECTORY ${CMAKE_BINARY_DIR}/artifacts/aimet_common/
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
-        FILES_MATCHING PATTERN "AimetTensorQuantizer*.so"
+        FILES_MATCHING
+        PATTERN "AimetTensorQuantizer*.so"
+        PATTERN "AimetEncodingRescaler*.so"
       )
 
 add_custom_target(whl_prep_cp_torch
