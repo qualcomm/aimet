@@ -82,6 +82,7 @@ Prepare the model for quantization.
 
         .. literalinclude:: ../snippets/torch/prepare_model.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
         For details of the model preparer API see the 
         :ref:`Model Preparer API <apiref-torch-model-preparer>`.
@@ -89,12 +90,10 @@ Prepare the model for quantization.
     .. tab-item:: TensorFlow
         :sync: tf
 
-
         Tensorflow has no preparation requirements.
 
     .. tab-item:: ONNX
         :sync: onnx
-
 
         ONNX has no preparation requirements.
 
@@ -112,18 +111,21 @@ Apply AdaRound to the model.
 
         .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
 Step 3
 ~~~~~~
@@ -136,21 +138,23 @@ Evaluate the model.
     .. tab-item:: PyTorch
         :sync: torch
 
-
         .. literalinclude:: ../snippets/torch/evaluate.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. literalinclude:: ../snippets/tensorflow/evaluate.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. literalinclude:: ../snippets/onnx/evaluate.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
 
 Results
@@ -170,21 +174,23 @@ If AdaRound resulted in satisfactory accuracy, export the model.
     .. tab-item:: PyTorch
         :sync: torch
 
-
         .. literalinclude:: ../snippets/torch/export.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. literalinclude:: ../snippets/tensorflow/export.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. literalinclude:: ../snippets/onnx/export.py
             :language: python
+            :start-after: # pylint: disable=missing-docstring
 
 If the model is still not accurate enough, the next step is typically to try :ref:`quantization-aware training <featureguide-qat>`.
 
