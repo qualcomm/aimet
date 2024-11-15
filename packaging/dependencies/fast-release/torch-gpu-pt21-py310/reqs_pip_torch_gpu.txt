@@ -1,5 +1,4 @@
 bokeh==3.2.2
-cumm-cu120
 cvxpy
 cylp
 dataclasses
