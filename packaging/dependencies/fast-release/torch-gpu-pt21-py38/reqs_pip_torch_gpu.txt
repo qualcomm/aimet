@@ -1,6 +1,5 @@
 bokeh==3.1.1
 cvxpy
-cylp
 dataclasses
 h5py==2.10.0
 holoviews==1.17.1

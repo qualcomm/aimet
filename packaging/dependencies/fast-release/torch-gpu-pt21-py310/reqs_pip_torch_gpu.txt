@@ -1,7 +1,6 @@
 bokeh==3.2.2
 cumm-cu120
 cvxpy
-cylp
 dataclasses
 h5py
 holoviews==1.18.3
