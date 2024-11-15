@@ -14,7 +14,6 @@ onnx==1.14.1
 onnxsim
 osqp
 pandas==1.5.3
-progressbar2
 protobuf==3.20.2
 psutil
 pybind11

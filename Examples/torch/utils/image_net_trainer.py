@@ -40,7 +40,7 @@ Creates trainer for Image-Net dataset
 """
 import logging
 
-import progressbar
+from tqdm import tqdm
 import torch
 from torch import nn, optim
 
@@ -103,36 +103,31 @@ class ImageNetTrainer:
         model.train()
 
         avg_loss = 0.0
-        curr_iter = 1
 
-        with progressbar.ProgressBar(max_value=max_iterations) as progress_bar:
-            for images, target in self._train_loader:
-                images = images.to(device)
-                target = target.to(device)
+        for i, (images, target) in tqdm(enumerate(self._train_loader), total=max_iterations):
+            if i == max_iterations:
+                break
 
-                # compute model output
-                output = model(images)
-                loss = criterion(output, target)
-                avg_loss += loss.item()
+            images = images.to(device)
+            target = target.to(device)
 
-                # compute gradient and do SGD step
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            # compute model output
+            output = model(images)
+            loss = criterion(output, target)
+            avg_loss += loss.item()
 
-                progress_bar.update(curr_iter)
+            # compute gradient and do SGD step
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-                if curr_iter % debug_steps == 0:
-                    eval_accuracy = self._evaluator.evaluate(model, use_cuda=use_cuda)
-                    logger.info('Epoch #%d/%d: iteration #%d/%d: Global Avg Loss=%f, Eval Accuracy=%f',
-                                current_epoch, max_epochs, curr_iter, max_iterations,
-                                avg_loss / curr_iter, eval_accuracy)
-                    # switch to training mode after evaluation
-                    model.train()
-
-                curr_iter += 1
-                if curr_iter > max_iterations:
-                    break
+            if (i+1) % debug_steps == 0:
+                eval_accuracy = self._evaluator.evaluate(model, use_cuda=use_cuda)
+                logger.info('Epoch #%d/%d: iteration #%d/%d: Global Avg Loss=%f, Eval Accuracy=%f',
+                            current_epoch, max_epochs, curr_iter, max_iterations,
+                            avg_loss / curr_iter, eval_accuracy)
+                # switch to training mode after evaluation
+                model.train()
 
         eval_accuracy = self._evaluator.evaluate(model, use_cuda=use_cuda)
         print("eval : ", eval_accuracy)

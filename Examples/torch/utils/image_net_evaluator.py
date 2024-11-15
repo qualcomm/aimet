@@ -40,7 +40,7 @@ Creates Evaluator for Image-Net dataset
 """
 import logging
 
-import progressbar
+from tqdm import tqdm
 import torch
 from torch import nn
 
@@ -104,27 +104,21 @@ class ImageNetEvaluator:
         model = model.to(device)
         model = model.eval()
 
-        batch_cntr = 1
-        with progressbar.ProgressBar(max_value=iterations) as progress_bar:
-            with torch.no_grad():
-                for input_data, target_data in self._val_data_loader:
+        with torch.no_grad():
+            for i, (input_data, target_data) in tqdm(enumerate(self._val_data_loader), total=iterations):
+                if i == iterations:
+                    break
 
-                    inputs_batch = input_data.to(device)
-                    target_batch = target_data.to(device)
+                inputs_batch = input_data.to(device)
+                target_batch = target_data.to(device)
 
-                    predicted_batch = model(inputs_batch)
+                predicted_batch = model(inputs_batch)
 
-                    batch_avg_top_1_5 = accuracy(output=predicted_batch, target=target_batch,
-                                                 topk=(1, 5))
+                batch_avg_top_1_5 = accuracy(output=predicted_batch, target=target_batch,
+                                             topk=(1, 5))
 
-                    acc_top1 += batch_avg_top_1_5[0].item()
-                    acc_top5 += batch_avg_top_1_5[1].item()
-
-                    progress_bar.update(batch_cntr)
-
-                    batch_cntr += 1
-                    if batch_cntr > iterations:
-                        break
+                acc_top1 += batch_avg_top_1_5[0].item()
+                acc_top5 += batch_avg_top_1_5[1].item()
 
         acc_top1 /= iterations
         acc_top5 /= iterations

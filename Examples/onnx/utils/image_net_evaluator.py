@@ -40,7 +40,7 @@ Creates Evaluator for Image-Net dataset
 """
 import logging
 
-import progressbar
+from tqdm import tqdm
 import torch
 import onnxruntime as ort
 
@@ -92,25 +92,19 @@ class ImageNetEvaluator:
         logger.info("Evaluating nn.Module for %d iterations with batch_size %d",
                     iterations, self._val_data_loader.batch_size)
 
-        batch_cntr = 1
-        with progressbar.ProgressBar(max_value=iterations) as progress_bar:
-            for input_data, target_data in self._val_data_loader:
+        for i, (input_data, target_data) in tqdm(enumerate(self._val_data_loader), total=10):
+            if i == 10:
+                break
 
-                inputs_batch = input_data.numpy()
+            inputs_batch = input_data.numpy()
 
-                predicted_batch = sess.run(None, {input_name : inputs_batch})[0]
+            predicted_batch = sess.run(None, {input_name : inputs_batch})[0]
 
-                batch_avg_top_1_5 = accuracy(output=torch.from_numpy(predicted_batch), target=target_data,
-                                             topk=(1, 5))
+            batch_avg_top_1_5 = accuracy(output=torch.from_numpy(predicted_batch), target=target_data,
+                                         topk=(1, 5))
 
-                acc_top1 += batch_avg_top_1_5[0].item()
-                acc_top5 += batch_avg_top_1_5[1].item()
-
-                progress_bar.update(batch_cntr)
-
-                batch_cntr += 1
-                if batch_cntr > iterations:
-                    break
+            acc_top1 += batch_avg_top_1_5[0].item()
+            acc_top5 += batch_avg_top_1_5[1].item()
 
         acc_top1 /= iterations
         acc_top5 /= iterations

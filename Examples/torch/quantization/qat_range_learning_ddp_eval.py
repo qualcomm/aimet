@@ -52,7 +52,7 @@ import os
 import socket
 import argparse
 
-import progressbar
+from tqdm import tqdm
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -129,15 +129,13 @@ def get_quant_eval(imagenet_dir, batch_size, device):
         model.to(device)
         model.eval()
 
-        with progressbar.ProgressBar(max_value=100) as progress_bar:
-            with torch.no_grad():
-                for i, (images, _) in enumerate(val_loader):
-                    images = images.to(device)
-                    # compute output
-                    _ = model(images)
-                    progress_bar.update(i)
-                    if i == 100:
-                        break
+        with torch.no_grad():
+            for i, (images, _) in tqdm(enumerate(val_loader), total=100):
+                images = images.to(device)
+                # compute output
+                _ = model(images)
+                if i == 100:
+                    break
 
     return evaluate_quant
 
