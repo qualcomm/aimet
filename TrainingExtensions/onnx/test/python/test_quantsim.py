@@ -1579,6 +1579,15 @@ class TestEncodingPropagation:
                     _, out_qtzr, __ = sim.get_op_quantizers(cg_op)
                     assert _compare_encodings(out_qtzr[0].encodings[0], sim.qc_quantize_op_dict['output'].encodings[0])
 
+    def test_integer_concat(self):
+        """
+        When: Model contains unquantizable layers with op_type in quantsim.op_types_to_tie_qtzrs
+        Then: Error should not be thrown during quantsim init
+        """
+        model = models_for_tests.integer_concat_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model)
+
     def test_clamp_activation_encodings(self):
         model = models_for_tests.matmul_add_model()
         dummy_input = {'model_input': np.expand_dims(np.identity(8, np.float32), axis=(0, 1))}

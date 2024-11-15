@@ -2543,3 +2543,37 @@ def batchnorm_model_constants():
     onnx.checker.check_model(model, True)
     return model
 
+def integer_concat_model():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name='IntConcatModel',
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10])],
+            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10, 1])],
+            initializer=[],
+            nodes=[
+                helper.make_node('Constant', inputs=[], outputs=["constant_one"],
+                                 value=numpy_helper.from_array(np.array([1]).astype('int64')), name='one'),
+                helper.make_node(
+                    'Shape',
+                    inputs=['model_input'],
+                    outputs=['input_shape'],
+                    name='shape'
+                ),
+                helper.make_node(
+                    'Concat',
+                    inputs=['input_shape', 'constant_one'],
+                    outputs=['output_shape'],
+                    name='out_shape',
+                    axis=0
+                ),
+                helper.make_node(
+                    "Reshape",
+                    inputs=["model_input", "output_shape"],
+                    outputs=["model_output"]
+                )
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model
+

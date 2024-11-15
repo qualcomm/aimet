@@ -895,9 +895,7 @@ class QuantizationSimModel:
             _, out_qtzr, __ = self.get_op_quantizers(op)
 
             if not out_qtzr:
-                msg = 'Encoding propagation is only supported for ops with exactly ' \
-                      '1 output quantizer, but found output_quantizers[0] == []'
-                raise RuntimeError(msg)
+                continue
 
             if len(out_qtzr) != 1:
                 msg = 'Encoding propagation is only supported for ops with exactly ' \
