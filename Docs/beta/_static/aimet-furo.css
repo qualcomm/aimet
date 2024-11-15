@@ -10,23 +10,3 @@
 [for^="toctree-checkbox-"], [id^="toctree-checkbox-"] {
     visibility: hidden;
 }
-
-/* 
-<li class="toctree-l1 current has-children current-page">
-<a class="current reference internal" href="#">AIMET Feature Guide</a>
-<input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox">
-    <label for="toctree-checkbox-1">
-        <div class="visually-hidden">Toggle navigation of AIMET Feature Guide</div>
-        <i class="icon">
-            <svg>
-                <use href="#svg-arrow-right">
-                </use>
-            </svg>
-        </i>
-    </label>
-    <ul>
-        <li class="toctree-l2">
-            <a class="reference internal" href="qat.html">Quantization aware training</a>
-        </li>
-    </ul>
-*/
