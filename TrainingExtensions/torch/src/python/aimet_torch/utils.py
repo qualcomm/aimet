@@ -70,7 +70,7 @@ from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_QUANT_SCHEM
 from aimet_common.utils import AimetLogger, Handle, log_with_error_and_assert_if_false
 from aimet_common.utils import profile as _profile, deprecated, _red # pylint:disable = unused-import
 import aimet_common.libpymo as libpymo
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+from aimet_torch.v1.nn.modules.custom import CustomSparseConv3DLayer, Cast
 from aimet_torch.v1.tensor_quantizer import TensorQuantizer, StaticGridPerChannelQuantizer, StaticGridPerTensorQuantizer # pylint:disable = cyclic-import
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
@@ -534,8 +534,13 @@ def is_leaf_module(module):
     module_list = list(module.modules())
 
     # pylint: disable=unidiomatic-typecheck
-    return bool(len(module_list) == 1) or type(module) in modules_to_treat_as_leaf or \
-        isinstance(module, aimet_modules.CustomSparseConv3DLayer)
+    ret = bool(len(module_list) == 1) or type(module) in modules_to_treat_as_leaf
+
+    if ret:
+        return ret
+
+    return CustomSparseConv3DLayer is not None and\
+           isinstance(module, CustomSparseConv3DLayer)
 
 
 def get_input_shape_batch_size(data_loader):
@@ -1135,7 +1140,7 @@ def get_inout_tensors_dtypes_for_cast_modules(model: torch.nn.Module, input_tens
     def record_dtypes(module, inputs, outputs):
 
         # pylint: disable=protected-access
-        if isinstance(module, aimet_modules.Cast):
+        if isinstance(module, Cast):
             input_dtype = None
 
             if isinstance(inputs, (list, tuple)):
