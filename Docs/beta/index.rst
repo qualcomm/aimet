@@ -16,6 +16,7 @@ AI Model Efficiency Toolkit Documentation
    Examples <../examples/index>
    API Reference <../apiref/index>
    Release Notes <../rn/index>
+   Glossary <glossary>
 
 AI Model Efficiency Toolkit (AIMET) is a software toolkit for quantizing and compressing models.
 

@@ -1,5 +1,5 @@
-.. _opt-guide-compression:
+.. _opt-guide-compression-index:
 
-#########
+#################
 Model Compression
-#########
+#################

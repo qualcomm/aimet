@@ -1,5 +1,5 @@
-.. _opt-guide-quantization:
+.. _opt-guide-quantization-index:
 
-#########
+##################
 Model Quantization
-#########
+##################
