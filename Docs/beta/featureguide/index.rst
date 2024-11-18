@@ -11,6 +11,7 @@ Optimization Techniques
     Automatic quantization <autoquant>
     Adaptive rounding <adaround>
     Cross-layer equalization <cle>
+    Batch norm folding <bnf>
     Batch norm re-estimation <bn>
     Quantization analyzer <quant_analyzer>
     Visualization <visualization>
@@ -37,6 +38,11 @@ Uses training data to improve accuracy over naïve rounding.
 ===================================================
 
 Scales the parameter ranges across different channels to increase the range for layers with low range and reduce range for layers with high range, enabling the same quantizaion parameters to be used across all channels.
+
+:ref:`Batch norm folding (BNF) <featureguide-bnf>`
+=================================================
+
+Folds BN layers into adjacent Convolution or Linear layers.
 
 :ref:`Batch norm re-estimation (BN) <featureguide-bn>`
 =================================================
