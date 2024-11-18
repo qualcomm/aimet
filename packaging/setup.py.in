@@ -39,8 +39,6 @@
 
 import os
 import sys
-import shlex
-import subprocess
 
 from pathlib import Path
 from setuptools import find_packages, find_namespace_packages, setup
@@ -200,7 +198,7 @@ def get_required_package_data(aimet_package_name):
 
     # Loop over package artifacts folder and create package contents' list
     required_package_data = ['acceptance_tests/*.*']
-    for path, _, filenames in os.walk(aimet_package_name):        
+    for path, _, filenames in os.walk(aimet_package_name):
         # Loop over each individual asset
         for filename in filenames:
             filename_with_path = os.path.join(path, filename)
@@ -208,7 +206,7 @@ def get_required_package_data(aimet_package_name):
                 filename.endswith('.so') or \
                 path.startswith(aimet_package_name + '/x86_64-linux-gnu') or \
                 filename_with_path in package_dependency_files:
-                
+
                 required_package_data.append(filename_with_path)
 
     required_package_data = ['/'.join(files.split('/')[1:]) for files in required_package_data]
@@ -307,7 +305,7 @@ setup(
     include_package_data=True,
     zip_safe=True,
     platforms='x86',
-    python_requires='>=3.8, !=3.9.*, <3.11',
+    python_requires='>=3.8.0',
     cmdclass={
         'bdist_wheel': bdist_wheel_aimet,
     },
