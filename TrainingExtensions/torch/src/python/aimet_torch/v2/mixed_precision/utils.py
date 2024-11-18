@@ -131,6 +131,45 @@ def _rsetattr(obj, attr, val):
     pre_obj = _rgetattr(obj, pre) if pre else obj
     return setattr(pre_obj, post, val)
 
+def _apply_fn_recursively_to_all_elems(fn, container):
+    if container is None:
+        return None
+    elif isinstance(container, list):
+        return [_apply_fn_recursively_to_all_elems(fn, elem) for elem in container]
+    elif isinstance(container, dict):
+        return {key: _apply_fn_recursively_to_all_elems(fn, elem) for key, elem in container.items()}
+    else:
+        return fn(container)
+
+def _flatten_list(container):
+    if container is None or container == []:
+        return container
+    if not isinstance(container, (list, tuple)):
+        return [container]
+    if isinstance(container[0], list):
+        return _flatten_list(container[0]) + _flatten_list(container[1:])
+    if len(container) == 1:
+        return container
+    else:
+        return container[:1] + _flatten_list(container[1:])
+
+
+def _broadcast_tuples(inp_a, inp_b):
+    """ Broadcast inp_a to match inp_b shape if possible, or raise RuntimeError """
+    if not isinstance(inp_a, (tuple, list)) and not isinstance(inp_b, (tuple, list)):
+        return inp_a
+
+    if not isinstance(inp_a, (tuple, list)) and isinstance(inp_b, (tuple, list)):
+        return tuple(_broadcast_tuples(inp_a, inp_b_elem) for inp_b_elem in inp_b)
+
+    if isinstance(inp_a, (tuple, list)) and isinstance(inp_b, (tuple, list)):
+        if len(inp_a) == len(inp_b):
+            return tuple(_broadcast_tuples(inp_a_elem, inp_b_elem) for inp_a_elem, inp_b_elem in \
+                         zip(inp_a, inp_b, strict=True))
+
+    raise RuntimeError("Incompatible tuple sizes.")
+
+
 class MpHandler:
     """
     Mixed Precision handler provides the functionalities to generate the Mixed Precision profile from the user provided
@@ -150,7 +189,7 @@ class MpHandler:
         """
         candidate = None
         if user_dtype:
-            if isinstance(user_dtype, List):
+            if isinstance(user_dtype, (List, Tuple)):
                 candidate = []
                 for dtype in user_dtype:
                     candidate.append(TranslateUserDtypes.get(dtype))
@@ -171,6 +210,11 @@ class MpHandler:
         for name, module in self._sim.model.named_modules():
             if isinstance(module, BaseQuantizationMixin) and isinstance(module.get_original_module(), module_type):
                 yield name, module
+
+    def _get_module_name(self, inp_module):
+        for name, module in self._sim.model.named_modules():
+            if inp_module == module:
+                return name
 
     def _process_user_requests(self, user_requests: Dict[int, UserRequest]):
 
@@ -209,6 +253,38 @@ class MpHandler:
                                                   output_candidates=output_candidates,
                                                   param_candidate=param_candidate)
 
+        def create_mp_io_request(torch_module: BaseQuantizationMixin, module_name: str, idx: int,
+                                    activation: Union[List[SupportedDType], SupportedDType, None],
+                                    request_type: RequestType):
+            if torch_module in mp_requests:
+                prev_request = mp_requests[torch_module]
+                logger.info(f"{module_name} was already encountered with request_id {prev_request.id} and request "
+                            f"{user_requests[prev_request.id]}. The output activation field of this request"
+                            f" would be updated with the new request {user_requests[idx]}")
+                request = mp_requests[torch_module]
+            else:
+                request = MpRequest()
+            request.id = idx
+
+            if request_type == RequestType.set_model_output_precision:
+                candidates = self._get_candidate_from_user_dtype(activation)
+                if not isinstance(candidates, List):
+                    output_candidates = [candidates] * len(torch_module.output_quantizers)
+                request.output_candidates = output_candidates
+
+                if all(out_qtzr is None for out_qtzr in torch_module.output_quantizers):
+                    input_candidates = [request.output_candidates[0]] * len(torch_module.input_quantizers)
+                    request.input_candidates = input_candidates
+            elif request_type == RequestType.set_model_input_precision:
+                input_candidates = self._get_candidate_from_user_dtype(activation)
+                if not isinstance(input_candidates, List):
+                    input_candidates = [input_candidates] * len(torch_module.input_quantizers)
+                if len(input_candidates) != len(torch_module.input_quantizers):
+                    raise RuntimeError(f"Invalid number of activation candidates for module {module_name} provided.")
+                request.input_candidates = input_candidates
+
+            mp_requests[torch_module] = request
+
         mp_requests = {}
         for request_id, user_request in user_requests.items():
             if user_request.request_type == RequestType.set_precision_by_module_type:
@@ -220,9 +296,13 @@ class MpHandler:
                     create_mp_request(module, name, request_id, user_request.activation,
                                       user_request.param)
             elif user_request.request_type == RequestType.set_model_input_precision:
-                ...
+                name = self._get_module_name(user_request.module)
+                create_mp_io_request(user_request.module, name, request_id, user_request.activation,
+                                     RequestType.set_model_input_precision)
             elif user_request.request_type == RequestType.set_model_output_precision:
-                ...
+                name = self._get_module_name(user_request.module)
+                create_mp_io_request(user_request.module, name, request_id, user_request.activation,
+                                     RequestType.set_model_output_precision)
             else:
                 raise RuntimeError(f"Unsupported request type {user_request.request_type} encountered")
         return mp_requests
@@ -295,6 +375,16 @@ class MpHandler:
         return quant_module
 
     @functools.cached_property
+    def input_modules(self):
+        return _apply_fn_recursively_to_all_elems(self._get_module_from_cg_op,
+                                                  self._sim.connected_graph._input_structure)
+
+    @functools.cached_property
+    def output_modules(self):
+        return _apply_fn_recursively_to_all_elems(self._get_module_from_cg_op,
+                                                  self._sim.connected_graph._output_structure)
+
+    @functools.cached_property
     def _module_to_cg_op_mapping(self) -> Dict[torch.nn.Module, CG_Op]:
         module_to_op_dict = {}
         for cg_op in self._sim.connected_graph.ordered_ops:
@@ -338,7 +428,8 @@ class MpHandler:
 
                 # this means that the output is being consumed by an implicit op (if output_module is None) OR
                 # an op that has no quantizers because it is a data movement or is in a supergroup
-                if output_module is None or _has_no_quantizers(output_module):
+                if output_module is None or \
+                        _has_no_quantizers(output_module) and output_module not in _flatten_list([self.output_modules]):
                     output_ops.extend(_get_child_modules_from_cg_op(output_op))
                 else:
                     for idx, input_tensor in enumerate(output_op.inputs):
@@ -438,7 +529,7 @@ class MpHandler:
         """
         def _propagate_request_upstream_helper(module):
             request = mp_requests.get(module)
-            if request is None:
+            if request is None or request.input_candidates is None:
                 return
 
             for in_idx, input_candidate in enumerate(request.input_candidates):
@@ -504,7 +595,8 @@ class MpHandler:
                     return
 
             # If this output is a model output, return without changing output candidate
-            # TODO in subsequent PR (once details of setting model input/output precisions has been resolved)
+            if module in _flatten_list([self.output_modules]):
+                return
 
             # If the output quantizer at this module has a higher precision than the output candidate, return without
             # changing output candidate

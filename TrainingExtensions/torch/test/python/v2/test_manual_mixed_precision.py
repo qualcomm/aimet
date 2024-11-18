@@ -41,7 +41,7 @@ import os
 
 import pytest
 import torch
-from torch import nn
+from torch import nn, candidate
 
 from aimet_common.defs import QuantizationDataType
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase
@@ -146,6 +146,48 @@ class ModelWithExplicitDataMovementOp(nn.Module):
         x = self.relu_1(self.fc_1(x))
         x = self.transpose(x, [0, 1, 3, 2])
         x = self.relu_2(self.fc_2(x))
+        return x
+
+
+class ModelWithSeveralTransposes(nn.Module):
+    def __init__(self):
+        super(ModelWithSeveralTransposes, self).__init__()
+        self.transpose_1 = aimet_elementwise.Permute()
+        self.transpose_2 = aimet_elementwise.Permute()
+        self.fc = nn.Linear(10, 10)
+        self.transpose_3 = aimet_elementwise.Permute()
+        self.transpose_4 = aimet_elementwise.Permute()
+
+    def forward(self, x):
+        x = self.transpose_1(x, [0, 1, 3, 2])
+        x = self.transpose_2(x, [0, 1, 3, 2])
+        x = self.fc(x)
+        x = self.transpose_3(x, [0, 1, 3, 2])
+        x = self.transpose_4(x, [0, 1, 3, 2])
+        return x
+
+
+class SingleLayerModel(nn.Module):
+    def __init__(self):
+        super(SingleLayerModel, self).__init__()
+        self.fc = nn.Linear(10, 10)
+
+    def forward(self, x):
+        x = self.fc(x)
+        return x
+
+
+class SingleLayerModelWithTransposes(nn.Module):
+    def __init__(self):
+        super(SingleLayerModelWithTransposes, self).__init__()
+        self.transpose_1 = aimet_elementwise.Permute()
+        self.fc = nn.Linear(10, 10)
+        self.transpose_2 = aimet_elementwise.Permute()
+
+    def forward(self, x):
+        x = self.transpose_1(x, [0, 1, 3, 2])
+        x = self.fc(x)
+        x = self.transpose_2(x, [0, 1, 3, 2])
         return x
 
 
@@ -471,7 +513,6 @@ class TestManualMixedPrecisionConfigurator:
         with pytest.raises(RuntimeError):
             mp_configurator.apply()
 
-    @pytest.mark.skip("Skipping this test until MMP can determine model output quantizers")
     @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
     def test_mp_15(self, candidate: SupportedDType):
         """
@@ -524,7 +565,6 @@ class TestManualMixedPrecisionConfigurator:
                 else:
                     assert module.bitwidth == 8
 
-    @pytest.mark.skip("Skipping this test until MMP can determine model output quantizers")
     @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
     def test_mp_17(self, candidate: SupportedDType):
         """
@@ -541,13 +581,7 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator.set_precision(sim.model.relu_1, candidate)
         mp_configurator.apply()
 
-        for module in sim.model.modules():
-            if isinstance(module, QuantizerBase):
-                if module in [sim.model.fc_1.output_quantizers[0],
-                              sim.model.relu_1.output_quantizers[0]]:
-                    assert module.bitwidth == 16
-                else:
-                    assert module.bitwidth == 8
+        assert sim.model.relu_1.output_quantizers[0].bitwidth == 16
 
     @pytest.mark.skip("Skipping this test until MMP can apply backend awareness")
     def test_mp_18(self):
@@ -776,3 +810,327 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator.set_precision(sim.model.conv3, ['Int16', 'Int16'])
         with pytest.raises(RuntimeError):
             mp_configurator.apply()
+
+    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    def test_mp_26(self, candidate: SupportedDType):
+        """
+        Test that set_model_input_precision API functions correctly on single input model
+        """
+        model = SingleResidual()
+        input_shape = (1, 3, 32, 32)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_input_precision(candidate)
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.conv1.input_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    def test_mp_27(self, candidate: SupportedDType):
+        """
+        Test that set_model_input_precision API functions correctly on multiple input model with single precision
+        """
+        model = ModelWithMultiInputMultiOutput()
+
+        input_shape = (1, 1, 28, 28)
+        torch.manual_seed(0)
+        dummy_input = (torch.randn(*input_shape), torch.randn(*input_shape), torch.randn(*input_shape))
+        sim = QuantizationSimModel(model, dummy_input)
+
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_model_input_precision(candidate)
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.conv1_a.input_quantizers[0],
+                              sim.model.conv1_b.input_quantizers[0],
+                              sim.model.conv1_c.input_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_28(self):
+        """
+        Test that set_model_input_precision API functions correctly on multiple input model with single precision
+        """
+        model = ModelWithMultiInputMultiOutput()
+
+        input_shape = (1, 1, 28, 28)
+        torch.manual_seed(0)
+        dummy_input = (torch.randn(*input_shape), torch.randn(*input_shape), torch.randn(*input_shape))
+        sim = QuantizationSimModel(model, dummy_input)
+
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_model_input_precision(['Int16', None, 'Int4'])
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.conv1_a.input_quantizers[0]]:
+                    assert module.bitwidth == 16
+                elif module in [sim.model.conv1_c.input_quantizers[0]]:
+                    assert module.bitwidth == 4
+                else:
+                    assert module.bitwidth == 8
+
+    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    def test_mp_29(self, candidate: SupportedDType):
+        """
+        Test that set_model_output_precision API functions correctly on single input model
+        """
+        model = SingleResidual()
+        input_shape = (1, 3, 32, 32)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_output_precision(candidate)
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.fc.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    @pytest.mark.parametrize("candidate", ['Int16', 'Fp16'])
+    def test_mp_30(self, candidate: SupportedDType):
+        """
+        Test that set_model_output_precision API functions correctly on multiple output model with single precision.
+        Also test that set_model_output_precision will propagate upwards past data movement ops.
+        """
+        model = ModelWithMultiInputMultiOutput()
+
+        input_shape = (1, 1, 28, 28)
+        torch.manual_seed(0)
+        dummy_input = (torch.randn(*input_shape), torch.randn(*input_shape), torch.randn(*input_shape))
+        sim = QuantizationSimModel(model, dummy_input)
+
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_model_output_precision(candidate)
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.softmax_1.output_quantizers[0],
+                              sim.model.softmax_2.output_quantizers[0],
+                              sim.model.relu1_a.output_quantizers[0],
+                              sim.model.relu1_b.output_quantizers[0],
+                              sim.model.relu1_c.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_31(self):
+        """
+        Test that set_model_output_precision API functions correctly on multiple output model with multiple precisions.
+        Also test that set_model_output_precision will propagate upwards past data movement ops.
+        """
+        model = ModelWithMultiInputMultiOutput()
+
+        input_shape = (1, 1, 28, 28)
+        torch.manual_seed(0)
+        dummy_input = (torch.randn(*input_shape), torch.randn(*input_shape), torch.randn(*input_shape))
+        sim = QuantizationSimModel(model, dummy_input)
+
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_model_output_precision(['Int16', None, 'Int16', None, 'Int16'])
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.softmax_1.output_quantizers[0],
+                              sim.model.relu1_a.output_quantizers[0],
+                              sim.model.relu1_c.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_32(self):
+        """
+        Test that set_model_input_precision and set_precision on same module functions correctly
+        """
+        model = SingleResidual()
+        input_shape = (1, 3, 32, 32)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_input_precision('Int4')
+        mp_configurator.set_precision(sim.model.conv1, activation='Int16')
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.conv1.input_quantizers[0],
+                              sim.model.conv1.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_33(self):
+        """
+        Test that set_model_input_precision and set_precision on same module functions correctly
+        """
+        model = SingleResidual()
+        input_shape = (1, 3, 32, 32)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_precision(sim.model.conv1, activation='Int16')
+        mp_configurator.set_model_input_precision('Int4')
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.conv1.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                elif module in [sim.model.conv1.input_quantizers[0]]:
+                    assert module.bitwidth == 4
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_34(self):
+        """
+        Test that set_model_output_precision and set_precision on same module functions correctly
+        """
+        model = SingleResidual()
+        input_shape = (1, 3, 32, 32)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_output_precision('Int4')
+        mp_configurator.set_precision(sim.model.fc, activation='Int16')
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.avgpool.output_quantizers[0], sim.model.fc.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_35(self):
+        """
+        Test that set_model_output_precision and set_precision on same module functions correctly
+        """
+        model = SingleResidual()
+        input_shape = (1, 3, 32, 32)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_precision(sim.model.fc, activation='Int16')
+        mp_configurator.set_model_output_precision('Int4')
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, QuantizerBase):
+                if module in [sim.model.avgpool.output_quantizers[0]]:
+                    assert module.bitwidth == 16
+                elif module in [sim.model.fc.output_quantizers[0]]:
+                    assert module.bitwidth == 4
+                else:
+                    assert module.bitwidth == 8
+
+    def test_mp_36(self):
+        """
+        Test that set_model_output_precision will propagate upwards past all data movement ops
+        """
+        quantsim_config = {
+            "defaults": {
+                "ops": {
+                    "is_output_quantized": "True",
+                    "is_symmetric": "False"
+                },
+                "params": {
+                    "is_quantized": "True",
+                    "is_symmetric": "True"
+                },
+                "per_channel_quantization": "True",
+                "strict_symmetric": "False",
+                "unsigned_symmetric": "False"
+            },
+            "params": {
+                "weight": {
+                    "is_quantized": "False"
+                }
+            },
+            "op_type": {
+                "Transpose": {"is_output_quantized": "False"}
+            },
+            "supergroups": [],
+            "model_input": {"is_input_quantized": "True"},
+            "model_output": {}
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with open(os.path.join(temp_dir, 'config.json'), 'w') as f:
+                json.dump(quantsim_config, f)
+
+            model = ModelWithSeveralTransposes()
+            input_shape = (1, 1, 10, 10)
+            torch.manual_seed(0)
+            sim = QuantizationSimModel(model, torch.randn(*input_shape), config_file=os.path.join(temp_dir, 'config.json'))
+
+            mp_configurator = MixedPrecisionConfigurator(sim)
+            mp_configurator.set_model_output_precision('Int16')
+            mp_configurator.apply()
+
+            for module in sim.model.modules():
+                if isinstance(module, QuantizerBase):
+                    if module in [sim.model.fc.output_quantizers[0]]:
+                        assert module.bitwidth == 16
+                    else:
+                        assert module.bitwidth == 8
+
+    def test_mp_37(self):
+        """
+        Test that conflicting set_model_input_precision and set_model_output_precision calls are handled appropriately
+        """
+
+        model = SingleLayerModel()
+        input_shape = (1, 3, 10, 10)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_output_precision('Int16')
+        mp_configurator.set_model_input_precision('Int4')
+        mp_configurator.apply()
+
+        assert sim.model.fc.input_quantizers[0].bitwidth == 4
+        assert sim.model.fc.output_quantizers[0].bitwidth == 16
+        assert sim.model.fc.param_quantizers["weight"].bitwidth == 8
