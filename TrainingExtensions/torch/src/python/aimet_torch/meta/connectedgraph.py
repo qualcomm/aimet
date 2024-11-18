@@ -157,6 +157,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # Counts number of constant inputs there are in the graph
         self._constant_count = 0
 
+        self._input_structure = None
+        self._output_structure = None
+
         self._generate_module_lookup_table(model)
         with in_eval_mode(model), torch.no_grad():
             self._aimet_defined_modules = \
@@ -758,10 +761,16 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
     @property
     def input_structure(self):
+        """
+        Getter function for input structure
+        """
         return self._input_structure
 
     @property
     def output_structure(self):
+        """
+        Getter function for output structure
+        """
         return self._output_structure
 
     def _optimize_connected_graph(self):
