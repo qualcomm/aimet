@@ -41,6 +41,7 @@ FROM ${REGISTRY}nvidia/cuda:12.0.0-cudnn8-devel-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
+ARG PYTHON_VERSION
 
 # Please see here for more information on these steps:
 # https://forums.developer.nvidia.com/t/gpg-error-http-developer-download-nvidia-com-compute-cuda-repos-ubuntu2004-x86-64/212904
@@ -59,6 +60,7 @@ RUN apt-get update > /dev/null && \
         ca-certificates \
         git \
         ssh \
+        software-properties-common \
         sudo \
         wget \
         xterm \
@@ -78,12 +80,13 @@ RUN sudo update-ca-certificates
 # Add sudo support
 RUN echo "%users ALL = (ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-RUN apt-get update -y > /dev/null && \
+# Python
+RUN add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update -y > /dev/null && \
     apt-get install --no-install-recommends -y \
-        # Python
-        python3.10 \
-        python3.10-dev \
-        python3.10-venv \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
         python3-pip \
         python3-setuptools \
         build-essential \
@@ -92,9 +95,9 @@ RUN apt-get update -y > /dev/null && \
         rm -rf /var/lib/apt/lists/*
 
 # Register the version in alternatives
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
-# Set python 3.10 as the default python
-RUN update-alternatives --set python3 /usr/bin/python3.10
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
+# Set ${PYTHON_VERSION} as the default python
+RUN update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION}
 
 # Upgrade Python3 pip and install some more packages
 RUN python3 -m pip --no-cache-dir install --upgrade \
@@ -248,7 +251,7 @@ RUN apt-get update && apt-get install -y libjpeg8-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up symlink to point to the correct python version
-RUN ln -sf /usr/bin/python3.10 /usr/bin/python
+RUN ln -sf /usr/bin/python${PYTHON_VERSION} /usr/bin/python
 RUN ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
 
 RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
@@ -283,9 +286,9 @@ RUN apt-get update --fix-missing -y && apt upgrade -y && apt-get install -y clan
 RUN ln -s /usr/bin/run-clang-tidy-11.py /usr/bin/run-clang-tidy.py
 
 # Provide write permission to the python package folder in order to install AIMET in editable mode
-RUN chmod o+w /usr/local/lib/python3.10/dist-packages
+RUN chmod o+w /usr/local/lib/python${PYTHON_VERSION}/dist-packages
 
-ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/nvjitlink/lib
+ENV LD_LIBRARY_PATH=/usr/local/lib/python${PYTHON_VERSION}/dist-packages/nvidia/nvjitlink/lib
 
 # Install cutlass 3.3.0
 RUN cd /usr/local && \
