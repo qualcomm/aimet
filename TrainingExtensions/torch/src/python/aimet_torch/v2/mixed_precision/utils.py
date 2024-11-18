@@ -41,7 +41,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Type, List, TypeAlias, Literal, Optional, Union, Generator
+from typing import Dict, Type, List, Literal, Optional, Union, Generator
 import functools
 
 import torch
@@ -57,7 +57,7 @@ from aimet_torch.quantsim_config.builder import LazyQuantizer
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
-SupportedDType: TypeAlias = Literal['Int16', 'Int8', 'Int4', 'Fp16']
+SupportedDType = Literal['Int16', 'Int8', 'Int4', 'Fp16']
 
 @dataclass
 class Precision:
