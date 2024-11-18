@@ -67,6 +67,7 @@ target_include_directories(MoDlEqualization
 target_link_libraries(MoDlEqualization PUBLIC
     pybind11
     ${OPENCV_LINK_LIBRARIES}
+    z
     )
 
 target_compile_options(MoDlEqualization

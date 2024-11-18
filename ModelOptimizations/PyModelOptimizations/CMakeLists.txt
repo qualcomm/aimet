@@ -45,6 +45,7 @@ target_link_libraries(PyModelOptimizations PUBLIC
         MoDlEqualization
         MoDlCompression
         ${OPENCV_LINK_LIBRARIES}
+        z
         )
 
 if (ENABLE_CUDA)

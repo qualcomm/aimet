@@ -50,6 +50,7 @@ target_link_libraries(MoDlCompression PUBLIC
     pybind11
     ${LAPACKE_LINK_LIBRARIES}
     ${OPENCV_LINK_LIBRARIES}
+    z
     )
 
 target_compile_options(MoDlCompression
