@@ -150,7 +150,7 @@ class QuantizedModuleProtocol(Protocol):
     """
     input_quantizers: List[QuantizerProtocol]
     output_quantizers: List[QuantizerProtocol]
-    param_quantizers: OrderedDict[str, QuantizerProtocol]
+    param_quantizers: Dict[str, QuantizerProtocol]
 
     def export_input_encodings(self) -> List[List[Dict]]:
         """

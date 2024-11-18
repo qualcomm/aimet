@@ -49,8 +49,8 @@ class ModelLayerConnectionsProperties(Enum):
     OUTPUT_TENSORS = 'output_tensors'
     CALL_ARGS = 'call_args'
     CALL_KWARGS = 'call_kwargs'
-    TYPE = typing.OrderedDict[typing.OrderedDict[str, typing.List[str]],
-                              typing.OrderedDict[str, typing.Union[KerasTensor, typing.List[KerasTensor]]]]
+    TYPE = typing.Dict[typing.Dict[str, typing.List[str]],
+                       typing.Dict[str, typing.Union[KerasTensor, typing.List[KerasTensor]]]]
 
 class ModelLayerConnections:
     """
