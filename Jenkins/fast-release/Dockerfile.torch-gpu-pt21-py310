@@ -167,8 +167,8 @@ RUN python3 -m pip --no-cache-dir install \
         mock \
         nbsphinx==0.8.12 \
         networkx \
-        'numpy<1.24,>=1.20.5' \
-        onnx==1.14.1 \
+        'numpy<2' \
+        onnx \
         onnxscript \
         onnxsim \
         onnxruntime==1.15.1 \
@@ -189,8 +189,9 @@ RUN python3 -m pip --no-cache-dir install \
         pytest-cov \
         pytorch-ignite \
         PyYAML \
+        safetensors \
         scikit-learn \
-        scipy==1.8.1 \
+        scipy \
         spconv-cu120 \
         sphinx \
         sphinx-autodoc-typehints \
@@ -257,11 +258,10 @@ RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so
 
 RUN python3 -m pip install git-pylint-commit-hook osqp twine
 
-# NOTE: We need to pin the holoviews version to this since the latest version has a circular dependency on bokeh 2.0.0 through the panel package
-RUN python3 -m pip install holoviews==1.18.3 netron jsonschema pandas==1.5.3
+RUN python3 -m pip install holoviews netron jsonschema pandas
 
 # Note: bokeh requires Pillow while we need to use Pillow-SIMD for performance reasons.
-RUN python3 -m pip install bokeh==3.2.2 hvplot==0.9.2
+RUN python3 -m pip install bokeh hvplot
 
 # Remove onnxruntime install and replace with onnxruntime-gpu
 RUN export ONNXRUNTIME_VER=$(python3 -c 'import onnxruntime; print(onnxruntime.__version__)') && \
