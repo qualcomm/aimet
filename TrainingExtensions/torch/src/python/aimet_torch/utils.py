@@ -518,7 +518,7 @@ def create_rand_tensors_given_shapes(input_shape, device: torch.device):
     return rand_tensors
 
 
-def get_ordered_lists_of_conv_fc(model: torch.nn.Module, input_shapes: Tuple,
+def get_ordered_lists_of_conv_fc(model: torch.nn.Module, input_shapes: Union[Tuple, List] = None,
                                  dummy_input: Union[torch.Tensor, Tuple] = None) -> List:
     """
     Finds order of nodes in graph

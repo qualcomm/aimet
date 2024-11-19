@@ -70,7 +70,7 @@ class StopForwardException(Exception):
     """ Dummy exception to early-terminate forward-pass """
 
 
-def forward_pass(model: torch.nn.Module, batch: torch.Tensor):
+def forward_pass(model: torch.nn.Module, batch: Union[torch.Tensor, Tuple]):
     """
     forward pass depending model allocation on CPU / GPU till StopForwardException
     :param model: model
@@ -78,11 +78,15 @@ def forward_pass(model: torch.nn.Module, batch: torch.Tensor):
     :return: Nothing
     """
     # first check if the model is on GPU or not
+    if isinstance(batch, torch.Tensor):
+        batch = [batch]
+
     if utils.is_model_on_gpu(model):
-        batch = batch.cuda()
+        batch = [i.cuda() for i in batch]
+
     try:
         with utils.in_eval_mode(model), torch.no_grad():
-            _ = model(batch)
+            _ = model(*batch)
     except StopForwardException:
         pass
 
@@ -116,7 +120,7 @@ def register_fwd_hook_for_layer(layer: torch.nn.Module, hook: Callable) -> torch
     return hook_handle
 
 
-def get_output_data(layer: torch.nn.Module, model: torch.nn.Module, images_in_one_batch: torch.Tensor) -> np.ndarray:
+def get_output_data(layer: torch.nn.Module, model: torch.nn.Module, images_in_one_batch: Union[torch.Tensor, Tuple]) -> np.ndarray:
     """
     Function to get output values of a layer
     :param layer: layer
@@ -217,8 +221,8 @@ def call_analytical_correct_bias(layer: torch.nn.Module,
                                                                             dtype=layer.bias.dtype)
 
 
-def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
-                 num_quant_samples: int, data_loader, num_bias_correct_samples: int,
+def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_samples: int,
+                 dummy_input: Union[torch.Tensor, Tuple], data_loader, num_bias_correct_samples: int,
                  conv_bn_dict: Union[Dict[torch.nn.Module, ConvBnInfoType], None] = None,
                  perform_only_empirical_bias_corr: bool = True,
                  layers_to_ignore: List[torch.nn.Module] = None):
@@ -232,6 +236,7 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
     :param model: Model to be corrected
     :param quant_params: Named tuple for quantization simulation for bias correction
     :param num_quant_samples: number of samples of images to pass through quantization sim for bias correction.
+    :param dummy_input: Dummy input to the model.
     :param data_loader: data loader for the model
     :param num_bias_correct_samples: number of samples for Bias correction
     :param conv_bn_dict: Dict of conv and bn with information related to activation. If None, the function calc it
@@ -243,10 +248,8 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
     if layers_to_ignore is None:
         layers_to_ignore = []
 
-    # Find batch size and shape of input tensor
-    x, *_ = next(iter(data_loader))
-    batch_size = x.shape[0]
-    input_shape = (1, *x.shape[1:])
+    # Find batch size
+    batch_size = data_loader.batch_size
 
     # Rounding up number of samples to batch size
     n_batches_bias_correction = int(np.ceil(num_bias_correct_samples / batch_size))
@@ -259,13 +262,13 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
         # forward pass for given number of batches for model
         data_loader_n_samples_quant = itertools.islice(data_loader, n_batches_quantization)
 
-        for (images_in_one_batch, *_) in data_loader_n_samples_quant:
-            forward_pass(model, images_in_one_batch)
+        for model_input in data_loader_n_samples_quant:
+            forward_pass(model, model_input)
 
-    ordered_conv_linear_nodes = get_ordered_lists_of_conv_fc(model, input_shape)
+    ordered_conv_linear_nodes = get_ordered_lists_of_conv_fc(model, dummy_input=dummy_input)
 
     if conv_bn_dict is None:
-        conv_bn_dict = find_all_conv_bn_with_activation(model, input_shape)
+        conv_bn_dict = find_all_conv_bn_with_activation(model, dummy_input)
 
     # Create a copy of the model as reference model
     model_copy = copy.deepcopy(model)
@@ -281,13 +284,12 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
             module.bias.data = module.bias.data.to(device=module.weight.device)
 
     # Quantize full model
-    dummy_tensors = utils.create_rand_tensors_given_shapes(input_shape, utils.get_device(model))
     q = QuantizationSimModel(model=model, quant_scheme=quant_params.quant_scheme,
                              rounding_mode=quant_params.round_mode,
                              default_output_bw=quant_params.act_bw,
                              default_param_bw=quant_params.weight_bw,
                              in_place=True,
-                             dummy_input=dummy_tensors, config_file=quant_params.config_file)
+                             dummy_input=dummy_input, config_file=quant_params.config_file)
 
     # make sure  model got updated in-place before we use it for bc updates
     assert q.model is model
@@ -338,7 +340,7 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
                     quantized_outputs = []
                     data_loader_n_samples_bias_corr = itertools.islice(data_loader, n_batches_bias_correction)
 
-                    for images_in_one_batch, *_ in data_loader_n_samples_bias_corr:
+                    for images_in_one_batch in data_loader_n_samples_bias_corr:
                         reference_output_batch = get_output_data(reference_layer, model_copy, images_in_one_batch)
                         quantized_model_output_batch = get_output_data(quantize_layer, model, images_in_one_batch)
 
@@ -365,11 +367,11 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
     logger.info('Completed bias correction')
 
 
-def find_all_conv_bn_with_activation(model: torch.nn.Module, input_shape: Tuple) -> Dict:
+def find_all_conv_bn_with_activation(model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tuple]) -> Dict:
     """
     Uses searcher to find preceding and next bn layers for a conv/linear layer
     :param model: PyTorch model
-    :param input_shape: shape of input to the model
+    :param dummy_input: Dummy input to the model
     :return: dictionary of conv/linear layers with associated bn op / activation info
     """
 
@@ -397,8 +399,7 @@ def find_all_conv_bn_with_activation(model: torch.nn.Module, input_shape: Tuple)
         patterns_with_callbacks.append(PatternType(pattern=['BatchNormalization', activation, 'ConvTranspose'],
                                                    action=layer_select_handler))
 
-    device = utils.get_device(model)
-    connected_graph = ConnectedGraph(model, (torch.rand(input_shape).to(device),))
+    connected_graph = ConnectedGraph(model, dummy_input)
 
     # create graph searcher instance with connected graph and patterns to search
     graph_searcher = GraphSearcher(connected_graph, patterns_with_callbacks)

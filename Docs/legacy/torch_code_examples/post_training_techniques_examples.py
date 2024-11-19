@@ -186,13 +186,14 @@ def bias_correction_analytical_and_empirical():
 
     dataset_size = 2000
     batch_size = 64
+    dummy_input = torch.rand((1, 3, 224, 224))
 
     # Load the model analytical_empirical
     model = MobileNetV2()
     model.eval()
 
     # Find BNs
-    module_prop_dict = bias_correction.find_all_conv_bn_with_activation(model, input_shape=(1, 3, 224, 224))
+    module_prop_dict = bias_correction.find_all_conv_bn_with_activation(model, dummy_input)
 
     # Apply Analytical and Empirical Bias Correction
     from aimet_torch import bias_correction

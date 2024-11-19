@@ -101,7 +101,7 @@ class TestBiasCorrection:
         model = MobileNetV2().to(torch.device('cpu'))
         model.eval()
         module_prop_list = aimet_torch.bias_correction.find_all_conv_bn_with_activation(model,
-                                                                                        input_shape=(1, 3, 224, 224))
+                                                                                        dummy_input=torch.rand((1, 3, 224, 224)))
         batch_norm_fold.fold_all_batch_norms(model, (1, 3, 224, 224))
         model_copy = copy.deepcopy(model)
         model.eval()
