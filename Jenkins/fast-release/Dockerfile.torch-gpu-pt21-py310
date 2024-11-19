@@ -41,7 +41,7 @@ FROM ${REGISTRY}nvidia/cuda:12.0.0-cudnn8-devel-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
-ARG PYTHON_VERSION
+ARG PYTHON_VERSION=3.10
 
 # Please see here for more information on these steps:
 # https://forums.developer.nvidia.com/t/gpg-error-http-developer-download-nvidia-com-compute-cuda-repos-ubuntu2004-x86-64/212904
