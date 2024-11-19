@@ -200,4 +200,14 @@ RUN cd /usr/local && \
     chown -R root:users cutlass-3.3.0 && \
     ln -s cutlass-3.3.0 cutlass
 
-RUN python3 -m pip --no-cache-dir install torch==2.2
+RUN python3 -m pip --no-cache-dir install \
+    furo \
+    nbsphinx \
+    sphinx \
+    sphinx-autodoc-typehints \
+    sphinx-copybutton \
+    sphinx-design \
+    sphinx-jinja \
+    sphinx-rtd-theme \
+    sphinx-tabs \
+    torch==2.2
