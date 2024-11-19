@@ -23,8 +23,8 @@ Complementary techniques
 
 We recommend using AdaRound in combination with these other techniques:
 
-- After batch norm folding (BNF) and cross layer equalization (CLE). Applying these techniques first might improve the accuracy gained using AdaRound.
-- Before quantization aware training (QAT). For some models applying BNF and CLE may not help. For these models, applying AdaRound before QAT might help. AdaRound is a better weights initialization step that speeds up QAT
+- After batch norm folding (BNF) and cross layer equalization (CLE): Applying these techniques first might improve the accuracy gained using AdaRound.
+- Before quantization aware training (QAT): For some models applying BNF and CLE may not help. For these models, applying AdaRound before QAT might help. AdaRound is a better weights initialization step that speeds up QAT
 
 Conversely, we recommend that you *do not* apply bias correction (BC) before or after using AdaRound. 
 
@@ -39,7 +39,7 @@ Hyper Parameters to be changed at will
     - Number of batches. AdaRound should see 500-1000 images. Loader batch size times number of batches gives the number of images. For example if the data loader batch size is 64, set 16  batches to yield 1024 images.
     - Number of iterations. Default is 10,000.
 
-Hyper Parameters to change with caution
+Hyper Parameters to changed with caution
     Regularization parameter. Default is 0.01.
 
 Hyper Parameters to avoid changing
@@ -130,7 +130,7 @@ Apply AdaRound to the model.
 Step 3
 ~~~~~~
 
-Evaluate the model.
+Simulate quantization through AIMET's QuantSim
 
 .. tab-set::
     :sync-group: platform
@@ -138,32 +138,31 @@ Evaluate the model.
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. literalinclude:: ../snippets/torch/evaluate.py
+        .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: TensorFlow
         :sync: tf
 
-        .. literalinclude:: ../snippets/tensorflow/evaluate.py
+        .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. literalinclude:: ../snippets/onnx/evaluate.py
+        .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
 
-Results
--------
+Step 3
+~~~~~~
 
-AdaRound should result in improved accuracy, but does not guaranteed sufficient improvement.
+Run evaluation on the model, which will yield its accuracy. 
 
-
-Next steps
+Step 5
 ----------
 
 If AdaRound resulted in satisfactory accuracy, export the model.
