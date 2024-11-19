@@ -218,6 +218,10 @@ class _QuantizedModuleProtocol(Protocol):
         """
 
 
+# Temporary alias for backwards-compatibility
+ExportableQuantModule = _QuantizedModuleProtocol
+
+
 # Types of modules which cannot be quantized
 unquantizable_modules = (
     torch.nn.Identity,
