@@ -37,7 +37,7 @@
 
 """ Utilities to save a models and related parameters """
 
-from aimet_torch.v1.quantsim import QuantizedModuleProtocol
+from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
 
 
 class SaveUtils:
@@ -50,7 +50,7 @@ class SaveUtils:
         :param module: Model
         """
         for module_name, module_ref in module.named_children():
-            if isinstance(module_ref, QuantizedModuleProtocol):
+            if isinstance(module_ref, _QuantizedModuleProtocol):
                 setattr(module, module_name, module_ref.get_original_module())
             # recursively call children modules
             else:

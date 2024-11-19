@@ -54,7 +54,7 @@ from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_torch import utils
 from aimet_torch.save_utils import SaveUtils
 from aimet_torch.meta import connectedgraph_utils
-from aimet_torch.v1.quantsim import QuantizationSimModel, QcQuantizeWrapper, QuantizedModuleProtocol
+from aimet_torch.v1.quantsim import QuantizationSimModel, QcQuantizeWrapper, _QuantizedModuleProtocol
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QcQuantizeOpMode
 from aimet_torch.v1.tensor_quantizer import TensorQuantizer
 from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper
@@ -490,7 +490,7 @@ class Adaround:
         param_encodings = {}
 
         for name, quant_module in quant_sim.model.named_modules():
-            if isinstance(quant_module, QuantizedModuleProtocol) and \
+            if isinstance(quant_module, _QuantizedModuleProtocol) and \
                     isinstance(quant_module.get_original_module(), AdaroundSupportedModules):
 
                 if 'weight' in quant_module.param_quantizers:
@@ -505,7 +505,7 @@ class Adaround:
             json.dump(encoding, encoding_fp, sort_keys=True, indent=4)
 
     @classmethod
-    def _update_param_encodings_dict(cls, quant_module: QuantizedModuleProtocol, name: str, param_encodings: Dict):
+    def _update_param_encodings_dict(cls, quant_module: _QuantizedModuleProtocol, name: str, param_encodings: Dict):
         """
         Add module's weight parameter encodings to dictionary to be used for exporting encodings
         :param quant_module: quant module
@@ -560,7 +560,7 @@ class Adaround:
         # Create a mapping of QuantSim model's AdaRoundable module name and their module
         name_to_module = {}
         for q_name, q_module in quant_sim.model.named_modules():
-            if isinstance(q_module, QuantizedModuleProtocol):
+            if isinstance(q_module, _QuantizedModuleProtocol):
                 if isinstance(q_module.get_original_module(), AdaroundSupportedModules):  # pylint: disable=protected-access
                     name_to_module[q_name] = q_module
 
