@@ -52,7 +52,6 @@ static OnnxCpuAllocator cpuAllocator;
 
 QcQuantizeOp::QcQuantizeOp(const OrtApi* api, const OrtKernelInfo* info) : api_(*api), info_(info)
 {
-    tensorQuantizationSim = DlQuantization::getTensorQuantizationSim<float>();
     int64_t quantInfoPointer;
     api->KernelInfoGetAttribute_int64(info_, "quant_info", &quantInfoPointer);
     quantInfo = reinterpret_cast<struct QcQuantizeInfo*>(quantInfoPointer);
@@ -82,19 +81,10 @@ void QcQuantizeOp::computeImpl(const Ort::Custom::Tensor<float>& input, Ort::Cus
         if (quantInfo->usePerChannelMode)
         {
             const int channelAxis = quantInfo->channelAxis;
-            const int blockSize = quantInfo->blockSize;
-            if (blockSize == 0)
-            {
-                modeSpecificActionPerChannelInt(inputData, size, result, channelAxis, inputShape, quantInfo->tensorQuantizerRef,
-                                                opMode, encodings, quantInfo->useSymmetricEncoding, allocator, useCuda,
-                                                stream, tensorQuantizationSim);
-            }
-            else
-            {
-                const BroadcastShapeInfo shapeInfo {inputShape, channelAxis, quantInfo->blockAxis, blockSize};
-                modeSpecificActionBroadcastInt(inputData, result, shapeInfo, quantInfo->tensorQuantizerRef, opMode,
-                                               encodings, quantInfo->useSymmetricEncoding, allocator, useCuda, stream);
-            }
+            const int blockAxis = (quantInfo-> blockSize == 0) ? -1 : quantInfo->blockAxis;
+            const BroadcastShapeInfo shapeInfo {inputShape, channelAxis, blockAxis, quantInfo->blockSize};
+            modeSpecificActionBroadcastInt(inputData, result, shapeInfo, quantInfo->tensorQuantizerRef, opMode,
+                                   encodings, quantInfo->useSymmetricEncoding, allocator, useCuda, stream);
         }
         else
         {

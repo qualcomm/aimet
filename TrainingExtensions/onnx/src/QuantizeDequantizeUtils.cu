@@ -48,40 +48,6 @@ inline int CUDA_NUM_BLOCKS(const int N)
 }
 
 
-template <typename T>
-__global__ void sliceTensorChannelKernel(const T* inTensor, T* outTensor, long iters, long copyWidth,
-                                         long inputStride, long outputStride, long inputOffset, long outputOffset)
-{
-    /*
-     * Can be used to retrieve a specific channel of the input tensor into the output tensor
-     * For example: 4-D array [in_chan, out_chan, k, k], to write outTensor <- inTensor[:, n, :, :],
-     * iters = in_chan; copyWidth = k * k; inputStride = out_chan * k * k; outputStride = copyWidth;
-     * inputOffset = n * k * k; outputOffset = 0;
-     *
-     */
-    int64_t idx            = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t totalElements = iters * copyWidth;
-    if (idx < totalElements)
-    {
-        int64_t sliceNumber  = idx / copyWidth;
-        int64_t slicePos     = idx % copyWidth;
-        int64_t inputIdx     = inputOffset + sliceNumber * inputStride + slicePos;
-        int64_t outputIdx    = outputOffset + sliceNumber * outputStride + slicePos;
-        outTensor[outputIdx] = inTensor[inputIdx];
-    }
-}
-
-template <typename T>
-void sliceTensorChannelGPU(const T* inTensor, T* outTensor, long iters, long copyWidth, long inputStride,
-                           long outputStride, long inputOffset, long outputOffset)
-{
-    int64_t totalThreads = iters * copyWidth;
-    int64_t gridSize     = CUDA_NUM_BLOCKS(totalThreads);
-    sliceTensorChannelKernel<T><<<gridSize, CUDA_NUM_THREADS>>>(inTensor, outTensor, iters, copyWidth, inputStride,
-                                                                 outputStride, inputOffset, outputOffset);
-}
-
-
 template <typename DTYPE>
 __global__ void permuteTensorKernel(const DTYPE* in, DTYPE* out, int numElements, int numDims,
                                     const int64_t* inputStrides, const int64_t* outputStrides)
@@ -127,10 +93,6 @@ void permuteTensorGPU(const T* inTensor, T* outTensor, int64_t numel, int64_t nu
     // Free the device stride data
     cudaFree(deviceStrideData);
 }
-
-
-template void sliceTensorChannelGPU(const float* inTensor, float* outTensor, long iters, long copyWidth,
-                                    long inputStride, long outputStride, long inputOffset, long outputOffset);
 
 
 template void permuteTensorGPU(const float* intensor, float* outTensor, int64_t numel, int64_t numDims,

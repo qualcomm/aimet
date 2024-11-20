@@ -98,7 +98,7 @@ template void permuteTensorCPU(const float* intensor, float* outTensor, int64_t 
 
 
 BroadcastShapeInfo::BroadcastShapeInfo(const std::vector<int64_t>& inputShape, const int channelAxis,
-                                       const int blockAxis, const int blockSize)
+                                       const int blockAxis, const uint blockSize)
 {
     numElements = getNumElements(inputShape);
     std::vector<int64_t> encShape;
