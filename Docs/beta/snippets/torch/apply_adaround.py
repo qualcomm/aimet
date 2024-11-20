@@ -35,22 +35,50 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-docstring
+[setup]
+import torch
+from torchvision.models import mobilenet_v2
+from torch.utils.data import DataLoader
+from datasets import load_dataset
+from evaluate import evaluator
 
-# Apply AdaRound
+# General setup that can be changed as needed
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+model = mobilenet_v2(pretrained=True).eval().to(device)
+num_batches = 32
+data = load_dataset('imagenet-1k', streaming=True, split="train")
+data_loader = DataLoader(data, batch_size=num_batches, num_workers = 4)
+dummy_input = torch.randn(1, 3, 224, 224).to(device)
+
+def forward_pass(model: torch.nn.Module, forward_pass_callback_args: Any = None):
+    """
+    AIMET requires the above signature for the calibration callback function.
+    """
+    model.eval()
+    with torch.no_grad():
+        model(forward_pass_callback_args)
+
+path = './'
+filename = 'mobilenet'
+
+[step_1]
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.adaround.adaround_weight import Adaround, AdaroundParameters
 
-params = AdaroundParameters(data_loader=<data_loader>, num_batches=<num_batches)
+params = AdaroundParameters(data_loader=data_loader, num_batches=num_batches)
 
-# Returns model with adarounded weights and their corresponding encodings
-adarounded_model = Adaround.apply_adaround(<prepared_model>, <dummy_input>, params, path=<path>, filename_prefix=<name_prefix>)
+# Returns model with AdaRound-ed weights and their corresponding encodings
+adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path=path, filename_prefix=filename)
+[step_2]
+sim = QuantizationSimModel(adarounded_model, dummy_input)
 
-# where <prepared_model> is the prepared PyTorch model
+# AdaRound optimizes the rounding of weight quantizers only. These values are preserved through load_encodings()
+sim.load_encodings(encoding_path=path + filename, allow_overwrite=False)
 
-sim = QuantizationSimModel(adarounded_model, <dummy_input>)
-
-# Set and freeze encodings to preserve rounded values / quantization grid
-sim.set_and_freeze_param_encodings(encoding_path=<encoding_path>)
-
-# Calibration needed to find the appropriate scale/offset quantization parameters
-sim.compute_encodings(<forward_pass>, forward_pass_callback_args=<forward_pass_args>)
+# The activation quantizers remain uninitialized and derived through compute_encodings()
+sim.compute_encodings(forward_pass, forward_pass_callback_args=dummy_input)
+[step_3]
+evaluator = evaluator("image-classification")
+accuracy = evaluator.compute(model_or_pipeline=model, data=data, metric="accuracy")
+[step_4]
+sim.export(path=path, filename_prefix="quantized_" + filename, dummy_input=dummy_input.cpu())

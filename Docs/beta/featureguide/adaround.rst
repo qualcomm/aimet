@@ -7,9 +7,9 @@ Adaptive rounding
 Context
 =======
 
-By default, AIMET uses *nearest rounding* for quantization, in which weight values are quantized to the nearest integer value.
+By default, AIMET uses *nearest rounding* for quantization, in which weight values are quantized to the nearest integer value. 
 
-AIMET adaptive rounding (AdaRound) uses training data to choose how to round quantized weights, improving the quantized model's accuracy in many cases.
+However, adaptive rounding (AdaRound) uses training data to choose how to round quantized weights. This rounding technique improves the quantized model's accuracy in many cases. You can learn more about adaptive rounding `here <https://arxiv.org/pdf/2004.10568>`_.
 
 The following figures illustrates how AdaRound might change the rounding of a quantized value.
 
@@ -18,15 +18,14 @@ The following figures illustrates how AdaRound might change the rounding of a qu
 
 See the :doc:`Optimization User Guide <../optimization/index>` for a discussion of the recommended sequence of all quantization techniques.
 
+
 Complementary techniques
 ------------------------
 
-We recommend using AdaRound in combination with these other techniques:
+As a standalone, AdaRound can yield a significant improvement in performance. If you'd like to layer other techniques with AdaRound, it is recommended to apply AdaRound: 
+- After batch norm folding (BNF) and cross layer equalization (CLE): Applying these techniques first can improve the accuracy gained using AdaRound.
+- Before quantization aware training (QAT): AdaRound is a better weights initialization step that speeds up QAT
 
-- After batch norm folding (BNF) and cross layer equalization (CLE): Applying these techniques first might improve the accuracy gained using AdaRound.
-- Before quantization aware training (QAT): For some models applying BNF and CLE may not help. For these models, applying AdaRound before QAT might help. AdaRound is a better weights initialization step that speeds up QAT
-
-Conversely, we recommend that you *do not* apply bias correction (BC) before or after using AdaRound. 
 
 Hyper parameters
 ----------------
@@ -39,12 +38,14 @@ Hyper Parameters to be changed at will
     - Number of batches. AdaRound should see 500-1000 images. Loader batch size times number of batches gives the number of images. For example if the data loader batch size is 64, set 16  batches to yield 1024 images.
     - Number of iterations. Default is 10,000.
 
-Hyper Parameters to changed with caution
+Hyper Parameters to be changed with caution
     Regularization parameter. Default is 0.01.
 
 Hyper Parameters to avoid changing
     - Beta range. Leave the value at the default of (20, 2).
     - Warm start period. Leave at the default value, 20%.
+  
+You can learn more about the AdaRound parameters :doc:`here <../apiref/torch/adaround.rst>`
 
 Workflow
 ========
@@ -60,48 +61,8 @@ To use AdaRound, you must:
 Workflow
 --------
 
-Step 1
+Setup
 ~~~~~~
-
-Prepare the model for quantization.
-
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. container:: tab-heading
-    
-            Prepare the model for quantization
-
-        AIMET quantization simulation (QuantSim) for PyTorch requires the user's model definition to follow certain guidelines. For example, functionals defined in forward pass should be changed to an equivalent 
-        **torch.nn.Module**. For a list of these guidelines, see the :ref:`Optimization Guide <opt-guide-quantization>`. 
-
-        Use the :ref:`AIMET ModelPreparer API <apiref-torch-model-preparer>` graph transformation feature to automate the model definition changes required to comply with the QuantSim guidelines.
-
-        .. literalinclude:: ../snippets/torch/prepare_model.py
-            :language: python
-            :start-after: # pylint: disable=missing-docstring
-
-        For details of the model preparer API see the 
-        :ref:`Model Preparer API <apiref-torch-model-preparer>`.
-
-    .. tab-item:: TensorFlow
-        :sync: tf
-
-        Tensorflow has no preparation requirements.
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        ONNX has no preparation requirements.
-
-
-Step 2
-~~~~~~
-
-Apply AdaRound to the model.
 
 .. tab-set::
     :sync-group: platform
@@ -111,7 +72,8 @@ Apply AdaRound to the model.
 
         .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: [setup]
+            :end-before: [step_1]
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -127,7 +89,37 @@ Apply AdaRound to the model.
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
-Step 3
+Step 1
+~~~~~~
+
+Apply AdaRound to the model.
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../snippets/torch/apply_adaround.py
+            :language: python
+            :start-after: [step_1]
+            :end-before: [step_2]
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../snippets/onnx/apply_adaround.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+Step 2
 ~~~~~~
 
 Simulate quantization through AIMET's QuantSim
@@ -140,7 +132,8 @@ Simulate quantization through AIMET's QuantSim
 
         .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: [step_2]
+            :end-before: [step_3]
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -162,8 +155,33 @@ Step 3
 
 Run evaluation on the model, which will yield its accuracy. 
 
-Step 5
-----------
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../snippets/torch/apply_adaround.py
+            :language: python
+            :start-after: [step_3]
+            :end-before: [step_4]
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../snippets/onnx/apply_adaround.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+
+Step 4
+~~~~~~
 
 If AdaRound resulted in satisfactory accuracy, export the model.
 
@@ -173,21 +191,21 @@ If AdaRound resulted in satisfactory accuracy, export the model.
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. literalinclude:: ../snippets/torch/export.py
+        .. literalinclude:: ../snippets/torch/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: [step_4]
 
     .. tab-item:: TensorFlow
         :sync: tf
 
-        .. literalinclude:: ../snippets/tensorflow/export.py
+        .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. literalinclude:: ../snippets/onnx/export.py
+        .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
