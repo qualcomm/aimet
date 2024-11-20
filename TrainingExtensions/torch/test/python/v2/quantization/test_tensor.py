@@ -687,3 +687,33 @@ class TestQuantizedTensor:
         for output in outputs:
             assert not isinstance(output, QuantizedTensorBase)
             assert not hasattr(output, 'encoding')
+
+    @pytest.mark.parametrize('qtensor_cls', [QuantizedTensor, DequantizedTensor])
+    def test_attribute_descriptor(self, qtensor_cls):
+        """
+        Given: torch.Tensor and a quantized/dequantized tensor with same dtype, device, shape, ...
+        When: Access the following attributes
+            * dtype
+            * device
+            * layout
+            * shape
+            * size()
+        Then: The attributes from both tensors should be value-equal and type-equal
+        """
+        tensor = torch.empty(10, 10)
+        qtensor = torch.empty(10, 10).as_subclass(qtensor_cls)
+
+        assert tensor.dtype == qtensor.dtype
+        assert type(tensor.dtype) == type(qtensor.dtype)
+
+        assert tensor.device == qtensor.device
+        assert type(tensor.device) == type(qtensor.device)
+
+        assert tensor.layout == qtensor.layout
+        assert type(tensor.layout) == type(qtensor.layout)
+
+        assert tensor.shape == qtensor.shape
+        assert type(tensor.shape) == type(qtensor.shape)
+
+        assert tensor.size() == qtensor.size()
+        assert type(tensor.size()) == type(qtensor.size())

@@ -90,6 +90,14 @@ class QuantizedTensorBase(torch.Tensor):
 
     encoding: EncodingBase
 
+    _attr_descriptors = {
+        torch.Tensor.dtype.__get__,
+        torch.Tensor.device.__get__,
+        torch.Tensor.layout.__get__,
+        torch.Tensor.shape.__get__,
+        torch.Tensor.size,
+    }
+
     _cast_ops = {
         torch.Tensor.half,
         torch.Tensor.float,
@@ -297,6 +305,9 @@ class QuantizedTensorBase(torch.Tensor):
             kwargs = kwargs if kwargs is not None else {}
             return HANDLED_FUNCTIONS[func](*args, **kwargs)
         ret = super().__torch_function__(func, types, args, kwargs)
+
+        if func in cls._attr_descriptors:
+            return ret
 
         self, *_ = args
 
