@@ -48,7 +48,7 @@ from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, StaticGridQuantWrapper
 from models.test_models import TinyModel
 from aimet_torch.utils import create_fake_data_loader
-from aimet_torch.v1.adaround.activation_sampler import ActivationSampler
+from aimet_torch._base.adaround.activation_sampler import ActivationSampler
 from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)

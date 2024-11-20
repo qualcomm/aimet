@@ -44,8 +44,7 @@ from torch.utils.data import Dataset
 from aimet_common.utils import AimetLogger
 from aimet_torch.utils import CachedDataset, ModuleData, get_named_module, cache_intermediate_datasets,\
     change_tensor_device_placement, in_eval_mode, save_to_cache, get_ordered_list_of_modules
-from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch.v1.quantsim import QuantizationSimModel, _QuantizedModuleProtocol
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -177,7 +176,7 @@ class ActivationSampler:
     For a module in the original model and the corresponding module in the weight quantized QuantSim model,
     collect the module's output and input activation data respectively
     """
-    def __init__(self, orig_module: torch.nn.Module, quant_module: QcQuantizeWrapper,
+    def __init__(self, orig_module: torch.nn.Module, quant_module: _QuantizedModuleProtocol,
                  orig_model: torch.nn.Module, quant_model: torch.nn.Module,
                  forward_fn: Callable[[torch.nn.Module, Any], Any]):
         """

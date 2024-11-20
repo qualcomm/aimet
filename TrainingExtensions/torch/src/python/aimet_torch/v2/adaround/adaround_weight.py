@@ -44,15 +44,18 @@ import torch
 from torch import nn
 
 from aimet_common.defs import QuantScheme
-from aimet_torch.v1.adaround.adaround_weight import Adaround as V1Adaround
-from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper as V1AdaroundWrapper
+from aimet_torch._base.adaround.adaround_wrapper import AdaroundWrapperBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase
-from aimet_torch.v1.adaround.adaround_weight import AdaroundParameters as V1AdaroundParameters
+from aimet_torch._base.adaround.adaround_weight import ( # pylint: disable=unused-import
+    AdaroundBase,
+    AdaroundParameters as AdaroundParametersBase,
+    AdaroundSupportedModules,
+)
 
 
-class Adaround(V1Adaround):
+class Adaround(AdaroundBase):
     """
     Weight-rounding mechanism for Post Training Quantization (PTQ)
     Subclass for AIMET v2 compatibility
@@ -139,7 +142,7 @@ class Adaround(V1Adaround):
         )
 
 
-class AdaroundWrapper(V1AdaroundWrapper):
+class AdaroundWrapper(AdaroundWrapperBase):
     """
     Basic adaround wrapper class for AIMET v2
     """
@@ -191,7 +194,7 @@ class AdaroundWrapper(V1AdaroundWrapper):
             self.clip_min = - 2 ** (self.bitwidth - 1)
 
 
-class AdaroundParameters(V1AdaroundParameters):
+class AdaroundParameters(AdaroundParametersBase):
     """
     Configuration parameters for Adaround
     """

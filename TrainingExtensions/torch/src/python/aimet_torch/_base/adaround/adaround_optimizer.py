@@ -49,10 +49,10 @@ import torch.distributed as dist
 # Import AIMET specific modules
 from aimet_common.utils import AimetLogger
 from aimet_torch import utils
-from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper
-from aimet_torch.v1.adaround.activation_sampler import ActivationSampler
-from aimet_torch.v1.adaround.adaround_loss import AdaroundLoss, AdaroundHyperParameters
-from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper
+from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
+from aimet_torch._base.adaround.activation_sampler import ActivationSampler
+from aimet_torch._base.adaround.adaround_loss import AdaroundLoss, AdaroundHyperParameters
+from aimet_torch._base.adaround.adaround_wrapper import AdaroundWrapperBase
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 BATCH_SIZE = 32
@@ -66,7 +66,7 @@ class AdaroundOptimizer:
     is_activation_caching_enabled = True
 
     @classmethod
-    def adaround_module(cls, module: torch.nn.Module, quant_module: StaticGridQuantWrapper,
+    def adaround_module(cls, module: torch.nn.Module, quant_module: _QuantizedModuleProtocol,
                         orig_model: torch.nn.Module, quant_model: torch.nn.Module,
                         act_func: Union[torch.nn.Module, None], cached_dataset: Dataset,
                         forward_fn: Callable[[torch.nn.Module, Any], Any],
@@ -85,7 +85,7 @@ class AdaroundOptimizer:
         :param opt_params: Optimization parameters
         """
         # pylint: disable=too-many-locals, too-many-arguments
-        assert isinstance(quant_module, AdaroundWrapper), '%s is not adaround wrapper module.' % quant_module
+        assert isinstance(quant_module, AdaroundWrapperBase), '%s is not adaround wrapper module.' % quant_module
 
         # Get input and output data of batch size to compute reconstruction error of output activations
         # before and after optimization
@@ -112,7 +112,7 @@ class AdaroundOptimizer:
         quant_module.use_soft_rounding = False
 
     @classmethod
-    def _optimize_rounding(cls, module: torch.nn.Module, quant_module: AdaroundWrapper,
+    def _optimize_rounding(cls, module: torch.nn.Module, quant_module: AdaroundWrapperBase,
                            orig_model: torch.nn.Module, quant_model: torch.nn.Module,
                            act_func: Union[torch.nn.Module, None], cached_dataset: Dataset,
                            forward_fn: Callable[[torch.nn.Module, Any], Any],
@@ -149,7 +149,7 @@ class AdaroundOptimizer:
         if cached_quant_dataset is not None:
             cached_quant_dataset = Subset(cached_quant_dataset, indices=indices)
 
-        assert isinstance(quant_module, AdaroundWrapper), '%s is not adaround wrapper module.' % quant_module
+        assert isinstance(quant_module, AdaroundWrapperBase), '%s is not adaround wrapper module.' % quant_module
         assert quant_module.use_soft_rounding, 'optimization should use soft rounding only.'
         assert quant_module.alpha is not None, 'alpha parameter should be initialized.'
 
@@ -222,7 +222,7 @@ class AdaroundOptimizer:
         quant_model.to(device)
 
     @classmethod
-    def _compute_recons_metrics(cls, quant_module: AdaroundWrapper, act_func, inp_data: torch.Tensor,
+    def _compute_recons_metrics(cls, quant_module: AdaroundWrapperBase, act_func, inp_data: torch.Tensor,
                                 out_data: torch.Tensor) -> Tuple[float, float]:
         """
         Compute Mean square error of output activations using soft rounding which maps alpha parameter
@@ -254,7 +254,7 @@ class AdaroundOptimizer:
         return float(recons_err_hard), float(recons_err_soft)
 
     @staticmethod
-    def _compute_output_with_adarounded_weights(quant_module: AdaroundWrapper, inp_data: torch.Tensor):
+    def _compute_output_with_adarounded_weights(quant_module: AdaroundWrapperBase, inp_data: torch.Tensor):
         """
         Compute output of AdaroundSupportedModules with adarounded weights
         :param quant_module: Adaround wrapper module

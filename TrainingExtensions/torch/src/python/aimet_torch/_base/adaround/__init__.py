@@ -34,5 +34,3 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to base adaround.adaround_optimizer """
-from .._base.adaround.adaround_optimizer import * # pylint: disable=wildcard-import, unused-wildcard-import

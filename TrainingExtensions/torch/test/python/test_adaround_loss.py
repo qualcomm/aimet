@@ -42,7 +42,7 @@ import unittest.mock
 
 import torch
 import torch.nn.functional as functional
-from aimet_torch.v1.adaround.adaround_loss import AdaroundLoss, AdaroundHyperParameters
+from aimet_torch._base.adaround.adaround_loss import AdaroundLoss, AdaroundHyperParameters
 
 class TestAdaroundLoss(unittest.TestCase):
     """ Test AdaroundLoss """

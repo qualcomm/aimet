@@ -34,5 +34,5 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to legacy adaround.activation_sampler """
-from ..v1.adaround.activation_sampler import * # pylint: disable=wildcard-import, unused-wildcard-import
+""" Alias to base adaround.activation_sampler """
+from .._base.adaround.activation_sampler import * # pylint: disable=wildcard-import, unused-wildcard-import

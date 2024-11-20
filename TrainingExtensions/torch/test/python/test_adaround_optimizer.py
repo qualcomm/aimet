@@ -53,9 +53,8 @@ from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QuantScheme
 from models.test_models import TinyModel
 from aimet_torch.v1.adaround.adaround_weight import Adaround
-from aimet_torch.v1.adaround.adaround_loss import AdaroundLoss
-from aimet_torch.v1.adaround.adaround_optimizer import AdaroundOptimizer
-from aimet_torch.v1.adaround.adaround_loss import AdaroundHyperParameters
+from aimet_torch._base.adaround.adaround_loss import AdaroundLoss, AdaroundHyperParameters
+from aimet_torch._base.adaround.adaround_optimizer import AdaroundOptimizer
 from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)

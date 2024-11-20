@@ -56,7 +56,8 @@ from aimet_torch.utils import create_fake_data_loader, create_rand_tensors_given
 from models.test_models import TinyModel
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QcQuantizeOpMode, QcQuantizeWrapper
-from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundOptimizer, AdaroundParameters
+from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters
+from aimet_torch._base.adaround.adaround_optimizer import AdaroundOptimizer
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
