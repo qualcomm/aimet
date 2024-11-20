@@ -37,7 +37,7 @@
 # =============================================================================
 """ Manual mixed precision configurator """
 
-from typing import overload, Union, List, Dict, get_args, Type, Optional
+from typing import overload, Union, List, Tuple, Dict, get_args, Type, Optional
 import torch
 
 from aimet_common.utils import AimetLogger
@@ -134,27 +134,31 @@ class MixedPrecisionConfigurator:
         else:
             raise TypeError("arg is neither a torch.nn.Module nor of Type[torch.nn.Module]")
 
-    def set_model_input_precision(self, activations: Union[List[SupportedDType], SupportedDType, None]):
+    def set_model_input_precision(self, activations: Union[List[SupportedDType], Tuple[SupportedDType], SupportedDType, None]):
         """
         Activation precision which needs to be set to the model inputs
         :param activations: Activation dtypes for inputs of the model
         """
-        broadcasted_activations = _broadcast_tuples(activations, self.mp_handler.input_modules)
-        for activation, module in zip(_flatten_list(broadcasted_activations),
-                                      _flatten_list(self.mp_handler.input_modules)):
+        broadcasted_activations = _broadcast_tuples(activations, self.mp_handler.model_inputs)
+        for activation, model_input in zip(_flatten_list(broadcasted_activations),
+                                           _flatten_list(self.mp_handler.model_inputs)):
             if activation is not None:
-                self._store_user_request(RequestType.set_model_input_precision, module, activation)
+                if activation not in get_args(SupportedDType):
+                    raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
+                self._store_user_request(RequestType.set_model_input_precision, model_input, activation)
 
-    def set_model_output_precision(self, activations: Union[List[SupportedDType], SupportedDType, None]):
+    def set_model_output_precision(self, activations: Union[List[SupportedDType], Tuple[SupportedDType], SupportedDType, None]):
         """
         Activation precision which needs to be set to the model outputs
         :param activations: Activation dtypes for outputs of the model
         """
-        broadcasted_activations = _broadcast_tuples(activations, self.mp_handler.output_modules)
-        for activation, module in zip(_flatten_list(broadcasted_activations),
-                                      _flatten_list(self.mp_handler.output_modules)):
+        broadcasted_activations = _broadcast_tuples(activations, self.mp_handler.model_outputs)
+        for activation, model_output in zip(_flatten_list(broadcasted_activations),
+                                            _flatten_list(self.mp_handler.model_outputs)):
             if activation is not None:
-                self._store_user_request(RequestType.set_model_output_precision, module, activation)
+                if activation not in get_args(SupportedDType):
+                    raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
+                self._store_user_request(RequestType.set_model_output_precision, model_output, activation)
 
     def apply(self, config: str = "", strict: bool = True, log_file: str = './mmp_log.txt'):
         """

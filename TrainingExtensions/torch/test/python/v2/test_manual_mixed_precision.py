@@ -190,6 +190,14 @@ class SingleLayerModelWithTransposes(nn.Module):
         x = self.transpose_2(x, [0, 1, 3, 2])
         return x
 
+class ModelWithSwappedInputs(nn.Module):
+    def __init__(self):
+        super(ModelWithSwappedInputs, self).__init__()
+        self.matmul = aimet_elementwise.MatMul()
+
+    def forward(self, x, y):
+        return self.matmul(y, x)
+
 
 class TestManualMixedPrecisionConfigurator:
 
@@ -1134,3 +1142,64 @@ class TestManualMixedPrecisionConfigurator:
         assert sim.model.fc.input_quantizers[0].bitwidth == 4
         assert sim.model.fc.output_quantizers[0].bitwidth == 16
         assert sim.model.fc.param_quantizers["weight"].bitwidth == 8
+
+    def test_mp_38(self):
+        """
+        Test that conflicting set_model_input_precision and set_model_output_precision calls are handled appropriately.
+        """
+        model = SingleLayerModel()
+        input_shape = (1, 3, 10, 10)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_input_precision('Int4')
+        mp_configurator.set_model_output_precision('Int16')
+        mp_configurator.apply()
+
+        assert sim.model.fc.input_quantizers[0].bitwidth == 4
+        assert sim.model.fc.output_quantizers[0].bitwidth == 16
+        assert sim.model.fc.param_quantizers["weight"].bitwidth == 8
+
+    def test_mp_39(self):
+        """
+        Test that setting model input precisions will apply to the correct inputs at that layer
+        """
+
+        model = ModelWithSwappedInputs()
+        input_shape = (1, 3, 10, 10)
+
+        torch.manual_seed(0)
+        input_tensor = (torch.randn(*input_shape), torch.randn(*input_shape))
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_input_precision(['Int4', 'Int16'])
+        mp_configurator.apply()
+
+        assert sim.model.matmul.input_quantizers[0].bitwidth == 16
+        assert sim.model.matmul.input_quantizers[1].bitwidth == 4
+
+    def test_mp_40(self):
+        """
+        Test that setting model input precisions will apply to the correct inputs at that layer
+        """
+
+        model = ModelWithSwappedInputs()
+        input_shape = (1, 3, 10, 10)
+
+        torch.manual_seed(0)
+        input_tensor = (torch.randn(*input_shape), torch.randn(*input_shape))
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_model_input_precision([None, 'Int16'])
+        mp_configurator.apply()
+
+        assert sim.model.matmul.input_quantizers[0].bitwidth == 16
+        assert sim.model.matmul.input_quantizers[1].bitwidth == 8

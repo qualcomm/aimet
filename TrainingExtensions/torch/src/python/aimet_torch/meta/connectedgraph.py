@@ -44,6 +44,7 @@ result of an operation. Furthermore the graph representation is bi-directional."
 
 import copy
 from collections import defaultdict
+from types import SimpleNamespace
 import inspect
 from typing import Tuple, Union, List, Dict, Type, Optional
 import torch
@@ -704,20 +705,27 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         pass through constructed graph to recover structure of input and output tensors. Creates a map of each input
         tensor to its first consumer op, and each output tensor to its last producer op.
         """
+        def get_index_in_op_inputs(op, product):
+            if not op: return None
+            return SimpleNamespace(op=op, index=op.inputs.index(product))
+
+        def get_index_in_op_outputs(op, product):
+            if not op: return None
+            return SimpleNamespace(op=op, index=op.output_products.index(product))
 
         def flatten_unpack_consumers(construct_op: Op):
             collapsed_outputs = []
             for product in construct_op.output_products:
                 consumers = [flatten_unpack_consumers(consumer) \
                                  if consumer and consumer.type in ['TupleUnpack', 'ListUnpack'] \
-                                 else consumer for consumer in product.consumers]
+                                 else get_index_in_op_inputs(consumer, product) for consumer in product.consumers]
                 collapsed_outputs.append(consumers if len(consumers) > 0 else None)
             return collapsed_outputs
 
         def flatten_pack_producers(deconstruct_op: Op):
             return [flatten_pack_producers(product.producer) \
                         if product.producer and product.producer.type in ['TupleConstruct', 'ListConstruct'] \
-                        else product.producer for product in deconstruct_op.inputs]
+                        else get_index_in_op_outputs(product.producer, product) for product in deconstruct_op.inputs]
 
         input_structure = {}
         output_structure = {}
@@ -739,10 +747,10 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 input_structure[name] = list(filter(
                     lambda consumer: consumer and consumer.type not in ['TupleConstruct', 'ListConstruct'],
                     product.consumers))
-                input_structure[name] = input_structure[name] if len(input_structure[name]) > 0 else [None]
+                input_structure[name] = [get_index_in_op_inputs(consumer, product) for consumer in input_structure[name]] if len(input_structure[name]) > 0 else [None]
             # If there is a model outputs that has not already been captured, then store its producer ops
             elif not product.consumers and product.producer.name not in output_structure:
-                output_structure[product.producer.name] = product.producer
+                output_structure[product.producer.name] = get_index_in_op_outputs(product.producer, product )
 
         # graph should only have one model output (could be a tuple or single item). If a single model output cannot
         # be isolated then we do not know which one is correct.

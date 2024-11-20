@@ -560,7 +560,7 @@ class TestConnectedGraph(unittest.TestCase):
         inp_tensor_list = create_rand_tensors_given_shapes(inp_shape, get_device(model))
         conn_graph = ConnectedGraph(model, inp_tensor_list)
 
-        self.assertEqual(model.conv1, conn_graph.input_structure[0].get_module())
+        self.assertEqual(model.conv1, conn_graph.input_structure[0].op.get_module())
 
     def test_graph_output_structure(self):
         model = test_models.SingleResidual()
@@ -569,7 +569,7 @@ class TestConnectedGraph(unittest.TestCase):
         inp_tensor_list = create_rand_tensors_given_shapes(inp_shape, get_device(model))
         conn_graph = ConnectedGraph(model, inp_tensor_list)
 
-        self.assertEqual(model.fc, conn_graph.output_structure.get_module())
+        self.assertEqual(model.fc, conn_graph.output_structure.op.get_module())
 
     def test_graph_input_structure_with_nested_inputs_and_outputs(self):
         class ModelWithMultiInputMultiOutput(nn.Module):
@@ -624,15 +624,15 @@ class TestConnectedGraph(unittest.TestCase):
         input_tensor = create_rand_tensors_given_shapes([input_shape, [input_shape, input_shape]], get_device(model))
         conn_graph = ConnectedGraph(model, input_tensor)
 
-        self.assertEqual(model.conv1_a_i, conn_graph.input_structure[0][0].get_module())
-        self.assertEqual(model.conv1_a_ii, conn_graph.input_structure[0][1].get_module())
-        self.assertEqual(model.conv1_b, conn_graph.input_structure[1][0][0].get_module())
-        self.assertEqual(model.conv1_c, conn_graph.input_structure[1][1][0].get_module())
-        self.assertEqual(model.relu1_a, conn_graph.output_structure[2][0].get_module())
-        self.assertEqual(model.relu1_b, conn_graph.output_structure[2][1].get_module())
-        self.assertEqual(model.relu1_c, conn_graph.output_structure[2][2].get_module())
-        self.assertEqual(model.softmax_1, conn_graph.output_structure[0].get_module())
-        self.assertEqual(model.softmax_2, conn_graph.output_structure[1].get_module())
+        self.assertEqual(model.conv1_a_i, conn_graph.input_structure[0][0].op.get_module())
+        self.assertEqual(model.conv1_a_ii, conn_graph.input_structure[0][1].op.get_module())
+        self.assertEqual(model.conv1_b, conn_graph.input_structure[1][0][0].op.get_module())
+        self.assertEqual(model.conv1_c, conn_graph.input_structure[1][1][0].op.get_module())
+        self.assertEqual(model.relu1_a, conn_graph.output_structure[2][0].op.get_module())
+        self.assertEqual(model.relu1_b, conn_graph.output_structure[2][1].op.get_module())
+        self.assertEqual(model.relu1_c, conn_graph.output_structure[2][2].op.get_module())
+        self.assertEqual(model.softmax_1, conn_graph.output_structure[0].op.get_module())
+        self.assertEqual(model.softmax_2, conn_graph.output_structure[1].op.get_module())
         return
 
     def test_graph_input_output_with_passthrough(self):
@@ -650,9 +650,9 @@ class TestConnectedGraph(unittest.TestCase):
         input_tensor_list = create_rand_tensors_given_shapes([input_shape, input_shape], get_device(model))
         conn_graph = ConnectedGraph(model, input_tensor_list)
 
-        self.assertEqual(model.conv, conn_graph.input_structure[0][0].get_module())
+        self.assertEqual(model.conv, conn_graph.input_structure[0][0].op.get_module())
         self.assertEqual([None], conn_graph.input_structure[1])
-        self.assertEqual(model.conv, conn_graph.output_structure[0].get_module())
+        self.assertEqual(model.conv, conn_graph.output_structure[0].op.get_module())
         self.assertEqual(None, conn_graph.output_structure[1])
 
     def test_graph_input_output_with_conditional(self):
@@ -675,8 +675,8 @@ class TestConnectedGraph(unittest.TestCase):
         dummy_input = (torch.randn(128, 128), torch.tensor(data=True, dtype=torch.bool))
         conn_graph = ConnectedGraph(model, dummy_input)
 
-        self.assertEqual(model.l1, conn_graph.input_structure[0][0].get_module())
-        self.assertEqual(model.l1, conn_graph.output_structure.get_module())
+        self.assertEqual(model.l1, conn_graph.input_structure[0][0].op.get_module())
+        self.assertEqual(model.l1, conn_graph.output_structure.op.get_module())
 
 
 class ModelWithMultipleActivations(nn.Module):
