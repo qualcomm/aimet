@@ -6,8 +6,8 @@
 Quantization workflow
 #####################
 
-This document outlines the guided quantization workflow using AIMET. It presents a clear
-approach and methodology for onboarding any non-GenAI model with AIMET.
+This document outlines a clear approach and methodology to onboard, quantize and deploy any
+non-GenAI machine-learning models on Qualcomm\ |reg| devices using AIMET toolkit.
 
 
 Quantization features
@@ -17,25 +17,25 @@ AIMET toolkit offers following quantization features.
 
 1. Quantization simulation (QuantSim):
 
-It simulates quantized behavior using floating-point
-hardware. QuantSim efficiently enables various quantization options and helps you estimate
-the off-target quantized metric through fake quantization (quantize and dequantize operations,
-known as QDQ) without requiring actual quantized hardware.
+It simulates quantized behavior using floating-point hardware. QuantSim efficiently enables
+various quantization options and helps you estimate the off-target quantized accuracy metric
+using quantization simulation (sequence of quantize and dequantize operations, known as QDQ)
+without requiring actual quantized hardware.
 
-2. Post training quantization (PTQ):
+2. Post-training quantization (PTQ):
 
-PTQ techniques make a model more quantization-friendly
-without requiring model retraining or fine-tuning. PTQ is recommended as a go-to tool in a
-quantization workflow because:
+PTQ techniques make a model more quantization-friendly without requiring model retraining
+or fine-tuning. PTQ is recommended as a go-to tool in a quantization workflow because:
 
-- PTQ does not require the original training pipeline
-- PTQ is fast and easy to use
+- PTQ does not require the training pipeline
+- PTQ is efficient and easy to use
 
-3. Quantization aware training (QAT):
+3. Quantization-aware training (QAT):
 
-QAT enable you to fine-tune a model with quantization
-operations (QDQ) inserted in the model graph. In effect, it makes the model parameters robust
-to quantization noise. Compared to PTQ:
+QAT enables you to fine-tune a model with quantization operations (QDQ) inserted in the
+model graph. In effect, it makes the model parameters robust to quantization noise.
+
+Compared to PTQ:
 
 - QAT requires a training pipeline and dataset and
 - QAT takes longer because it needs some fine-tuning,
@@ -43,32 +43,15 @@ to quantization noise. Compared to PTQ:
 
 but it can provide better accuracy, especially at lower bit-widths.
 
+Determine supported precisions for on-target inference
+======================================================
 
-Workflow
-========
+Before applying quantization techniques, you need to identify the supported precisions
+to run inference on desired target runtimes. For weights and activations, supported
+precisions can be FP32, FP16, INT16, INT8 and INT4.
 
-To decide which precision to run inference on target runtime, you can follow the top-down
-approach where you begin with the highest precision (For example FP16) and transition to
-lower precision if necessary, which may require additional engineering effort.
-
-Given that the off-target quantized accuracy using QuantSim is acceptable, following
-on-target metrics should be considered depending on your application.
-
-- Latency reduction and/or
-- Memory size reduction
-
-If any of the above on-target metrics are not met for your use case, you should consider
-lowering the precision.
-
-Determine precision for on-target inference
--------------------------------------------
-
-Before applying quantization techniques using the AIMET toolkit, you need to identify the
-supported precisions to run inference on desired target runtimes. For weights and activations,
-supported precisions can be FP32, FP16, INT16, INT8 and INT4.
-
-Some recent runtimes also support heterogeneous bit-width or mixed-precision, enabling
-sensitive operations to run at higher precision within your model.
+Some of the recent runtimes also support heterogeneous bit-width or mixed-precision, enabling
+sensitive operations to run at a higher precision within your model.
 
 Supported precisions to run inference on target runtimes like |qnn|_ are:
 
@@ -89,6 +72,29 @@ Supported precisions to run inference on target runtimes like |qnn|_ are:
      - INT8
      - INT8
 
+Workflow
+========
+
+To decide which precision to run inference on target runtimes, you can follow the top-down
+approach where you begin with the highest precision (For example FP16) and transition to
+lower precision if necessary, which may require additional engineering effort.
+
+Given that the off-target quantized accuracy using QuantSim is acceptable, following
+on-target metrics should be considered depending on your application.
+
+- Latency reduction and/or
+- Memory size reduction
+
+If any of the above on-target metrics are not met for your use case, you should consider
+lowering the precision.
+
+The figure below illustrates the recommended quantization workflow and the steps required
+to deploy the quantized model on the target device.
+
+.. figure:: ../../images/quantization_workflow.png
+
+   Recommended quantization workflow
+
 FP16 precision (No quantization)
 --------------------------------
 
@@ -96,8 +102,8 @@ Converting an FP32 model to FP16 precision without quantization is a recommended
 point. For more details on how to compile FP16 models for target runtimes, please refer to
 |qnn_docs|_ or |qai_hub_docs|_.
 
-Quick W16A16 sanity check
--------------------------
+W16A16 sanity check
+-------------------
 
 Before using quantized integer format, it's important to ensure that the FP32 model
 and the quantized model (QuantSim object) perform similarly during the forward pass, especially
@@ -107,8 +113,8 @@ Set the bit-width to 16 bits for both weights and activations when creating the 
 Then, obtain the off-target quantized accuracy metric for the quantized model and verify if
 it aligns with the FP32 model. If it doesn't, please report an issue to |aimet|_.
 
-Try lower precision(s)
-----------------------
+Apply PTQ or QAT at specified precision
+---------------------------------------
 
 If any of the metrics are not acceptable with higher precision, begin with weights at
 INT8 precision and activations at INT16 precision. In this step, before creating the QuantSim,
@@ -117,11 +123,17 @@ QuantSim can only quantize math operations performed by :class:`torch.nn.Module`
 :class:`torch.nn.functional` calls will be incorrectly ignored. Please refer to framework specific
 pages to know more about such model guidelines.
 
-If off-target quantized accuracy metric is unsatisfactory, you can apply PTQ/QAT techniques to
-enhance the quantized metric for the specified precision. The choice between PTQ and QAT techniques
-depends on the quantized accuracy and runtime requirements.
+If the off-target quantized accuracy metric is not meeting expectations, you can use PTQ or QAT
+techniques to improve the quantized accuracy for the desired precision. The decision between
+PTQ and QAT should be based on the quantized accuracy and runtime needs.
 
 Once the off-target quantized accuracy metric is satisfactory, proceed to :ref:`evaluate the
-on-target metrics<opt-guide-on-target-inference>` at this precision. If the on-target metrics still do not meet the
-requirements, consider further reducing the precision (for example W8A8) and repeat the
-previous step.
+on-target metrics<opt-guide-on-target-inference>` at this precision. If the on-target metrics
+still do not meet the your requirements, consider further reducing the precision
+(for example W8A8) and repeat the current step.
+
+Deploy
+------
+
+Once the quantized accuracy and runtime requirements are achieved at the desired precision,
+the optimized model is ready for deployment on the target runtimes.

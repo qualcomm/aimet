@@ -6,12 +6,13 @@
 On-target inference
 ###################
 
-In order to run AIMET quantized model on a target device, users will need two things:
+In order to run AIMET quantized model on a target device, you need following two things:
 
 - an exported model,
-- an encodings JSON file containing quantization parameters(like **encoding min/max/scale/offset**) associated with each quantizers.
+- an encodings JSON file containing quantization parameters (like **encoding min/max/scale/offset**) associated with each quantizers.
 
-AIMET :class:`QuantizationSimModel` provides export functionality to generate both items. The exported model type will differ based on the framework used:
+AIMET :class:`QuantizationSimModel` provides :func:`QuantizationSimModel.export` functionality
+to generate both the items. The exported model type will differ based on the framework used:
 
 .. list-table::
    :widths: 8 8
