@@ -6,10 +6,10 @@ Adaptive rounding
 
 Context
 =======
+`Adaptive rounding <https://arxiv.org/pdf/2004.10568>`_ (AdaRound) is a rounding mechanism for model weights that designed to adapt to the data and improve the accuracy of the quantized model.
 
-By default, AIMET uses *nearest rounding* for quantization, in which weight values are quantized to the nearest integer value. 
-
-However, adaptive rounding (AdaRound) uses training data to choose how to round quantized weights. This rounding technique improves the quantized model's accuracy in many cases. You can learn more about adaptive rounding `here <https://arxiv.org/pdf/2004.10568>`_.
+By default, AIMET uses nearest rounding for quantization, in which weight values are quantized to the nearest integer value.
+However, AdaRound uses training data to choose how to round quantized weights. This rounding technique improves the quantized model's accuracy in many cases.
 
 The following figures illustrates how AdaRound might change the rounding of a quantized value.
 
@@ -22,10 +22,10 @@ See the :doc:`Optimization User Guide <../opt-guide/index>` for a discussion of 
 Complementary techniques
 ------------------------
 
-As a standalone, AdaRound can yield a significant improvement in performance. If you'd like to layer other techniques with AdaRound, it is recommended to apply AdaRound: 
+As a standalone, AdaRound can yield a significant improvement in performance. If you'd like to layer other techniques with AdaRound, it is recommended to apply AdaRound:
 
 - After batch norm folding (BNF) and cross layer equalization (CLE): Applying these techniques first can improve the accuracy gained using AdaRound.
-- Before quantization aware training (QAT): AdaRound is a better weights initialization step that speeds up QAT
+- Before quantization aware training (QAT): AdaRound serves as a well-disciplined weights initialization method for QAT
 
 
 Hyper parameters
@@ -45,7 +45,7 @@ Hyper Parameters to be changed with caution
 Hyper Parameters to avoid changing
     - Beta range. Leave the value at the default of (20, 2).
     - Warm start period. Leave at the default value, 20%.
-  
+
 You can learn more about the AdaRound parameters :doc:`here <../apiref/torch/adaround.rst>`
 
 Workflow
@@ -81,7 +81,7 @@ Setup
 
         .. container:: tab-heading
 
-            Load the model for adaptive rounding (AdaRound). In this code example, we will use MobileNetV2
+            Load the model for AdaRound. In this code example, we will use MobileNetV2
 
         .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
@@ -126,7 +126,7 @@ Setup
 
         .. container:: tab-heading
 
-            Load the model for adaptive rounding (AdaRound). In this code example, we will convert PyTorch MobileNetV2 to ONNX and use it in the subsequent code
+            Load the model for AdaRound. In this code example, we will convert PyTorch MobileNetV2 to ONNX and use it in the subsequent code
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
@@ -211,7 +211,7 @@ Simulate quantization through AIMET's QuantSim
 Step 3
 ~~~~~~
 
-Run evaluation on the model, which will yield its accuracy. 
+Evaluate the model
 
 .. tab-set::
     :sync-group: platform
