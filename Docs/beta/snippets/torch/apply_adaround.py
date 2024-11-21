@@ -50,13 +50,10 @@ data = load_dataset('imagenet-1k', streaming=True, split="train")
 data_loader = DataLoader(data, batch_size=num_batches, num_workers = 4)
 dummy_input = torch.randn(1, 3, 224, 224).to(device)
 
-def forward_pass(model: torch.nn.Module, forward_pass_callback_args: Any = None):
-    """
-    AIMET requires the above signature for the calibration callback function.
-    """
-    model.eval()
+def forward_pass(model: torch.nn.Module):
     with torch.no_grad():
-        model(forward_pass_callback_args)
+        for images, _ in data_loader:
+            model(images)
 
 path = './'
 filename = 'mobilenet'
@@ -73,10 +70,10 @@ adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path=path
 sim = QuantizationSimModel(adarounded_model, dummy_input)
 
 # AdaRound optimizes the rounding of weight quantizers only. These values are preserved through load_encodings()
-sim.load_encodings(encoding_path=path + filename, allow_overwrite=False)
+sim.load_encodings(encodings=path + filename, allow_overwrite=False)
 
 # The activation quantizers remain uninitialized and derived through compute_encodings()
-sim.compute_encodings(forward_pass, forward_pass_callback_args=dummy_input)
+sim.compute_encodings(forward_pass)
 [step_3]
 evaluator = evaluator("image-classification")
 accuracy = evaluator.compute(model_or_pipeline=model, data=data, metric="accuracy")

@@ -23,6 +23,7 @@ Complementary techniques
 ------------------------
 
 As a standalone, AdaRound can yield a significant improvement in performance. If you'd like to layer other techniques with AdaRound, it is recommended to apply AdaRound: 
+
 - After batch norm folding (BNF) and cross layer equalization (CLE): Applying these techniques first can improve the accuracy gained using AdaRound.
 - Before quantization aware training (QAT): AdaRound is a better weights initialization step that speeds up QAT
 
