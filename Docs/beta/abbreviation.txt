@@ -1,0 +1,22 @@
+.. include:: <isonum.txt>
+
+.. |qnn| replace:: Qualcomm\ |reg| AI Engine Direct
+.. _qnn: https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk
+
+.. |qnn_docs| replace:: Qualcomm\ |reg| AI Engine Direct documentation
+.. _qnn_docs: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/tools.html
+
+.. |qai_hub| replace:: Qualcomm\ |reg| AI Hub
+.. _qai_hub: https://aihub.qualcomm.com/
+
+.. |qai_hub_docs| replace:: Qualcomm\ |reg| AI Hub documentation
+.. _qai_hub_docs: https://app.aihub.qualcomm.com/docs/
+
+.. |aimet| replace:: AIMET
+.. _aimet: https://github.com/quic/aimet
+
+.. |tflite| replace:: TensorFlow Lite
+.. _tflite: https://www.tensorflow.org/lite/
+
+.. |ort| replace:: ONNX Runtime
+.. _ort: https://onnxruntime.ai/

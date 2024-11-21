@@ -1,8 +1,10 @@
+.. include:: abbreviation.txt
+
 .. _top-index:
 
-######################################
+#########################################
 AI Model Efficiency Toolkit Documentation
-######################################
+#########################################
 
 .. toctree::
    :hidden:
@@ -69,4 +71,3 @@ For information specific to this release, see :doc:`Release Notes <../rn/index>`
 | |project| is a product of |author|
 | Qualcomm\ |reg| Neural Processing SDK is a product of Qualcomm Technologies, Inc. and/or its subsidiaries.
 
-.. |reg|    unicode:: U+000AE .. REGISTERED SIGN

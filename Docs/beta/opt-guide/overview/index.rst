@@ -1,5 +1,5 @@
-.. _opt-guide-overview:
+.. _opt-guide-overview-index:
 
-###############################
-Optimization technical overview
-###############################
+###########################
+Model optimization overview
+###########################
