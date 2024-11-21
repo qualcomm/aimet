@@ -678,6 +678,30 @@ class TestConnectedGraph(unittest.TestCase):
         self.assertEqual(model.l1, conn_graph.input_structure[0][0].op.get_module())
         self.assertEqual(model.l1, conn_graph.output_structure.op.get_module())
 
+    def test_graph_input_output_indices(self):
+        class ModelWithMatMul(nn.Module):
+            def __init__(self):
+                super(ModelWithMatMul, self).__init__()
+                self.matmul = aimet_modules.MatMul()
+
+            def forward(self, x, y):
+                z = self.matmul(y, x)
+                return z
+
+        model = ModelWithMatMul()
+        model.eval()
+
+        dummy_input = (torch.randn(128, 128), torch.randn(128, 128))
+        conn_graph = ConnectedGraph(model, dummy_input)
+
+        self.assertEqual(model.matmul, conn_graph.input_structure[0][0].op.get_module())
+        self.assertEqual(model.matmul, conn_graph.input_structure[1][0].op.get_module())
+        self.assertEqual(model.matmul, conn_graph.output_structure.op.get_module())
+
+        self.assertEqual(1, conn_graph.input_structure[0][0].index)
+        self.assertEqual(0, conn_graph.input_structure[1][0].index)
+        self.assertEqual(0, conn_graph.output_structure.index)
+
 
 class ModelWithMultipleActivations(nn.Module):
     def __init__(self):

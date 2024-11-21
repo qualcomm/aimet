@@ -90,7 +90,7 @@ class MpRequest:
     output_candidates: List[Precision] = None
     param_candidate: Dict[str, Precision] = None
 
-    def __add__(self, other):
+    def fuse(self, other):
         """ Function to fuse two MpRequest objects, defaulting to self, and filling in None fields from other."""
         if not self: return other
         if not other: return self
@@ -98,8 +98,13 @@ class MpRequest:
             raise NotImplemented("Cannot add MpRequest object to non-MpRequest object.")
 
         fused_request = MpRequest()
+
+        # We want to always defer to the newer request when there is a conflict
+        newer_request = self if self.id > other.id else other
+        older_request = other if newer_request is self else self
+
         # TODO: how do we handle id? defaulting to latest id
-        fused_request.id = max(other.id, self.id)
+        fused_request.id = newer_request.id
 
         def fuse_lists(old_list, new_list):
             if old_list is None:
@@ -110,16 +115,16 @@ class MpRequest:
                 raise RuntimeError("Cannot combine two MpRequest objects with different number of candidates.")
             return [new if new else old for new, old in zip(new_list, old_list)]
 
-        fused_request.input_candidates = fuse_lists(other.input_candidates, self.input_candidates)
-        fused_request.output_candidates = fuse_lists(other.output_candidates, self.output_candidates)
+        fused_request.input_candidates = fuse_lists(older_request.input_candidates, newer_request.input_candidates)
+        fused_request.output_candidates = fuse_lists(older_request.output_candidates, newer_request.output_candidates)
 
-        if other.param_candidate is None:
-            fused_request.param_candidate = self.param_candidate
-        if self.param_candidate is None:
-            fused_request.param_candidate = other.param_candidate
+        if older_request.param_candidate is None:
+            fused_request.param_candidate = newer_request.param_candidate
+        if newer_request.param_candidate is None:
+            fused_request.param_candidate = older_request.param_candidate
         else:
             # Take param_candidate from RHS if possible, else default to LHS
-            fused_request.param_candidate = other.param_candidate.update(self.param_candidate)
+            fused_request.param_candidate = older_request.param_candidate.update(newer_request.param_candidate)
 
         return fused_request
 
@@ -131,12 +136,17 @@ class RequestType(Enum):
     set_model_input_precision = 3
     set_model_output_precision = 4
 
+@dataclass
+class ModuleProduct:
+    """ Data structure to store a particular input product to or output product from a torch module"""
+    module: torch.nn.Module
+    index: int
 
 @dataclass
 class UserRequest:
     """ Data structure to store user requests"""
     request_type: RequestType
-    module: Union[torch.nn.Module, Type, None] = None
+    module: Union[torch.nn.Module, Type, ModuleProduct, None] = None
     activation: Union[List[SupportedDType], SupportedDType, None] = None
     param: Optional[Dict[str, SupportedDType]] = None
 
@@ -256,7 +266,6 @@ class MpHandler:
                               activation: Union[List[SupportedDType], SupportedDType, None] = None,
                               param: Optional[Dict[str, SupportedDType]] = None):
             """ For a given leaf module, and the specified activation and param candidates, convert to MpRequest"""
-            # TODO fill missing inputs
             if torch_module in mp_requests:
                 prev_request = mp_requests[torch_module]
                 logger.info(f"{module_name} was already encountered with request_id {prev_request.id} and request "
@@ -327,7 +336,7 @@ class MpHandler:
                     raise RuntimeError(f"Invalid number of activation candidates for module {module_name} provided.")
                 request.input_candidates = input_candidates
 
-            mp_requests[torch_module] = request + mp_requests.get(torch_module)
+            mp_requests[torch_module] = request.fuse(mp_requests.get(torch_module))
 
         mp_requests = {}
         for request_id, user_request in user_requests.items():
@@ -421,14 +430,14 @@ class MpHandler:
     @functools.cached_property
     def model_inputs(self):
         return _apply_fn_recursively_to_all_elems(
-            lambda model_input: SimpleNamespace(module=self._get_module_from_cg_op(model_input.op), index=model_input.index),
-                                                  self._sim.connected_graph._input_structure)
+            lambda model_input: ModuleProduct(module=self._get_module_from_cg_op(model_input.op), index=model_input.index),
+            self._sim.connected_graph._input_structure)
 
     @functools.cached_property
     def model_outputs(self):
         return _apply_fn_recursively_to_all_elems(
-            lambda model_output: SimpleNamespace(module=self._get_module_from_cg_op(model_output.op), index=model_output.index),
-                                                  self._sim.connected_graph._output_structure)
+            lambda model_output: ModuleProduct(module=self._get_module_from_cg_op(model_output.op), index=model_output.index),
+            self._sim.connected_graph._output_structure)
 
     @functools.cached_property
     def model_input_modules(self):

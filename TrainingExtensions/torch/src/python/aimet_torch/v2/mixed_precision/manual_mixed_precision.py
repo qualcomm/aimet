@@ -41,7 +41,7 @@ from typing import overload, Union, List, Tuple, Dict, get_args, Type, Optional
 import torch
 
 from aimet_common.utils import AimetLogger
-from aimet_torch.v2.mixed_precision.utils import UserRequest, RequestType, SupportedDType, MpHandler
+from aimet_torch.v2.mixed_precision.utils import UserRequest, RequestType, SupportedDType, MpHandler, ModuleProduct
 from aimet_torch.v2.mixed_precision.utils import _broadcast_tuples, _flatten_list
 from aimet_torch.v2.quantsim import QuantizationSimModel
 
@@ -70,7 +70,7 @@ class MixedPrecisionConfigurator:
         self.user_requests: Dict[int, UserRequest] = {}
         self.mp_handler = MpHandler(sim)
 
-    def _store_user_request(self, request_type: RequestType, module: Union[torch.nn.Module, Type],
+    def _store_user_request(self, request_type: RequestType, module: Union[torch.nn.Module, Type, ModuleProduct],
                             activation: Union[List[SupportedDType], SupportedDType] = None,
                             param: Optional[Dict[str, SupportedDType]] = None):
         self.user_requests[self.request_count] = UserRequest(request_type=request_type,
