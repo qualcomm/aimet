@@ -14,19 +14,18 @@ The AIMET package requires the following host platform setup. Following prerequi
 to all frameworks variants.
 
 * 64-bit Intel x86-compatible processor
-* OS : Linux
-    * Ubuntu 22.04 LTS (Python 3.10)
-* python : Supported python version(s): 3.10
+* OS: Ubuntu 22.04 LTS
+* Python 3.10
 * For GPU variants:
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
 
 
-Ensure that you have following debian packages installed:
+Ensure that you have following debian package(s) installed:
 
 .. code-block:: bash
 
-    apt-get install liblapacke libpython3-dev
+    apt-get install liblapacke
 
 Install a compatible version of pip. The latest version is *not* compatible with our wheel packages.
 
