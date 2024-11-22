@@ -36,11 +36,14 @@
 # =============================================================================
 # pylint: skip-file
 
+# imports start
+
 import numpy as np
 from onnxsim import simplify
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_common.defs import QuantScheme
 
+# imports end
 
 def pass_calibration_data(session):
     """
@@ -88,5 +91,4 @@ def quantize_model():
 
     # Evaluate the quant sim
     forward_pass_function(sim.session)
-
 
