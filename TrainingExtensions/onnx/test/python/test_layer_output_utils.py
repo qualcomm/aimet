@@ -174,7 +174,8 @@ class TestLayerOutputUtil:
         # Generate layer-outputs
         layer_output_util = LayerOutputUtil(model=quantsim.model.model, dir_path=temp_dir_path)
         for input_batch in dummy_data_loader:
-            layer_output_util.generate_layer_outputs(input_batch.numpy())
+            for single_input in input_batch:
+                layer_output_util.generate_layer_outputs(single_input.unsqueeze(0).numpy())
 
         # Verify number of inputs
         assert data_count == len(os.listdir(os.path.join(temp_dir_path, 'inputs')))

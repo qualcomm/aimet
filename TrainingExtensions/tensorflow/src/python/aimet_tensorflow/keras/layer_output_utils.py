@@ -123,36 +123,36 @@ class LayerOutputUtil:
 
         return original_name_to_modified_name_mapper
 
-    def get_outputs(self, input_batch: Union[tf.Tensor, List[tf.Tensor], Tuple[tf.Tensor]]):
+    def get_outputs(self, input_instance: Union[tf.Tensor, List[tf.Tensor], Tuple[tf.Tensor]]):
         """
         This function captures layer-outputs and renames them as per the AIMET exported model.
-        :param input_batch: Batch of inputs for which we want to obtain layer-outputs.
-        :return: layer-output name to layer-output batch dict
+        :param input_instance: Single input instance for which we want to obtain layer-outputs.
+        :return: layer-output name to layer-output dict
         """
         # Run in inference mode
-        outs = self.intermediate_model(input_batch, training=False)
+        outs = self.intermediate_model(input_instance, training=False)
         output_pred = [out.numpy() for out in outs]
 
         return dict(zip(self.original_name_to_modified_name_mapper.values(), output_pred))
 
-    def generate_layer_outputs(self, input_batch: Union[tf.Tensor, List[tf.Tensor], Tuple[tf.Tensor]]):
+    def generate_layer_outputs(self, input_instance: Union[tf.Tensor, List[tf.Tensor], Tuple[tf.Tensor]]):
         """
         This method captures output of every layer of a model & saves the inputs and corresponding layer-outputs to disk.
 
-        :param input_batch: Batch of Inputs for which layer output need to be generated
+        :param input_instance: Single input instance for which layer output need to be generated
         :return: None
         """
-        layer_output_batch_dict = self.get_outputs(input_batch)
+        layer_output_dict = self.get_outputs(input_instance)
 
         # Skip constant scalar layer-outputs
         const_scalar_layer_name = []
-        for layer_name, layer_output in layer_output_batch_dict.items():
+        for layer_name, layer_output in layer_output_dict.items():
             if not isinstance(layer_output, np.ndarray):
                 const_scalar_layer_name.append(layer_name)
         for layer_name in const_scalar_layer_name:
             logger.info("Skipping constant scalar output of layer %s", layer_name)
-            _ = layer_output_batch_dict.pop(layer_name)
+            _ = layer_output_dict.pop(layer_name)
 
-        self.save_inp_out_obj.save(np.array(input_batch), layer_output_batch_dict)
+        self.save_inp_out_obj.save(np.array(input_instance), layer_output_dict)
 
-        logger.info("Layer Outputs Saved")
+        logger.info("Layer outputs saved for input instance %d", self.save_inp_out_obj.input_cntr)

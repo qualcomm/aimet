@@ -129,7 +129,8 @@ class TestLayerOutputUtil:
         layer_output_util_obj = LayerOutputUtil(model=qs_obj.model, save_dir=save_dir)
         for batch_num, inp_batch in enumerate(dataloader):
             batch_x, _ = inp_batch
-            layer_output_util_obj.generate_layer_outputs(input_batch=batch_x)
+            for single_input in batch_x:
+                layer_output_util_obj.generate_layer_outputs(np.expand_dims(single_input, axis=0))
 
         # Verify number of inputs
         assert data_points == len(glob(save_dir+"/inputs/*.raw")) ## Check #Inputs

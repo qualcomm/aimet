@@ -96,46 +96,45 @@ class LayerOutputUtil:
         # Utility to save model inputs and their corresponding layer-outputs
         self.save_input_output = SaveInputOutput(dir_path=dir_path, axis_layout='NCHW')
 
-    def generate_layer_outputs(self, input_batch: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]):
+    def generate_layer_outputs(self, input_instance: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]):
         """
-        This method captures output of every layer of a model & saves the inputs and corresponding layer-outputs to disk.
+        This method captures output of every layer of a model & saves the single input instance and corresponding layer-outputs to disk.
 
-        :param input_batch: Batch of inputs for which we want to obtain layer-outputs.
+        :param input_instance: Single input instance for which we want to obtain layer-outputs.
         :return: None
         """
 
-        input_instance_count = len(input_batch) if isinstance(input_batch, torch.Tensor) else len(input_batch[0])
-        logger.info("Generating layer-outputs for %d input instances", input_instance_count)
+        logger.info("Generating layer-outputs for input instance %d", self.save_input_output.input_cntr+1)
 
         # Obtain layer-output name to output dictionary
-        layer_output_batch_dict = self.layer_output.get_outputs(input_batch)
+        layer_output_dict = self.layer_output.get_outputs(input_instance)
 
         # Place inputs and layer-outputs on CPU
-        input_batch = LayerOutputUtil._get_input_batch_in_numpy(input_batch)
-        layer_output_batch_dict = LayerOutputUtil._get_layer_output_batch_in_numpy(layer_output_batch_dict)
+        input_instance = LayerOutputUtil._get_input_in_numpy(input_instance)
+        layer_output_dict = LayerOutputUtil._get_layer_output_in_numpy(layer_output_dict)
 
         # Save inputs and layer-outputs
-        self.save_input_output.save(input_batch, layer_output_batch_dict)
+        self.save_input_output.save(input_instance, layer_output_dict)
 
-        logger.info('Successfully generated layer-outputs for %d input instances', input_instance_count)
+        logger.info('Successfully generated layer-outputs for input instance %d', self.save_input_output.input_cntr)
 
     @staticmethod
-    def _get_input_batch_in_numpy(input_batch: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]) -> \
+    def _get_input_in_numpy(input_instance: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]) -> \
             Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]:
         """
         Coverts the torch tensors into numpy arrays
-        :param input_batch: input batch with torch tensors
-        :return: input batch with numpy arrays
+        :param input_instance: Single input instance with torch tensors
+        :return: Input with numpy arrays
         """
-        if isinstance(input_batch, (List, Tuple)):
-            numpy_input_batch = []
-            for ith_input in input_batch:
-                numpy_input_batch.append(ith_input.cpu().numpy())
-            return numpy_input_batch
-        return input_batch.cpu().numpy()
+        if isinstance(input_instance, (List, Tuple)):
+            numpy_input = []
+            for ith_input in input_instance:
+                numpy_input.append(ith_input.cpu().numpy())
+            return numpy_input
+        return input_instance.cpu().numpy()
 
     @staticmethod
-    def _get_layer_output_batch_in_numpy(layer_output_dict: Dict[str, torch.Tensor]) -> Dict[str, np.ndarray]:
+    def _get_layer_output_in_numpy(layer_output_dict: Dict[str, torch.Tensor]) -> Dict[str, np.ndarray]:
         """
         Converts the torch tensors into numpy arrays
         :param layer_output_dict: layer output dictionary with torch tensors
@@ -193,24 +192,24 @@ class LayerOutput:
         layer_output_names = list(self.layer_name_to_layer_output_name_dict.values())
         save_layer_output_names(layer_output_names, dir_path)
 
-    def get_outputs(self, input_batch: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    def get_outputs(self, input_instance: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]) -> Dict[str, torch.Tensor]:
         """
         This function captures layer-outputs and renames them as per the AIMET exported pytorch/onnx/torchscript model.
 
-        :param input_batch: Batch of inputs for which we want to obtain layer-outputs.
-        :return: layer-name to layer-output batch dict
+        :param input_instance: Single input instance for which we want to obtain layer-outputs.
+        :return: layer-name to layer-output dict
         """
 
         # Fetch outputs of all the layers
         self.layer_name_to_layer_output_dict = {}
         if self.is_quantsim_model:
             # Apply record-output hook to QuantizeWrapper modules (one node above leaf node in model graph)
-            utils.run_hook_for_layers_with_given_input(self.model, input_batch, self.record_outputs,
+            utils.run_hook_for_layers_with_given_input(self.model, input_instance, self.record_outputs,
                                                        module_type_for_attaching_hook=(_QuantizedModuleProtocol, QcQuantizeRecurrent),
                                                        leaf_node_only=False)
         else:
             # Apply record-output hook to Original modules (leaf node in model graph)
-            utils.run_hook_for_layers_with_given_input(self.model, input_batch, self.record_outputs, leaf_node_only=True)
+            utils.run_hook_for_layers_with_given_input(self.model, input_instance, self.record_outputs, leaf_node_only=True)
 
         # Rename outputs according to pytorch/onnx/torchscript model
         layer_output_name_to_layer_output_dict = LayerOutput.rename_layer_outputs(self.layer_name_to_layer_output_dict,

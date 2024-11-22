@@ -85,21 +85,21 @@ class LayerOutputUtil:
         # Utility to save model inputs and their corresponding layer-outputs
         self.save_input_output = SaveInputOutput(dir_path, 'NCHW')
 
-    def generate_layer_outputs(self, input_batch: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]):
+    def generate_layer_outputs(self, input_instance: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]):
         """
         This method captures output of every layer of a model & saves the inputs and corresponding layer-outputs to disk.
 
-        :param input_batch: Batch of inputs for which we want to obtain layer-outputs.
+        :param input_instance: Single input instance for which we want to obtain layer-outputs.
         :return: None
         """
-        logger.info("Generating layer-outputs for %d input instances", len(input_batch))
+        logger.info("Generating layer-outputs for input instance %d", self.save_input_output.input_cntr+1)
 
-        input_dict = create_input_dict(self.model, input_batch)
+        input_dict = create_input_dict(self.model, input_instance)
 
         layer_output_dict = self.layer_output.get_outputs(input_dict)
-        self.save_input_output.save(input_batch, layer_output_dict)
+        self.save_input_output.save(input_instance, layer_output_dict)
 
-        logger.info('Layer-outputs generated for %d input instances', len(input_batch))
+        logger.info('Layer-outputs generated for input instance %d', self.save_input_output.input_cntr)
 
 
 class LayerOutput:
