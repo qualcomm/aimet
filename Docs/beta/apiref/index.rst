@@ -51,7 +51,7 @@ Cross-layer equalization (CLE)
 
 Scales the parameter ranges across different channels to increase the range for layers with low range and reduce range for layers with high range, enabling the same quantizaion parameters to be used across all channels.
 
-:ref:`Cross-layer equalization (CLE) <apiref-torch-cle>`
+:ref:`PyTorch <apiref-torch-cle>`
 
 
 Batch norm re-estimation (BN) 
