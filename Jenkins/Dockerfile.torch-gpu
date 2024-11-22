@@ -178,7 +178,6 @@ RUN python3 -m pip --no-cache-dir install \
         onnxruntime-extensions \
         opencv-python \
         peft \
-        piccolo-theme \
         Pillow==9.3.0 \
         pluggy==0.12.0 \
         psutil \
@@ -198,6 +197,7 @@ RUN python3 -m pip --no-cache-dir install \
         spconv-cu120 \
         sphinx \
         sphinx-autodoc-typehints \
+        sphinx-copybutton \
         sphinx-design \
         sphinx-jinja \
         sphinx-rtd-theme \

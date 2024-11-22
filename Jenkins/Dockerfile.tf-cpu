@@ -150,7 +150,6 @@ RUN python3 -m pip --no-cache-dir install \
         'numpy<1.24,>=1.20.0' \
         onnx==1.12.0 \
         opencv-python \
-        piccolo-theme \
         Pillow==9.3.0 \
         pluggy==0.12.0 \
         protobuf==3.19.2 \
@@ -168,6 +167,7 @@ RUN python3 -m pip --no-cache-dir install \
         scipy==1.8.1 \
         sphinx \
         sphinx-autodoc-typehints \
+        sphinx-copybutton \
         sphinx-design \
         sphinx-jinja \
         sphinx-rtd-theme \
