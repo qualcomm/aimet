@@ -100,8 +100,6 @@ extensions = [
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
-# The TOC options are hard-coded in the _templates/navigator.html file.
-# For some reason this theme doesn't seem to be setting user-defined config variables.
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
@@ -282,7 +280,7 @@ html_context = {
   'display_version_tab': False
 }
 
-autosummary_generate = False
+autosummary_generate = True
 
 # contains a list of modules to be mocked up which are not available during docs build time
 autodoc_mock_imports = []

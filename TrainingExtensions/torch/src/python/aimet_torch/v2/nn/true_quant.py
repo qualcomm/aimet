@@ -40,6 +40,7 @@
 from packaging import version
 import contextlib
 import itertools
+from inspect import signature
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from typing import Type, Any, Optional, Callable, Dict
@@ -528,141 +529,175 @@ def __ternary__(self):
     self.input_quantizers = nn.ModuleList([None, None, None])
 
 
+def _generate_docstring(parent_cls):
+    return \
+    f"""
+    Quantized subclass of torch.nn.{parent_cls.__name__}
+
+    .. method:: forward{str(signature(parent_cls.forward))}
+        :noindex:
+
+        Quantized forward of torch.nn.{parent_cls.__name__}.
+
+        The input(s), parameter(s) (if any), and output(s) will be quantized with
+        ``self.input_quantizers``, ``self.param_quantizers``, and ``self.output_quantizers`` respectively.
+
+        For more information, see :class:`QuantizationMixin`.
+    """
+
 @QuantizationMixin.implements(nn.AdaptiveAvgPool1d)
 class QuantizedAdaptiveAvgPool1d(_DispatchMixin, QuantizationMixin, nn.AdaptiveAvgPool1d):
-    """ Quantized AdaptiveAvgPool1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(nn.AdaptiveAvgPool1d)
     _builtin_torch_fn = F.adaptive_avg_pool1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AdaptiveAvgPool2d)
 class QuantizedAdaptiveAvgPool2d(_DispatchMixin, QuantizationMixin, nn.AdaptiveAvgPool2d):
-    """ Quantized AdaptiveAvgPool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AdaptiveAvgPool2d)
     _builtin_torch_fn = F.adaptive_avg_pool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AdaptiveAvgPool3d)
 class QuantizedAdaptiveAvgPool3d(_DispatchMixin, QuantizationMixin, nn.AdaptiveAvgPool3d):
-    """ Quantized AdaptiveAvgPool3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AdaptiveAvgPool3d)
     _builtin_torch_fn = F.adaptive_avg_pool3d
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.AdaptiveLogSoftmaxWithLoss)
 # class QuantizedAdaptiveLogSoftmaxWithLoss(_DispatchMixin, QuantizationMixin, nn.AdaptiveLogSoftmaxWithLoss):
-#     """ Quantized AdaptiveLogSoftmaxWithLoss """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.AdaptiveMaxPool1d)
 class QuantizedAdaptiveMaxPool1d(_DispatchMixin, QuantizationMixin, nn.AdaptiveMaxPool1d):
-    """ Quantized AdaptiveMaxPool1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AdaptiveMaxPool1d)
     _builtin_torch_fn = F.adaptive_max_pool1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AdaptiveMaxPool2d)
 class QuantizedAdaptiveMaxPool2d(_DispatchMixin, QuantizationMixin, nn.AdaptiveMaxPool2d):
-    """ Quantized AdaptiveMaxPool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AdaptiveMaxPool2d)
     _builtin_torch_fn = F.adaptive_max_pool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AdaptiveMaxPool3d)
 class QuantizedAdaptiveMaxPool3d(_DispatchMixin, QuantizationMixin, nn.AdaptiveMaxPool3d):
-    """ Quantized AdaptiveMaxPool3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AdaptiveMaxPool3d)
     _builtin_torch_fn = F.adaptive_max_pool3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AlphaDropout)
 class QuantizedAlphaDropout(_DispatchMixin, QuantizationMixin, nn.AlphaDropout):
-    """ Quantized AlphaDropout """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AlphaDropout)
     _builtin_torch_fn = F.alpha_dropout
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AvgPool1d)
 class QuantizedAvgPool1d(_DispatchMixin, QuantizationMixin, nn.AvgPool1d):
-    """ Quantized AvgPool1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AvgPool1d)
     _builtin_torch_fn = F.avg_pool1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AvgPool2d)
 class QuantizedAvgPool2d(_DispatchMixin, QuantizationMixin, nn.AvgPool2d):
-    """ Quantized AvgPool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AvgPool2d)
     _builtin_torch_fn = F.avg_pool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.AvgPool3d)
 class QuantizedAvgPool3d(_DispatchMixin, QuantizationMixin, nn.AvgPool3d):
-    """ Quantized AvgPool3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.AvgPool3d)
     _builtin_torch_fn = F.avg_pool3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.BCELoss)
 class QuantizedBCELoss(_DispatchMixin, QuantizationMixin, nn.BCELoss):
-    """ Quantized BCELoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.BCELoss)
     _builtin_torch_fn = F.binary_cross_entropy
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.BCEWithLogitsLoss)
 class QuantizedBCEWithLogitsLoss(_DispatchMixin, QuantizationMixin, nn.BCEWithLogitsLoss):
-    """ Quantized BCEWithLogitsLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.BCEWithLogitsLoss)
     _builtin_torch_fn = F.binary_cross_entropy_with_logits
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.BatchNorm1d)
 class QuantizedBatchNorm1d(_DispatchMixin, QuantizationMixin, nn.BatchNorm1d):
-    """ Quantized BatchNorm1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.BatchNorm1d)
     _builtin_torch_fn = F.batch_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.BatchNorm2d)
 class QuantizedBatchNorm2d(_DispatchMixin, QuantizationMixin, nn.BatchNorm2d):
-    """ Quantized BatchNorm2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.BatchNorm2d)
     _builtin_torch_fn = F.batch_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.BatchNorm3d)
 class QuantizedBatchNorm3d(_DispatchMixin, QuantizationMixin, nn.BatchNorm3d):
-    """ Quantized BatchNorm3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.BatchNorm3d)
     _builtin_torch_fn = F.batch_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Bilinear)
 class QuantizedBilinear(_DispatchMixin, QuantizationMixin, nn.Bilinear):
-    """ Quantized Bilinear """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Bilinear)
     _builtin_torch_fn = F.bilinear
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.CELU)
 class QuantizedCELU(_DispatchMixin, QuantizationMixin, nn.CELU):
-    """ Quantized CELU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.CELU)
     _builtin_torch_fn = F.celu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.CTCLoss)
 class QuantizedCTCLoss(_DispatchMixin, QuantizationMixin, nn.CTCLoss):
-    """ Quantized CTCLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.CTCLoss)
     _builtin_torch_fn = F.ctc_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ChannelShuffle)
 class QuantizedChannelShuffle(_DispatchMixin, QuantizationMixin, nn.ChannelShuffle):
-    """ Quantized ChannelShuffle """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ChannelShuffle)
     _builtin_torch_fn = F.channel_shuffle
     __quant_init__ = __unary__
 
@@ -670,124 +705,138 @@ class QuantizedChannelShuffle(_DispatchMixin, QuantizationMixin, nn.ChannelShuff
 if version.parse(torch.__version__) >= version.parse("2.1.0"):
     @QuantizationMixin.implements(nn.CircularPad1d)
     class QuantizedCircularPad1d(_DispatchMixin, QuantizationMixin, nn.CircularPad1d):
-        """ Quantized CircularPad1d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.CircularPad1d)
         _builtin_torch_fn = F.pad
         __quant_init__ = __unary__
 
 
     @QuantizationMixin.implements(nn.CircularPad2d)
     class QuantizedCircularPad2d(_DispatchMixin, QuantizationMixin, nn.CircularPad2d):
-        """ Quantized CircularPad2d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.CircularPad2d)
         _builtin_torch_fn = F.pad
         __quant_init__ = __unary__
 
 
     @QuantizationMixin.implements(nn.CircularPad3d)
     class QuantizedCircularPad3d(_DispatchMixin, QuantizationMixin, nn.CircularPad3d):
-        """ Quantized CircularPad3d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.CircularPad3d)
         _builtin_torch_fn = F.pad
         __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ConstantPad1d)
 class QuantizedConstantPad1d(_DispatchMixin, QuantizationMixin, nn.ConstantPad1d):
-    """ Quantized ConstantPad2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ConstantPad2d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ConstantPad2d)
 class QuantizedConstantPad2d(_DispatchMixin, QuantizationMixin, nn.ConstantPad2d):
-    """ Quantized ConstantPad2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ConstantPad2d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ConstantPad3d)
 class QuantizedConstantPad3d(_DispatchMixin, QuantizationMixin, nn.ConstantPad3d):
-    """ Quantized ConstantPad3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ConstantPad3d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.Container)
 # class QuantizedContainer(_DispatchMixin, QuantizationMixin, nn.Container):
-#     """ Quantized Container """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.Conv1d)
 class QuantizedConv1d(_DispatchMixin, QuantizationMixin, nn.Conv1d):  # pylint: disable=too-many-ancestors
-    """ Quantized Conv1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Conv1d)
     _builtin_torch_fn = F.conv1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Conv2d)
 class QuantizedConv2d(_DispatchMixin, QuantizationMixin, nn.Conv2d):  # pylint: disable=too-many-ancestors
-    """ Quantized Conv2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Conv2d)
     _builtin_torch_fn = F.conv2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Conv3d)
 class QuantizedConv3d(_DispatchMixin, QuantizationMixin, nn.Conv3d):  # pylint: disable=too-many-ancestors
-    """ Quantized Conv3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Conv3d)
     _builtin_torch_fn = F.conv3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ConvTranspose1d)
 class QuantizedConvTranspose1d(_DispatchMixin, QuantizationMixin, nn.ConvTranspose1d): # pylint: disable=too-many-ancestors
-    """ Quantized ConvTranspose1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ConvTranspose1d)
     _builtin_torch_fn = F.conv_transpose1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ConvTranspose2d)
 class QuantizedConvTranspose2d(_DispatchMixin, QuantizationMixin, nn.ConvTranspose2d): # pylint: disable=too-many-ancestors
-    """ Quantized ConvTranspose2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ConvTranspose2d)
     _builtin_torch_fn = F.conv_transpose2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ConvTranspose3d)
 class QuantizedConvTranspose3d(_DispatchMixin, QuantizationMixin, nn.ConvTranspose3d): # pylint: disable=too-many-ancestors
-    """ Quantized ConvTranspose3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ConvTranspose3d)
     _builtin_torch_fn = F.conv_transpose3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.CosineEmbeddingLoss)
 class QuantizedCosineEmbeddingLoss(_DispatchMixin, QuantizationMixin, nn.CosineEmbeddingLoss):
-    """ Quantized CosineEmbeddingLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.CosineEmbeddingLoss)
     _builtin_torch_fn = F.cosine_embedding_loss
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.CosineSimilarity)
 class QuantizedCosineSimilarity(_DispatchMixin, QuantizationMixin, nn.CosineSimilarity):
-    """ Quantized CosineSimilarity """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.CosineSimilarity)
     _builtin_torch_fn = F.cosine_similarity
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.CrossEntropyLoss)
 class QuantizedCrossEntropyLoss(_DispatchMixin, QuantizationMixin, nn.CrossEntropyLoss):
-    """ Quantized CrossEntropyLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.CrossEntropyLoss)
     _builtin_torch_fn = F.cross_entropy
     __quant_init__ = __binary__
 
 
 # @QuantizationMixin.implements(nn.CrossMapLRN2d)
 # class QuantizedCrossMapLRN2d(_DispatchMixin, QuantizationMixin, nn.CrossMapLRN2d):
-#     """ Quantized CrossMapLRN2d """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.Dropout)
 class QuantizedDropout(_DispatchMixin, QuantizationMixin, nn.Dropout):
-    """ Quantized Dropout """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Dropout)
     _builtin_torch_fn = F.dropout
     __quant_init__ = __unary__
 
@@ -795,42 +844,48 @@ class QuantizedDropout(_DispatchMixin, QuantizationMixin, nn.Dropout):
 if version.parse(torch.__version__) >= version.parse("1.12.0"):
     @QuantizationMixin.implements(nn.Dropout1d)
     class QuantizedDropout1d(_DispatchMixin, QuantizationMixin, nn.Dropout1d):
-        """ Quantized Dropout1d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.Dropout1d)
         _builtin_torch_fn = F.dropout1d
         __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Dropout2d)
 class QuantizedDropout2d(_DispatchMixin, QuantizationMixin, nn.Dropout2d):
-    """ Quantized Dropout2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Dropout2d)
     _builtin_torch_fn = F.dropout2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Dropout3d)
 class QuantizedDropout3d(_DispatchMixin, QuantizationMixin, nn.Dropout3d):
-    """ Quantized Dropout3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Dropout3d)
     _builtin_torch_fn = F.dropout3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ELU)
 class QuantizedELU(_DispatchMixin, QuantizationMixin, nn.ELU):
-    """ Quantized ELU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ELU)
     _builtin_torch_fn = F.elu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Embedding)
 class QuantizedEmbedding(_DispatchMixin, QuantizationMixin, nn.Embedding):
-    """ Quantized Embedding """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Embedding)
     _builtin_torch_fn = F.embedding
     __quant_init__ = __nullary__
 
 
 @QuantizationMixin.implements(nn.EmbeddingBag)
 class QuantizedEmbeddingBag(_DispatchMixin, QuantizationMixin, nn.EmbeddingBag):
-    """ Quantized EmbeddingBag """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.EmbeddingBag)
     _builtin_torch_fn = F.embedding_bag
 
     def _builtin_torch_fn_helper(self, fn: Callable[..., Tensor]):
@@ -903,14 +958,16 @@ class QuantizedEmbeddingBag(_DispatchMixin, QuantizationMixin, nn.EmbeddingBag):
 
 @QuantizationMixin.implements(nn.FeatureAlphaDropout)
 class QuantizedFeatureAlphaDropout(_DispatchMixin, QuantizationMixin, nn.FeatureAlphaDropout):
-    """ Quantized FeatureAlphaDropout """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.FeatureAlphaDropout)
     _builtin_torch_fn = F.feature_alpha_dropout
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Flatten)
 class QuantizedFlatten(_DispatchMixin, QuantizationMixin, nn.Flatten):
-    """ Quantized Flatten """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Flatten)
     def _get_builtin_torch_fn(self):
         return Tensor.flatten
 
@@ -919,42 +976,48 @@ class QuantizedFlatten(_DispatchMixin, QuantizationMixin, nn.Flatten):
 
 @QuantizationMixin.implements(nn.Fold)
 class QuantizedFold(_DispatchMixin, QuantizationMixin, nn.Fold):
-    """ Quantized Fold """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Fold)
     _builtin_torch_fn = F.fold
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.FractionalMaxPool2d)
 class QuantizedFractionalMaxPool2d(_DispatchMixin, QuantizationMixin, nn.FractionalMaxPool2d):
-    """ Quantized FractionalMaxPool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.FractionalMaxPool2d)
     _builtin_torch_fn = F.fractional_max_pool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.FractionalMaxPool3d)
 class QuantizedFractionalMaxPool3d(_DispatchMixin, QuantizationMixin, nn.FractionalMaxPool3d):
-    """ Quantized FractionalMaxPool3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.FractionalMaxPool3d)
     _builtin_torch_fn = F.fractional_max_pool3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.GELU)
 class QuantizedGELU(_DispatchMixin, QuantizationMixin, nn.GELU):
-    """ Quantized GELU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.GELU)
     _builtin_torch_fn = F.gelu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.GLU)
 class QuantizedGLU(_DispatchMixin, QuantizationMixin, nn.GLU):
-    """ Quantized GLU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.GLU)
     _builtin_torch_fn = F.glu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.GRU)
 class QuantizedGRU(_DispatchMixin, QuantizationMixin, nn.GRU):
-    """ Quantized GRU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.GRU)
     _builtin_torch_fn = _gru
 
     def __quant_init__(self):
@@ -1004,7 +1067,8 @@ class QuantizedGRU(_DispatchMixin, QuantizationMixin, nn.GRU):
 
 @QuantizationMixin.implements(nn.GRUCell)
 class QuantizedGRUCell(_DispatchMixin, QuantizationMixin, nn.GRUCell):
-    """ Quantized GRUCell """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.GRUCell)
     _builtin_torch_fn = _gru_cell
 
     def __quant_init__(self):
@@ -1039,118 +1103,133 @@ class QuantizedGRUCell(_DispatchMixin, QuantizationMixin, nn.GRUCell):
 
 @QuantizationMixin.implements(nn.GaussianNLLLoss)
 class QuantizedGaussianNLLLoss(_DispatchMixin, QuantizationMixin, nn.GaussianNLLLoss):
-    """ Quantized GaussianNLLLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.GaussianNLLLoss)
     _builtin_torch_fn = F.gaussian_nll_loss
     __quant_init__ = __ternary__
 
 
 @QuantizationMixin.implements(nn.GroupNorm)
 class QuantizedGroupNorm(_DispatchMixin, QuantizationMixin, nn.GroupNorm):
-    """ Quantized GroupNorm """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.GroupNorm)
     _builtin_torch_fn = F.group_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Hardshrink)
 class QuantizedHardshrink(_DispatchMixin, QuantizationMixin, nn.Hardshrink):
-    """ Quantized Hardshrink """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Hardshrink)
     _builtin_torch_fn = F.hardshrink
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Hardsigmoid)
 class QuantizedHardsigmoid(_DispatchMixin, QuantizationMixin, nn.Hardsigmoid):
-    """ Quantized Hardsigmoid """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Hardsigmoid)
     _builtin_torch_fn = F.hardsigmoid
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Hardswish)
 class QuantizedHardswish(_DispatchMixin, QuantizationMixin, nn.Hardswish):
-    """ Quantized Hardswish """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Hardswish)
     _builtin_torch_fn = F.hardswish
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Hardtanh)
 class QuantizedHardtanh(_DispatchMixin, QuantizationMixin, nn.Hardtanh):
-    """ Quantized Hardtanh """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Hardtanh)
     _builtin_torch_fn = F.hardtanh
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.HingeEmbeddingLoss)
 class QuantizedHingeEmbeddingLoss(_DispatchMixin, QuantizationMixin, nn.HingeEmbeddingLoss):
-    """ Quantized HingeEmbeddingLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.HingeEmbeddingLoss)
     _builtin_torch_fn = F.hinge_embedding_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.HuberLoss)
 class QuantizedHuberLoss(_DispatchMixin, QuantizationMixin, nn.HuberLoss):
-    """ Quantized HuberLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.HuberLoss)
     _builtin_torch_fn = F.huber_loss
     __quant_init__ = __binary__
 
 
 # @QuantizationMixin.implements(nn.Identity)
 # class QuantizedIdentity(_DispatchMixin, QuantizationMixin, nn.Identity):
-#     """ Quantized Identity """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.InstanceNorm1d)
 class QuantizedInstanceNorm1d(_DispatchMixin, QuantizationMixin, nn.InstanceNorm1d):
-    """ Quantized InstanceNorm1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.InstanceNorm1d)
     _builtin_torch_fn = F.instance_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.InstanceNorm2d)
 class QuantizedInstanceNorm2d(_DispatchMixin, QuantizationMixin, nn.InstanceNorm2d):
-    """ Quantized InstanceNorm2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.InstanceNorm2d)
     _builtin_torch_fn = F.instance_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.InstanceNorm3d)
 class QuantizedInstanceNorm3d(_DispatchMixin, QuantizationMixin, nn.InstanceNorm3d):
-    """ Quantized InstanceNorm3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.InstanceNorm3d)
     _builtin_torch_fn = F.instance_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.KLDivLoss)
 class QuantizedKLDivLoss(_DispatchMixin, QuantizationMixin, nn.KLDivLoss):
-    """ Quantized KLDivLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.KLDivLoss)
     _builtin_torch_fn = F.kl_div
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.L1Loss)
 class QuantizedL1Loss(_DispatchMixin, QuantizationMixin, nn.L1Loss):
-    """ Quantized L1Loss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.L1Loss)
     _builtin_torch_fn = F.l1_loss
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.LPPool1d)
 class QuantizedLPPool1d(_DispatchMixin, QuantizationMixin, nn.LPPool1d):
-    """ Quantized LPPool1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LPPool1d)
     _builtin_torch_fn = F.lp_pool1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.LPPool2d)
 class QuantizedLPPool2d(_DispatchMixin, QuantizationMixin, nn.LPPool2d):
-    """ Quantized LPPool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LPPool2d)
     _builtin_torch_fn = F.lp_pool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.LSTM)
 class QuantizedLSTM(_DispatchMixin, QuantizationMixin, nn.LSTM):
-    """ Quantized LSTM """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LSTM)
     _builtin_torch_fn = _lstm
 
     def __quant_init__(self):
@@ -1203,7 +1282,8 @@ class QuantizedLSTM(_DispatchMixin, QuantizationMixin, nn.LSTM):
 
 @QuantizationMixin.implements(nn.LSTMCell)
 class QuantizedLSTMCell(_DispatchMixin, QuantizationMixin, nn.LSTMCell):
-    """ Quantized LSTMCell """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LSTMCell)
     _builtin_torch_fn = _lstm_cell
 
     def __quant_init__(self):
@@ -1247,99 +1327,89 @@ class QuantizedLSTMCell(_DispatchMixin, QuantizationMixin, nn.LSTMCell):
 
 @QuantizationMixin.implements(nn.LayerNorm)
 class QuantizedLayerNorm(_DispatchMixin, QuantizationMixin, nn.LayerNorm):
-    """ Quantized LayerNorm """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LayerNorm)
     _builtin_torch_fn = F.layer_norm
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.LazyBatchNorm1d)
 # class QuantizedLazyBatchNorm1d(_DispatchMixin, QuantizationMixin, nn.LazyBatchNorm1d):
-#     """ Quantized LazyBatchNorm1d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyBatchNorm2d)
 # class QuantizedLazyBatchNorm2d(_DispatchMixin, QuantizationMixin, nn.LazyBatchNorm2d):
-#     """ Quantized LazyBatchNorm2d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyBatchNorm3d)
 # class QuantizedLazyBatchNorm3d(_DispatchMixin, QuantizationMixin, nn.LazyBatchNorm3d):
-#     """ Quantized LazyBatchNorm3d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyConv1d)
 # class QuantizedLazyConv1d(_DispatchMixin, QuantizationMixin, nn.LazyConv1d):
-#     """ Quantized LazyConv1d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyConv2d)
 # class QuantizedLazyConv2d(_DispatchMixin, QuantizationMixin, nn.LazyConv2d):
-#     """ Quantized LazyConv2d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyConv3d)
 # class QuantizedLazyConv3d(_DispatchMixin, QuantizationMixin, nn.LazyConv3d):
-#     """ Quantized LazyConv3d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyConvTranspose1d)
 # class QuantizedLazyConvTranspose1d(_DispatchMixin, QuantizationMixin, nn.LazyConvTranspose1d):
-#     """ Quantized LazyConvTranspose1d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyConvTranspose2d)
 # class QuantizedLazyConvTranspose2d(_DispatchMixin, QuantizationMixin, nn.LazyConvTranspose2d):
-#     """ Quantized LazyConvTranspose2d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyConvTranspose3d)
 # class QuantizedLazyConvTranspose3d(_DispatchMixin, QuantizationMixin, nn.LazyConvTranspose3d):
-#     """ Quantized LazyConvTranspose3d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyInstanceNorm1d)
 # class QuantizedLazyInstanceNorm1d(_DispatchMixin, QuantizationMixin, nn.LazyInstanceNorm1d):
-#     """ Quantized LazyInstanceNorm1d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyInstanceNorm2d)
 # class QuantizedLazyInstanceNorm2d(_DispatchMixin, QuantizationMixin, nn.LazyInstanceNorm2d):
-#     """ Quantized LazyInstanceNorm2d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyInstanceNorm3d)
 # class QuantizedLazyInstanceNorm3d(_DispatchMixin, QuantizationMixin, nn.LazyInstanceNorm3d):
-#     """ Quantized LazyInstanceNorm3d """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.LazyLinear)
 # class QuantizedLazyLinear(_DispatchMixin, QuantizationMixin, nn.LazyLinear):
-#     """ Quantized LazyLinear """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.LeakyReLU)
 class QuantizedLeakyReLU(_DispatchMixin, QuantizationMixin, nn.LeakyReLU):
-    """ Quantized LeakyReLU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LeakyReLU)
     _builtin_torch_fn = F.leaky_relu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Linear)
 class QuantizedLinear(_DispatchMixin, QuantizationMixin, nn.Linear):
-    """ Quantized Linear """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Linear)
     _builtin_torch_fn = F.linear
     __quant_init__ = __unary__
 
@@ -1359,197 +1429,214 @@ class QuantizedLinear(_DispatchMixin, QuantizationMixin, nn.Linear):
 
 @QuantizationMixin.implements(nn.LocalResponseNorm)
 class QuantizedLocalResponseNorm(_DispatchMixin, QuantizationMixin, nn.LocalResponseNorm):
-    """ Quantized LocalResponseNorm """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LocalResponseNorm)
     _builtin_torch_fn = F.local_response_norm
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.LogSigmoid)
 class QuantizedLogSigmoid(_DispatchMixin, QuantizationMixin, nn.LogSigmoid):
-    """ Quantized LogSigmoid """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LogSigmoid)
     _builtin_torch_fn = F.logsigmoid
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.LogSoftmax)
 class QuantizedLogSoftmax(_DispatchMixin, QuantizationMixin, nn.LogSoftmax):
-    """ Quantized LogSoftmax """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.LogSoftmax)
     _builtin_torch_fn = F.log_softmax
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MSELoss)
 class QuantizedMSELoss(_DispatchMixin, QuantizationMixin, nn.MSELoss):
-    """ Quantized MSELoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MSELoss)
     _builtin_torch_fn = F.mse_loss
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.MarginRankingLoss)
 class QuantizedMarginRankingLoss(_DispatchMixin, QuantizationMixin, nn.MarginRankingLoss):
-    """ Quantized MarginRankingLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MarginRankingLoss)
     _builtin_torch_fn = F.margin_ranking_loss
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.MaxPool1d)
 class QuantizedMaxPool1d(_DispatchMixin, QuantizationMixin, nn.MaxPool1d):
-    """ Quantized MaxPool1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MaxPool1d)
     _builtin_torch_fn = F.max_pool1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MaxPool2d)
 class QuantizedMaxPool2d(_DispatchMixin, QuantizationMixin, nn.MaxPool2d):
-    """ Quantized MaxPool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MaxPool2d)
     _builtin_torch_fn = F.max_pool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MaxPool3d)
 class QuantizedMaxPool3d(_DispatchMixin, QuantizationMixin, nn.MaxPool3d):
-    """ Quantized MaxPool3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MaxPool3d)
     _builtin_torch_fn = F.max_pool3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MaxUnpool1d)
 class QuantizedMaxUnpool1d(_DispatchMixin, QuantizationMixin, nn.MaxUnpool1d):
-    """ Quantized MaxUnpool1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MaxUnpool1d)
     _builtin_torch_fn = F.max_unpool1d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MaxUnpool2d)
 class QuantizedMaxUnpool2d(_DispatchMixin, QuantizationMixin, nn.MaxUnpool2d):
-    """ Quantized MaxUnpool2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MaxUnpool2d)
     _builtin_torch_fn = F.max_unpool2d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MaxUnpool3d)
 class QuantizedMaxUnpool3d(_DispatchMixin, QuantizationMixin, nn.MaxUnpool3d):
-    """ Quantized MaxUnpool3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MaxUnpool3d)
     _builtin_torch_fn = F.max_unpool3d
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Mish)
 class QuantizedMish(_DispatchMixin, QuantizationMixin, nn.Mish):
-    """ Quantized Mish """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Mish)
     _builtin_torch_fn = F.mish
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.Module)
 # class QuantizedModule(_DispatchMixin, QuantizationMixin, nn.Module):
-#     """ Quantized Module """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.ModuleDict)
 # class QuantizedModuleDict(_DispatchMixin, QuantizationMixin, nn.ModuleDict):
-#     """ Quantized ModuleDict """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.ModuleList)
 # class QuantizedModuleList(_DispatchMixin, QuantizationMixin, nn.ModuleList):
-#     """ Quantized ModuleList """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.MultiLabelMarginLoss)
 class QuantizedMultiLabelMarginLoss(_DispatchMixin, QuantizationMixin, nn.MultiLabelMarginLoss):
-    """ Quantized MultiLabelMarginLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MultiLabelMarginLoss)
     _builtin_torch_fn = F.multilabel_margin_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MultiLabelSoftMarginLoss)
 class QuantizedMultiLabelSoftMarginLoss(_DispatchMixin, QuantizationMixin, nn.MultiLabelSoftMarginLoss):
-    """ Quantized MultiLabelSoftMarginLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MultiLabelSoftMarginLoss)
     _builtin_torch_fn = F.multilabel_soft_margin_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.MultiMarginLoss)
 class QuantizedMultiMarginLoss(_DispatchMixin, QuantizationMixin, nn.MultiMarginLoss):
-    """ Quantized MultiMarginLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.MultiMarginLoss)
     _builtin_torch_fn = F.multi_margin_loss
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.MultiheadAttention)
 # class QuantizedMultiheadAttention(_DispatchMixin, QuantizationMixin, nn.MultiheadAttention):
-#     """ Quantized MultiheadAttention """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.NLLLoss)
 class QuantizedNLLLoss(_DispatchMixin, QuantizationMixin, nn.NLLLoss):
-    """ Quantized NLLLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.NLLLoss)
     _builtin_torch_fn = F.nll_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.NLLLoss2d)
 class QuantizedNLLLoss2d(_DispatchMixin, QuantizationMixin, nn.NLLLoss2d):
-    """ Quantized NLLLoss2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.NLLLoss2d)
     _builtin_torch_fn = F.nll_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.PReLU)
 class QuantizedPReLU(_DispatchMixin, QuantizationMixin, nn.PReLU):
-    """ Quantized PReLU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.PReLU)
     _builtin_torch_fn = F.prelu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.PairwiseDistance)
 class QuantizedPairwiseDistance(_DispatchMixin, QuantizationMixin, nn.PairwiseDistance):
-    """ Quantized PairwiseDistance """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.PairwiseDistance)
     _builtin_torch_fn = F.pairwise_distance
     __quant_init__ = __binary__
 
 
 # @QuantizationMixin.implements(nn.ParameterDict)
 # class QuantizedParameterDict(_DispatchMixin, QuantizationMixin, nn.ParameterDict):
-#     """ Quantized ParameterDict """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.ParameterList)
 # class QuantizedParameterList(_DispatchMixin, QuantizationMixin, nn.ParameterList):
-#     """ Quantized ParameterList """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.PixelShuffle)
 class QuantizedPixelShuffle(_DispatchMixin, QuantizationMixin, nn.PixelShuffle):
-    """ Quantized PixelShuffle """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.PixelShuffle)
     _builtin_torch_fn = F.pixel_shuffle
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.PixelUnshuffle)
 class QuantizedPixelUnshuffle(_DispatchMixin, QuantizationMixin, nn.PixelUnshuffle):
-    """ Quantized PixelUnshuffle """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.PixelUnshuffle)
     _builtin_torch_fn = F.pixel_unshuffle
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.PoissonNLLLoss)
 class QuantizedPoissonNLLLoss(_DispatchMixin, QuantizationMixin, nn.PoissonNLLLoss):
-    """ Quantized PoissonNLLLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.PoissonNLLLoss)
     _builtin_torch_fn = F.poisson_nll_loss
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.RNN)
 class QuantizedRNN(_DispatchMixin, QuantizationMixin, nn.RNN):
-    """ Quantized RNN """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.RNN)
     def _get_builtin_torch_fn(self):
         assert self.mode in ('RNN_TANH', 'RNN_RELU')
         if self.mode == 'RNN_TANH':
@@ -1603,13 +1690,13 @@ class QuantizedRNN(_DispatchMixin, QuantizationMixin, nn.RNN):
 
 # @QuantizationMixin.implements(nn.RNNBase)
 # class QuantizedRNNBase(_DispatchMixin, QuantizationMixin, nn.RNNBase):
-#     """ Quantized RNNBase """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.RNNCell)
 class QuantizedRNNCell(_DispatchMixin, QuantizationMixin, nn.RNNCell):
-    """ Quantized RNNCell """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.RNNCell)
     def _get_builtin_torch_fn(self):
         assert self.nonlinearity in ("tanh", "relu")
 
@@ -1649,41 +1736,45 @@ class QuantizedRNNCell(_DispatchMixin, QuantizationMixin, nn.RNNCell):
 
 # @QuantizationMixin.implements(nn.RNNCellBase)
 # class QuantizedRNNCellBase(_DispatchMixin, QuantizationMixin, nn.RNNCellBase):
-#     """ Quantized RNNCellBase """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.RReLU)
 class QuantizedRReLU(_DispatchMixin, QuantizationMixin, nn.RReLU):
-    """ Quantized RReLU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.RReLU)
     _builtin_torch_fn = F.rrelu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReLU)
 class QuantizedReLU(_DispatchMixin, QuantizationMixin, nn.ReLU):
-    """ Quantized ReLU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReLU)
     _builtin_torch_fn = F.relu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReLU6)
 class QuantizedReLU6(_DispatchMixin, QuantizationMixin, nn.ReLU6):
-    """ Quantized ReLU6 """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReLU6)
     _builtin_torch_fn = F.hardtanh
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReflectionPad1d)
 class QuantizedReflectionPad1d(_DispatchMixin, QuantizationMixin, nn.ReflectionPad1d):
-    """ Quantized ReflectionPad1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReflectionPad1d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReflectionPad2d)
 class QuantizedReflectionPad2d(_DispatchMixin, QuantizationMixin, nn.ReflectionPad2d):
-    """ Quantized ReflectionPad2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReflectionPad2d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
@@ -1691,131 +1782,146 @@ class QuantizedReflectionPad2d(_DispatchMixin, QuantizationMixin, nn.ReflectionP
 if version.parse(torch.__version__) >= version.parse("1.10.0"):
     @QuantizationMixin.implements(nn.ReflectionPad3d)
     class QuantizedReflectionPad3d(_DispatchMixin, QuantizationMixin, nn.ReflectionPad3d):
-        """ Quantized ReflectionPad3d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.ReflectionPad3d)
         _builtin_torch_fn = F.pad
         __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReplicationPad1d)
 class QuantizedReplicationPad1d(_DispatchMixin, QuantizationMixin, nn.ReplicationPad1d):
-    """ Quantized ReplicationPad1d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReplicationPad1d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReplicationPad2d)
 class QuantizedReplicationPad2d(_DispatchMixin, QuantizationMixin, nn.ReplicationPad2d):
-    """ Quantized ReplicationPad2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReplicationPad2d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ReplicationPad3d)
 class QuantizedReplicationPad3d(_DispatchMixin, QuantizationMixin, nn.ReplicationPad3d):
-    """ Quantized ReplicationPad3d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ReplicationPad3d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.SELU)
 class QuantizedSELU(_DispatchMixin, QuantizationMixin, nn.SELU):
-    """ Quantized SELU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.SELU)
     _builtin_torch_fn = F.selu
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.Sequential)
 # class QuantizedSequential(_DispatchMixin, QuantizationMixin, nn.Sequential):
-#     """ Quantized Sequential """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.SiLU)
 class QuantizedSiLU(_DispatchMixin, QuantizationMixin, nn.SiLU):
-    """ Quantized SiLU """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.SiLU)
     _builtin_torch_fn = F.silu
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Sigmoid)
 class QuantizedSigmoid(_DispatchMixin, QuantizationMixin, nn.Sigmoid):
-    """ Quantized Sigmoid """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Sigmoid)
     _builtin_torch_fn = torch.sigmoid
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.SmoothL1Loss)
 class QuantizedSmoothL1Loss(_DispatchMixin, QuantizationMixin, nn.SmoothL1Loss):
-    """ Quantized SmoothL1Loss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.SmoothL1Loss)
     _builtin_torch_fn = F.smooth_l1_loss
     __quant_init__ = __binary__
 
 
 @QuantizationMixin.implements(nn.SoftMarginLoss)
 class QuantizedSoftMarginLoss(_DispatchMixin, QuantizationMixin, nn.SoftMarginLoss):
-    """ Quantized SoftMarginLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.SoftMarginLoss)
     _builtin_torch_fn = F.soft_margin_loss
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Softmax)
 class QuantizedSoftmax(_DispatchMixin, QuantizationMixin, nn.Softmax):
-    """ Quantized Softmax """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Softmax)
     _builtin_torch_fn = F.softmax
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Softmax2d)
 class QuantizedSoftmax2d(_DispatchMixin, QuantizationMixin, nn.Softmax2d):
-    """ Quantized Softmax2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Softmax2d)
     _builtin_torch_fn = F.softmax
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Softmin)
 class QuantizedSoftmin(_DispatchMixin, QuantizationMixin, nn.Softmin):
-    """ Quantized Softmin """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Softmin)
     _builtin_torch_fn = F.softmin
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Softplus)
 class QuantizedSoftplus(_DispatchMixin, QuantizationMixin, nn.Softplus):
-    """ Quantized Softplus """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Softplus)
     _builtin_torch_fn = F.softplus
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Softshrink)
 class QuantizedSoftshrink(_DispatchMixin, QuantizationMixin, nn.Softshrink):
-    """ Quantized Softshrink """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Softshrink)
     _builtin_torch_fn = F.softshrink
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Softsign)
 class QuantizedSoftsign(_DispatchMixin, QuantizationMixin, nn.Softsign):
-    """ Quantized Softsign """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Softsign)
     _builtin_torch_fn = F.softsign
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.SyncBatchNorm)
 # class QuantizedSyncBatchNorm(_DispatchMixin, QuantizationMixin, nn.SyncBatchNorm):
-#     """ Quantized SyncBatchNorm """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.Tanh)
 class QuantizedTanh(_DispatchMixin, QuantizationMixin, nn.Tanh):
-    """ Quantized Tanh """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Tanh)
     _builtin_torch_fn = torch.tanh
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Tanhshrink)
 class QuantizedTanhshrink(_DispatchMixin, QuantizationMixin, nn.Tanhshrink):
-    """ Quantized Tanhshrink """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Tanhshrink)
     _builtin_torch_fn = F.tanhshrink
     __quant_init__ = __unary__
 
@@ -1823,86 +1929,89 @@ class QuantizedTanhshrink(_DispatchMixin, QuantizationMixin, nn.Tanhshrink):
 # @QuantizationMixin.implements(nn.Threshold)
 @QuantizationMixin.implements(nn.Threshold)
 class QuantizedThreshold(_DispatchMixin, QuantizationMixin, nn.Threshold):
-    """ Quantized Threshold """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Threshold)
     _builtin_torch_fn = F.threshold
     __quant_init__ = __unary__
 
 
 # @QuantizationMixin.implements(nn.Transformer)
 # class QuantizedTransformer(_DispatchMixin, QuantizationMixin, nn.Transformer):
-#     """ Quantized Transformer """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.TransformerDecoder)
 # class QuantizedTransformerDecoder(_DispatchMixin, QuantizationMixin, nn.TransformerDecoder):
-#     """ Quantized TransformerDecoder """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.TransformerDecoderLayer)
 # class QuantizedTransformerDecoderLayer(_DispatchMixin, QuantizationMixin, nn.TransformerDecoderLayer):
-#     """ Quantized TransformerDecoderLayer """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.TransformerEncoder)
 # class QuantizedTransformerEncoder(_DispatchMixin, QuantizationMixin, nn.TransformerEncoder):
-#     """ Quantized TransformerEncoder """
 #     _builtin_torch_fn = ...
 
 
 # @QuantizationMixin.implements(nn.TransformerEncoderLayer)
 # class QuantizedTransformerEncoderLayer(_DispatchMixin, QuantizationMixin, nn.TransformerEncoderLayer):
-#     """ Quantized TransformerEncoderLayer """
 #     _builtin_torch_fn = ...
 
 
 @QuantizationMixin.implements(nn.TripletMarginLoss)
 class QuantizedTripletMarginLoss(_DispatchMixin, QuantizationMixin, nn.TripletMarginLoss):
-    """ Quantized TripletMarginLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.TripletMarginLoss)
     _builtin_torch_fn = F.triplet_margin_loss
     __quant_init__ = __ternary__
 
 
 @QuantizationMixin.implements(nn.TripletMarginWithDistanceLoss)
 class QuantizedTripletMarginWithDistanceLoss(_DispatchMixin, QuantizationMixin, nn.TripletMarginWithDistanceLoss):
-    """ Quantized TripletMarginWithDistanceLoss """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.TripletMarginWithDistanceLoss)
     _builtin_torch_fn = F.triplet_margin_with_distance_loss
     __quant_init__ = __ternary__
 
 
 @QuantizationMixin.implements(nn.Unflatten)
 class QuantizedUnflatten(_DispatchMixin, QuantizationMixin, nn.Unflatten):
-    """ Quantized Unflatten """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Unflatten)
     def _get_builtin_torch_fn(self):
         return Tensor.unflatten
 
 
 @QuantizationMixin.implements(nn.Unfold)
 class QuantizedUnfold(_DispatchMixin, QuantizationMixin, nn.Unfold):
-    """ Quantized Unfold """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Unfold)
     _builtin_torch_fn = F.unfold
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.Upsample)
 class QuantizedUpsample(_DispatchMixin, QuantizationMixin, nn.Upsample):
-    """ Quantized Upsample """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.Upsample)
     _builtin_torch_fn = F.interpolate
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.UpsamplingBilinear2d)
 class QuantizedUpsamplingBilinear2d(_DispatchMixin, QuantizationMixin, nn.UpsamplingBilinear2d):
-    """ Quantized UpsamplingBilinear2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.UpsamplingBilinear2d)
     _builtin_torch_fn = F.interpolate
     __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.UpsamplingNearest2d)
 class QuantizedUpsamplingNearest2d(_DispatchMixin, QuantizationMixin, nn.UpsamplingNearest2d):
-    """ Quantized UpsamplingNearest2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.UpsamplingNearest2d)
     _builtin_torch_fn = F.interpolate
     __quant_init__ = __unary__
 
@@ -1910,14 +2019,16 @@ class QuantizedUpsamplingNearest2d(_DispatchMixin, QuantizationMixin, nn.Upsampl
 if version.parse(torch.__version__) >= version.parse("2.1.0"):
     @QuantizationMixin.implements(nn.ZeroPad1d)
     class QuantizedZeroPad1d(_DispatchMixin, QuantizationMixin, nn.ZeroPad1d):
-        """ Quantized ZeroPad1d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.ZeroPad1d)
         _builtin_torch_fn = F.pad
         __quant_init__ = __unary__
 
 
 @QuantizationMixin.implements(nn.ZeroPad2d)
 class QuantizedZeroPad2d(_DispatchMixin, QuantizationMixin, nn.ZeroPad2d):
-    """ Quantized ZeroPad2d """
+    # pylint: disable=missing-class-docstring
+    __doc__ = _generate_docstring(parent_cls=nn.ZeroPad2d)
     _builtin_torch_fn = F.pad
     __quant_init__ = __unary__
 
@@ -1925,7 +2036,8 @@ class QuantizedZeroPad2d(_DispatchMixin, QuantizationMixin, nn.ZeroPad2d):
 if version.parse(torch.__version__) >= version.parse("2.1.0"):
     @QuantizationMixin.implements(nn.ZeroPad3d)
     class QuantizedZeroPad3d(_DispatchMixin, QuantizationMixin, nn.ZeroPad3d):
-        """ Quantized ZeroPad3d """
+        # pylint: disable=missing-class-docstring
+        __doc__ = _generate_docstring(parent_cls=nn.ZeroPad3d)
         _builtin_torch_fn = F.pad
         __quant_init__ = __unary__
 
