@@ -328,6 +328,28 @@ def quantize_dequantize(tensor: torch.Tensor, scale: torch.Tensor, offset: torch
 
 def dequantize(tensor: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor,
                block_size: Optional[Tuple[int, ...]] = None):
+    r"""
+    Applies dequantization to the input.
+
+    Precisely,
+
+    .. math::
+        out = (input + offset) * scale
+
+    If block size :math:`B = \begin{pmatrix} B_0  & B_1  & \cdots & B_{D-1} \end{pmatrix}` is specified,
+    this equation will be further generalized as
+
+    .. math::
+        out_{j_0 \cdots j_{D-1}} & = (input_{j_0 \cdots j_{D-1}} + offset_{i_0 \cdots i_{D-1}}) * scale_{i_0 \cdots i_{D-1}}
+
+        \text{where} \quad \forall_{0 \leq d < D} \quad i_d = \left\lfloor \frac{j_d}{B_d} \right\rfloor
+
+    :param Tensor tensor: Tensor to dequantize
+    :param Tensor scale: Scale for dequantization
+    :param Tensor offset: Offset for dequantization
+    :param block_size: Block size
+    :type block_size: Tuple[int, ...], optional
+    """
     return get_backend().dequantize(tensor, scale, offset, block_size)
 
 

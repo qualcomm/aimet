@@ -62,7 +62,7 @@ def implements(torch_function):
 
 class QuantizedTensorBase(torch.Tensor):
     """
-    Abstract base class to define quantized tensor behavior.
+    Abstract base class for quantized tensors.
     Represents a quantized or dequantized tensor as a subclass of :class:`torch.Tensor` which also holds the quantization encodings.
     This object can be safely quantized or dequantized through the :meth:`quantize` and :meth:`dequantize` methods without
     changing the represented data values.
