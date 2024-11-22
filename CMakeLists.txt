@@ -173,7 +173,7 @@ endif()
 find_package(Threads)
 
 find_package(PkgConfig)
-pkg_search_module(LAPACKE REQUIRED lapacke)
+find_package (Eigen3 REQUIRED)
 
 #find_package(OpenCV REQUIRED)
 pkg_search_module(OPENCV opencv) # in case opencv will not be found, it would be built form source
@@ -194,7 +194,6 @@ if (ENABLE_ONNX)
     set_onnxruntime_variables()
     set_torch_cmake_prefix_path()
 
-    find_package(Eigen3 REQUIRED)
 endif()
 
 if (ENABLE_TENSORFLOW)

@@ -40,9 +40,7 @@
 #include <cstring>
 #include <iostream>
 #include <tuple>
-// including lapacke header file after SvdAlgorithm.hpp to avoid compilation error caused by OpenCV and LAPCK
 #include "SvdAlgorithm.hpp"
-#include <lapacke.h>
 
 namespace DlCompression
 {
@@ -250,90 +248,39 @@ void SVD_CORE<DTYPE>::FillRankPool_(typename std::map<std::string, LayerAttribut
     }
 }
 
-std::tuple<cv::Mat, cv::Mat, cv::Mat> LapackSvd_(cv::Mat src)
+
+std::tuple<cv::Mat, cv::Mat, cv::Mat> EigenSvd_(cv::Mat src)
 {
-    int rows = src.rows;
-    int cols = src.cols;
-    // lda = leading dimension of the source matrix
-    // must be at least max(1, cols) for row major layout.
-    int lda = std::max(1, cols);
-    // Specifies options for computing all or part of the matrix U and VT
-    // option 'S' compute first min(rows, cols) columns of U and the first
-    // min(rows, cols) rows of VT are returned in the arrays U and VT
-    char job = 'S';
-    // ldu = Leading dimension of U Matrix and ldu >= 1.
-    // if job is 'S' and if rows < cols, then ldu should be greater or equal
-    // to rows of matrix (ldu >= rows)
-    int ldu = rows;
-    // ldvt = Leading dimension of VT Matrix and ldvt >= 1.
-    // if job is 'S', ldvt >= cols
-    int ldvt = cols;
-    int svdStatus;
+    using Eigen::JacobiSVD;
+    using Eigen::MatrixXf;
+    using Eigen::ComputeThinU;
+    using Eigen::ComputeThinV;
 
-    size_t srcSize = sizeof(float) * rows * cols;
-    size_t wSize   = sizeof(float) * std::min(rows, cols);
-    size_t vtSize  = sizeof(float) * std::min(rows, cols) * cols;
+    // Convert cv::Mat to Eigen::Matrix
+    MatrixXf src_(src.rows, src.cols);
+    cv2eigen(src, src_);
 
-    float* srcLapack;
-    srcLapack = reinterpret_cast<float*>(malloc(srcSize));
-    if (srcLapack == NULL)
-    {
-        std::cerr << "Memory allocation for LAPACK src matrix failed " << std::endl;
-        throw std::runtime_error("Aborting SVD compression");
-    }
-    memcpy(srcLapack, src.data, srcSize);
-
-    float *wLapack, *uLapack, *vtLapack;
-    wLapack  = reinterpret_cast<float*>(malloc(wSize));
-    uLapack  = reinterpret_cast<float*>(malloc(sizeof(float) * rows * rows));
-    vtLapack = reinterpret_cast<float*>(malloc(vtSize));
-
-    if (wLapack == NULL || uLapack == NULL || vtLapack == NULL)
-    {
-        std::cerr << "Memory allocation for LAPACK U, W or VT matrices failed " << std::endl;
-        throw std::runtime_error("Aborting SVD compression");
-    }
-    // compute Singular Value Decomposition (SVD)using divide and conquer algorithm
     time_t startSvd, endSvd;
     time(&startSvd);
-    svdStatus =
-        LAPACKE_sgesdd(LAPACK_ROW_MAJOR, job, rows, cols, srcLapack, lda, wLapack, uLapack, ldu, vtLapack, ldvt);
-    if (svdStatus > 0)
-    {
-        std::cerr << "Failed to compute LAPACK SVD" << std::endl;
-        throw std::runtime_error("Aborting SVD compression");
-    }
+    JacobiSVD<MatrixXf> svd;
+    svd.compute(src_, ComputeThinU | ComputeThinV);
     time(&endSvd);
-    // TODO: Enable these logs in debug mode.
-    // std::cout << difftime(endSvd, startSvd) << " (secs)" << std::endl;
+
+    auto U_  = svd.matrixU();
+    auto Vt_ = svd.matrixV().transpose().eval();
+    auto W_  = svd.singularValues();
 
     cv::Mat U, W, Vt;
-    // data of U, Vt and W matrices are pointed by uLapack, vtLapack and wLapack pointers
-    U  = cv::Mat(rows, std::min(rows, cols), CV_32F, uLapack);
-    Vt = cv::Mat(std::min(rows, cols), cols, CV_32F, vtLapack);
-    W  = cv::Mat(std::min(rows, cols), 1, CV_32F, wLapack);
+    U  = cv::Mat(U_.rows(),  U_.cols(),  CV_32F);
+    Vt = cv::Mat(Vt_.rows(), Vt_.cols(), CV_32F);
+    W  = cv::Mat(W_.rows(),  W_.cols(),  CV_32F);
 
-    // clone creates full copy of matrix and underlying data
-    // so that we can free the associated pointers before return from this function
-    cv::Mat u, w, vt;
-    u  = U.clone();
-    vt = Vt.clone();
-    w  = W.clone();
+    // Convert Eigen::Matrix to cv::Mat
+    eigen2cv(U_, U);
+    eigen2cv(Vt_, Vt);
+    eigen2cv(W_, W);
 
-    // if the rows is greater than cols, then LAPACK SVD will create (rows x rows),
-    // size U matrix with (rows - cols) zero columns
-    // but we only need (rows x cols) size U matrix, so we need to remove columns with zeros
-    if (rows > cols)
-    {
-        cv::Mat tempU = cv::Mat(rows, rows, CV_32F, uLapack);
-        u             = tempU.colRange(0, cols).clone();
-    }
-    // clean up
-    free(srcLapack);
-    free(wLapack);
-    free(uLapack);
-    free(vtLapack);
-    return std::make_tuple(u, w, vt);
+    return std::make_tuple(U, W, Vt);
 }
 
 template <typename DTYPE>
@@ -360,7 +307,7 @@ void SVD_CORE<DTYPE>::EstimateTAR_(typename std::map<std::string, LayerAttribute
     cv::Mat srcMat(M, Nkk, CV_32F);
     TransposeSrcLayerWeights_(&layerAttrib, (DTYPE*) srcMat.datastart);
     cv::Mat U, W, VT;
-    std::tie(U, W, VT) = LapackSvd_(srcMat);
+    std::tie(U, W, VT) = EigenSvd_(srcMat);
 
     for (int i = 0; i < rankPool.size(); i++)
     {
@@ -694,7 +641,7 @@ void SVD_CORE<DTYPE>::SVDCompress_(cv::Mat& srcMat, cv::Mat& layerA_Mat, cv::Mat
 
     // Decompose source matrix
     cv::Mat u, w, vt;
-    std::tie(u, w, vt) = LapackSvd_(srcMat);
+    std::tie(u, w, vt) = EigenSvd_(srcMat);
 
     u.colRange(0, r).copyTo(layerA_Mat);
     // Convert diagonal matrix w into normal matrix.

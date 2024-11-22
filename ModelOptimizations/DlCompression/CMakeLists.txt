@@ -42,13 +42,12 @@ add_library(MoDlCompression STATIC
       )
 
 target_include_directories(MoDlCompression
-      PRIVATE ${LAPACKE_INCLUDE_DIRS} ${OPENCV_INCLUDE_DIRS}
+      PRIVATE ${EIGEN3_INCLUDE_DIR} ${OPENCV_INCLUDE_DIRS}
       PUBLIC
          ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(MoDlCompression PUBLIC
     pybind11
-    ${LAPACKE_LINK_LIBRARIES}
     ${OPENCV_LINK_LIBRARIES}
     z
     )

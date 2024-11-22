@@ -43,9 +43,11 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <Eigen/SVD>
 
 #ifdef USE_OPENCV
 
+#include <opencv2/core/eigen.hpp>
 #include <opencv2/core/core.hpp>
 
 #endif   // USE_OPENCV
