@@ -132,7 +132,7 @@ class QuantizationMixinMeta(ABCMeta):
 
 
 class QuantizationMixin(BaseQuantizationMixin, metaclass=QuantizationMixinMeta): # pylint: disable=abstract-method
-    """Mixin that adds quantization functionality on top of regular pytorch modules.
+    """Quantization mixin class for torch.nn.Module.
 
     Specifically, a quantized module will quantize input, output, and parameter tensors with
     its held :class:`QuantizerBase` objects during the :meth:`forward` method and use the inherited :class:`torch.nn.Module`

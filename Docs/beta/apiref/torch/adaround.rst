@@ -1,29 +1,20 @@
 .. _apiref-torch-adaround:
 
-##########################
-AIMET PyTorch AdaRound API
-##########################
+#######################
+aimet_torch.v2.adaround
+#######################
 
 
-Top-level API
-=============
+Adaround.apply_adaround
+=======================
 
 .. note::
 
-.. autofunction:: aimet_torch.v2.adaround.adaround_weight.Adaround.apply_adaround
+.. autofunction:: aimet_torch.v2.adaround.Adaround.apply_adaround
 
 
-Adaround Parameters
-===================
+AdaroundParameters
+==================
 
 .. autoclass:: aimet_torch.v2.adaround.adaround_weight.AdaroundParameters
-    :members:
-
-
-Enum Definition
-===============
-
-**Quant Scheme Enum**
-
-.. autoclass:: aimet_common.defs.QuantScheme
     :members:
