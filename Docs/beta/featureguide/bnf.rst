@@ -47,16 +47,20 @@ Load the model for batch norm folding.
         .. literalinclude:: ../snippets/onnx/apply_bnf.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
-            :end-before: # Load exported ONNX model
-
-        .. container:: tab-heading
-
-            We can still find there are consecutive convolution and batch normalization nodes in ONNX graph
-
-        .. literalinclude:: ../snippets/onnx/apply_bnf.py
-            :language: python
-            :start-after: # Load exported ONNX model
             :end-before: # End of step 1
+
+        **Output**
+        ::
+
+            MobileNetV2(
+              (features): Sequential(
+                (0): Conv2dNormActivation(
+                  (0): Conv2d(3, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+                  (1): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+                  (2): ReLU6(inplace=True)
+                )
+                ...
+            )
 
 Step 2
 ~~~~~~
@@ -88,6 +92,26 @@ Apply preparation step if necessary
             :start-after: # Step 2
             :end-before: # End of step 2
 
+        **Output**
+        ::
+
+            *** Before batch norm folding ***
+
+            model.graph.node[0]:
+            name: "/features/features.0/features.0.0/Conv"
+
+            model.graph.node[1]:
+            name: "/features/features.0/features.0.1/BatchNormalization"
+
+            Conv weight:
+            [[[[-6.31080866e-02 -1.87656835e-01 -1.51876003e-01]
+               [-4.93787616e-01 -6.42477691e-01 -5.89348674e-01]
+               [-6.80053532e-01 -9.74478185e-01 -7.63172388e-01]]
+              ...
+              [[ 1.24257803e-02 -4.73242160e-03 -1.81884710e-02]
+               [ 2.32141271e-01  7.22583652e-01  1.21250950e-01]
+               [-2.59643137e-01 -7.18673885e-01 -9.19778645e-02]]]]
+
 Step 3
 ~~~~~~
 
@@ -118,36 +142,26 @@ Execute AIMET batch norm folding API
             :start-after: # Step 3
             :end-before: # End of step 3
 
-Step 4
-~~~~~~
 
-Result after batch norm folding
+        **Output**
+        ::
 
-.. tab-set::
-    :sync-group: platform
+            *** After batch norm folding ***
 
-    .. tab-item:: PyTorch
-        :sync: torch
+            model.graph.node[0]:
+            name: "/features/features.0/features.0.0/Conv"
 
-        To be filled
+            model.graph.node[1]:
+            name: "/features/features.0/features.0.2/Clip"
 
-    .. tab-item:: TensorFlow
-        :sync: tf
-
-        To be filled
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. container:: tab-heading
-
-            We can find that the weight have changed because the batch normalization has been folded into the convolution.
-            Also, we can confirm that the batch normalization has been removed (the second node in the example appears as Clip)
-
-        .. literalinclude:: ../snippets/onnx/apply_bnf.py
-            :language: python
-            :start-after: # Step 4
-            :end-before: # End of step 4
+            Conv weight:
+            [[[[-2.00183112e-02 -5.95260113e-02 -4.81760912e-02]
+               [-1.56632766e-01 -2.03798249e-01 -1.86945379e-01]
+               [-2.15717569e-01 -3.09111059e-01 -2.42083430e-01]]
+               ...
+              [[ 1.21066449e-02 -4.61087702e-03 -1.77213307e-02]
+               [ 2.26179108e-01  7.04025269e-01  1.18136823e-01]
+               [-2.52974629e-01 -7.00215936e-01 -8.96155685e-02]]]]
 
 
 API
