@@ -43,8 +43,6 @@ EXPOSE 25000
 RUN apt-get update && apt-get install -y openssh-server && rm -rf /var/lib/apt/lists/*
 RUN mkdir /var/run/sshd
 
-RUN apt-get update && apt-get install -y liblapacke liblapacke-dev && rm -rf /var/lib/apt/lists/*
-
 RUN apt-get update && apt-get install -y libjpeg8-dev && \
     rm -rf /var/lib/apt/lists/*
 
