@@ -16,7 +16,7 @@ The following figures illustrates how AdaRound might change the rounding of a qu
 .. image:: ../images/adaround.png
     :width: 600px
 
-See the :doc:`Optimization User Guide <../optimization/index>` for a discussion of the recommended sequence of all quantization techniques.
+See the :doc:`Optimization User Guide <../opt-guide/index>` for a discussion of the recommended sequence of all quantization techniques.
 
 
 Complementary techniques
@@ -86,9 +86,24 @@ Setup
     .. tab-item:: ONNX
         :sync: onnx
 
+        .. container:: tab-heading
+
+            Load the model for adaptive rounding (AdaRound). In this code example, we will convert PyTorch MobileNetV2 to ONNX and use it in the subsequent code
+
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Set up model
+            :end-before: # End of model
+
+        .. container:: tab-heading
+
+            For AdaRound optimization, an unlabeled dataset is required.
+            In this example, we will use the ImageNet validation data.
+
+        .. literalinclude:: ../snippets/onnx/apply_adaround.py
+            :language: python
+            :start-after: # Set up dataloader
+            :end-before: # End of dataloader
 
 Step 1
 ~~~~~~
@@ -118,7 +133,8 @@ Apply AdaRound to the model.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 1
+            :end-before: # End of step 1
 
 Step 2
 ~~~~~~
@@ -148,7 +164,8 @@ Simulate quantization through AIMET's QuantSim
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 2
+            :end-before: # End of step 2
 
 
 Step 3
@@ -179,7 +196,8 @@ Run evaluation on the model, which will yield its accuracy.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 3
+            :end-before: # End of step 3
 
 Step 4
 ~~~~~~
@@ -208,7 +226,8 @@ If AdaRound resulted in satisfactory accuracy, export the model.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 4
+            :end-before: # End of step 4
 
 If the model is still not accurate enough, the next step is typically to try :ref:`quantization-aware training <featureguide-qat>`.
 
