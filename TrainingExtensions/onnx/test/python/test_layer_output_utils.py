@@ -34,7 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
+import copy
 import os
 import shutil
 
@@ -172,10 +172,13 @@ class TestLayerOutputUtil:
         temp_dir_path = os.path.join(temp_dir_path, 'temp_dir')
 
         # Generate layer-outputs
+        layer_out_dict_list = []
         layer_output_util = LayerOutputUtil(model=quantsim.model.model, dir_path=temp_dir_path)
         for input_batch in dummy_data_loader:
             for single_input in input_batch:
                 layer_output_util.generate_layer_outputs(single_input.unsqueeze(0).numpy())
+                layer_out_dict_list.append(copy.deepcopy(layer_output_util.layer_output.get_outputs(
+                    {"input": single_input.unsqueeze(0).numpy()})))
 
         # Verify number of inputs
         assert data_count == len(os.listdir(os.path.join(temp_dir_path, 'inputs')))
@@ -194,6 +197,16 @@ class TestLayerOutputUtil:
         session = QuantizationSimModel.build_session(quantsim.model.model, providers)
         input_dict = {'input': np.expand_dims(dummy_dataset.__getitem__(0).numpy(), axis=0)}
         assert np.array_equal(session.run(None, input_dict)[0], saved_last_layer_output)
+
+        # Ensure the saved outputs are with axis-transform
+        for idx, layer_out_dict in enumerate(layer_out_dict_list):
+            # Convert the layer output from NCHW to NHWC
+            layer_out = layer_out_dict['conv_output_3'].transpose(0, 2, 3, 1)
+
+            # Saved output should already be in NHWC format
+            saved_conv_output = np.fromfile(os.path.join(temp_dir_path, 'outputs', f'layer_outputs_{idx}',
+                                                         'conv_output_3.raw'), dtype=np.float32).reshape(layer_out.shape)
+            np.testing.assert_array_equal(layer_out, saved_conv_output)
 
         # Delete temp_dir
         shutil.rmtree(temp_dir_path, ignore_errors=False, onerror=None)

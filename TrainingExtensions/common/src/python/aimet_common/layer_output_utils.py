@@ -79,7 +79,6 @@ class SaveInputOutput:
         :return:
         """
         file_path = os.path.join(dir_path, file_name + '.raw')
-        numpy_tensor = np.expand_dims(numpy_tensor, axis=0)
 
         # Convert axis-layout of the tensor to NHWC if not already
         if numpy_tensor.ndim == 4 and axis_layout == 'NCHW':

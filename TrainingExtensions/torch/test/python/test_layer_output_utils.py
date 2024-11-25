@@ -42,6 +42,7 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from torchvision import models
+import tempfile
 
 from aimet_torch.model_preparer import prepare_model
 from aimet_torch.model_validator.model_validator import ModelValidator
@@ -50,6 +51,7 @@ from aimet_torch.v2.quantsim import QuantizationSimModel as QuantizationSimModel
 from aimet_torch.layer_output_utils import NamingScheme, LayerOutputUtil, LayerOutput
 from aimet_torch.utils import is_leaf_module
 from aimet_torch.onnx_utils import OnnxExportApiArgs
+from aimet.TrainingExtensions.torch.test.python.models import test_models
 
 
 def dummy_forward_pass(model: torch.nn.Module, input_batch: torch.Tensor):
@@ -77,11 +79,14 @@ def get_original_model_artifacts():
     return model, layer_names, dummy_input
 
 
-def get_quantsim_artifacts(_QuantizationSimModel):
-    # Load resnet18 model
-    model = models.resnet18()
-    model.eval()
-    dummy_input = torch.rand(1, 3, 224, 224)
+def get_quantsim_artifacts(_QuantizationSimModel, model_and_input=None):
+    if model_and_input is not None:
+        model, dummy_input = model_and_input
+    else:
+        # Load resnet18 model
+        model = models.resnet18()
+        model.eval()
+        dummy_input = torch.rand(1, 3, 224, 224)
 
     # Prepare model for quantization simulation
     model = prepare_model(model)
@@ -254,3 +259,32 @@ class TestLayerOutputUtil:
 
         # Delete temp_dir
         shutil.rmtree(temp_dir_path, ignore_errors=False, onerror=None)
+
+    @pytest.mark.parametrize('_QuantizationSimModel', [QuantizationSimModelV1, QuantizationSimModelV2])
+    def test_layer_output_axis_transform(self, _QuantizationSimModel):
+        """ Test to ensure the layer outputs are saved with axis-transform """
+
+        model = test_models.ModelWithOneSplit().to(device='cpu')
+        input_shapes = (1, 1, 10, 10)
+        dummy_input = torch.randn(input_shapes)
+        qsim, layer_names, _ = get_quantsim_artifacts(_QuantizationSimModel, model_and_input=(model, dummy_input))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Generate layer-outputs
+            layer_output_util = LayerOutputUtil(model=qsim.model, dir_path=tmpdir)
+            for single_input in dummy_input:
+                layer_output_util.generate_layer_outputs(single_input.unsqueeze(0))
+
+            for conv_layer_name in layer_names:
+                # Output in NCHW format
+                layer_output_from_dict = layer_output_util.layer_output.layer_name_to_layer_output_dict[conv_layer_name]
+
+                # Convert from NCHW to NHWC
+                layer_output_from_dict = layer_output_from_dict.detach().permute(0, 2, 3, 1)
+
+                # Saved output should already be in NHWC format
+                saved_output = np.fromfile(tmpdir+f"/outputs/layer_outputs_0/{conv_layer_name}.raw",
+                                           dtype=np.float32).reshape(layer_output_from_dict.shape)
+                saved_output = torch.from_numpy(saved_output)
+
+                assert torch.equal(layer_output_from_dict, saved_output)
