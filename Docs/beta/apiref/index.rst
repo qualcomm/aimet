@@ -8,6 +8,7 @@ AIMET API
     :hidden:
 
     aimet_torch.batch_norm_fold <torch/bnf>
+    aimet_torch.compress <torch/compress>
     aimet_torch.cross_layer_equalization <torch/cle>
     aimet_torch.v2.adaround <torch/adaround>
     aimet_torch.v2.nn <torch/nn>
@@ -17,6 +18,7 @@ AIMET API
 
     aimet_tensorflow.adaround <tensorflow/adaround>
     aimet_tensorflow.batch_norm_fold <tensorflow/bnf>
+    aimet_tensorflow.compress <tensorflow/compress>
     aimet_tensorflow.cross_layer_equalization <tensorflow/cle>
     aimet_tensorflow.quantsim <tensorflow/quantsim>
 
