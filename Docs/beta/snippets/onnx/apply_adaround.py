@@ -43,6 +43,7 @@ import numpy as np
 import onnx
 import onnxsim
 import torch
+from aimet_common.defs import QuantScheme
 from aimet_onnx.adaround.adaround_weight import Adaround, AdaroundParameters
 from aimet_onnx.defs import DataLoader
 from aimet_onnx.quantsim import QuantizationSimModel
@@ -147,6 +148,8 @@ def pass_calibration_data(session, _):
         session.run(None, {input_name: inputs})
 
 
+PARAM_BITWIDTH = 4
+ACTIVATION_BITWIDTH = 8
 params = AdaroundParameters(
     data_loader=unlabeled_data_loader,
     num_batches=math.ceil(NUM_SAMPLES / BATCH_SIZE),
@@ -155,14 +158,23 @@ params = AdaroundParameters(
     forward_pass_callback_args=None,
 )
 ada_rounded_model = Adaround.apply_adaround(
-    model, params, path='/tmp', filename_prefix='mobilenet_v2'
+    model,
+    params,
+    path='/tmp',
+    filename_prefix='mobilenet_v2',
+    default_param_bw=PARAM_BITWIDTH,
 )
 # End of step 1
 
 # Step 2
-sim = QuantizationSimModel(ada_rounded_model)
+sim = QuantizationSimModel(
+    ada_rounded_model,
+    quant_scheme=QuantScheme.post_training_tf,
+    default_param_bw=PARAM_BITWIDTH,
+    default_activation_bw=ACTIVATION_BITWIDTH,
+)
 
-# AdaRound optimizes the rounding of weight quantizers only. These values are preserved through load_encodings()
+# AdaRound optimizes the rounding of weight quantizers only. These values are preserved through set_and_freeze_param_encodings()
 sim.set_and_freeze_param_encodings(encoding_path='/tmp/mobilenet_v2.encodings')
 
 # The activation quantizers remain uninitialized and derived through compute_encodings()
