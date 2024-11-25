@@ -62,14 +62,14 @@ Automatically identify sensitive areas and hotspots in the model.
 :ref:`Weight singular value decomposition (Weight SVD) <featureguide-weight-svd>`
 =================================================================================
 
-Decomposes one large MAC or memory layer into two smaller layers.
+Decomposes one large 2D convolution or fully connected layer into two smaller layers.
 
 :ref:`Spatial singular value decomposition (Spatial SVD) <featureguide-spatial-svd>`
 ====================================================================================
 
-Decomposes one large convolution (Conv) MAC or memory layer into two smaller layers.
+Decomposes one large 2D convolution layer into two smaller layers.
 
 :ref:`Channel pruning (CP) <featureguide-channel-pruning>`
 ==========================================================
 
-Removes less-important input channels from 2D convolution layers.
+Prunes redundant input channels from 2D convolution layers.

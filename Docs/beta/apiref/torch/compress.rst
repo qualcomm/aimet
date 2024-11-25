@@ -10,13 +10,16 @@ aimet_torch.compress
 **Top-level API for Compression**
 
 .. autoclass:: aimet_torch.compress.ModelCompressor
+   :noindex:
 
 .. automethod:: aimet_torch.compress.ModelCompressor.compress_model
+   :noindex:
 
 **Greedy Selection Parameters**
 
 .. autoclass:: aimet_common.defs.GreedySelectionParameters
    :members:
+   :noindex:
 
 **Configuration Definitions**
 
@@ -38,6 +41,7 @@ aimet_torch.compress
 
 .. autoclass:: aimet_torch.defs.SpatialSvdParameters
    :members:
+   :noindex:
 
 ..
   # Spatial SVD config ends
@@ -49,6 +53,7 @@ aimet_torch.compress
 
 .. autoclass:: aimet_torch.defs.ChannelPruningParameters
    :members:
+   :noindex:
 
 ..
   # Channel pruning config ends
@@ -60,6 +65,7 @@ aimet_torch.compress
 
 .. autoclass:: aimet_torch.defs.WeightSvdParameters
    :members:
+   :noindex:
 
 ..
   # Weight SVD config ends
