@@ -106,7 +106,12 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/compress.rst
-           :start-after: _apiref-torch-compress:
+           :start-after: # common APIs start
+           :end-before: # common APIs end
+
+        .. include:: ../apiref/torch/compress.rst
+           :start-after: # Spatial SVD config starts
+           :end-before: # Spatial SVD config ends
 
     .. tab-item:: TensorFlow
         :sync: tf
