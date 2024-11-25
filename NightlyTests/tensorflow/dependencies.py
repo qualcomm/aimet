@@ -3,7 +3,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #  
-#  Copyright (c) 2020, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2020, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #  
 #  Redistribution and use in source and binary forms, with or without 
 #  modification, are permitted provided that the following conditions are met:
@@ -46,7 +46,6 @@ import sys
 import wget
 import zipfile
 import tarfile
-from transformers import BertTokenizer, DistilBertTokenizer
 from aimet_common.utils import AimetLogger
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
@@ -199,21 +198,8 @@ def get_tiny_image_net_data():
         logger.info("Tiny Imagenet Data exists. No need to download")
 
 
-def download_huggingface_tokenizers():
-    huggingface_dir = './data/huggingface'
-    if not os.path.isdir(huggingface_dir):
-        os.makedirs(huggingface_dir, exist_ok=True)
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        tokenizer.save_pretrained('{}/bert-base-uncased'.format(huggingface_dir))
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-        tokenizer.save_pretrained('{}/distilbert-base-uncased'.format(huggingface_dir))
-    else:
-        logger.info("Huggingface data exists. No need to download")
-
-
 if __name__ == '__main__':
 
     download_and_extract_tiny_imagenet_pre_trained_resnet_v2_50()
     create_resnet50_eval_score_pickle()
     get_tiny_image_net_data()
-    download_huggingface_tokenizers()
