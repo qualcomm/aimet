@@ -37,6 +37,9 @@
 add_custom_target(copy_examples
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE/Examples)
 
+add_custom_target(copy_examples_beta_docs
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE/beta/examples)
+
 #TODO Remove the OPTIONAL flag after Common Examples code gets added
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/common
     DESTINATION Examples
