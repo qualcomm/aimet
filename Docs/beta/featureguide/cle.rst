@@ -37,9 +37,65 @@ Setup
     .. tab-item:: TensorFlow
         :sync: tf
 
+        .. container:: tab-heading
+
+            Load the model for cross-layer equalization. In this code example, we will use MobileNetV2.
+
+            It's recommended to apply the TensorFlow `prepare_model` API before applying AIMET functionalities. After preparation, we find that the model contains consecutive convolutions, which can be optimized through cross-layer equalization.
+
         .. literalinclude:: ../snippets/tensorflow/apply_cle.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 1
+            :end-before: # End of step 1
+
+        **Output**
+        ::
+
+            Model: "mobilenetv2_1.00_224"
+            __________________________________________________________________________________________________
+             Layer (type)                   Output Shape         Param #     Connected to
+            ==================================================================================================
+             input_1 (InputLayer)           [(None, 224, 224, 3  0           []
+                                            )]
+
+             Conv1 (Conv2D)                 (None, 112, 112, 32  864         ['input_1[0][0]']
+                                            )
+
+             bn_Conv1 (BatchNormalization)  (None, 112, 112, 32  128         ['Conv1[0][0]']
+                                            )
+
+             Conv1_relu (ReLU)              (None, 112, 112, 32  0           ['bn_Conv1[0][0]']
+                                            )
+
+             expanded_conv_depthwise (Depth  (None, 112, 112, 32  288        ['Conv1_relu[0][0]']
+             wiseConv2D)                    )
+             ...
+
+            *** Before cross-layer equalization ***
+
+            prepared_model.layers[1]:
+            <class 'keras.layers.convolutional.conv2d.Conv2D'>
+
+            prepared_model.layers[4]:
+            <class 'keras.layers.convolutional.depthwise_conv2d.DepthwiseConv2D'>
+
+            Prev Conv weight
+            [[[[-1.71659231e-01 -3.33731920e-01  5.30122258e-02 -5.93232973e-21
+                 2.08742931e-01 -1.20433941e-01  1.75700430e-02 -3.10708203e-22
+                -9.62498877e-03  1.90229788e-01 -3.67278278e-01  3.95997976e-22
+                ...
+                 3.87471542e-02 -3.67677957e-02 -3.23011987e-02 -4.83861901e-02
+                 1.23156421e-02 -5.57984132e-03 -6.53976866e-04 -1.92511864e-02
+                -2.09685047e-22  1.19186290e-01 -2.52912678e-02  2.02078857e-02]]]]
+
+            Next Conv weight
+            [[[[-9.15259957e-01]
+               [ 6.11176670e-01]
+               [-4.27415752e+00]
+               ...
+               [-1.17871511e+00]
+               [ 2.55578518e+00]
+               [ 3.69716495e-01]]]]
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -111,7 +167,37 @@ Execute AIMET cross-layer equalization API
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Execute AIMET cross-layer equalization API
+
+        .. literalinclude:: ../snippets/tensorflow/apply_cle.py
+            :language: python
+            :start-after: # Step 2
+            :end-before: # End of step 2
+
+        **Output**
+        ::
+
+            *** After cross-layer equalization ***
+
+            Prev Conv weight
+            [[[[-3.01457286e-01 -1.49024737e+00  6.10569119e-01 -1.29590677e-19
+                 1.51547194e-01 -1.51446089e-01  1.38100997e-01 -4.89249423e-21
+                -5.16245179e-02  4.64579314e-01 -2.44408584e+00  1.22219264e-20
+                ...
+                 1.67510852e-01 -2.60713138e-02 -1.05549544e-01 -2.53403008e-01
+                 1.39502389e-02 -1.54620111e-02 -1.97294299e-02 -9.41715762e-02
+                -6.88260233e-21  8.95088911e-02 -1.87630311e-01  2.48399768e-02]]]]
+
+            Next Conv weight
+            [[[[-1.00347728e-01]
+               [ 6.30402938e-02]
+               [-9.67416465e-01]
+                ...
+               [-7.88373709e-01]
+               [ 6.75162792e-01]
+               [ 1.48045555e-01]]]]
 
     .. tab-item:: ONNX
         :sync: onnx
