@@ -464,6 +464,7 @@ class HighBiasFold:
 def equalize_model(model: tf.keras.Model) -> tf.keras.Model:
     """
     High-level API to perform Cross-Layer Equalization (CLE) on the given model
+
     :param model: tf.keras.Model
     :return: CLE applied tf.keras.Model
     """
