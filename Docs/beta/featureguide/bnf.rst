@@ -35,7 +35,34 @@ Load the model for batch norm folding.
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Load the model for batch norm folding. In this code example, we will use MobileNetV2
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bnf.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+            :end-before: # End of step 1
+
+        **Output**
+        ::
+
+            Model: "mobilenetv2_1.00_224"
+            __________________________________________________________________________________________________
+             Layer (type)                   Output Shape         Param #     Connected to
+            ==================================================================================================
+             input_1 (InputLayer)           [(None, 224, 224, 3  0           []
+                                            )]
+
+             Conv1 (Conv2D)                 (None, 112, 112, 32  864         ['input_1[0][0]']
+                                            )
+
+             bn_Conv1 (BatchNormalization)  (None, 112, 112, 32  128         ['Conv1[0][0]']
+                                            )
+
+             Conv1_relu (ReLU)              (None, 112, 112, 32  0           ['bn_Conv1[0][0]']
+                                            )
+             ...
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -78,7 +105,34 @@ Apply preparation step if necessary
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            AIMET provides TensorFlow `prepare_model` API, which performs preprocessing on the user model if necessary
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bnf.py
+            :language: python
+            :start-after: # Step 2
+            :end-before: # End of step 2
+
+        **Output**
+        ::
+
+            *** Before batch norm folding ***
+
+            prepared_model.layers[1]:
+            <class 'keras.layers.convolutional.conv2d.Conv2D'>
+
+            prepared_model.layers[2]:
+            <class 'keras.layers.normalization.batch_normalization.BatchNormalization'>
+
+            Conv weight:
+            [[[[-1.71659231e-01 -3.33731920e-01  5.30122258e-02 -5.93232973e-21
+                 2.08742931e-01 -1.20433941e-01  1.75700430e-02 -3.10708203e-22
+                -9.62498877e-03  1.90229788e-01 -3.67278278e-01  3.95997976e-22
+              ...
+                 3.87471542e-02 -3.67677957e-02 -3.23011987e-02 -4.83861901e-02
+                 1.23156421e-02 -5.57984132e-03 -6.53976866e-04 -1.92511864e-02
+                -2.09685047e-22  1.19186290e-01 -2.52912678e-02  2.02078857e-02]]]]
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -128,7 +182,34 @@ Execute AIMET batch norm folding API
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Execute AIMET batch norm folding API
+
+        .. literalinclude:: ../snippets/tensorflow/apply_bnf.py
+            :language: python
+            :start-after: # Step 3
+            :end-before: # End of step 3
+
+        **Output**
+        ::
+
+            *** After batch norm folding ***
+
+            folded_model.layers[1]:
+            <class 'keras.layers.convolutional.conv2d.Conv2D'>
+
+            folded_model.layers[2]:
+            <class 'keras.layers.activation.relu.ReLU'>
+
+            Conv weight
+            [[[[-3.01457286e-01 -1.49024737e+00  6.10569119e-01 -1.29590677e-19
+                 1.51547194e-01 -1.51446089e-01  1.38100997e-01 -4.89249423e-21
+                -5.16245179e-02  4.64579314e-01 -2.44408584e+00  1.22219264e-20
+                 ...
+                 1.67510852e-01 -2.60713138e-02 -1.05549544e-01 -2.53403008e-01
+                 1.39502389e-02 -1.54620111e-02 -1.97294299e-02 -9.41715762e-02
+                -6.88260233e-21  8.95088911e-02 -1.87630311e-01  2.48399768e-02]]]]
 
     .. tab-item:: ONNX
         :sync: onnx
