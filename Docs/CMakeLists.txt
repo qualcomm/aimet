@@ -55,7 +55,6 @@ add_dependencies(doc
 add_custom_target(copy_doc_source
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE)
 
-
 add_custom_target(doc_beta
       COMMAND ${CMAKE_COMMAND} -E env
       "${AIMET_PYTHONPATH}"
@@ -63,4 +62,4 @@ add_custom_target(doc_beta
       sphinx-build -v -T -b html ${CMAKE_BINARY_DIR}/Docs_SOURCE/beta ${CMAKE_CURRENT_BINARY_DIR}/beta -c ${CMAKE_BINARY_DIR}/Docs_SOURCE/beta)
 
 add_dependencies(doc_beta
-    copy_doc_source copy_examples)
+    copy_doc_source copy_examples_beta_docs)
