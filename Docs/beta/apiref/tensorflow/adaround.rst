@@ -12,10 +12,3 @@ AIMET TensorFlow AdaRound API
 
 .. autoclass:: aimet_tensorflow.keras.adaround_weight.AdaroundParameters
     :members:
-
-**Enum Definition**
-
-**Quant Scheme Enum**
-
-.. autoclass:: aimet_common.defs.QuantScheme
-    :members:
