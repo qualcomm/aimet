@@ -7,6 +7,7 @@ AIMET API
 .. toctree::
     :hidden:
 
+    aimet_torch.autoquant <torch/autoquant>
     aimet_torch.batch_norm_fold <torch/bnf>
     aimet_torch.compress <torch/compress>
     aimet_torch.cross_layer_equalization <torch/cle>
@@ -25,6 +26,7 @@ AIMET API
     aimet_tensorflow.quantsim <tensorflow/quantsim>
 
     aimet_onnx.adaround <onnx/adaround>
+    aimet_onnx.auto_quant_v2 <onnx/autoquant>
     aimet_onnx.batch_norm_fold <onnx/bnf>
     aimet_onnx.cross_layer_equalization <onnx/cle>
     aimet_onnx.quant_analyzer <onnx/quant_analyzer>
