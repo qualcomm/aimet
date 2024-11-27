@@ -1584,6 +1584,39 @@ class TestBatchNormFoldToScale:
         with pytest.raises(RuntimeError):
             fold_all_batch_norms_to_scale(sim)
 
+    @pytest.mark.parametrize("layer_type", ["GRU", "GRUCell"])
+    def test_bn_fold_with_gru_layer(self, layer_type):
+        def get_gru_model(layer_type):
+            _input = tf.keras.layers.Input(shape=(32, 32, 3), name="input")
+            x = tf.keras.layers.Conv2D(16, 3, strides=2, padding='same', activation=None)(_input)
+            x = tf.keras.layers.BatchNormalization()(x)
+            x = tf.keras.layers.Activation(activation=tf.keras.activations.relu)(x)
+            x = tf.keras.layers.Conv2D(32, 3, strides=2, padding='same', activation=None)(x)
+            x = tf.keras.layers.BatchNormalization()(x)
+            x = tf.keras.layers.Activation(activation=tf.keras.activations.relu)(x)
+            x = tf.keras.layers.Flatten()(x)
+            x = tf.keras.layers.Reshape(target_shape=(2, -1))(x)
+            if layer_type == "GRU":
+                x = tf.keras.layers.GRU(32, return_sequences=True, unroll=True)(x)
+            elif layer_type == "GRUCell":
+                x = tf.keras.layers.RNN(tf.keras.layers.GRUCell(32))(x)
+            else:
+                raise AttributeError(f"Found invalid layer_type: {layer_type}")
+            x = tf.keras.layers.Flatten()(x)
+            x = tf.keras.layers.Dense(128, activation=None)(x)
+            x = tf.keras.layers.Activation(activation=tf.keras.activations.relu)(x)
+            x = tf.keras.layers.Dense(10, activation='softmax')(x)
+            gru_model = tf.keras.Model(inputs=_input, outputs=x)
+            return gru_model
+
+        model = get_gru_model(layer_type)
+        mock_input = np.random.randn(1, 32, 32, 3)
+        output_before_batchnorm_folding = model(mock_input)
+        _, model = fold_all_batch_norms(model)
+        output_after_batchnorm_folding = model(mock_input)
+
+        assert np.allclose(output_before_batchnorm_folding, output_after_batchnorm_folding, atol=1e-4)
+
     @pytest.mark.skip("Possible Batch norms to fold is returning None?")
     def test_fold_auto_mode_with_bn_after_Conv1d_layer(self):
         input_shape = (2, 10, 32)

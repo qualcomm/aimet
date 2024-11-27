@@ -57,8 +57,6 @@ per_channel_quantizeable_layers = (tf.keras.layers.Conv2D, tf.keras.layers.Conv2
                                    tf.keras.layers.DepthwiseConv2D, tf.keras.layers.SeparableConv2D,
                                    tf.keras.layers.Dense)
 
-SUBMODULES_TO_SKIP = (tf.keras.layers.MultiHeadAttention, tf.keras.layers.LSTM,)
-
 def to_functional(func: Callable) -> tf.keras.Model:
     """
     Decorator to check if the input model is a Sequential model. If it is, then the model is converted to a
@@ -277,10 +275,9 @@ def create_node_to_layer_map(cur_layer: (tf.keras.Model, tf.keras.layers.Layer))
             else:
                 node_layer_map[in_node] = [None, inner_layer]
 
-        # If the layer has submodules we try to find out the input/output map for those layers as well.
-        # But in case of few layers having submodules, internal connection for them is not present. It means
-        # inbound and outbound nodes for the submodules are empty so, we treat them as a single layer only.
-        if inner_layer.submodules and not isinstance(inner_layer, SUBMODULES_TO_SKIP):
+        # If the layer has additional inner layers, trace the internal connections for
+        # input/output mapping. Otherwise, treat it as a single layer.
+        if hasattr(inner_layer, "layers"):
             im_node_layer_map, im_node_input, im_nodes_after_input_layer = \
                 _submodule_handler_node_to_layer_map(inner_layer, node_layer_map)
             if len(im_nodes_after_input_layer) == 1:
