@@ -44,8 +44,10 @@ Setup
 ~~~~~
 
 .. tab-set::
+    :sync-group: platform
 
     .. tab-item:: PyTorch
+        :sync: torch
 
         Setup the model, data loader, and training loops for training.
 
@@ -55,8 +57,12 @@ Setup
             :end-before: # step_1
 
     .. tab-item:: TensorFlow
+        :sync: tf
 
-        To be filled
+        .. literalinclude:: ../snippets/tensorflow/apply_qat.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+            :end-before: # End of dataset
 
 
 Step 1
@@ -65,8 +71,10 @@ Step 1
 Compute the initial quantization parameters.
 
 .. tab-set::
+    :sync-group: platform
 
     .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../snippets/torch/apply_qat.py
             :language: python
@@ -79,8 +87,17 @@ Compute the initial quantization parameters.
             PTQ model accuracy: 0.68016
 
     .. tab-item:: TensorFlow
+        :sync: tf
 
-        To be filled
+        .. literalinclude:: ../snippets/tensorflow/apply_qat.py
+            :language: python
+            :start-after: # Step 1
+            :end-before: # End of step 1
+
+        **Output**
+        ::
+
+            PTQ model accuracy: 0.6583
 
 Step 2
 ~~~~~~
@@ -88,8 +105,10 @@ Step 2
 Run the training loop on the quantized model to fine-tune the quantized accuracy.
 
 .. tab-set::
+    :sync-group: platform
 
     .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../snippets/torch/apply_qat.py
             :language: python
@@ -97,8 +116,12 @@ Run the training loop on the quantized model to fine-tune the quantized accuracy
             :end-before: # step_3
 
     .. tab-item:: TensorFlow
+        :sync: tf
 
-        To be filled
+        .. literalinclude:: ../snippets/tensorflow/apply_qat.py
+            :language: python
+            :start-after: # Step 2
+            :end-before: # End of step 2
 
 Step 3
 ~~~~~~
@@ -106,8 +129,10 @@ Step 3
 Evaluate the fine-tuned model.
 
 .. tab-set::
+    :sync-group: platform
 
     .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../snippets/torch/apply_qat.py
             :language: python
@@ -120,9 +145,17 @@ Evaluate the fine-tuned model.
             Model accuracy after QAT: 0.70838
 
     .. tab-item:: TensorFlow
+        :sync: tf
 
-        To be filled
+        .. literalinclude:: ../snippets/tensorflow/apply_qat.py
+            :language: python
+            :start-after: # Step 3
+            :end-before: # End of step 3
 
+        **Output**
+        ::
+
+            Model accuracy after QAT: 0.6910
 
 Next steps
 ==========
@@ -130,13 +163,19 @@ Next steps
 After fine-tuning the model's quantized accuracy with QAT, export the updated weights and encodings.
 
 .. tab-set::
+    :sync-group: platform
 
     .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../snippets/torch/apply_qat.py
             :language: python
             :start-after: # step_4
 
     .. tab-item:: TensorFlow
+        :sync: tf
 
-        To be filled
+        .. literalinclude:: ../snippets/tensorflow/apply_qat.py
+            :language: python
+            :start-after: # Step 4
+            :end-before: # End of step 4
