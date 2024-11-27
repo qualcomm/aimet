@@ -34,9 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
 # pylint: disable=missing-docstring
-
 # Step 1
 import math
 import os
@@ -47,10 +45,15 @@ import onnx
 import onnxruntime as ort
 import onnxsim
 import torch
+from aimet_common.defs import QuantizationDataType
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
+from aimet_onnx.adaround.adaround_weight import AdaroundParameters
+from aimet_onnx.auto_quant_v2 import AutoQuantWithAutoMixedPrecision
 from aimet_onnx.defs import DataLoader
 from datasets import load_dataset
 from torchvision import transforms
 from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
+from tqdm import tqdm
 
 pt_model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
 print(pt_model)
@@ -65,6 +68,12 @@ torch.onnx.export(
     pt_model,
     (dummy_input,),
     file_path,
+    input_names=['input'],
+    output_names=['output'],
+    dynamic_axes={
+        'input': {0: 'batch_size'},
+        'output': {0: 'batch_size'},
+    },
 )
 # Load exported ONNX model
 model = onnx.load_model(file_path)
@@ -80,7 +89,40 @@ except:
 dataset = load_dataset(
     'ILSVRC/imagenet-1k',
     split='validation',
-)
+).shuffle()
+
+
+class CustomDataLoader(DataLoader):
+    def __init__(
+        self,
+        data: np.ndarray,
+        batch_size: int,
+        iterations: int,
+        unlabeled: bool = True,
+    ):
+        super().__init__(data, batch_size, iterations)
+        self._current_iteration = 0
+        self._unlabeled = unlabeled
+
+    def __iter__(self):
+        self._current_iteration = 0
+        return self
+
+    def __next__(self):
+        if self._current_iteration < self.iterations:
+            start = self._current_iteration * self.batch_size
+            end = start + self.batch_size
+            self._current_iteration += 1
+
+            batch_data = self._data[start:end]
+            if self._unlabeled:
+                return np.stack(batch_data['image'])
+            else:
+                return np.stack(batch_data['image']), np.stack(batch_data['label'])
+        else:
+            raise StopIteration
+
+
 preprocess = transforms.Compose(
     [
         transforms.Resize(256),
@@ -93,40 +135,21 @@ preprocess = transforms.Compose(
 
 def transforms(examples):
     examples['image'] = [
-        preprocess(image.convert('RGB')).numpy() for image in examples['image']
+        preprocess(image.convert('RGB')) for image in examples['image']
     ]
-    examples['image'] = [np.expand_dims(image, axis=0) for image in examples['image']]
     return examples
 
 
 dataset.set_transform(transforms)
 
-BATCH_SIZE = 1
-EVAL_DATASET_SIZE = 64
-CALIBRATION_DATASET_SIZE = 32
-
-
-class CustomDataLoader(DataLoader):
-    def __init__(self, data: np.ndarray, batch_size: int, iterations: int):
-        super().__init__(data, batch_size, iterations)
-        self._batch_index = 0
-
-    def __iter__(self):
-        self._batch_index = 0
-        return self
-
-    def __next__(self):
-        if self._batch_index < self.iterations:
-            str_idx = self._batch_index
-            end_idx = self._batch_index + self.batch_size
-            self._batch_index += 1
-            return self._data[str_idx:end_idx]
-        else:
-            raise StopIteration
-
-
-unlabelled_data_loader = CustomDataLoader(
-    dataset['image'], BATCH_SIZE, math.ceil(CALIBRATION_DATASET_SIZE / BATCH_SIZE)
+BATCH_SIZE = 32
+NUM_CALIBRATION_SAMPLES = 2048
+NUM_EVAL_SAMPLES = 50000
+unlabeled_data_loader = CustomDataLoader(
+    dataset, BATCH_SIZE, math.ceil(NUM_CALIBRATION_SAMPLES / BATCH_SIZE)
+)
+eval_data_loader = CustomDataLoader(
+    dataset, BATCH_SIZE, math.ceil(NUM_EVAL_SAMPLES / BATCH_SIZE), unlabeled=False
 )
 # End of step 2
 
@@ -135,65 +158,49 @@ unlabelled_data_loader = CustomDataLoader(
 def eval_callback(
     session: ort.InferenceSession, num_of_samples: Optional[int] = None
 ) -> float:
-    data_loader = CustomDataLoader(
-        dataset, BATCH_SIZE, math.ceil(EVAL_DATASET_SIZE / BATCH_SIZE)
-    )
-    if num_of_samples:
-        iterations = math.ceil(num_of_samples / data_loader.batch_size)
-    else:
-        iterations = len(data_loader)
-    batch_cntr = 1
-    acc_top1 = 0
-    for data in data_loader:
-        input_data = data['image'][0]
-        target = data['label']
-        pred_probs = session.run(None, {'input.1': input_data})
+    correct_predictions = 0
+    total_samples = 0
+    for inputs, labels in tqdm(eval_data_loader):
+        input_name = session.get_inputs()[0].name
+        pred_probs, *_ = session.run(None, {input_name: inputs})
         pred_labels = np.argmax(pred_probs, axis=1)
-        acc_top1 += np.sum(pred_labels == target)
+        correct_predictions += np.sum(pred_labels == labels)
+        total_samples += labels.shape[0]
 
-        batch_cntr += 1
-        if batch_cntr > iterations:
-            break
-    acc_top1 /= len(data_loader)
-    return acc_top1
+    accuracy = correct_predictions / total_samples
+    return accuracy
 # End of step 3
 
 # Step 4. Create AutoQuant object
-from aimet_onnx.auto_quant_v2 import AutoQuantWithAutoMixedPrecision
-
-dummy_input = {'input.1': dataset[0]['image']}
+dummy_input = {'input': np.random.randn(*input_shape).astype(np.float32)}
 auto_quant = AutoQuantWithAutoMixedPrecision(
-    model, dummy_input, unlabelled_data_loader, eval_callback
+    model,
+    dummy_input,
+    unlabeled_data_loader,
+    eval_callback,
+    param_bw=4,
+    output_bw=8,
+    config_file=get_path_for_per_channel_config(),
 )
 # End of step 4
 
-# Step 5. (Optional) Set AdaRound params
-from aimet_onnx.adaround.adaround_weight import AdaroundParameters
-
-ADAROUND_DATASET_SIZE = 128
-adaround_data_loader = DataLoader(
-    data=dataset['image'],
-    batch_size=BATCH_SIZE,
-    iterations=math.ceil(ADAROUND_DATASET_SIZE / BATCH_SIZE),
-)
+# Step 5. Set AdaRound params
 adaround_params = AdaroundParameters(
-    adaround_data_loader, num_batches=len(adaround_data_loader)
+    unlabeled_data_loader, num_batches=len(unlabeled_data_loader)
 )
 auto_quant.set_adaround_params(adaround_params)
 # End of step 5
 
 # Step 6. Set AMP params
-from aimet_common.defs import QuantizationDataType
-
+W4A8 = (
+    (8, QuantizationDataType.int),  # A: int8
+    (4, QuantizationDataType.int),  # W: int4
+)
 W8A8 = (
     (8, QuantizationDataType.int),  # A: int8
     (8, QuantizationDataType.int),  # W: int8
 )
-W8A16 = (
-    (16, QuantizationDataType.int),  # A: int16
-    (8, QuantizationDataType.int),  # W: int8
-)
-auto_quant.set_mixed_precision_params(candidates=[W8A16, W8A8])
+auto_quant.set_mixed_precision_params(candidates=[W4A8, W8A8])
 # End of step 6
 
 # Step 7. Run AutoQuant

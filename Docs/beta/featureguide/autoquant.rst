@@ -281,6 +281,12 @@ Run AutoQuant
             :start-after: # Step 7
             :end-before: # End of step 7
 
+        **Output**
+        ::
+
+            - Quantized Accuracy (before optimization): 0.0235
+            - Quantized Accuracy (after optimization):  0.7164
+
 Results
 =======
 
