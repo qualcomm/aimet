@@ -5,21 +5,18 @@ aimet_onnx.quant_analyzer
 #########################
 
 ..
-  # Top level APIs start
+  # start-after
 
 **Top level APIs**
 
+.. note::
+    It is recommended to use onnx-simplifier before applying quant-analyzer.
+
 .. autoclass:: aimet_onnx.quant_analyzer.QuantAnalyzer
-   :noindex:
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.enable_per_layer_mse_loss
-   :noindex:
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.analyze
-   :noindex:
-
-**Note:** It is recommended to use onnx-simplifier before applying quant-analyzer.
-
 
 **Alternatively, you can run specific utility**
 
@@ -48,4 +45,3 @@ QuantAnalyzer utility of your interest and pass the same object to it.
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.export_per_layer_mse_loss
    :noindex:
-

@@ -1,10 +1,12 @@
 .. _apiref-onnx-cle:
 
-########################################
-AIMET ONNX Cross-layer equalization  API
-########################################
+###################################
+aimet_onnx.cross_layer_equalization
+###################################
 
-Top-level API
-=============
+..
+  # start-after
+
+**Top-level API**
 
 .. autofunction:: aimet_onnx.cross_layer_equalization.equalize_model

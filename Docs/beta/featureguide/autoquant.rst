@@ -303,7 +303,7 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/autoquant.rst
-            :start-after: # Top level APIs start
+            :start-after: # start-after
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -314,4 +314,5 @@ API
         :sync: onnx
 
         .. include:: ../apiref/onnx/autoquant.rst
-           :start-after: # Top level APIs start
+           :start-after: # start-after
+

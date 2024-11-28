@@ -1,10 +1,12 @@
-.. _apiref-keras-cle:
+.. _apiref-tensorflow-cle:
 
-#############################################
-AIMET TensorFlow Cross-layer equalization API
-#############################################
+#########################################
+aimet_tensorflow.cross_layer_equalization
+#########################################
 
-Top-level API
-=============
+..
+  # start-after
+
+**Top-level API**
 
 .. autofunction:: aimet_tensorflow.keras.cross_layer_equalization.equalize_model

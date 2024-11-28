@@ -5,12 +5,12 @@ aimet_onnx.auto_quant_v2
 ########################
 
 ..
-  # Top level APIs start
+  # start-after
 
 **Top-level API**
 
 .. autoclass:: aimet_onnx.auto_quant_v2.AutoQuantWithAutoMixedPrecision
     :members:
     :member-order: bysource
-    :no-index:
+
 

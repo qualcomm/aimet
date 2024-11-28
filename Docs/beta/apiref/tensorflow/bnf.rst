@@ -1,8 +1,11 @@
-.. _apiref-keras-bnf:
+.. _apiref-tensorflow-bnf:
 
-#######################################
-AIMET TensorFlow Batch norm folding API
-#######################################
+################################
+aimet_tensorflow.batch_norm_fold
+################################
+
+..
+  # start-after
 
 **Top-level API**
 

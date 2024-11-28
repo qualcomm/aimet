@@ -1,3 +1,5 @@
+.. _apiref-torch-nn:
+
 #################
 aimet_torch.v2.nn
 #################

@@ -325,16 +325,17 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/quant_analyzer.rst
-            :start-after: # Top level APIs start
+            :start-after: # start-after
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. include:: ../apiref/tensorflow/quant_analyzer.rst
-           :start-after: # Top level APIs start
+           :start-after: # start-after
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/quant_analyzer.rst
-           :start-after: # Top level APIs start
+           :start-after: # start-after
+

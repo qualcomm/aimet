@@ -1,20 +1,24 @@
 .. _apiref-torch-adaround:
 
-#######################
-aimet_torch.v2.adaround
-#######################
+####################
+aimet_torch.adaround
+####################
 
-
-Adaround.apply_adaround
-=======================
+..
+  # start-after
 
 .. note::
 
-.. autofunction:: aimet_torch.v2.adaround.Adaround.apply_adaround
+    This module is also available in the experimental :mod:`aimet_torch.v2` namespace with the same top-level API.
 
+**Top level APIs**
 
-AdaroundParameters
-==================
+.. autofunction:: aimet_torch.adaround.adaround_weight.Adaround.apply_adaround
 
-.. autoclass:: aimet_torch.v2.adaround.adaround_weight.AdaroundParameters
+**Adaround parameters**
+
+.. autoclass:: aimet_torch.adaround.adaround_weight.AdaroundParameters
     :members:
+
+..
+  # end-before

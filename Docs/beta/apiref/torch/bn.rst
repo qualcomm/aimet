@@ -1,13 +1,12 @@
 .. _apiref-torch-bn:
 
-##################################
-AIMET PyTorch BN Re-estimation API
-##################################
+###########################
+aimet_torch.bn_reestimation
+###########################
 
+..
+  # start-after
 
-Top-level API
-=============
-
-.. note::
+**Top-level API**
 
 .. autofunction:: aimet_torch.bn_reestimation.reestimate_bn_stats

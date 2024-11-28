@@ -284,16 +284,17 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/adaround.rst
-            :start-after: _apiref-torch-adaround:
+            :start-after: # start-after
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. include:: ../apiref/tensorflow/adaround.rst
-           :start-after: _apiref-keras-adaround:
+           :start-after: # start-after
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/adaround.rst
-           :start-after: _apiref-onnx-adaround:
+           :start-after: # start-after
+

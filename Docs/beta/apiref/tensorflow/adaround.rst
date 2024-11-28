@@ -1,8 +1,11 @@
-.. _apiref-keras-adaround:
+.. _apiref-tensorflow-adaround:
 
-#############################
-AIMET TensorFlow AdaRound API
-#############################
+#########################
+aimet_tensorflow.adaround
+#########################
+
+..
+  # start-after
 
 **Top-level API**
 

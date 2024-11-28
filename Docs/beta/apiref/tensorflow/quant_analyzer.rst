@@ -1,15 +1,14 @@
 .. _apiref-tensorflow-quant-analyzer:
 
-#####################################
-aimet_tensorflow.keras.quant_analyzer
-#####################################
+###############################
+aimet_tensorflow.quant_analyzer
+###############################
 
 ..
-  # Top level APIs start
+  # start-after
 
 **Top level APIs**
 
 .. autoclass:: aimet_tensorflow.keras.quant_analyzer.QuantAnalyzer
-   :members: analyze
+   :members:
    :noindex:
-

@@ -40,6 +40,9 @@ Hyper-parameters
 Workflow
 ========
 
+Code example
+------------
+
 Setup
 ~~~~~
 
@@ -63,7 +66,6 @@ Setup
             :language: python
             :start-after: # pylint: disable=missing-docstring
             :end-before: # End of dataset
-
 
 Step 1
 ~~~~~~
