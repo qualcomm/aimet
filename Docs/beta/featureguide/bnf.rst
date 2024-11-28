@@ -24,15 +24,33 @@ Code example
 Step 1
 ~~~~~~
 
-Load the model for batch norm folding.
-
 .. tab-set::
     :sync-group: platform
 
     .. tab-item:: PyTorch
         :sync: torch
 
-        To be filled
+        .. container:: tab-heading
+
+            Load the model for batch norm folding. In this code example, we will use MobileNetV2
+
+        .. literalinclude:: ../snippets/torch/apply_bnf.py
+            :language: python
+            :start-after: # Step 1
+            :end-before: # End of step 1
+
+        **Output**
+        ::
+
+            MobileNetV2(
+              (features): Sequential(
+                (0): Conv2dNormActivation(
+                  (0): Conv2d(3, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+                  (1): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+                  (2): ReLU6(inplace=True)
+                )
+                ...
+            )
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -94,15 +112,15 @@ Load the model for batch norm folding.
 Step 2
 ~~~~~~
 
-Apply preparation step if necessary
-
 .. tab-set::
     :sync-group: platform
 
     .. tab-item:: PyTorch
         :sync: torch
 
-        To be filled
+        .. container:: tab-heading
+
+            No preparation step is needed for PyTorch.
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -171,15 +189,40 @@ Apply preparation step if necessary
 Step 3
 ~~~~~~
 
-Execute AIMET batch norm folding API
-
 .. tab-set::
     :sync-group: platform
 
     .. tab-item:: PyTorch
         :sync: torch
 
-        To be filled
+        .. container:: tab-heading
+
+            Execute AIMET batch norm folding API
+
+        .. literalinclude:: ../snippets/torch/apply_bnf.py
+            :language: python
+            :start-after: # Step 2
+            :end-before: # End of step 2
+
+        **Output**
+        ::
+
+            *** Before batch norm folding ***
+
+            model.features[0][0]:
+            Conv2d(3, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+
+            model.features[0][1]:
+            BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+
+
+            *** After batch norm folding ***
+
+            model.features[0][0]:
+            Conv2d(3, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+
+            model.features[0][1]:
+            Identity()
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -270,4 +313,3 @@ API
 
         .. include:: ../apiref/onnx/bnf.rst
            :start-after: # start-after
-
