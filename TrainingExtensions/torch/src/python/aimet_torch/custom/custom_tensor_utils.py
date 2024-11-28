@@ -39,12 +39,16 @@
 try:
     import spconv.pytorch as spconv
 except ImportError as e:
-    to_torch_tensor = None
-    to_custom_tensor = None
+    def to_torch_tensor(tensors):
+        """ placeholder in case spconv doesn't exist """
+        return tensors
+
+    def to_custom_tensor(tensors):
+        """ placeholder in case spconv doesn't exist """
+        return tensors
 else:
     from typing import List, Union, Tuple
     import torch
-
 
     def to_torch_tensor(original: Union[List, Tuple]) -> List[torch.Tensor]:
         """
@@ -77,7 +81,6 @@ else:
             tensor = torch_tensor
             if isinstance(orig, spconv.SparseConvTensor):
                 tensor = orig.replace_feature(torch_tensor)
-
             outputs.append(tensor)
 
         return outputs
