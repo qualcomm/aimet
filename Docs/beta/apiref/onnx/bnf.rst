@@ -1,8 +1,11 @@
 .. _apiref-onnx-bnf:
 
-#################################
-AIMET ONNX Batch norm folding API
-#################################
+##########################
+aimet_onnx.batch_norm_fold
+##########################
+
+..
+  # start-after
 
 **Top-level API**
 

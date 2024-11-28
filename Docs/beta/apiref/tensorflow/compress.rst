@@ -4,6 +4,9 @@
 aimet_tensorflow.compress
 #########################
 
+..
+  # start-after
+
 **Top-level API for Compression**
 
 .. autoclass:: aimet_tensorflow.keras.compress.ModelCompressor

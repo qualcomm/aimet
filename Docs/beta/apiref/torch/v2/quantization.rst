@@ -1,3 +1,5 @@
+.. _apiref-torch-quantization:
+
 ###########################
 aimet_torch.v2.quantization
 ###########################

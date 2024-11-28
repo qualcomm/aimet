@@ -1,12 +1,12 @@
 .. _apiref-torch-cle:
 
-############################################
-AIMET PyTorch Cross Layer Equalization API
-############################################
+####################################
+aimet_torch.cross_layer_equalization
+####################################
 
-Top-level API
-=============
+..
+  # start-after
 
-.. note::
+**Top-level API**
 
 .. autofunction:: aimet_torch.cross_layer_equalization.equalize_model

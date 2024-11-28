@@ -5,7 +5,7 @@ aimet_torch.auto_quant
 ######################
 
 ..
-  # Top level APIs start
+  # start-after
 
 **Top-level API**
 
@@ -14,3 +14,5 @@ aimet_torch.auto_quant
     :member-order: bysource
     :no-index:
 
+..
+  # end-before

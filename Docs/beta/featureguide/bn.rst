@@ -1,8 +1,8 @@
 .. _featureguide-bn:
 
-#################
+########################
 Batch norm re-estimation
-#################
+########################
 
 Context
 =======
@@ -11,7 +11,7 @@ If applying batch norm folding to your model negatively impacts performance, the
 BN re-estimation is also recommended in the following cases:
 
 - Models where the main issue is weight quantization
-- Quantization of depthwise separable layers as their batch norm statistics are sensitive to oscillations
+- Quantization of depth-wise separable layers as their batch norm statistics are sensitive to oscillations
 
 Workflow
 ========
@@ -25,7 +25,7 @@ To use BN re-estimation, you must:
 - Hold off on folding the batch norm layers until after quantization aware training (QAT)
 
 Setup
---------
+-----
 
 .. tab-set::
     :sync-group: platform
@@ -45,16 +45,9 @@ Setup
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. literalinclude:: ../snippets/onnx/apply_bn.py
-            :language: python
-            :start-after: # pylint: disable=missing-docstring
-
-
 Step 1
---------
+------
+
 Create the QuantizationSimModel 
 
 .. tab-set::
@@ -77,16 +70,8 @@ Create the QuantizationSimModel
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. literalinclude:: ../snippets/onnx/apply_bn.py
-            :language: python
-            :start-after: # pylint: disable=missing-docstring
-
-
 Step 2
---------
+------
 
 Perform QAT 
 
@@ -110,16 +95,8 @@ This involves training your model for a few additional epochs (usually around 15
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. literalinclude:: ../snippets/onnx/apply_bn.py
-            :language: python
-            :start-after: # pylint: disable=missing-docstring
-
-
 Step 3
---------
+------
 
 Re-estimate the BN statistics and fold the BN layers. 
 
@@ -141,16 +118,8 @@ Re-estimate the BN statistics and fold the BN layers.
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. literalinclude:: ../snippets/onnx/apply_bn.py
-            :language: python
-            :start-after: # pylint: disable=missing-docstring
-
-
 Step 4
-----------
+------
 
 If BN re-estimation resulted in satisfactory accuracy, export the model.
 
@@ -171,14 +140,6 @@ If BN re-estimation resulted in satisfactory accuracy, export the model.
             :language: python
             :start-after: # pylint: disable=missing-docstring
 
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. literalinclude:: ../snippets/onnx/apply_bn.py
-            :language: python
-            :start-after: # pylint: disable=missing-docstring
-
-
 API
 ===
 .. tab-set::
@@ -188,16 +149,10 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/bn.rst
-            :start-after: _apiref-torch-bn:
+            :start-after: # start-after
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. include:: ../apiref/tensorflow/bn.rst
-            :start-after: _apiref-keras-bn:
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        .. include:: ../apiref/onnx/bn.rst
-            :start-after: _apiref-onnx-bn:
+            :start-after: # start-after

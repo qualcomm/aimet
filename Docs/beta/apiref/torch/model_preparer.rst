@@ -1,9 +1,8 @@
 .. _apiref-torch-model-preparer:
-:orphan:
 
-##################
-Model Preparer API
-##################
+##########################
+aimet_torch.model_preparer
+##########################
 
 AIMET PyTorch ModelPreparer API uses new graph transformation feature available in PyTorch 1.9+ version and automates
 model definition changes required by user. For example, it changes functionals defined in forward pass to

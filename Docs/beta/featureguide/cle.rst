@@ -242,16 +242,17 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/cle.rst
-            :start-after: _apiref-torch-cle:
+            :start-after: # start-after
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. include:: ../apiref/tensorflow/cle.rst
-           :start-after: _apiref-keras-cle:
+           :start-after: # start-after
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/cle.rst
-           :start-after: _apiref-onnx-cle:
+           :start-after: # start-after
+

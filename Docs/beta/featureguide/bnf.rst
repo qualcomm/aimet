@@ -1,3 +1,5 @@
+.. include:: ../abbreviation.txt
+
 .. _featureguide-bnf:
 
 ##################
@@ -7,7 +9,7 @@ Batch norm folding
 Context
 =======
 
-Batch norm folding is a technique widely used in deep learning inference runtimes, including the Qualcomm Neural Processing SDK.
+Batch norm folding is a technique widely used in deep learning inference runtimes, including the |qnn|_.
 Batch normalization layers are typically folded into the weights and biases of adjacent convolution layers whenever possible to eliminate unnecessary computations.
 To accurately simulate inference in these runtimes, it is generally advisable to perform batch norm folding on the floating-point model before applying quantization.
 Doing so not only results in a speedup in inferences per second by avoiding unnecessary computations but also often improves the accuracy of the quantized model by removing redundant computations and requantization.
@@ -255,16 +257,17 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/bnf.rst
-            :start-after: _apiref-torch-bnf:
+            :start-after: # start-after
 
     .. tab-item:: TensorFlow
         :sync: tf
 
         .. include:: ../apiref/tensorflow/bnf.rst
-           :start-after: _apiref-keras-bnf:
+           :start-after: # start-after
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/bnf.rst
-           :start-after: _apiref-onnx-bnf:
+           :start-after: # start-after
+
