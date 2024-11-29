@@ -12,9 +12,9 @@ AI Model Efficiency Toolkit Documentation
 
    Quick Start <../install/quick-start>
    Installation <../install/index>
-   AIMET Optimization Guide <../opt-guide/index>
+   Optimization Guide <../opt-guide/index>
    Quantization Simulation Guide <../quantsim/index>
-   AIMET Feature Guide <../featureguide/index>
+   Feature Guide <../featureguide/index>
    Examples <../examples/index>
    API Reference <../apiref/index>
    Release Notes <../rn/index>

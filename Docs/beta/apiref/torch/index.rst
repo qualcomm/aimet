@@ -9,6 +9,7 @@ aimet_torch API
 
     aimet_torch.quantsim <quantsim>
     aimet_torch.adaround <adaround>
+    aimet_torch.seq_mse <seq_mse>
     aimet_torch.batch_norm_fold <bnf>
     aimet_torch.cross_layer_equalization <cle>
     aimet_torch.quant_analyzer <quant_analyzer>

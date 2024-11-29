@@ -7,13 +7,13 @@ aimet_onnx API
 .. toctree::
     :hidden:
 
-    aimet_onnx.quantsim <onnx/quantsim>
-    aimet_onnx.adaround <onnx/adaround>
-    aimet_onnx.seq_mse <onnx/seq_mse>
-    aimet_onnx.batch_norm_fold <onnx/bnf>
-    aimet_onnx.cross_layer_equalization <onnx/cle>
-    aimet_onnx.quant_analyzer <onnx/quant_analyzer>
-    aimet_onnx.auto_quant_v2 <onnx/autoquant>
+    aimet_onnx.quantsim <quantsim>
+    aimet_onnx.adaround <adaround>
+    aimet_onnx.seq_mse <seq_mse>
+    aimet_onnx.batch_norm_fold <bnf>
+    aimet_onnx.cross_layer_equalization <cle>
+    aimet_onnx.quant_analyzer <quant_analyzer>
+    aimet_onnx.auto_quant_v2 <autoquant>
 
 AIMET quantization for ONNX models provides the following functionality.
 
