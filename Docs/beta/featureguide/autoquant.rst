@@ -66,7 +66,14 @@ Load the model for automatic quantization.
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Load the model for automatic quantization. In this code example, we will use MobileNetV2
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # pylint: disable=missing-docstring
+            :end-before: # End of step 1
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -99,7 +106,14 @@ Prepare model and dataloader
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Prepare dataset
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # Step 2
+            :end-before: # End of step 2
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -135,7 +149,14 @@ maintaining the function signature.
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Prepare eval callback
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # Step 3
+            :end-before: # End of step 3
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -168,7 +189,14 @@ Create AutoQuant object.
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Create AutoQuant object
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # Step 4
+            :end-before: # End of step 4
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -201,7 +229,14 @@ Set AdaRound params
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Set AdaRound params
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # Step 5
+            :end-before: # End of step 5
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -234,7 +269,14 @@ Set AMP params
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Set AMP params
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # Step 6
+            :end-before: # End of step 6
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -267,7 +309,20 @@ Run AutoQuant
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. container:: tab-heading
+
+            Run AutoQuant
+
+        .. literalinclude:: ../snippets/tensorflow/apply_autoquant.py
+            :language: python
+            :start-after: # Step 7
+            :end-before: # End of step 7
+
+        **Output**
+        ::
+
+            - Quantized Accuracy (before optimization): 0.0235
+            - Quantized Accuracy (after optimization):  0.7164
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -308,7 +363,8 @@ API
     .. tab-item:: TensorFlow
         :sync: tf
 
-        To be filled
+        .. include:: ../apiref/tensorflow/autoquant.rst
+            :start-after: # start-after
 
     .. tab-item:: ONNX
         :sync: onnx
