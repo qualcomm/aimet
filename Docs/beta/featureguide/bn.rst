@@ -44,6 +44,7 @@ Setup
         .. literalinclude:: ../snippets/tensorflow/apply_bn.py
             :language: python
             :start-after: # pylint: disable=missing-docstring
+            :end-before: # End of set up
 
 Step 1
 ------
@@ -68,7 +69,8 @@ Create the QuantizationSimModel
 
         .. literalinclude:: ../snippets/tensorflow/apply_bn.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 1
+            :end-before: # End of step 1
 
 Step 2
 ------
@@ -93,7 +95,13 @@ This involves training your model for a few additional epochs (usually around 15
 
         .. literalinclude:: ../snippets/tensorflow/apply_bn.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 2
+            :end-before: # End of step 2
+
+        **Output**
+        ::
+
+            Model accuracy before BN re-estimation: 0.0428
 
 Step 3
 ------
@@ -116,7 +124,13 @@ Re-estimate the BN statistics and fold the BN layers.
 
         .. literalinclude:: ../snippets/tensorflow/apply_bn.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 3
+            :end-before: # End of step 3
+
+        **Output**
+        ::
+
+            Model accuracy after BN re-estimation: 0.5876
 
 Step 4
 ------
@@ -138,7 +152,8 @@ If BN re-estimation resulted in satisfactory accuracy, export the model.
 
         .. literalinclude:: ../snippets/tensorflow/apply_bn.py
             :language: python
-            :start-after: # pylint: disable=missing-docstring
+            :start-after: # Step 4
+            :end-before: # End of step 4
 
 API
 ===
