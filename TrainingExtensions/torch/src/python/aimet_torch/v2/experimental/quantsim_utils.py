@@ -41,8 +41,11 @@ import torch
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.product import Product
+from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_torch.meta.connectedgraph import Op
+from aimet_torch.quantsim_config.builder import LazyQuantizer
 from aimet_torch.v2.nn import BaseQuantizationMixin, custom
+from aimet_torch.v2.nn.true_quant import QuantizationMixin
 from aimet_torch.v2.quantization.affine.quantizer import AffineQuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 
@@ -57,6 +60,8 @@ _MATH_INVARIANT_OPS = (
     torch.nn.ChannelShuffle,
     torch.nn.Identity
 )
+
+MASK_ADD_PREV_OPS = ['Div', 'MatMul']
 
 
 def _is_math_invariant_op(module: torch.nn.Module):
@@ -264,3 +269,50 @@ def set_matmul_second_input_producer_to_8bit_symmetric(sim: 'QuantizationSimMode
                 target_quantizer.qmin = -128
                 target_quantizer.qmax = 127
                 target_quantizer.symmetric = True
+
+
+class QuantizedMaskAdd(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.nullrequant = QuantizationMixin.from_module(custom.NullRequant())
+        self.add = QuantizationMixin.from_module(custom.Add())
+
+    def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        bsz, _, seq_len, ctx_len = input.shape
+        return self.add(input, self.nullrequant(mask, [bsz, -1, seq_len, ctx_len]))
+
+
+def apply_requant_mask(sim: 'QuantizationSimModel'):
+
+    model_name = sim.connected_graph._model_name # pylint: disable=protected-access
+    quant_modules = {name: module for name, module in sim.model.named_modules()
+                     if isinstance(module, BaseQuantizationMixin)}
+    def get_connected_graph_op(connected_graph, model_name, name):
+        # pylint: disable=protected-access
+        original_module = connected_graph._name_to_module[f'{model_name}.{name}']
+        return connected_graph._module_to_op_dict[original_module]
+
+    for name, module in quant_modules.items():
+        if isinstance(module, custom.Add):
+            add_op = get_connected_graph_op(sim.connected_graph, model_name, name)
+            if add_op.inputs[1].is_model_input and add_op.input_ops[0].type in MASK_ADD_PREV_OPS:
+                q_mask_add = QuantizedMaskAdd()
+                q_mask_add.nullrequant.input_quantizers[0] = LazyQuantizer(module.input_quantizers[1].bitwidth,
+                                                               'nearest',
+                                                               QuantScheme.post_training_tf,
+                                                               module.input_quantizers[1].symmetric,
+                                                               enabled_by_default=True,
+                                                               data_type=QuantizationDataType.int
+                                                               ).realize()
+                q_mask_add.nullrequant.output_quantizers[0] = LazyQuantizer(module.input_quantizers[1].bitwidth,
+                                                               'nearest',
+                                                               QuantScheme.post_training_tf,
+                                                               module.input_quantizers[1].symmetric,
+                                                               enabled_by_default=True,
+                                                               data_type=QuantizationDataType.int
+                                                               ).realize()
+                q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
+                if module.input_quantizers[1].is_initialized() and module.output_quantizers[0].is_initialized():
+                    q_mask_add.nullrequant.input_quantizers[0].set_range(torch.finfo(torch.float16).min, module.input_quantizers[1].max)
+                    q_mask_add.nullrequant.output_quantizers[0].set_range(module.output_quantizers[0].min, module.input_quantizers[1].max)
+                setattr(sim.model, name, q_mask_add)

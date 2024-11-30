@@ -621,6 +621,26 @@ class QuantizedNormalize(_DispatchMixin, QuantizationMixin, Normalize):
     _builtin_torch_fn = torch.nn.functional.normalize
 #
 #
+@QuantizationMixin.implements(NullRequant)
+class QuantizedNullRequant(QuantizationMixin, NullRequant):
+    """Quantized module for NullRequant"""
+    # pylint: disable=arguments-differ
+    def forward(self, x: torch.Tensor, shape: list) -> torch.Tensor:
+        """
+        Forward pass for NullRequant
+        """
+        if self.input_quantizers[0]:
+            x = self.input_quantizers[0](x)
+
+        with self._patch_quantized_parameters():
+            out = super().forward(x, shape)
+
+        if self.output_quantizers[0]:
+            out = self.output_quantizers[0](out)
+
+        return out
+#
+#
 # @QuantizationMixin.implements(Pad)
 # class QuantizedPad(_DispatchMixin, QuantizationMixin, Pad):
 #     """ Quantized Pad """
