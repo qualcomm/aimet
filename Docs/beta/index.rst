@@ -10,14 +10,14 @@ AI Model Efficiency Toolkit Documentation
    :hidden:
    :includehidden:
 
-   Quick Start <../install/quick-start>
-   Installation <../install/index>
-   Optimization Guide <../opt-guide/index>
-   Quantization Simulation Guide <../quantsim/index>
-   Feature Guide <../featureguide/index>
-   Examples <../examples/index>
-   API Reference <../apiref/index>
-   Release Notes <../rn/index>
+   Quick Start <install/quick-start>
+   Installation <install/index>
+   Optimization Guide <opt-guide/index>
+   Quantization Simulation Guide <quantsim/index>
+   Feature Guide <featureguide/index>
+   Examples <examples/index>
+   API Reference <apiref/index>
+   Release Notes <rn/index>
 
 AI Model Efficiency Toolkit (AIMET) is a software toolkit for quantizing and compressing models.
 

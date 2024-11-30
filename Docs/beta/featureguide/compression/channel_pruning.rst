@@ -4,6 +4,11 @@
 Channel pruning
 ###############
 
+.. toctree::
+    :hidden:
+
+    Winnowing<winnowing>
+
 Context
 =======
 
@@ -17,7 +22,7 @@ The following figure illustrates the different steps in channel pruning a layer.
 steps are repeated for all layers selected for compression in order of occurrence from the
 top of the model.
 
-.. image:: ../../images/channel_pruning_1.png
+.. image:: ../../../images/channel_pruning_1.png
 
 The steps are explained below.
 
@@ -34,20 +39,15 @@ Winnowing
 Winnowing is the process of removing the input channels identified in channel selection,
 resulting in compressed tensors:
 
-.. image:: ../../images/cp_2.png
+.. image:: ../../../images/cp_2.png
 
 Once one or more input channels of a layer are removed, corresponding output channels of
 an upstream layer are also be removed to gain further compression. Skip-connections or
 residuals sometimes prevent upstream layers from being output-pruned.
 
-.. image:: ../../images/cp_3.jpg
+.. image:: ../../../images/cp_3.jpg
 
 For more details on winnowing, see :doc:`Winnowing<winnowing>`.
-
-.. toctree::
-    :hidden:
-
-    Winnowing<winnowing>
 
 Weight reconstruction
 ---------------------
@@ -57,7 +57,7 @@ and match pre-pruning output values. AIMET does this by performing linear regres
 random samples of the layer's input from the pruned model against corresponding output from
 the original model.
 
-.. image:: ../../images/cp_4.jpg
+.. image:: ../../../images/cp_4.jpg
 
 Workflow
 ========
@@ -74,11 +74,11 @@ Setup
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. literalinclude:: ../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../../torch_code_examples/code_examples.py
            :language: python
            :lines: 40-49
 
-        .. literalinclude:: ../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../../torch_code_examples/code_examples.py
            :language: python
            :pyobject: evaluate_model
 
@@ -93,13 +93,13 @@ Compression using Channel Pruning
 
         **Compressing using Channel Pruning in auto mode.**
 
-        .. literalinclude:: ../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../../torch_code_examples/code_examples.py
            :language: python
            :pyobject: channel_pruning_auto_mode
 
         **Compressing using Channel Pruning in manual mode.**
 
-        .. literalinclude:: ../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../../torch_code_examples/code_examples.py
            :language: python
            :pyobject: channel_pruning_manual_mode
 
@@ -112,10 +112,10 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../apiref/torch/compress.rst
+        .. include:: ../../apiref/torch/compress.rst
            :start-after: # common APIs start
            :end-before: # common APIs end
 
-        .. include:: ../apiref/torch/compress.rst
+        .. include:: ../../apiref/torch/compress.rst
            :start-after: # Channel pruning config starts
            :end-before: # Channel pruning config ends

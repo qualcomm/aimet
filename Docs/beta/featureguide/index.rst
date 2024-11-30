@@ -17,10 +17,7 @@ Optimization Techniques
     Batch norm re-estimation <bn>
     Quantization analyzer <quant_analyzer>
     Visualization <visualization>
-    Weight SVD <weight_svd>
-    Spatial SVD <spatial_svd>
-    Channel pruning <channel_pruning>
-
+    Compression <compression/index>
 
 :ref:`Adaptive rounding (Adaround) <featureguide-adaround>`
 ===========================================================
@@ -73,17 +70,9 @@ Automatically identify sensitive areas and hotspots in the model.
 
 Automatically identify sensitive areas and hotspots in the model.
 
-:ref:`Weight singular value decomposition (Weight SVD) <featureguide-weight-svd>`
-=================================================================================
+:ref:`Compression <featureguide-compression-index>`
+===================================================
 
-Decomposes one large 2D convolution or fully connected layer into two smaller layers.
+Reduces pre-trained model’s Multiply-accumulate(MAC) and memory costs with a minimal drop in accuracy.
+AIMET supports various compression techniques like Weight SVD, Spatial SVD and Channel pruning.
 
-:ref:`Spatial singular value decomposition (Spatial SVD) <featureguide-spatial-svd>`
-====================================================================================
-
-Decomposes one large 2D convolution layer into two smaller layers.
-
-:ref:`Channel pruning (CP) <featureguide-channel-pruning>`
-==========================================================
-
-Prunes redundant input channels from 2D convolution layers.
