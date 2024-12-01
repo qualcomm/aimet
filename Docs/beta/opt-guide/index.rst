@@ -1,21 +1,29 @@
 .. _opt-guide-index:
 
-##################
-Model Optimization
-##################
+#######################
+Quantization user guide
+#######################
 
 .. toctree::
     :hidden:
 
-    Overview <overview/index>
-    Quantization <quantization/index>
-    Compression <compression/index>
-    
+    Quantization workflow <quantization_workflow>
+    Debugging guidelines <debugging_guidelines>
+    On-target inference <on_target_inference>
 
-This user guide is organized into the following sections:
+This quantization user guide is organized into the following sections:
 
-:ref:`Overview <opt-guide-overview-index>` is a general discussion of how AIMET optimizes models.
+Quantization workflow
+=====================
 
-:ref:`Quantization <opt-guide-quantization-index>` describes how AIMET applies quantization techniques.
+For overall workflow to quantize model using AIMET toolkit, see the :doc:`Quantization workflow <quantization_workflow>`.
 
-:ref:`Compression <opt-guide-compression-index>` describes how AIMET applies compression techniques.
+Debugging guidelines
+====================
+
+For set of debugging steps to improve the performance of quantized model, see the :doc:`Debugging guidelines <debugging_guidelines>`
+
+On-target inference
+===================
+
+For instructions on how to deploy quantized model to different target runtimes, see the :doc:`On-target inference <on_target_inference>`.
