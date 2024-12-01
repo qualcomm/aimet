@@ -15,8 +15,7 @@ Optimization Techniques
     Quantization aware training (QAT) <qat>
     Automatic quantization (AutoQuant) <autoquant>
     Batch norm re-estimation <bn>
-    Quantization analyzer <quant_analyzer>
-    Visualization <visualization>
+    Analysis tools <analysis tools/index>
     Compression <compression/index>
 
 :ref:`Adaptive rounding (Adaround) <featureguide-adaround>`
@@ -60,15 +59,10 @@ Analyzes the model, determines the best sequence of AIMET post-training quantiza
 
 Re-estimated statistics are used to adjust the quantization scale parameters of preceding convolution or linear layers, effectively folding the BN layers.
 
-:ref:`Quantization analyzer (QuantAnalzer) <featureguide-quant-analyzer>`
-=========================================================================
+:ref:`Analysis tools <featureguide-analysis-tools-index>`
+=========================================================
 
-Automatically identify sensitive areas and hotspots in the model.
-
-:ref:`Visualization <featureguide-visualization>`
-=================================================
-
-Automatically identify sensitive areas and hotspots in the model.
+Analysis tools to automatically identify sensitive areas and hotspots in your pre-trained model.
 
 :ref:`Compression <featureguide-compression-index>`
 ===================================================
