@@ -85,6 +85,7 @@ still accessible via :mod:`aimet_torch` namespace as before.
     aimet_torch.v2.quantization <v2/quantization>
     aimet_torch.v2.adaround <v2/adaround>
     aimet_torch.v2.seq_mse <v2/seq_mse>
+    aimet_torch.v2.quantsim.config_utils.set_grouped_blockwise_quantization_for_weights <v2/lpbq>
     aimet_torch.v2.quant_analyzer <v2/quant_analyzer>
     aimet_torch.v2.visualization_tools <v2/interactive_visualization>
 
@@ -98,5 +99,6 @@ AIMET core APIs for PyTorch framework.
 - :ref:`aimet_torch.v2.quantization <apiref-torch-quantization>`
 - :ref:`aimet_torch.v2.adaround <apiref-torch-v2-adaround>`
 - :ref:`aimet_torch.v2.seq_mse <apiref-torch-v2-seq-mse>`
+- :ref:`aimet_torch.v2.quantsim.config_utils.set_grouped_blockwise_quantization_for_weights <apiref-torch-v2-lpbq>`
 - :ref:`aimet_torch.v2.quant_analyzer <apiref-torch-v2-quant-analyzer>`
 - :ref:`aimet_torch.v2.visualization_tools <api-torch-v2-interactive-visualization>`
