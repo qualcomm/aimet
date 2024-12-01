@@ -212,6 +212,7 @@ Execute AIMET cross-layer equalization API
 
         **Output**
         ::
+
             *** After cross-layer equalization ***
 
             Prev Conv weight

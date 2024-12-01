@@ -15,6 +15,7 @@ aimet_torch API
     aimet_torch.quant_analyzer <quant_analyzer>
     aimet_torch.autoquant <autoquant>
     aimet_torch.bn_reestimation <bn>
+    aimet_torch.layer_output_utils <layer_output_generation>
     aimet_torch.compress <compress>
 
 aimet_torch
@@ -34,6 +35,7 @@ AIMET quantization for PyTorch models provides the following functionality.
 - :ref:`aimet_torch.quant_analyzer <apiref-torch-quant-analyzer>`
 - :ref:`aimet_torch.autoquant <apiref-torch-autoquant>`
 - :ref:`aimet_torch.bn_reestimation <apiref-torch-bn>`
+- :ref:`aimet_torch.layer_output_utils <apiref-torch-layer-output-generation>`
 - :ref:`aimet_torch.compress <apiref-torch-compress>`
 
 aimet_torch.v2
@@ -72,7 +74,6 @@ from :mod:`aimet_torch` to :mod:`aimet_torch.v2` as below!
    -from aimet_torch.quant_analyzer import QuantAnalyzer
    +from aimet_torch.v2.quant_analyzer import QuantAnalyzer
 
-
 All the other APIs that didn't changed in or are orthogonal with :mod:`aimet_torch.v2` will be
 still accessible via :mod:`aimet_torch` namespace as before.
 
@@ -82,7 +83,10 @@ still accessible via :mod:`aimet_torch` namespace as before.
     aimet_torch.v2 migration guide <v2/migration_guide>
     aimet_torch.v2.nn <v2/nn>
     aimet_torch.v2.quantization <v2/quantization>
+    aimet_torch.v2.adaround <v2/adaround>
     aimet_torch.v2.seq_mse <v2/seq_mse>
+    aimet_torch.v2.quant_analyzer <v2/quant_analyzer>
+    aimet_torch.v2.visualization_tools <v2/interactive_visualization>
 
 For more detailed information about how to migrate to :mod:`aimet_torch.v2`,
 see :ref:`aimet_torch.v2 migration guide <torch-migration-guide>`
@@ -95,3 +99,4 @@ AIMET core APIs for PyTorch framework.
 - :ref:`aimet_torch.v2.adaround <apiref-torch-v2-adaround>`
 - :ref:`aimet_torch.v2.seq_mse <apiref-torch-v2-seq-mse>`
 - :ref:`aimet_torch.v2.quant_analyzer <apiref-torch-v2-quant-analyzer>`
+- :ref:`aimet_torch.v2.visualization_tools <api-torch-v2-interactive-visualization>`
