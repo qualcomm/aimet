@@ -1,4 +1,4 @@
-.. _featureguide-seq_mse:
+.. _featureguide-seq-mse:
 
 ##############
 Sequential MSE

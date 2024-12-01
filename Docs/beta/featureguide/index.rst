@@ -26,7 +26,9 @@ Uses training data to improve accuracy over naïve rounding.
 :ref:`Sequential MSE <featureguide-seq-mse>`
 ============================================
 
-tbd
+Sequential MSE (SeqMSE) is a method that searches for optimal quantization encodings per operation
+(i.e. per layer) such that the difference between the original output activation and the
+corresponding quantization-aware output activation is minimized.
 
 :ref:`Low power blockwise quantization <featureguide-lpbq>`
 ===========================================================
