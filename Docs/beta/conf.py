@@ -270,8 +270,6 @@ autodoc_mock_imports.append("aimet_common.libpymo")
 
 # aimet_torch
 autodoc_mock_imports.extend(["aimet_common.aimet_tensor_quantizer", "aimet_common.AimetTensorQuantizer"])
-from unittest import mock
-sys.modules["onnxscript"] = mock.Mock() # Mocking onnxscript with autodoc causes import failures with torch 2.0
 
 # aimet_tensorflow
 autodoc_mock_imports.append("aimet_common.libaimet_tf_ops")

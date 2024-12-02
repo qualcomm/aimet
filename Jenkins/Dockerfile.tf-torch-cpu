@@ -149,10 +149,10 @@ RUN python3 -m pip --no-cache-dir install \
         mock \
         nbsphinx \
         'numpy<1.24,>=1.20.5' \
-        onnx==1.12.0 \
+        onnx~=1.16.1 \
         onnxscript \
         onnxsim \
-        onnxruntime==1.18.1 \
+        onnxruntime~=1.18.1 \
         onnxruntime-extensions \
         opencv-python \
         peft \
@@ -180,17 +180,11 @@ RUN python3 -m pip --no-cache-dir install \
         sphinx-jinja \
         sphinx-rtd-theme \
         sphinx-tabs \
-        tensorboard==2.10.1 \
-        tensorboardX==2.6 \
-        tensorflow-cpu==2.10.1 \
-        tensorflow-hub \
-        tensorflow-model-optimization \
-        tensorlayer==2.2.1 \
         timm==0.4.12 \
-        torch==1.13.1+cpu -f https://download.pytorch.org/whl/torch_stable.html \
-        torchaudio==0.13.1 -f https://download.pytorch.org/whl/torch_stable.html \
-        torchtext==0.14.1 \
-        torchvision==0.14.1+cpu -f https://download.pytorch.org/whl/torch_stable.html \
+        torch==2.1.2+cpu -f https://download.pytorch.org/whl/torch_stable.html \
+        torchaudio==2.1.2+cpu -f https://download.pytorch.org/whl/torch_stable.html \
+        torchtext \
+        torchvision==0.16.2+cpu -f https://download.pytorch.org/whl/torch_stable.html \
         tqdm \
         transformers==4.38.1 \
         wget && \
@@ -245,6 +239,23 @@ RUN python3 -m pip install bokeh==3.2.2 hvplot==0.9.2
 # Remove existing Pillow & Pillow-SIMD and replace with correct version of Pillow-SIMD.
 RUN python3 -m pip uninstall -y Pillow Pillow-SIMD
 RUN python3 -m pip --no-cache-dir install Pillow-SIMD==9.0.0.post1
+
+# Force-install the TensorFlow packages
+RUN unset PIP_CONFIG_FILE && \
+    python3 -m pip install --upgrade --force-reinstall --isolated \
+        tensorboard==2.10.1 \
+        tensorboardX==2.6 \
+        tensorflow-cpu==2.10.1 \
+        tensorflow-hub \
+        tensorflow-model-optimization \
+        tensorlayer==2.2.1
+
+# Force-install the protobuf package
+# The protobuf library is necessary for grpcio-tools, onnx, and tensorflow-cpu.
+# Version protobuf==3.20.2 is compatible with all these packages.
+RUN unset PIP_CONFIG_FILE && \
+    python3 -m pip install --upgrade --force-reinstall --isolated \
+        protobuf==3.20.2
 
 RUN apt-get update && apt-get install -y gnupg2
 RUN wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add - && echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-14 main" >> /etc/apt/sources.list
