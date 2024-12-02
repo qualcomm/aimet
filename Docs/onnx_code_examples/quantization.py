@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2022, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -35,60 +35,157 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: skip-file
-
 # imports start
+import math
+import os
 
 import numpy as np
-from onnxsim import simplify
-from aimet_onnx.quantsim import QuantizationSimModel
+import onnx
+import onnxsim
+import torch
 from aimet_common.defs import QuantScheme
-
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
+from aimet_onnx.defs import DataLoader
+from aimet_onnx.quantsim import QuantizationSimModel
+from datasets import load_dataset
+from torchvision import transforms
+from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
+from tqdm import tqdm
 # imports end
 
-def pass_calibration_data(session):
-    """
-    The User of the QuantizationSimModel API is expected to write this function based on their data set.
-    This is not a working function and is provided only as a guideline.
+# Load the model
+pt_model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
+input_shape = (1, 3, 224, 224)
+dummy_input = torch.randn(input_shape)
 
-    :param session: Model's session
-    :return:
-    """
+# Modify file_path as you wish, we are using temporary directory for now
+file_path = os.path.join('/tmp', f'mobilenet_v2.onnx')
+torch.onnx.export(
+    pt_model,
+    (dummy_input,),
+    file_path,
+    input_names=['input'],
+    output_names=['output'],
+    dynamic_axes={
+        'input': {0: 'batch_size'},
+        'output': {0: 'batch_size'},
+    },
+)
 
-    # User action required
-    # The following line of code is an example of how to use the ImageNet data's validation data loader.
-    # Replace the following line with your own dataset's validation data loader.
-    data_loader = None  # Your Dataset's data loader
+# Load exported ONNX model
+model = onnx.load_model(file_path)
+# End of loading the model
 
-    # User action required
-    # For computing the activation encodings, around 1000 unlabelled data samples are required.
-    # Edit the following 2 lines based on your dataloader's batch size.
-    # batch_size * max_batch_counter should be 1024
-    batch_size = 64
-    max_batch_counter = 16
+# Prepare model with onnx-simplifier
+try:
+    model, _ = onnxsim.simplify(model)
+except:
+    print('ONNX Simplifier failed. Proceeding with unsimplified model')
+# End of prepare model
 
-    input_tensor = None  # input tensor in session
+# Set up dataloader
+dataset = load_dataset(
+    'ILSVRC/imagenet-1k',
+    split='validation',
+).shuffle()
 
-    current_batch_counter = 0
-    for input_data, _ in data_loader:
-        session.run(None, input_data)
 
-        current_batch_counter += 1
-        if current_batch_counter == max_batch_counter:
-            break
+class CustomDataLoader(DataLoader):
+    def __init__(
+        self,
+        data: np.ndarray,
+        batch_size: int,
+        iterations: int,
+        unlabeled: bool = True,
+    ):
+        super().__init__(data, batch_size, iterations)
+        self._current_iteration = 0
+        self._unlabeled = unlabeled
 
-def quantize_model():
-    onnx_model = Model()
-    # Simplify the model
-    onnx_model, _ = simplify(onnx_model)
-    input_shape = (1, 3, 224, 224)
-    dummy_data = np.random.randn(*input_shape).astype(np.float32)
-    dummy_input = {'input' : dummy_data}
-    sim = QuantizationSimModel(onnx_model, dummy_input, quant_scheme=QuantScheme.post_training_tf,
-                               rounding_mode='nearest', default_param_bw=8, default_activation_bw=8,
-                               use_symmetric_encodings=False, use_cuda=False)
+    def __iter__(self):
+        self._current_iteration = 0
+        return self
 
-    sim.compute_encodings(pass_calibration_data, None)
+    def __next__(self):
+        if self._current_iteration < self.iterations:
+            start = self._current_iteration * self.batch_size
+            end = start + self.batch_size
+            self._current_iteration += 1
 
-    # Evaluate the quant sim
-    forward_pass_function(sim.session)
+            batch_data = self._data[start:end]
+            if self._unlabeled:
+                return np.stack(batch_data['image'])
+            else:
+                return np.stack(batch_data['image']), np.stack(batch_data['label'])
+        else:
+            raise StopIteration
 
+
+preprocess = transforms.Compose(
+    [
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+)
+
+
+def transforms(examples):
+    examples['image'] = [
+        preprocess(image.convert('RGB')) for image in examples['image']
+    ]
+    return examples
+
+
+dataset.set_transform(transforms)
+
+BATCH_SIZE = 32
+NUM_CALIBRATION_SAMPLES = 1024
+NUM_EVAL_SAMPLES = 50000
+unlabeled_data_loader = CustomDataLoader(
+    dataset, BATCH_SIZE, math.ceil(NUM_CALIBRATION_SAMPLES / BATCH_SIZE)
+)
+eval_data_loader = CustomDataLoader(
+    dataset, BATCH_SIZE, math.ceil(NUM_EVAL_SAMPLES / BATCH_SIZE), unlabeled=False
+)
+# End of setting up dataloader
+
+# Create QuantSim object
+PARAM_BITWIDTH = 8
+ACTIVATION_BITWIDTH = 16
+sim = QuantizationSimModel(
+    model,
+    quant_scheme=QuantScheme.post_training_tf,
+    default_param_bw=PARAM_BITWIDTH,
+    default_activation_bw=ACTIVATION_BITWIDTH,
+    config_file=get_path_for_per_channel_config(),
+)
+# End of creating QuantSim object
+
+def pass_calibration_data(session, _):
+    input_name = session.get_inputs()[0].name
+    for inputs in tqdm(unlabeled_data_loader):
+        session.run(None, {input_name: inputs})
+
+# Compute quantization encodings
+sim.compute_encodings(pass_calibration_data, None)
+# End of computing quantization encodings
+
+# Evaluate quantized accuracy
+correct_predictions = 0
+total_samples = 0
+for inputs, labels in tqdm(eval_data_loader):
+    input_name = sim.session.get_inputs()[0].name
+    pred_probs, *_ = sim.session.run(None, {input_name: inputs})
+    pred_labels = np.argmax(pred_probs, axis=1)
+    correct_predictions += np.sum(pred_labels == labels)
+    total_samples += labels.shape[0]
+
+accuracy = correct_predictions / total_samples
+print(f'Quantized accuracy (W{PARAM_BITWIDTH}A{ACTIVATION_BITWIDTH}): {accuracy:.4f}')
+# Enc of quantized accuracy
+
+# Export the model
+sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2')
+# End of exporting the model
