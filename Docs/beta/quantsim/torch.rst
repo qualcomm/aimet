@@ -16,7 +16,7 @@ Workflow
 
 **Load the PyTorch Model**
 
-For this example, we are going to load a pretrained ResNet18 model from torchvision. Similarly, you can load any
+For this example, we are going to load a pretrained MobileNetV2 model from torchvision. Similarly, you can load any
 pretrained PyTorch model instead.
 
 .. literalinclude:: ../../torch_code_examples/quantsim_code_example.py

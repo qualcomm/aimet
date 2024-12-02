@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2022, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -38,10 +38,11 @@
 """ QuantSim and QAT code example to be used for documentation generation. """
 
 # PyTorch imports
-
 import torch
 import torch.cuda
-
+from torch.utils.data import DataLoader, random_split
+from torchvision import datasets, transforms
+from tqdm import tqdm
 # End of PyTorch imports
 
 
@@ -50,15 +51,14 @@ def pass_calibration_data(sim_model, forward_pass_args=None):
     The User of the QuantizationSimModel API is expected to write this function based on their data set.
     This is not a working function and is provided only as a guideline.
 
-    :param sim_model:
-    :param args: other arguments for the forwards
-    :return:
+    :param sim_model: QuantizationSimModel object
+    :param forward_pass_args: other arguments for the forwards
     """
 
     # User action required
     # The following line of code is an example of how to use the ImageNet data's validation data loader.
     # Replace the following line with your own dataset's validation data loader.
-    data_loader = ImageNetDataPipeline.get_val_dataloader()
+    data_loader = forward_pass_args
 
     # User action required
     # For computing the activation encodings, around 1000 unlabelled data samples are required.
@@ -73,7 +73,7 @@ def pass_calibration_data(sim_model, forward_pass_args=None):
     with torch.no_grad():
         for input_data, target_data in data_loader:
 
-            inputs_batch = input_data  # labels are ignored
+            inputs_batch = input_data.to("cuda")  # labels are ignored
             sim_model(inputs_batch)
 
             current_batch_counter += 1
@@ -84,9 +84,9 @@ def pass_calibration_data(sim_model, forward_pass_args=None):
 def quantize_and_finetune_example():
 
     # Load the model
-    from torchvision.models import resnet18
+    from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
-    model = resnet18(pretrained=True)
+    model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
     model = model.cuda()
 
     # Prepare the model
@@ -99,32 +99,75 @@ def quantize_and_finetune_example():
     input_shape = (1, 3, 224, 224)
     dummy_input = torch.randn(input_shape).cuda()
 
+    from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
     quant_sim = QuantizationSimModel(prepared_model, dummy_input=dummy_input,
-                                     quant_scheme=QuantScheme.post_training_tf_enhanced,
-                                     default_param_bw=8, default_output_bw=8,
-                                     config_file='../../TrainingExtensions/common/src/python/aimet_common/quantsim_config/'
-                                                 'default_config.json')
+                                     quant_scheme=QuantScheme.post_training_tf,
+                                     default_param_bw=8, default_output_bw=16,
+                                     config_file=get_path_for_per_channel_config())
 
     # Compute the Quantization Encodings
-    quant_sim.compute_encodings(pass_calibration_data, forward_pass_callback_args=None)
+    calibration_data_loader, eval_data_loader = get_calibration_and_eval_data_loaders('<your_imagenet_validation_data_path>')
+    quant_sim.compute_encodings(pass_calibration_data, forward_pass_callback_args=calibration_data_loader)
 
     # Finetune the model
     # User action required
     # The following line of code illustrates that the model is getting finetuned.
-    # Replace the following finetune() unction with your pipeline's finetune() function.
-    ImageNetDataPipeline.finetune(quant_sim.model, epochs=1, learning_rate=5e-7, learning_rate_schedule=[5, 10],
-                                  use_cuda=use_cuda)
+    # Replace the following lines to fit your pipeline.
+    quant_sim.model.train()
+    num_epochs = 1
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(quant_sim.model.parameters(), lr=1e-5)
+    for _ in range(num_epochs):
+        for inputs, labels in tqdm(calibration_data_loader):
+            inputs, labels = inputs.to('cuda'), labels.to('cuda')
+            logits = quant_sim.model(inputs)
+            loss = loss_fn(logits, labels)
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
 
     # Determine simulated accuracy
-    accuracy = ImageNetDataPipeline.evaluate(quant_sim.model, use_cuda)
-    print(accuracy)
+    quant_sim.model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, labels in tqdm(eval_data_loader):
+            inputs, labels = inputs.to('cuda'), labels.to('cuda')
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+        print(f'Accuracy: {correct / total:.4f}')
 
     # Export the model
     # Export the model which saves pytorch model without any simulation nodes and saves encodings file for both
     # activations and parameters in JSON format
-    quant_sim.export(path='./', filename_prefix='quantized_resnet18', dummy_input=dummy_input.cpu())
-
+    quant_sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
     # End of example
+
+def get_calibration_and_eval_data_loaders(path: str):
+    transform = transforms.Compose(
+        [
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    dataset = datasets.ImageFolder(path, transform=transform)
+
+    batch_size = 32
+    calibration_data_size = batch_size * 64
+    eval_data_size = len(dataset) - calibration_data_size
+
+    calibration_dataset, eval_dataset = random_split(
+        dataset, [calibration_data_size, eval_data_size]
+    )
+
+    calibration_data_loader = DataLoader(calibration_dataset, batch_size=batch_size)
+    eval_data_loader = DataLoader(eval_dataset, batch_size=batch_size)
+    return calibration_data_loader, eval_data_loader
 
 
 if __name__ == '__main__':
