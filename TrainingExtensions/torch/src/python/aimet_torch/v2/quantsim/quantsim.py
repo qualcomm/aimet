@@ -316,7 +316,7 @@ class QuantizationSimModel(V1QuantizationSimModel):
             RuntimeError: Failed to run QuantizeDequantize since quantization parameters are not initialized.
             Please initialize the quantization parameters using `compute_encodings()`.
             >>> def run_forward_pass(quantized_model: torch.nn.Module):
-            ...     for input in train_datalaoder:
+            ...     for input in train_dataloader:
             ...         with torch.no_grad():
             ...             _ = quantized_model(input)
             ...
