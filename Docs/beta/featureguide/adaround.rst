@@ -6,7 +6,7 @@ Adaptive rounding
 
 Context
 =======
-`Adaptive rounding <https://arxiv.org/pdf/2004.10568>`_ (AdaRound) is a rounding mechanism for model weights that designed to adapt to the data and improve the accuracy of the quantized model.
+`Adaptive rounding <https://arxiv.org/pdf/2004.10568>`_ (AdaRound) is a rounding mechanism for model weights designed to adapt to the data to improve the accuracy of the quantized model.
 
 By default, AIMET uses nearest rounding for quantization, in which weight values are quantized to the nearest integer value.
 However, AdaRound uses training data to choose how to round quantized weights. This rounding technique improves the quantized model's accuracy in many cases.
