@@ -59,9 +59,9 @@ copyright = '2020, Qualcomm Innovation Center, Inc.'
 author = 'Qualcomm Innovation Center, Inc.'
 
 # The short X.Y version
-version = '2.0'
+version = '1.36'
 # The full version, including alpha/beta/rc tags
-release = '2.0'
+release = '1.36'
 if "SW_VERSION" in os.environ:
     version = os.environ['SW_VERSION']
 else:    
@@ -134,7 +134,7 @@ autosectionlabel_prefix_document = True
 # a list of builtin themes.
 #
 html_theme = 'furo'
-html_title = 'AI Model Efficiency Toolkit v. ' + release
+html_title = 'AI Model Efficiency Toolkit'
 # html_short_title = 'AIMET Docs v. ' + version
 # html_logo = 'images/brain_logo.png'
 # html_favicon = 'images/brain_logo16.png'
@@ -181,14 +181,21 @@ html_css_files = ['aimet-furo.css']    # Changes from default theme file.
 html_sidebars = {
     "**": [
         "sidebar/brand.html",
+        "sidebar/doc_versions.html",
+        "sidebar/search.html",
         "sidebar/scroll-start.html",
         "sidebar/navigation.html",
-#        "sidebar/search.html",
         "sidebar/scroll-end.html",
     ]
 }
 # Custom TOC settings
 
+# Parameters for use in templates
+
+html_context = {
+  'current_version' : "1.36",
+  'versions_page' : '<a href="https://quic.github.io/aimet-pages/releases/latest/versions.html">Other versions</a>'
+}
 
 # -- Options for HTMLHelp output ---------------------------------------------
 

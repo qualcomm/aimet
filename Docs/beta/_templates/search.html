@@ -1,0 +1,34 @@
+{% extends "page.html" %}
+
+{%- block regular_scripts -%}
+{{ super() }}
+<script src="{{ pathto('_static/searchtools.js', 1) }}"></script>
+<script src="{{ pathto('_static/language_data.js', 1) }}"></script>
+{%- endblock regular_scripts-%}
+
+{%- block htmltitle -%}
+<title>{{ _("Search") }} - {{ docstitle }}</title>
+{%- endblock htmltitle -%}
+
+{% block content %}
+<noscript>
+<div class="admonition error">
+  <p class="admonition-title">{% trans %}Error{% endtrans %}</p>
+  <p>
+    {% trans %}Please activate JavaScript to enable the search functionality.{% endtrans %}
+  </p>
+</div>
+</noscript>
+
+<div id="search-results"></div>
+{% endblock %}
+
+{% block scripts -%}
+{{ super() }}
+<script src="{{ pathto('searchindex.js', 1) }}"></script>
+{%- endblock scripts %}
+
+{% block site_meta %}
+{{ super() }}
+<meta name="robots" content="noindex" />
+{% endblock site_meta %}
