@@ -415,6 +415,7 @@ class _KerasModelPreparer:
         :param new_output_tensor: The new output tensor to update with
         :param model: The model currently being checked. Used to add model outputs
         """
+        # pylint: disable=too-many-nested-blocks
         if layer.name != new_output_tensor.name:
             new_name = new_output_tensor.name
             old_name_of_inputs = self.model_layers_connections[ModelLayerConnectionsProperties.INBOUND_NODES].pop(
@@ -429,6 +430,18 @@ class _KerasModelPreparer:
                 if layer.name in value:
                     idx = value.index(layer.name)
                     value[idx] = new_name
+
+            # Update the kwargs dict in case there's keras tensor
+            # pylint: disable=protected-access
+            for _, kwargs_dict in self.model_layers_connections[ModelLayerConnectionsProperties.CALL_KWARGS].items():
+                for key, values in kwargs_dict.items():
+                    if isinstance(values, List):
+                        for i, value in enumerate(values):
+                            if isinstance(value, KerasTensor) and value._keras_history.layer.name == layer.name:
+                                values[i] = new_output_tensor
+                    elif isinstance(values, KerasTensor) and values._keras_history.layer.name == layer.name:
+                        kwargs_dict[key] = new_output_tensor
+
 
             self.model_layers_connections[ModelLayerConnectionsProperties.OUTPUT_TENSORS].update(
                 {new_name: new_output_tensor}
@@ -580,10 +593,20 @@ class _KerasModelPreparer:
         """
         call_args = self._get_updated_call_args(layer)
 
+        # pylint: disable=too-many-nested-blocks
         if isinstance(layer, TFOpLambda):
             if call_kwargs := self._get_call_kwargs(layer):
                 # Special case for 'tf.concat' that takes a list of inputs with kwargs attached
                 # may need to updated in the future
+
+                # Remove keras tensor from call_args in case it is used in one of the keyword arguments
+                for _, values in call_kwargs.items():
+                    if isinstance(values, List):
+                        for value in values:
+                            if isinstance(value, KerasTensor) and value in call_args:
+                                call_args.remove(value)
+                    elif isinstance(values, KerasTensor) and values in call_args:
+                        call_args.remove(values)
 
                 if "concat" in layer.name:
                     new_output_tensor = layer.call([*call_args], **call_kwargs)
