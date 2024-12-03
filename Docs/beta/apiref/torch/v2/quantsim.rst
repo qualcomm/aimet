@@ -8,5 +8,5 @@ aimet_torch.v2.quantsim
   # start-after
 
 .. autoclass:: aimet_torch.v2.quantsim.QuantizationSimModel
-    :members:
+    :members: compute_encodings, export
     :member-order: bysource
