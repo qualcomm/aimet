@@ -38,6 +38,8 @@
 
 from typing import overload, Callable, Type
 import torch
+import inspect
+import re
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.product import Product
@@ -60,8 +62,6 @@ _MATH_INVARIANT_OPS = (
     torch.nn.ChannelShuffle,
     torch.nn.Identity
 )
-
-MASK_ADD_PREV_OPS = ['Div', 'MatMul']
 
 
 def _is_math_invariant_op(module: torch.nn.Module):
@@ -278,14 +278,15 @@ class QuantizedMaskAdd(torch.nn.Module):
         self.add = QuantizationMixin.from_module(custom.Add())
 
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        # Get shape from input to avoid graph optimization in 
-        # `torch.onnx.utils._optimize_graph` for multiple Reshape ops when export
         bsz, _, seq_len, ctx_len = input.shape
         return self.add(input, self.nullrequant(mask, [bsz, -1, seq_len, ctx_len]))
 
 
 def apply_requant_mask(sim: 'QuantizationSimModel'):
-
+    """
+    Apply adaptive quantized attention mask to sim model of LLMs.
+    :param sim: Quantsim model to apply adaptive attention mask for
+    """
     model_name = sim.connected_graph._model_name # pylint: disable=protected-access
     quant_modules = {name: module for name, module in sim.model.named_modules()
                      if isinstance(module, BaseQuantizationMixin)}
@@ -294,10 +295,12 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
         original_module = connected_graph._name_to_module[f'{model_name}.{name}']
         return connected_graph._module_to_op_dict[original_module]
 
+    model_input_names = list(inspect.signature(sim.model.forward).parameters)
     for name, module in quant_modules.items():
         if isinstance(module, custom.Add):
             add_op = get_connected_graph_op(sim.connected_graph, model_name, name)
-            if add_op.inputs[1].is_model_input and add_op.input_ops[0].type in MASK_ADD_PREV_OPS:
+            if add_op.inputs[1].is_model_input and \
+                model_input_names[int(re.findall(r'\d+', add_op.inputs[1].name)[0])] == 'attention_mask':
                 q_mask_add = QuantizedMaskAdd()
                 q_mask_add.nullrequant.input_quantizers[0] = LazyQuantizer(module.input_quantizers[1].bitwidth,
                                                                'nearest',
@@ -315,6 +318,8 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
                                                                ).realize()
                 q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
                 if module.input_quantizers[1].is_initialized() and module.output_quantizers[0].is_initialized():
-                    q_mask_add.nullrequant.input_quantizers[0].set_range(torch.finfo(torch.float16).min, module.input_quantizers[1].max)
-                    q_mask_add.nullrequant.output_quantizers[0].set_range(module.output_quantizers[0].min, module.input_quantizers[1].max)
+                    q_mask_add.nullrequant.input_quantizers[0].set_range(torch.finfo(torch.float16).min, 
+                                                                         module.input_quantizers[1].max)
+                    q_mask_add.nullrequant.output_quantizers[0].set_range(module.output_quantizers[0].min, 
+                                                                          module.input_quantizers[1].max)
                 setattr(sim.model, name, q_mask_add)
