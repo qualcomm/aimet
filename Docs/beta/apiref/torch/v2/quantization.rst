@@ -70,7 +70,7 @@ this is by using :meth:`QuantizerBase.compute_encodings`.
     print()
 
     # Quantizer encoding initialized. Now we're ready to run forward
-    input_dq = qtzr(input)
+    input_qdq = qtzr(input)
 
 .. rst-class:: script-output
 
@@ -92,14 +92,14 @@ Note that the output of the quantizer is either a :class:`QuantizedTensor<aimet_
 .. code-block:: Python
 
     print("Output (dequantized representation):")
-    print(input_dq)
-    print(f"  * scale: {input_dq.encoding.scale}")
-    print(f"  * offset: {input_dq.encoding.offset}")
-    print(f"  * bitwidth: {input_dq.encoding.bitwidth}")
-    print(f"  * signed: {input_dq.encoding.signed}")
+    print(input_qdq)
+    print(f"  * scale: {input_qdq.encoding.scale}")
+    print(f"  * offset: {input_qdq.encoding.offset}")
+    print(f"  * bitwidth: {input_qdq.encoding.bitwidth}")
+    print(f"  * signed: {input_qdq.encoding.signed}")
     print()
 
-    input_q = input_dq.quantize() # Integer representation of input_dq
+    input_q = input_qdq.quantize() # Integer representation of input_qdq
     print("Output (quantized representation):")
     print(input_q)
     print(f"  * scale: {input_q.encoding.scale}")
@@ -108,10 +108,10 @@ Note that the output of the quantizer is either a :class:`QuantizedTensor<aimet_
     print(f"  * signed: {input_q.encoding.signed}")
 
     # Sanity checks
-    # 1. Quantizing and dequantizing input_dq shouldn't change the result
-    assert torch.equal(input_dq, input_q.dequantize())
+    # 1. Quantizing and dequantizing input_qdq shouldn't change the result
+    assert torch.equal(input_qdq, input_q.dequantize())
     # 2. (De-)Quantizing an already (de-)quantized tensor shouldn't change the result
-    assert torch.equal(input_dq, input_dq.dequantize())
+    assert torch.equal(input_qdq, input_qdq.dequantize())
     assert torch.equal(input_q, input_q.quantize())
 
 
@@ -199,8 +199,8 @@ Note that:
     (kyunggeu) Can't use this cool example yet because it's not implemented ;(
 
     .. code-block:: Python
-        input_dq = qtzr(input)
-        input_q = input_dq.quantize() # Integer representation of input_dq
+        input_qdq = qtzr(input)
+        input_q = input_qdq.quantize() # Integer representation of input_qdq
 
         ch_0 = input_q[:, 0, :, :]
         ch_1 = input_q[:, 1, :, :]
@@ -221,8 +221,8 @@ Note that:
 
 .. code-block:: Python
 
-    input_dq = qtzr(input)
-    input_q = input_dq.quantize() # Integer representation of input_dq
+    input_qdq = qtzr(input)
+    input_q = input_qdq.quantize() # Integer representation of input_qdq
 
     print("Output (quantized representation):")
     print(input_q)
@@ -327,8 +327,8 @@ Note that:
 
 .. code-block:: Python
 
-    input_dq = qtzr(input)
-    input_q = input_dq.quantize() # Integer representation of input_dq
+    input_qdq = qtzr(input)
+    input_q = input_qdq.quantize() # Integer representation of input_qdq
     print("Output (quantized representation)")
     print(input_q)
     print(f"  * scale: {input_q.encoding.scale}")
