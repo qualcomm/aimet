@@ -13,6 +13,7 @@ aimet_onnx API
     aimet_onnx.quantsim.set_grouped_blockwise_quantization_for_weights <lpbq>
     aimet_onnx.batch_norm_fold <bnf>
     aimet_onnx.cross_layer_equalization <cle>
+    aimet_onnx.mixed_precision <amp>
     aimet_onnx.quant_analyzer <quant_analyzer>
     aimet_onnx.auto_quant_v2 <autoquant>
     aimet_onnx.layer_output_utils <layer_output_generation>
@@ -25,6 +26,7 @@ AIMET quantization for ONNX models provides the following functionality.
 - :ref:`aimet_onnx.quantsim.set_grouped_blockwise_quantization_for_weights <apiref-onnx-lpbq>`
 - :ref:`aimet_onnx.batch_norm_fold <apiref-onnx-bnf>`
 - :ref:`aimet_onnx.cross_layer_equalization <apiref-onnx-cle>`
+- :ref:`aimet_onnx.mixed_precision <api-onnx-amp>`
 - :ref:`aimet_onnx.quant_analyzer <apiref-onnx-quant-analyzer>`
 - :ref:`aimet_onnx.autoquant <apiref-onnx-autoquant>`
 - :ref:`aimet_onnx.layer_output_utils <apiref-onnx-layer-output-generation>`

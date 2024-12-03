@@ -13,6 +13,7 @@ Optimization Techniques
     Batch norm folding <bnf>
     Cross-layer equalization (CLE) <cle>
     Quantization aware training (QAT) <qat>
+    Mixed precision <mixed precision/index>
     Automatic quantization (AutoQuant) <autoquant>
     Batch norm re-estimation <bn>
     Analysis tools <analysis tools/index>
@@ -50,11 +51,15 @@ Scales the parameter ranges across different channels to increase the range for 
 
 Fine-tunes the model parameters in the presence of quantization noise.
 
+:ref:`Mixed precision <featureguide-mp-index>`
+==============================================
+
+Allows quantization sensitive layers in higher precision (bit-width).
+
 :ref:`Automatic quantization (AutoQuant) <featureguide-autoquant>`
 ==================================================================
 
 Analyzes the model, determines the best sequence of AIMET post-training quantization (PTQ) techniques, and applies these techniques.
-
 
 :ref:`Batch norm re-estimation (BN) <featureguide-bn>`
 ======================================================
