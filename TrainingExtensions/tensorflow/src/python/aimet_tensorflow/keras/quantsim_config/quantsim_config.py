@@ -174,11 +174,19 @@ def _initialize_input_quantizers(layer: layers.Layer, quant_settings: QuantizerS
     :param enabled: Flag for quantized or not
     :return: Input quantizers corresponding to layer
     """
+    keras_inputs = layer.inbound_nodes[0].keras_inputs
+    num_inputs = len(keras_inputs)
+    quantizer_state_list = []
+    for i in range(num_inputs):
+        quantizer_state_list.append(enabled and (keras_inputs[i].dtype in QUANT_ALLOWED_DTYPES))
 
-    num_inputs = len(layer.inbound_nodes[0].keras_inputs)
     # Special case for TFOpLambda layers as the input can be other Keras layers, tf operations, or static tf.tensors
-    if isinstance(layer, TFOpLambda):
-        num_inputs = len(layer.input) if isinstance(layer.input, List) else num_inputs
+    if isinstance(layer, TFOpLambda) and isinstance(layer.input, List):
+        num_inputs = len(layer.input)
+        quantizer_state_list = []
+        for i in range(num_inputs):
+            quantizer_state_list.append(enabled and (layer.input[i].dtype in QUANT_ALLOWED_DTYPES))
+
     input_quantizers = []
     for i in range(num_inputs):
         activation_tensor_quantizer = ActivationTensorQuantizer(layer,
@@ -190,7 +198,8 @@ def _initialize_input_quantizers(layer: layers.Layer, quant_settings: QuantizerS
                                                                 quant_settings.is_symmetric,
                                                                 quant_settings.use_strict_symmetric,
                                                                 quant_settings.use_unsigned_symmetric,
-                                                                enabled and (layer.input[i].dtype if num_inputs > 1 else layer.input.dtype) in QUANT_ALLOWED_DTYPES)
+                                                                quantizer_state_list[i])
+
         input_quantizers.append(activation_tensor_quantizer)
     return input_quantizers
 
