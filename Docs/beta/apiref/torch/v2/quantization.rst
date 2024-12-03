@@ -157,20 +157,18 @@ Channelwise quantization can be easily done by creating the quantizer with the d
 
 .. code-block:: Python
 
+    import torch
     import aimet_torch.v2.quantization as Q
-    N, C, H, W = 1, 3, 16, 16
+    Cout, Cin = 8, 8
 
-    input = torch.empty(N, C, H, W)
-    input[:, 0, :, :] = (torch.arange(256) / 256).view(16, 16)
-    input[:, 1, :, :] = input[:, 0, :, :] * 2
-    input[:, 2, :, :] = input[:, 1, :, :] * 4
+    weight = (torch.arange(-32, 32) / 64).view(Cin, Cout).transpose(0, 1)
 
-    # Channelwise quantization along the channel axis (C) of the input
-    qtzr = Q.affine.QuantizeDequantize(shape=(1, C, 1, 1), bitwidth=8, symmetric=False)
+    # Channelwise quantization along the output channel axis (Cout) of the weight
+    qtzr = Q.affine.QuantizeDequantize(shape=(Cout, 1), bitwidth=8, symmetric=True)
     print(qtzr)
 
     with qtzr.compute_encodings():
-        _ = qtzr(input)
+        _ = qtzr(weight)
 
     scale = qtzr.get_scale()
     offset = qtzr.get_offset()
@@ -181,19 +179,29 @@ Channelwise quantization can be easily done by creating the quantizer with the d
 
   .. code-block:: none
 
-    QuantizeDequantize(shape=(1, 3, 1, 1), qmin=0, qmax=255, symmetric=False)
-      * scale: tensor([[[[0.0039]],
-                        [[0.0078]],
-                        [[0.0312]]]], grad_fn=<DivBackward0>) (shape: (1, 3, 1, 1))
-      * offset: tensor([[[[0.]],
-                         [[0.]],
-                         [[0.]]]], grad_fn=<SubBackward0>) (shape: (1, 3, 1, 1))
+    QuantizeDequantize(shape=(8, 1), qmin=-128, qmax=127, symmetric=True)
+      * scale: tensor([[0.0039],
+            [0.0038],
+            [0.0037],
+            [0.0035],
+            [0.0034],
+            [0.0036],
+            [0.0037],
+            [0.0038]], grad_fn=<DivBackward0>) (shape: (8, 1))
+      * offset: tensor([[0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.]]) (shape: (8, 1))
 
 
 Note that:
 
-* The shape :math:`(1, C, 1, 1)` of scale and offset is equal to that of the quantizer
-* Every channel :math:`c \in [0, C)` of the quantized tensor is in the quantization grid of :math:`[0, 255]`, associated with :math:`scale_{:, c, :, :}` respectively
+* The shape :math:`(C_{out}, 1)` of scale and offset is equal to that of the quantizer
+* Every channel :math:`c \in [0, C_{out})` of the quantized tensor is in the quantization grid of :math:`[-128, 127]`, associated with :math:`scale_{c, :}` respectively
 
 ..
     (kyunggeu) Can't use this cool example yet because it's not implemented ;(
@@ -221,29 +229,44 @@ Note that:
 
 .. code-block:: Python
 
-    input_qdq = qtzr(input)
-    input_q = input_qdq.quantize() # Integer representation of input_qdq
+    weight_qdq = qtzr(weight)
+    weight_q = weight_qdq.quantize() # Integer representation of weight_qdq
 
     print("Output (quantized representation):")
-    print(input_q)
-    print(f"  * scale: {input_q.encoding.scale}")
-    print(f"  * offset: {input_q.encoding.offset}")
+    print(weight_q)
+    print(f"  * scale: {weight_q.encoding.scale}")
+    print(f"  * offset: {weight_q.encoding.offset}")
 
 .. rst-class:: script-output
 
   .. code-block:: none
 
     Output (quantized representation):
-    QuantizedTensor([[[[  0.,   1., ...], ..., [..., 254., 255.]],
-                      [[  0.,   1., ...], ..., [..., 254., 255.]],
-                      [[  0.,   1., ...], ..., [..., 254., 255.]]]],
+    QuantizedTensor([[-128.,  -96.,  -64.,  -32.,    0.,   32.,   64.,   96.],
+                     [-128.,  -95.,  -62.,  -29.,    4.,   37.,   70.,  103.],
+                     [-128.,  -94.,  -60.,  -26.,    9.,   43.,   77.,  111.],
+                     [-128.,  -93.,  -57.,  -22.,   13.,   49.,   84.,  119.],
+                     [-127.,  -91.,  -54.,  -18.,   18.,   54.,   91.,  127.],
+                     [-118.,  -83.,  -48.,  -13.,   22.,   57.,   92.,  127.],
+                     [-110.,  -76.,  -42.,   -8.,   25.,   59.,   93.,  127.],
+                     [-102.,  -70.,  -37.,   -4.,   29.,   61.,   94.,  127.]],
                     grad_fn=<AliasBackward0>)
-      * scale: tensor([[[[0.0039]],
-                        [[0.0078]],
-                        [[0.0312]]]], grad_fn=<DivBackward0>)
-      * offset: tensor([[[[0.]],
-                         [[0.]],
-                         [[0.]]]], grad_fn=<SubBackward0>)
+      * scale: tensor([[0.0039],
+            [0.0038],
+            [0.0037],
+            [0.0035],
+            [0.0034],
+            [0.0036],
+            [0.0037],
+            [0.0038]], grad_fn=<DivBackward0>)
+      * offset: tensor([[0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.],
+            [0.]])
 
 
 Blockwise Quantization
@@ -261,25 +284,22 @@ Blockwise quantization can be also easily done by creating the quantizer with th
 
     import torch
     import aimet_torch.v2.quantization as Q
-    N, C, H, W = 1, 3, 32, 32
-    input = torch.empty(N, C, H, W)
+    Cout, Cin = 8, 8
+    B = 4 # block size
     
-    B = 8 # block size
-    block = (torch.arange(256) / 256).view(B, 32)
-    input = torch.stack([
-        block * 1,  block * 2,  block * 3,  block * 4,
-        block * 5,  block * 6,  block * 7,  block * 8,
-        block * 9,  block * 10, block * 11, block * 12,
-    ]).view(N, C, H, W)
+    weight = torch.cat([
+        (torch.arange(-16, 16) / 32).view(B, Cout).transpose(0, 1),
+        (torch.arange(-16, 16) / 16).view(B, Cout).transpose(0, 1),
+    ], dim=1)
     
     # Blockwise quantization with block size B
-    qtzr = Q.affine.QuantizeDequantize(shape=(1, C, 4, 1),
-                                       block_size=(-1, 1, B, 32), # NOTE: -1 indicates wildcard block size
-                                       bitwidth=8, symmetric=False)
+    qtzr = Q.affine.QuantizeDequantize(shape=(Cout, Cin // B),
+                                       block_size=(-1, B), # NOTE: -1 indicates wildcard block size
+                                       bitwidth=8, symmetric=True)
     print(qtzr)
     
     with qtzr.compute_encodings():
-        _ = qtzr(input)
+        _ = qtzr(weight)
     
     scale = qtzr.get_scale()
     offset = qtzr.get_offset()
@@ -291,94 +311,68 @@ Blockwise quantization can be also easily done by creating the quantizer with th
   .. code-block:: none
 
 
-    QuantizeDequantize(shape=(1, 3, 4, 1), block_size=(-1, 1, 8, 32), qmin=0, qmax=255, symmetric=False)
-      * scale: tensor([[[[0.0039],
-                         [0.0078],
-                         [0.0117],
-                         [0.0156]],
-                        [[0.0195],
-                         [0.0234],
-                         [0.0273],
-                         [0.0312]],
-                        [[0.0352],
-                         [0.0391],
-                         [0.0430],
-                         [0.0469]]]], grad_fn=<DivBackward0>) (shape: (1, 3, 4, 1))
-      * offset: tensor([[[[0.],
-                          [0.],
-                          [0.],
-                          [0.]],
-                         [[0.],
-                          [0.],
-                          [0.],
-                          [0.]],
-                         [[0.],
-                          [0.],
-                          [0.],
-                          [0.]]]], grad_fn=<SubBackward0>) (shape: (1, 3, 4, 1))
+    QuantizeDequantize(shape=(8, 2), block_size=(-1, 4), qmin=-128, qmax=127, symmetric=True)
+      * scale: tensor([[0.0039, 0.0078],
+            [0.0037, 0.0073],
+            [0.0034, 0.0068],
+            [0.0032, 0.0063],
+            [0.0030, 0.0059],
+            [0.0032, 0.0064],
+            [0.0034, 0.0069],
+            [0.0037, 0.0074]], grad_fn=<DivBackward0>) (shape: (8, 2))
+      * offset: tensor([[0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.]]) (shape: (8, 2))
 
 Note that:
 
-* The shape :math:`(1, C, 4, 1)` of scale and offset is equal to that of the quantizer
-* For every channel :math:`c \in [0, C)`, each block :math:`b \in [0, B)` is in the quantization grid of :math:`[0, 255]`, associated with :math:`scale_{:, c, b, :}` respectively
-* In theory, blockwise quantization is equivalent to expanding the scale and offset by the factor of block size :math:`(-1, 1, B, 32)`
-  to construct the expanded scale and offset of shape :math:`(-1, C \times 1, 4 \times B, 1 \times 32)`, which is equal to the input shape :math:`(-1, 3, 32, 32)`.
-  **If the expanded scale and offset does not match the input shape, the quantizer will throw shape mismatch error in runtime.**
+* The shape :math:`(C_{out}, \frac{C_{in}}{B}) = (8, 2)` of scale and offset is equal to that of the quantizer
+* For every channel :math:`c \in [0, C_{out})`, each block :math:`b \in [0, \frac{C_{in}}{B})` is in the quantization grid of :math:`[-128, 127]`, associated with :math:`scale_{c, b:b+B}` respectively
+* If :math:`C_{in}` is not divisible by block size :math:`B`, the quantizer will throw shape mismatch error in runtime.
 
 .. code-block:: Python
 
-    input_qdq = qtzr(input)
-    input_q = input_qdq.quantize() # Integer representation of input_qdq
+    weight_qdq = qtzr(weight)
+    weight_q = weight_qdq.quantize() # Integer representation of weight_qdq
     print("Output (quantized representation)")
-    print(input_q)
-    print(f"  * scale: {input_q.encoding.scale}")
+    print(weight_q)
+    print(f"  * scale: {weight_q.encoding.scale}")
     print(f"  * offset: {offset} (shape: {tuple(offset.shape)})")
 
 .. rst-class:: script-output
 
   .. code-block:: none
 
-    QuantizedTensor([[[[  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.]],
-                      [[  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.]],
-                      [[  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.]],
-                      [[  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.],
-                       [  0.,   1., ...], ..., [..., 254., 255.]]]],
+    QuantizedTensor([[-128.,  -64.,    0.,   64., -128.,  -64.,    0.,   64.],
+                     [-128.,  -60.,    9.,   77., -128.,  -60.,    9.,   77.],
+                     [-128.,  -55.,   18.,   91., -128.,  -55.,   18.,   91.],
+                     [-128.,  -49.,   30.,  108., -128.,  -49.,   30.,  108.],
+                     [-127.,  -42.,   42.,  127., -127.,  -42.,   42.,  127.],
+                     [-107.,  -29.,   49.,  127., -107.,  -29.,   49.,  127.],
+                     [ -91.,  -18.,   54.,  127.,  -91.,  -18.,   54.,  127.],
+                     [ -76.,   -8.,   59.,  127.,  -76.,   -8.,   59.,  127.]],
                     grad_fn=<AliasBackward0>)
-      * scale: tensor([[[[0.0039],
-                         [0.0078],
-                         [0.0117],
-                         [0.0156]],
-                        [[0.0195],
-                         [0.0234],
-                         [0.0273],
-                         [0.0312]],
-                        [[0.0352],
-                         [0.0391],
-                         [0.0430],
-                         [0.0469]]]], grad_fn=<DivBackward0>)
-      * offset: tensor([[[[0.],
-                          [0.],
-                          [0.],
-                          [0.]],
-                         [[0.],
-                          [0.],
-                          [0.],
-                          [0.]],
-                         [[0.],
-                          [0.],
-                          [0.],
-                          [0.]]]], grad_fn=<SubBackward0>)
+      * scale: tensor([[0.0039, 0.0078],
+            [0.0037, 0.0073],
+            [0.0034, 0.0068],
+            [0.0032, 0.0063],
+            [0.0030, 0.0059],
+            [0.0032, 0.0064],
+            [0.0034, 0.0069],
+            [0.0037, 0.0074]], grad_fn=<DivBackward0>)
+      * offset: tensor([[0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.],
+            [0., 0.]]) (shape: (8, 2))
 
 
 API reference
