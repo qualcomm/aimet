@@ -278,6 +278,8 @@ class QuantizedMaskAdd(torch.nn.Module):
         self.add = QuantizationMixin.from_module(custom.Add())
 
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        # Get shape from input to avoid graph optimization in 
+        # `torch.onnx.utils._optimize_graph` for multiple Reshape ops when sim.export()
         bsz, _, seq_len, ctx_len = input.shape
         return self.add(input, self.nullrequant(mask, [bsz, -1, seq_len, ctx_len]))
 
