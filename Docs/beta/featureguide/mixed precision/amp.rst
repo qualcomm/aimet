@@ -103,20 +103,20 @@ Use Cases
 
 1) Choosing a very high accuracy drop (equivalent to setting allowed_accuracy_drop as None):
 
-    AIMET allows a user to save intermediate states for computation of the Pareto list. Therefore, if a user computes a Pareto
-    list corresponding to an accuracy drop of None, they can view the complete profile of how model accuracy will vary as bit-ops vary.
+AIMET allows a user to save intermediate states for computation of the Pareto list. Therefore, if a user computes a Pareto
+list corresponding to an accuracy drop of None, they can view the complete profile of how model accuracy will vary as bit-ops vary.
 
-    Thereafter, a user can visualize the Pareto curve plot and choose an optimal point for accuracy. The algorithm can be re-run with
-    the new accuracy drop to get a sim model with the required accuracy.
+Thereafter, a user can visualize the Pareto curve plot and choose an optimal point for accuracy. The algorithm can be re-run with
+the new accuracy drop to get a sim model with the required accuracy.
 
-    .. note::
+.. note::
 
-        The Pareto list is not modified during the second run.
+    The Pareto list is not modified during the second run.
 
 2) Choosing a lower accuracy drop and then continuing to compute pareto list from this point if more accuracy drop is acceptable:
 
-    To enable this a user can use the clean_start parameter in the API. If clean_start is set to False then the Pareto list will
-    start computation from the last point where it left off.
+To enable this a user can use the clean_start parameter in the API. If clean_start is set to False then the Pareto list will
+start computation from the last point where it left off.
 
 .. note::
 
@@ -145,17 +145,12 @@ Step 1
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
-        **Eval function**
+        **Load the model, define forward_pass and evaluation callbacks**
 
         .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
             :language: python
-            :pyobject: eval_callback_func
-
-        **Forward Pass**
-
-        .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: forward_pass_callback
+            :start-after: # Step 1
+            :end-before: # End step 1
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -164,25 +159,15 @@ Step 1
 
         .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
             :language: python
-            :lines: 31-53
+            :start-after: # Step 0. Import statements
+            :end-before: # End step 0
 
-        **Load Resnet50 model**
-
-        .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: get_model
-
-        **Eval function**
+        **Load the model, define forward_pass and evaluation callbacks**
 
         .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
             :language: python
-            :pyobject: get_eval_func
-
-        **Data Loader Wrapper function**
-
-        .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: get_data_loader_wrapper
+            :start-after: # Step 1
+            :end-before: # End step 1
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -194,17 +179,12 @@ Step 1
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
-        **Eval function**
+        **Instantiate a PyTorch model, convert to ONNX graph, define forward_pass and evaluation callbacks**
 
         .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
             :language: python
-            :pyobject: eval_callback_func
-
-        **Forward Pass**
-
-        .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: forward_pass_callback
+            :start-after: # Step 1
+            :end-before: # End step 1
 
 Step 2
 ~~~~~~
@@ -219,13 +199,8 @@ Step 2
 
         .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
             :language: python
-            :pyobject: quantize_with_mixed_precision
-
-        **Quantization with mixed precision start from existing cache**
-
-        .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: quantize_with_mixed_precision_start_from_existing_cache
+            :start-after: # Step 2
+            :end-before: # End step 2
 
     .. tab-item:: TensorFlow
         :sync: tf
@@ -234,13 +209,8 @@ Step 2
 
         .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
             :language: python
-            :pyobject: mixed_precision
-
-        **Quantization with fast mixed precision**
-
-        .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: fast_mixed_precision
+            :start-after: # Step 2
+            :end-before: # End step 2
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -249,13 +219,8 @@ Step 2
 
         .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
             :language: python
-            :pyobject: quantize_with_mixed_precision
-
-        **Quantization with mixed precision start from existing cache**
-
-        .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
-            :language: python
-            :pyobject: quantize_with_mixed_precision_start_from_existing_cache
+            :start-after: # Step 2
+            :end-before: # End step 2
 
 API
 ===

@@ -37,31 +37,31 @@
 
 # pylint: skip-file
 
-""" Keras Mixed precision code example to be used for documentation generation. """
-# Start of import statements
+""" Keras Mixed precision code example to be used for documentation generation."""
+
+# Step 0. Import statements
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-
 import random
 import numpy as np
-
-# imports specific to resnet50 pretrained model
 from tensorflow.keras.applications.resnet import ResNet50, preprocess_input, decode_predictions
 
-# AIMET imports
 from aimet_tensorflow.keras.quantsim import QuantizationSimModel
 from aimet_common.defs import CallbackFunc, QuantizationDataType, QuantScheme
-
-# for batch_norm_fold
 from aimet_tensorflow.keras.batch_norm_fold import fold_all_batch_norms
-
-# for mixed precision
-from aimet_tensorflow.keras.mixed_precision import choose_mixed_precision, choose_fast_mixed_precision
+from aimet_tensorflow.keras.mixed_precision import choose_mixed_precision
 from aimet_tensorflow.keras.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
 
-# End of import statements
+# End step 0
+
+# Step 1
+# Load the model
+model = ResNet50(weights="imagenet")
+
+# Perform batch norm folding
+_, model = fold_all_batch_norms(model)
 
 def center_crop(image):
     """
@@ -141,140 +141,51 @@ def get_data_loader_wrapper(dataset_dir, batch_size, is_training=False):
 
     return dataloader_wrapper
 
-def get_model():
-    """Helper function to return the model"""
-    model = ResNet50(
-        input_shape=None,
-        alpha=1.0,
-        include_top=True,
-        weights="imagenet",
-        input_tensor=None,
-        pooling=None,
-        classes=1000)
-    return model
+# get the evaluation function
+# We will use this function to for forward pass callback as well.
+batch_size = 32
+dataset_dir = ... # path to dataset directory.
+eval_func = get_eval_func(dataset_dir, batch_size)
 
-def get_quantizated_model(original_model, eval_func):
+# Calculate the Original Model accuracy
+org_top1 = eval_func(model, None)
+print("Original Model Accuracy: ", org_top1)
+# End step 1
 
-    quant_scheme = QuantScheme.post_training_tf_enhanced
+# Step 2
+default_bitwidth = 16
+# Set the candidates for the mixed precision algorithm
+# Candidate format given below
+# ((activation bitwidth, activation data type), (param bitwidth, param data type))
+# e.g. ((16, QuantizationDataType.int), (16, QuantizationDataType.int)),
+candidate = [((16, QuantizationDataType.int), (8, QuantizationDataType.int)),
+             ((8, QuantizationDataType.int), (8, QuantizationDataType.int))]
 
-    sim = QuantizationSimModel(
-        model=original_model,
-        quant_scheme=quant_scheme,
-        rounding_mode="nearest",
-        default_output_bw=8,
-        default_param_bw=8,
-    )
+# get the quantized model object
+sim = QuantizationSimModel(model=model,
+                           default_output_bw=default_bitwidth,
+                           default_param_bw=default_bitwidth,)
 
-    sim.compute_encodings(eval_func,
-                          forward_pass_callback_args=500
-                          )
-    return sim
+sim.compute_encodings(eval_func, forward_pass_callback_args=500)
 
 
-def mixed_precision(dataset_dir):
-    """
-    Sample function which demonstrates the quantization on a Resnet50 model followed by mixed precision
-    """
-    np.random.seed(1)
-    random.seed(1)
-    tf.random.set_seed(1)
+# The allowed accuracy drop represents the amount of accuracy drop we are accepting
+# to trade for a lower precision, faster model.
+# 0.09 represents we are accepting upto 9% accuracy drop from the baseline.
+allowed_accuracy_drop = 0.09
 
-    batch_size = 32
+eval_callback = CallbackFunc(eval_func, None)
+forward_pass_callback = CallbackFunc(eval_func, 500)
 
-    # Load the model
-    model = get_model()
+# Enable phase-3 (optional)
+GreedyMixedPrecisionAlgo.ENABLE_CONVERT_OP_REDUCTION = True
+# Note: supported candidates ((8,int), (8,int)) & ((16,int), (8,int))
 
-    # Perform batch norm folding
-    _, model = fold_all_batch_norms(model)
+# Call the mixed precision wrapper with appropriate parameters
+pareto_front_list = choose_mixed_precision(sim, candidate, eval_callback, eval_callback, allowed_accuracy_drop, "./cmp_res",
+                                           clean_start=True, forward_pass_callback=forward_pass_callback)
 
-    # get the evalutaion function
-    # We will use this function to for forward pass callback as well.
-    eval_func = get_eval_func(dataset_dir, batch_size)
+print("Mixed Precision Model Accuracy: ", eval_func(sim.model, None))
+sim.export(filename_prefix='mixed_preision_quant_model', path='.')
+# End step 2
 
-    # Calculate the Original Model accuracy
-    org_top1 = eval_func(model, None)
-    print("Original Model Accuracy: ", org_top1)
-
-    # get the quantized model object
-    sim = get_quantizated_model(model, eval_func)
-
-    # Set the candidates for the mixed precision algorithm
-    # Candidate format given below
-    # ((activation bitwidth, activation data type), (param bitwidth, param data type))
-    # e.g. ((16, QuantizationDataType.int), (16, QuantizationDataType.int)),
-    candidate = [((16, QuantizationDataType.int), (8, QuantizationDataType.int)),
-                 ((8, QuantizationDataType.int), (8, QuantizationDataType.int))]
-
-    # The allowed accuracy drop represents the amount of accuracy drop we are accepting
-    # to trade for a lower precision, faster model.
-    # 0.09 represents we are accepting upto 9% accuracy drop from the baseline.
-    allowed_accuracy_drop = 0.09
-
-    eval_callback = CallbackFunc(eval_func, None)
-    forward_pass_call_back = CallbackFunc(eval_func, 500)
-
-    # Enable phase-3 (optional)
-    # GreedyMixedPrecisionAlgo.ENABLE_CONVERT_OP_REDUCTION = True
-    # Note: supported candidates ((8,int), (8,int)) & ((16,int), (8,int))
-
-    # Call the mixed precision wrapper with appropriate parameters
-    choose_mixed_precision(sim,  candidate, eval_callback, eval_callback, allowed_accuracy_drop, "./cmp_res", True, forward_pass_call_back )
-    print("Mixed Precision Model Accuracy: ", eval_func(sim.model, None))
-    sim.export(filename_prefix='mixed_preision_quant_model', path='.')
-
-def fast_mixed_precision(dataset_dir):
-    """
-    Sample function which demonstrates the quantization on a Resnet50 model followed by mixed precision using AMP 2.0
-    """
-    np.random.seed(1)
-    random.seed(1)
-    tf.random.set_seed(1)
-
-    batch_size = 32
-
-    # Load the model
-    model = get_model()
-
-    # Perform batch norm folding
-    _ = fold_all_batch_norms(model)
-
-    # get the evalutaion function
-    # We will use this function to for forward pass callback as well.
-    eval_func = get_eval_func(dataset_dir, batch_size)
-
-    # Calculate the Original Model accuracy
-    org_top1 = eval_func(model, None)
-    print("Original Model Accuracy: ", org_top1)
-
-    # get the quantized model object
-    sim = get_quantizated_model(model, eval_func)
-
-    # Set the candidates for the mixed precision algorithm
-    # Candidate format given below
-    # ((activation bitwidth, activation data type), (param bitwidth, param data type))
-    # e.g. ((16, QuantizationDataType.int), (16, QuantizationDataType.int)),
-    candidate = [((16, QuantizationDataType.int), (8, QuantizationDataType.int)),
-                 ((8, QuantizationDataType.int), (8, QuantizationDataType.int))]
-
-    # The allowed accuracy drop represents the amount of accuracy drop we are accepting
-    # to trade for a lower precision, faster model.
-    # 0.09 represents we are accepting upto 9% accuracy drop from the baseline.
-    allowed_accuracy_drop = 0.09
-
-    data_loader_wrapper = get_data_loader_wrapper(dataset_dir, batch_size)
-
-    eval_callback = CallbackFunc(eval_func, None)
-    forward_pass_call_back = CallbackFunc(eval_func, 500)
-
-    # Enable phase-3 (optional)
-    # GreedyMixedPrecisionAlgo.ENABLE_CONVERT_OP_REDUCTION = True
-    # Note: supported candidates ((8,int), (8,int)) & ((16,int), (8,int))
-
-    # Get the GreedyMixedPrecisionAlgo Object
-    choose_fast_mixed_precision(sim,  candidate, data_loader_wrapper, eval_callback, allowed_accuracy_drop, "./cmp_res", True, forward_pass_call_back)
-    print("Mixed Precision Model Accuracy: ", eval_func(sim.model, None))
-    sim.export(filename_prefix='mixed_preision_quant_model', path='.')
-
-
-if __name__ == "__main__":
-    mixed_precision("/path/to/evaluation/dataset")
