@@ -39,8 +39,9 @@ Step 1
             :start-after: # Step 1
             :end-before: # End of step 1
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+    
+          .. code-block:: none
 
             MobileNetV2(
               (features): Sequential(
@@ -64,8 +65,9 @@ Step 1
             :start-after: # pylint: disable=missing-docstring
             :end-before: # End of step 1
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             Model: "mobilenetv2_1.00_224"
             __________________________________________________________________________________________________
@@ -96,8 +98,9 @@ Step 1
             :start-after: # pylint: disable=missing-docstring
             :end-before: # End of step 1
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             MobileNetV2(
               (features): Sequential(
@@ -134,8 +137,9 @@ Step 2
             :start-after: # Step 2
             :end-before: # End of step 2
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             *** Before batch norm folding ***
 
@@ -166,8 +170,9 @@ Step 2
             :start-after: # Step 2
             :end-before: # End of step 2
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             *** Before batch norm folding ***
 
@@ -204,8 +209,9 @@ Step 3
             :start-after: # Step 2
             :end-before: # End of step 2
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             *** Before batch norm folding ***
 
@@ -236,8 +242,9 @@ Step 3
             :start-after: # Step 3
             :end-before: # End of step 3
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             *** After batch norm folding ***
 
@@ -269,8 +276,9 @@ Step 3
             :end-before: # End of step 3
 
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             *** After batch norm folding ***
 

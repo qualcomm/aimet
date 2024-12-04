@@ -83,8 +83,9 @@ Compute the initial quantization parameters.
             :start-after: # step_1
             :end-before: # step_2
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             PTQ model accuracy: 0.68016
 
@@ -96,8 +97,9 @@ Compute the initial quantization parameters.
             :start-after: # Step 1
             :end-before: # End of step 1
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             PTQ model accuracy: 0.6583
 
@@ -141,8 +143,9 @@ Evaluate the fine-tuned model.
             :start-after: # step_3
             :end-before: # step_4
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             Model accuracy after QAT: 0.70838
 
@@ -154,8 +157,9 @@ Evaluate the fine-tuned model.
             :start-after: # Step 3
             :end-before: # End of step 3
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             Model accuracy after QAT: 0.6910
 

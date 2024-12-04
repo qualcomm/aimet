@@ -88,8 +88,9 @@ Setup
             :start-after: # pylint: disable=missing-docstring
             :end-before: # End of model
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             Model: "mobilenetv2_1.00_224"
             __________________________________________________________________________________________________

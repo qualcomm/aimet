@@ -98,8 +98,9 @@ This involves training your model for a few additional epochs (usually around 15
             :start-after: # Step 2
             :end-before: # End of step 2
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             Model accuracy before BN re-estimation: 0.0428
 
@@ -127,8 +128,9 @@ Re-estimate the BN statistics and fold the BN layers.
             :start-after: # Step 3
             :end-before: # End of step 3
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             Model accuracy after BN re-estimation: 0.5876
 

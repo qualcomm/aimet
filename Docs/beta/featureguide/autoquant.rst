@@ -318,8 +318,9 @@ Run AutoQuant
             :start-after: # Step 7
             :end-before: # End of step 7
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             - Quantized Accuracy (before optimization): 0.0235
             - Quantized Accuracy (after optimization):  0.7164
@@ -336,8 +337,9 @@ Run AutoQuant
             :start-after: # Step 7
             :end-before: # End of step 7
 
-        **Output**
-        ::
+        .. rst-class:: script-output
+
+          .. code-block:: none
 
             - Quantized Accuracy (before optimization): 0.0235
             - Quantized Accuracy (after optimization):  0.7164

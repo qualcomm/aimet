@@ -10,3 +10,27 @@
 [for^="toctree-checkbox-"], [id^="toctree-checkbox-"] {
     visibility: hidden;
 }
+
+/*
+ * Configure the appearance of code output box.
+ * Values are based on sphinx-gallery configuration
+*/
+.script-output {
+    color: black;
+    display: flex;
+    gap: 0.5em;
+}
+
+.script-output::before {
+    content: "Out:";
+    line-height: 1.4;
+    padding-top: 10px;
+}
+
+.script-output .highlight {
+    background: transparent;
+    flex-grow: 1;
+    overflow: auto;
+    /* Allow output block to take up maximum 25 lines */
+    max-height: 25em;
+}

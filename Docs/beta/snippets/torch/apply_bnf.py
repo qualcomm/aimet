@@ -37,7 +37,6 @@
 # pylint: disable=missing-docstring
 
 # Step 1
-
 import torch
 from torchvision.models import mobilenet_v2
 
