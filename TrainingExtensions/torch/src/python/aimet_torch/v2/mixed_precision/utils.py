@@ -350,11 +350,11 @@ class MpHandler:
                     create_mp_request(module, name, request_id, user_request.activation,
                                       user_request.param)
             elif user_request.request_type == RequestType.set_model_input_precision:
-                name = self._get_module_name(user_request.module)
+                name = self._get_module_name(user_request.module.module)
                 create_mp_io_request(user_request.module.module, user_request.module.index,  name, request_id,
                                      user_request.activation, RequestType.set_model_input_precision)
             elif user_request.request_type == RequestType.set_model_output_precision:
-                name = self._get_module_name(user_request.module)
+                name = self._get_module_name(user_request.module.module)
                 create_mp_io_request(user_request.module.module, user_request.module.index, name, request_id,
                                      user_request.activation, RequestType.set_model_output_precision)
             else:
