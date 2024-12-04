@@ -290,12 +290,14 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
     model_name = sim.connected_graph._model_name # pylint: disable=protected-access
     quant_modules = {name: module for name, module in sim.model.named_modules()
                      if isinstance(module, BaseQuantizationMixin)}
+
     def get_connected_graph_op(connected_graph, model_name, name):
         # pylint: disable=protected-access
         original_module = connected_graph._name_to_module[f'{model_name}.{name}']
         return connected_graph._module_to_op_dict[original_module]
 
     model_input_names = list(inspect.signature(sim.model.forward).parameters)
+    mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
     for name, module in quant_modules.items():
         if isinstance(module, custom.Add):
             add_op = get_connected_graph_op(sim.connected_graph, model_name, name)
@@ -317,9 +319,18 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
                                                                data_type=QuantizationDataType.int
                                                                ).realize()
                 q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
-                if module.input_quantizers[1].is_initialized() and module.output_quantizers[0].is_initialized():
-                    q_mask_add.nullrequant.input_quantizers[0].set_range(torch.finfo(torch.float16).min, 
-                                                                         module.input_quantizers[1].max)
-                    q_mask_add.nullrequant.output_quantizers[0].set_range(module.output_quantizers[0].min, 
-                                                                          module.input_quantizers[1].max)
                 setattr(sim.model, name, q_mask_add)
+                if module.input_quantizers[1].is_initialized() and module.output_quantizers[0].is_initialized():
+                    mask_add_names.append(name)
+                    mask_add_act_mins.append(module.output_quantizers[0].min)
+                    mask_maxs.append(module.input_quantizers[1].max)
+                else:
+                    logger.warning(f"The quantizers for {name} may remain uninitialized "
+                                   "only if sim model is about to use `load_encodings`")
+    if mask_add_names:
+        mask_add_act_global_min = min(mask_add_act_mins)
+        for name, mask_add_act_min, mask_max in zip(mask_add_names, mask_add_act_mins, mask_maxs):
+            sim.model.get_submodule(name).nullrequant.input_quantizers[0].set_range(mask_add_act_global_min,
+                                                                                    mask_max)
+            sim.model.get_submodule(name).nullrequant.output_quantizers[0].set_range(mask_add_act_min,
+                                                                                     mask_max)
