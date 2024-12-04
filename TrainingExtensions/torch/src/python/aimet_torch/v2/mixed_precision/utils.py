@@ -255,6 +255,7 @@ class MpHandler:
             if isinstance(module, BaseQuantizationMixin) and isinstance(module.get_original_module(), module_type):
                 yield name, module
 
+    @functools.cache
     def _get_module_name(self, inp_module):
         for name, module in self._sim.model.named_modules():
             if inp_module == module:
