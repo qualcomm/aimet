@@ -6,4 +6,4 @@ onnxruntime-extensions
 onnxsim
 pandas==1.4.3
 psutil
-tensorboardX==2.10.1
+tensorboardX==2.6
