@@ -76,6 +76,7 @@ add_custom_target(TorchCppOps ALL
       DEPENDS ${OUTPUT}
       SOURCES
       src/AimetTensorQuantizer.cpp
+      src/AimetEncodingRescaler.cpp
       )
 
 set(FILE_PATH "${CMAKE_BINARY_DIR}/artifacts/aimet_tensor_quantizer*.egg/AimetTensorQuantizer*.so")
@@ -105,21 +106,22 @@ endif()
 
 install(DIRECTORY ${CMAKE_BINARY_DIR}/artifacts/aimet_common/
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
-        FILES_MATCHING PATTERN "AimetTensorQuantizer*.so"
+        FILES_MATCHING
+        PATTERN "Aimet*.so"
       )
 
 add_custom_target(whl_prep_cp_torch
       COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_TORCH_DIR}
-      COMMAND find ${CMAKE_BINARY_DIR}/artifacts -path \"*/aimet_tensor_quantizer*\" -name \"AimetTensorQuantizer*.so\"
+      COMMAND find ${CMAKE_BINARY_DIR}/artifacts -path \"*/aimet_tensor_quantizer*\" -name \"Aimet*.so\"
               -exec sh -c '$$0 -f $$1 ${WHL_PREP_AIMET_TORCH_DIR}/$$\(basename $$1\)' cp {} \\\;
-      COMMAND find ${WHL_PREP_AIMET_TORCH_DIR} -name 'AimetTensorQuantizer*.so'
+      COMMAND find ${WHL_PREP_AIMET_TORCH_DIR} -name 'Aimet*.so'
               -exec ${PATCHELF_EXE} --set-rpath '$$ORIGIN:$$ORIGIN/../torch/lib' {} \\\;
       DEPENDS
           TorchCppOps
 )
 add_custom_target(whl_prep_ln_torch
       COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_TORCH_DIR}
-      COMMAND find ${CMAKE_BINARY_DIR}/artifacts -path \"*/aimet_tensor_quantizer*\" -name \"AimetTensorQuantizer*.so\"
+      COMMAND find ${CMAKE_BINARY_DIR}/artifacts -path \"*/aimet_tensor_quantizer*\" -name \"Aimet*.so\"
               -exec sh -c '$$0 -f $$1 ${WHL_PREP_AIMET_TORCH_DIR}/$$\(basename $$1\)' "ln -s" {} \\\;
       DEPENDS
           TorchCppOps
