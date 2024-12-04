@@ -23,5 +23,5 @@ AIMET quantization for TensorFlow models provides the following functionality.
 - :ref:`aimet_tensorflow.batch_norm_fold <apiref-tensorflow-bnf>`
 - :ref:`aimet_tensorflow.cross_layer_equalization <apiref-tensorflow-cle>`
 - :ref:`aimet_tensorflow.quant_analyzer <apiref-tensorflow-quant-analyzer>`
-- :ref:`aimet_onnx.auto_quant_v2 <apiref-tensorflow-autoquant>`
+- :ref:`aimet_tensorflow.auto_quant_v2 <apiref-tensorflow-autoquant>`
 - :ref:`aimet_tensorflow.layer_output_utils <apiref-tensorflow-layer-output-generation>`
