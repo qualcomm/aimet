@@ -165,22 +165,25 @@ Per-channel quantization can be easily done by creating the quantizer with the d
 
     # Per-channel quantization along the output channel axis (Cout) of the weight
     qtzr = Q.affine.QuantizeDequantize(shape=(Cout, 1), bitwidth=8, symmetric=True)
-    print(qtzr)
+    print(f"Quantizer:\n{qtzr}")
 
     with qtzr.compute_encodings():
         _ = qtzr(weight)
 
     scale = qtzr.get_scale()
     offset = qtzr.get_offset()
-    print(f"  * scale: {scale} (shape: {tuple(scale.shape)})")
-    print(f"  * offset: {offset} (shape: {tuple(offset.shape)})")
+    print(f"\nScale:\n{scale} (shape: {tuple(scale.shape)})")
+    print(f"\nOffset:\n{offset} (shape: {tuple(offset.shape)})")
 
 .. rst-class:: script-output
 
   .. code-block:: none
 
+    Quantizer:
     QuantizeDequantize(shape=(8, 1), qmin=-128, qmax=127, symmetric=True)
-      * scale: tensor([[0.0039],
+
+    Scale:
+    tensor([[0.0039],
             [0.0038],
             [0.0037],
             [0.0035],
@@ -188,7 +191,9 @@ Per-channel quantization can be easily done by creating the quantizer with the d
             [0.0036],
             [0.0037],
             [0.0038]], grad_fn=<DivBackward0>) (shape: (8, 1))
-      * offset: tensor([[0.],
+
+    Offset:
+    tensor([[0.],
             [0.],
             [0.],
             [0.],
@@ -232,10 +237,9 @@ Note that:
     weight_qdq = qtzr(weight)
     weight_q = weight_qdq.quantize() # Integer representation of weight_qdq
 
-    print("Output (quantized representation):")
-    print(weight_q)
-    print(f"  * scale: {weight_q.encoding.scale}")
-    print(f"  * offset: {weight_q.encoding.offset}")
+    print("Output (quantized representation):\n{weight_q}")
+    print(f"\nScale:\n{weight_q.encoding.scale}")
+    print(f"\nOffset:\n{weight_q.encoding.offset}")
 
 .. rst-class:: script-output
 
@@ -251,7 +255,9 @@ Note that:
                      [-110.,  -76.,  -42.,   -8.,   25.,   59.,   93.,  127.],
                      [-102.,  -70.,  -37.,   -4.,   29.,   61.,   94.,  127.]],
                     grad_fn=<AliasBackward0>)
-      * scale: tensor([[0.0039],
+
+    Scale:
+    tensor([[0.0039],
             [0.0038],
             [0.0037],
             [0.0035],
@@ -259,7 +265,9 @@ Note that:
             [0.0036],
             [0.0037],
             [0.0038]], grad_fn=<DivBackward0>)
-      * offset: tensor([[0.],
+
+    Offset:
+    tensor([[0.],
             [0.],
             [0.],
             [0.],
@@ -296,23 +304,25 @@ Blockwise quantization can be also easily done by creating a quantizer with the 
     qtzr = Q.affine.QuantizeDequantize(shape=(Cout, Cin // B),
                                        block_size=(-1, B), # NOTE: -1 indicates wildcard block size
                                        bitwidth=8, symmetric=True)
-    print(qtzr)
+    print(f"Quantizer:\n{qtzr}")
 
     with qtzr.compute_encodings():
         _ = qtzr(weight)
 
     scale = qtzr.get_scale()
     offset = qtzr.get_offset()
-    print(f"  * scale: {scale} (shape: {tuple(scale.shape)})")
-    print(f"  * offset: {offset} (shape: {tuple(offset.shape)})")
+    print(f"\nScale:\n{scale} (shape: {tuple(scale.shape)})")
+    print(f"\nOffset:\n{offset} (shape: {tuple(offset.shape)})")
 
 .. rst-class:: script-output
 
   .. code-block:: none
 
-
+    Quantizer:
     QuantizeDequantize(shape=(8, 2), block_size=(-1, 4), qmin=-128, qmax=127, symmetric=True)
-      * scale: tensor([[0.0039, 0.0078],
+
+    Scale:
+    tensor([[0.0039, 0.0078],
             [0.0037, 0.0073],
             [0.0034, 0.0068],
             [0.0032, 0.0063],
@@ -320,7 +330,9 @@ Blockwise quantization can be also easily done by creating a quantizer with the 
             [0.0032, 0.0064],
             [0.0034, 0.0069],
             [0.0037, 0.0074]], grad_fn=<DivBackward0>) (shape: (8, 2))
-      * offset: tensor([[0., 0.],
+
+    Offset:
+    tensor([[0., 0.],
             [0., 0.],
             [0., 0.],
             [0., 0.],
@@ -339,15 +351,16 @@ Note that:
 
     weight_qdq = qtzr(weight)
     weight_q = weight_qdq.quantize() # Integer representation of weight_qdq
-    print("Output (quantized representation)")
-    print(weight_q)
-    print(f"  * scale: {weight_q.encoding.scale}")
-    print(f"  * offset: {offset} (shape: {tuple(offset.shape)})")
+
+    print("Output (quantized representation):\n{weight_q}")
+    print(f"\nScale:\n{weight_q.encoding.scale}")
+    print(f"\nOffset:\n{weight_q.encoding.offset}")
 
 .. rst-class:: script-output
 
   .. code-block:: none
 
+    Output (quantized representation):
     QuantizedTensor([[-128.,  -64.,    0.,   64., -128.,  -64.,    0.,   64.],
                      [-128.,  -60.,    9.,   77., -128.,  -60.,    9.,   77.],
                      [-128.,  -55.,   18.,   91., -128.,  -55.,   18.,   91.],
@@ -357,7 +370,9 @@ Note that:
                      [ -91.,  -18.,   54.,  127.,  -91.,  -18.,   54.,  127.],
                      [ -76.,   -8.,   59.,  127.,  -76.,   -8.,   59.,  127.]],
                     grad_fn=<AliasBackward0>)
-      * scale: tensor([[0.0039, 0.0078],
+
+    Scale:
+    tensor([[0.0039, 0.0078],
             [0.0037, 0.0073],
             [0.0034, 0.0068],
             [0.0032, 0.0063],
@@ -365,14 +380,16 @@ Note that:
             [0.0032, 0.0064],
             [0.0034, 0.0069],
             [0.0037, 0.0074]], grad_fn=<DivBackward0>)
-      * offset: tensor([[0., 0.],
+
+    Offset:
+    tensor([[0., 0.],
             [0., 0.],
             [0., 0.],
             [0., 0.],
             [0., 0.],
             [0., 0.],
             [0., 0.],
-            [0., 0.]]) (shape: (8, 2))
+            [0., 0.]])
 
 
 API reference
