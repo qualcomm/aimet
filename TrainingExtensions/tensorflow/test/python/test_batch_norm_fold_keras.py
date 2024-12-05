@@ -1632,6 +1632,37 @@ class TestBatchNormFoldToScale:
 
         assert np.allclose(output_before_batchnorm_folding, output_after_batchnorm_folding, atol=1e-4)
 
+    def test_bn_fold_with_kwargs_from_layer(self):
+        indices_input = tf.keras.layers.Input(shape=(None,), dtype=tf.int32, name='indices')
+        updates_input = tf.keras.layers.Input(shape=(None,), dtype=tf.float32, name='updates')
+        shape_1 = tf.keras.layers.Input(shape=(), dtype=tf.int32, name='shape_first_value')
+        conv_inp_layer = tf.keras.layers.Input(shape=(224, 224, 3), dtype=tf.float32)
+
+        conv_layer = tf.keras.layers.Conv2D(filters=1, kernel_size=(3, 3), strides=(1, 1), padding="valid")(conv_inp_layer)
+        bn_layer = tf.keras.layers.BatchNormalization()(conv_layer)
+        relu = tf.keras.layers.ReLU()(bn_layer)
+        scatter_nd_layer = tf.scatter_nd(indices_input, updates_input, shape=[shape_1[0], 4, 4])
+
+        scatter_model = tf.keras.models.Model(inputs=[conv_inp_layer, indices_input, updates_input, shape_1],
+                                              outputs=[relu, scatter_nd_layer])
+
+        conv_inp = np.random.randn(1, 224, 224, 3)
+        indices = tf.constant([[1], [3]], dtype=tf.int32)
+        updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                               [7, 7, 7, 7], [8, 8, 8, 8]],
+                              [[5, 5, 5, 5], [6, 6, 6, 6],
+                               [7, 7, 7, 7], [8, 8, 8, 8]]], dtype=tf.float32)
+        shape_first = tf.constant((4,), dtype=tf.int32)
+
+        fp32_outs = scatter_model([conv_inp, indices, updates, shape_first])
+
+        _, bn_folded_model = fold_all_batch_norms(scatter_model)
+
+        bn_outs = bn_folded_model([conv_inp, indices, updates, shape_first])
+
+        np.testing.assert_allclose(fp32_outs[0], bn_outs[0], atol=1e-4)
+        np.testing.assert_allclose(fp32_outs[1], bn_outs[1], atol=1e-4)
+
     @pytest.mark.skip("Possible Batch norms to fold is returning None?")
     def test_fold_auto_mode_with_bn_after_Conv1d_layer(self):
         input_shape = (2, 10, 32)

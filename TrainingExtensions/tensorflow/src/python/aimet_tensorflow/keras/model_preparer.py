@@ -583,6 +583,21 @@ class _KerasModelPreparer:
 
         return self._prepare_model_helper(temp_model)
 
+    @staticmethod
+    def _get_keras_tensor_index(value: Any, search_list: List):
+        """
+        Helper function to check whether the value is a KerasTensor and return the index of it from the search_list
+        :param value: Value to search in the list
+        :param search_list: List to search
+        :return: Index of value in the search list
+        """
+        if not isinstance(value, KerasTensor):
+            return -1
+        for idx, k_tensor in enumerate(search_list):
+            if isinstance(k_tensor, KerasTensor) and value.name == k_tensor.name:
+                return idx
+        return -1
+
     def _handle_normal_keras_layer(self, layer: tf.keras.layers.Layer) -> KerasTensor:
         """
         Helper function to handle normal keras layers. This function will create a new output tensor for the layer
@@ -591,9 +606,9 @@ class _KerasModelPreparer:
         :param layer: The layer to create the output tensor for
         :return: The output tensor of the layer
         """
+        # pylint: disable=too-many-branches, too-many-nested-blocks
         call_args = self._get_updated_call_args(layer)
 
-        # pylint: disable=too-many-nested-blocks
         if isinstance(layer, TFOpLambda):
             if call_kwargs := self._get_call_kwargs(layer):
                 # Special case for 'tf.concat' that takes a list of inputs with kwargs attached
@@ -603,10 +618,13 @@ class _KerasModelPreparer:
                 for _, values in call_kwargs.items():
                     if isinstance(values, List):
                         for value in values:
-                            if isinstance(value, KerasTensor) and value in call_args:
-                                call_args.remove(value)
-                    elif isinstance(values, KerasTensor) and values in call_args:
-                        call_args.remove(values)
+                            keras_tensor_index = self._get_keras_tensor_index(value, call_args)
+                            if keras_tensor_index != -1:
+                                call_args.pop(keras_tensor_index)
+                    else:
+                        keras_tensor_index = self._get_keras_tensor_index(values, call_args)
+                        if keras_tensor_index != -1:
+                            call_args.pop(keras_tensor_index)
 
                 if "concat" in layer.name:
                     new_output_tensor = layer.call([*call_args], **call_kwargs)
