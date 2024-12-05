@@ -23,9 +23,3 @@ Building from source
 ====================
 
 To build the latest AIMET from the source, see https://github.com/quic/aimet/blob/develop/packaging/docker_install.md
-
-Installing an older version
-===========================
-
-View the release notes for older versions at https://github.com/quic/aimet/releases. Follow the
-documentation corresponding to that release to select and install the appropriate AIMET package.

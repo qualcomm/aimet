@@ -14,8 +14,8 @@ Prerequisites
 The AIMET package requires the following host platform setup:
 
 * 64-bit Intel x86-compatible processor
-* Ubuntu 22.04 LTS with Python 3.10
-* Ubuntu 20.04 LTS with Python 3.8
+* Python 3.8–3.11
+* Ubuntu 20.04 or later
 * For GPU variants:
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
@@ -25,16 +25,10 @@ The following software versions are required for the quick install:
 * CUDA Toolkit 12.0
 * PyTorch 2.2
 
-Ensure that you have following debian package(s) installed:
-
-.. code-block:: bash
-
-    apt-get install liblapacke
-
 Installation
 ============
 
-Type the following command to install AIMET using pip package manager.
+Type the following command to install AIMET for PyTorch framework using pip package manager.
 
 .. code-block:: bash
 
@@ -45,4 +39,7 @@ Next steps
 
 See `Simple example` to test your installation.
 
-See the `Optimization guide` to read about the model optimization workflow.
+See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
+
+See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.
+

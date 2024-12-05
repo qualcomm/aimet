@@ -20,13 +20,6 @@ to all frameworks variants.
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
 
-
-Ensure that you have following debian package(s) installed:
-
-.. code-block:: bash
-
-    apt-get install liblapacke
-
 Install a compatible version of pip. The latest version is *not* compatible with our wheel packages.
 
 .. code-block:: bash
@@ -97,12 +90,28 @@ Use one of the following commands to install AIMET based on your choice of frame
 .. |download_url| replace:: \https://github.com/quic/aimet/releases/download/
 .. |torch_pkg_url| replace:: \https://download.pytorch.org/whl/torch_stable.html
 
+Other installation options
+==========================
+
+.. toctree::
+   :hidden:
+
+   Install on a host machine <install_host>
+   Install in a docker container <install_docker>
+
+- :ref:`Install manually on a host machine <install-host>`
+- :ref:`Install a pre-built or locally built image in a Docker container <install-docker>`
+
+Installing an older version
+===========================
+
+View the release notes for older versions at https://github.com/quic/aimet/releases. Follow the
+documentation corresponding to that release to select and install the appropriate AIMET package.
+
+
 Next steps
 ==========
 
-See `Simple example` to test your installation.
+See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
 
-See the `Optimization guide` to read about the model optimization workflow.
-
-
-
+See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.
