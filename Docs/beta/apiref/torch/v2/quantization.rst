@@ -24,7 +24,7 @@ All quantizers are derived from the base class :class:`QuantizerBase` defined as
 
 
 
-Affine Quantizers
+Affine quantizers
 -----------------
 
 Even though it is **strongly recommended** for most users to delegate the instantiation and configuration of quantizers to :ref:`QuantizationSimModel<api-torch-quantsim-v2>`,
@@ -143,17 +143,17 @@ Note that the output of the quantizer is either a :class:`QuantizedTensor<aimet_
 
 
 
-Channelwise Quantization
+Per-channel quantization
 ------------------------
 
-Channelwise quantization is one of the advanced usages of affine quantizers where
+*Per-channel quantization* is one of the advanced usages of affine quantizers where
 one scale and offset will be associated with only one channel of the input tensor,
 whereas one scale and offset was associated with the entire tensor in the previous example.
 
 ..
     TODO (kyunggeu): We need some visual diagram here
 
-Channelwise quantization can be easily done by creating the quantizer with the desired shape of scale and offset.
+Per-channel quantization can be easily done by creating the quantizer with the desired shape of scale and offset.
 
 .. code-block:: Python
 
@@ -163,7 +163,7 @@ Channelwise quantization can be easily done by creating the quantizer with the d
 
     weight = (torch.arange(-32, 32) / 64).view(Cin, Cout).transpose(0, 1)
 
-    # Channelwise quantization along the output channel axis (Cout) of the weight
+    # Per-channel quantization along the output channel axis (Cout) of the weight
     qtzr = Q.affine.QuantizeDequantize(shape=(Cout, 1), bitwidth=8, symmetric=True)
     print(qtzr)
 
@@ -269,16 +269,16 @@ Note that:
             [0.]])
 
 
-Blockwise Quantization
+Per-block quantization
 ----------------------
 
-Similar to how channelwise quantization was a mathematical generalization of tensor-wise quantization,
-blockwise quantization is a even further generalization of channelwise quantization.
+*Per-block quantization* (also called *blockwise quantization*) is a further mathematical generalization of per-channel quantization,
+similar to how per-channel quantization is a mathematical generalization of per-tensor quantization.
 
 ..
     TODO (kyunggeu): We need some visual diagram here
 
-Blockwise quantization can be also easily done by creating the quantizer with the desired shape and block size.
+Blockwise quantization can be also easily done by creating a quantizer with the desired shape and block size.
 
 .. code-block:: Python
 
@@ -286,21 +286,21 @@ Blockwise quantization can be also easily done by creating the quantizer with th
     import aimet_torch.v2.quantization as Q
     Cout, Cin = 8, 8
     B = 4 # block size
-    
+
     weight = torch.cat([
         (torch.arange(-16, 16) / 32).view(B, Cout).transpose(0, 1),
         (torch.arange(-16, 16) / 16).view(B, Cout).transpose(0, 1),
     ], dim=1)
-    
+
     # Blockwise quantization with block size B
     qtzr = Q.affine.QuantizeDequantize(shape=(Cout, Cin // B),
                                        block_size=(-1, B), # NOTE: -1 indicates wildcard block size
                                        bitwidth=8, symmetric=True)
     print(qtzr)
-    
+
     with qtzr.compute_encodings():
         _ = qtzr(weight)
-    
+
     scale = qtzr.get_scale()
     offset = qtzr.get_offset()
     print(f"  * scale: {scale} (shape: {tuple(scale.shape)})")
@@ -331,8 +331,8 @@ Blockwise quantization can be also easily done by creating the quantizer with th
 
 Note that:
 
-* The shape :math:`(C_{out}, \frac{C_{in}}{B}) = (8, 2)` of scale and offset is equal to that of the quantizer
-* For every channel :math:`c \in [0, C_{out})`, each block :math:`b \in [0, \frac{C_{in}}{B})` is in the quantization grid of :math:`[-128, 127]`, associated with :math:`scale_{c, b:b+B}` respectively
+* The shape :math:`\left(C_{out}, \frac{C_{in}}{B}\right) = (8, 2)` of scale and offset is equal to that of the quantizer
+* For every channel :math:`c \in [0, C_{out})`, each block :math:`k \in \left[0, \frac{C_{in}}{B}\right)` is in the quantization grid of :math:`[-128, 127]`, associated with :math:`scale_{c, k:k+B}` respectively
 * If :math:`C_{in}` is not divisible by block size :math:`B`, the quantizer will throw shape mismatch error in runtime.
 
 .. code-block:: Python
