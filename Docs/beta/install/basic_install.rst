@@ -48,13 +48,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         With CUDA 12.x:
 
-        .. code-block:: bash
+        .. parsed-literal::
 
            python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cu121\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
-        .. code-block:: bash
+        .. parsed-literal::
 
             python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
 
@@ -66,13 +66,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         With CUDA 11.x:
 
-        .. code-block:: bash
+        .. parsed-literal::
 
             python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|.cu118\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
-        .. code-block:: bash
+        .. parsed-literal::
 
             python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
 
@@ -83,13 +83,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         With CUDA 11.x:
 
-        .. code-block:: bash
+        .. parsed-literal::
 
             python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|.cu117\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
-        .. code-block:: bash
+        .. parsed-literal::
 
             python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
 
