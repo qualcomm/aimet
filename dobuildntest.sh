@@ -420,7 +420,7 @@ if [ $run_build -eq 1 ]; then
         if [[ "$AIMET_VARIANT" != *"tf"* ]]; then
             extra_opts+=" -DENABLE_TENSORFLOW=OFF"
         fi
-        if [[ "$AIMET_VARIANT" != *"torch"* ]] && [[ "$AIMET_VARIANT" != *"onnx"* ]]; then
+        if [[ "$AIMET_VARIANT" != *"torch"* ]]; then
             extra_opts+=" -DENABLE_TORCH=OFF"
         fi
         if [[ "$AIMET_VARIANT" != *"onnx"* ]]; then
