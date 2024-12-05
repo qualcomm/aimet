@@ -1584,7 +1584,7 @@ class TestBatchNormFoldToScale:
         with pytest.raises(RuntimeError):
             fold_all_batch_norms_to_scale(sim)
 
-    @pytest.mark.parametrize("layer_type", ["GRU", "GRUCell"])
+    @pytest.mark.parametrize("layer_type", ["GRU", "RNN"])
     def test_bn_fold_with_gru_layer(self, layer_type):
         def get_gru_model(layer_type):
             _input = tf.keras.layers.Input(shape=(32, 32, 3), name="input")
@@ -1598,7 +1598,7 @@ class TestBatchNormFoldToScale:
             x = tf.keras.layers.Reshape(target_shape=(2, -1))(x)
             if layer_type == "GRU":
                 x = tf.keras.layers.GRU(32, return_sequences=True, unroll=True)(x)
-            elif layer_type == "GRUCell":
+            elif layer_type == "RNN":
                 x = tf.keras.layers.RNN(tf.keras.layers.GRUCell(32))(x)
             else:
                 raise AttributeError(f"Found invalid layer_type: {layer_type}")
@@ -1611,6 +1611,21 @@ class TestBatchNormFoldToScale:
 
         model = get_gru_model(layer_type)
         mock_input = np.random.randn(1, 32, 32, 3)
+
+        node_to_layer_map = common.create_node_to_layer_map(model)
+        for node, connection in node_to_layer_map.items():
+            assert not isinstance(node.layer, tf.keras.layers.GRUCell)
+            if connection[0] is not None:
+                for inp_layer in connection[0]:
+                    assert not isinstance(inp_layer, tf.keras.layers.GRUCell)
+            assert not isinstance(connection[1], tf.keras.layers.GRUCell)
+
+        node_layer_types = {type(node_ref.layer) for node_ref in node_to_layer_map.keys()}
+        if layer_type == "GRU":
+            assert tf.keras.layers.GRU in node_layer_types
+        elif layer_type == "RNN":
+            assert tf.keras.layers.RNN in node_layer_types
+
         output_before_batchnorm_folding = model(mock_input)
         _, model = fold_all_batch_norms(model)
         output_after_batchnorm_folding = model(mock_input)
