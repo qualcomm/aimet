@@ -92,8 +92,8 @@ class ImageNetEvaluator:
         logger.info("Evaluating nn.Module for %d iterations with batch_size %d",
                     iterations, self._val_data_loader.batch_size)
 
-        for i, (input_data, target_data) in tqdm(enumerate(self._val_data_loader), total=10):
-            if i == 10:
+        for i, (input_data, target_data) in tqdm(enumerate(self._val_data_loader), total=iterations):
+            if i == iterations:
                 break
 
             inputs_batch = input_data.numpy()
