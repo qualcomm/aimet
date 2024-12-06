@@ -106,6 +106,8 @@ class GraphSearcher:
             # Still more to match
             if not op.output:
                 return None
+            if len(op.output_ops) > 1: # Can't match patterns with branches
+                return None
             for child_op in op.output.consumers:
                 matched_child_ops = self._match_pattern(child_op, pattern[1:], ignored_ops)
                 if matched_child_ops:
