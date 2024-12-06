@@ -83,8 +83,6 @@ RUN echo "%users ALL = (ALL) NOPASSWD: ALL" >> /etc/sudoers
 # Python
 RUN add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update -y > /dev/null && \
-    apt-get remove -y python3.10 && \
-    apt-get autoremove  -y && \
     apt-get install --no-install-recommends -y \
         python${PYTHON_VERSION} \
         python${PYTHON_VERSION}-dev \

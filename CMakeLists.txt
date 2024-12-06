@@ -109,8 +109,14 @@ if (ENABLE_TORCH AND ENABLE_TENSORFLOW)
 endif()
 
 # Find Python libraries
+execute_process(
+    COMMAND python3 -V       # "Python 3.XX.YY\n"
+    COMMAND cut -d " " -f 2  # "3.XX.YY\n"
+    COMMAND head -c -1       # "3.XX.YY"
+    OUTPUT_VARIABLE Python3_VERSION
+)
 set(Python3_FIND_VIRTUALENV "STANDARD")
-find_package(Python3 COMPONENTS Interpreter Development)
+find_package(Python3 ${Python3_VERSION} EXACT COMPONENTS Interpreter Development)
 message(STATUS "Found Python3: ${Python3_FOUND}, at ${Python3_LIBRARIES}")
 
 # -------------------------------
