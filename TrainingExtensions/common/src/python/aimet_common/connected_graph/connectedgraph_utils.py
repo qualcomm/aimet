@@ -54,7 +54,7 @@ def get_all_input_ops(conn_graph: ConnectedGraph) -> List[Op]:
     """
 
     all_ops = conn_graph.get_all_ops().values()
-    input_ops = [op for op in all_ops if not op.input_ops]
+    input_ops = []
     for op in all_ops:
         for item in op.inputs:
             if not item.producer and item.is_model_input:
