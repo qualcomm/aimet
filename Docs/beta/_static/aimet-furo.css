@@ -34,3 +34,10 @@
     /* Allow output block to take up maximum 25 lines */
     max-height: 25em;
 }
+
+/*
+ * Glossary formatting
+*/
+[id^="term-"] {
+    font-weight: bold;
+}

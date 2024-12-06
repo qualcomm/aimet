@@ -7,17 +7,17 @@ Quantization workflow
 #####################
 
 This document outlines a clear approach and methodology to onboard, quantize and deploy any
-machine-learning models on Qualcomm\ |reg| devices using AIMET toolkit.
+machine-learning models on Qualcomm\ |reg| devices using the :term:`AI Model Efficiency Toolkit` (AIMET).
 
 Quantization features
 =====================
 
 AIMET toolkit offers following quantization features.
 
-1. Quantization simulation (QuantSim):
+1. Quantization simulation:
 --------------------------------------
 
-It simulates quantized behavior using floating-point hardware. QuantSim efficiently enables
+:term:`Quantization simulation` (QuantSim) simulates quantized behavior using floating-point hardware. QuantSim efficiently enables
 various quantization options and helps you estimate the off-target quantized accuracy metric
 using quantization simulation (sequence of quantize and dequantize operations, known as QDQ)
 without requiring actual quantized hardware.
