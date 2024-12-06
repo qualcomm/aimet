@@ -415,7 +415,7 @@ if [ $run_build -eq 1 ]; then
         elif [[ "$AIMET_VARIANT" == *"tf"* ]]; then
             extra_opts+=" -DENABLE_TENSORFLOW=ON -DENABLE_TORCH=OFF -DENABLE_ONNX=OFF"
         elif [[ "$AIMET_VARIANT" == *"torch"* ]]; then
-            extra_opts+=" -DENABLE_TENSORFLOW=ON -DENABLE_TORCH=ON -DENABLE_ONNX=OFF"
+            extra_opts+=" -DENABLE_TENSORFLOW=OFF -DENABLE_TORCH=ON -DENABLE_ONNX=OFF"
         elif [[ "$AIMET_VARIANT" == *"onnx"* ]]; then
             extra_opts+=" -DENABLE_TENSORFLOW=OFF -DENABLE_TORCH=OFF -DENABLE_ONNX=ON"
         else
