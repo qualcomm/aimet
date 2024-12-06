@@ -38,7 +38,8 @@ import itertools
 import pytest
 import torch
 from aimet_common.connected_graph.connectedgraph_utils import get_all_input_ops, get_all_ops_with_constant_inputs
-from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE
+from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE, OPS_WITH_PARAMS
+from aimet_onnx.utils import ParamUtils
 from models import models_for_tests
 
 
@@ -93,8 +94,34 @@ class TestConnectedGraph:
             """
             if product.name in {t.name for t in model.graph.input}:
                 assert product.is_model_input
+                assert not product.producer
             else:
                 assert not product.is_model_input
+
+            """
+            When: A tensor has no producer
+            Then: The tensor is either a model input, constant, or parameter
+            """
+            if not product.producer:
+                assert product.is_model_input or product.is_const or product.is_parm
+            else:
+                assert not (product.is_model_input or product.is_const or product.is_parm)
+
+        for op_name, op in ops.items():
+            node = op.get_module()
+            """
+            When: A tensor is input idx of node
+            Then: The tensor's product should be input idx of the corresponding op
+            """
+            for idx, tensor in enumerate(node.input):
+                assert op.inputs[idx] is products[tensor]
+
+            """
+            When: A tensor is output[0] of a node
+            Then: The tensor's product should be the corresponding op's output
+            """
+            if node.output:
+                assert op.output is products[node.output[0]]
 
     def test_single_residual_model(self):
         model = models_for_tests.single_residual_model()
