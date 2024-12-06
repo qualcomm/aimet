@@ -196,7 +196,7 @@ foreach(package ${package_name_list})
   # Update RPATH to relative paths ($ORIGIN) to not bother by a path where python is installed
   # Linux loader would be able to resolve dependencies without LD_LIBRARY_PATH
   execute_process(
-    COMMAND find ${pkg_staging_path} -name "AimetTensorQuantizer*.so" -exec ${PATCHELF_EXE} --set-rpath $ORIGIN:$ORIGIN/../torch/lib {} \;
+    COMMAND find ${pkg_staging_path} -name "Aimet*.so" -exec ${PATCHELF_EXE} --set-rpath $ORIGIN:$ORIGIN/../torch/lib {} \;
   )
   execute_process(
     COMMAND find ${pkg_staging_path} -name "libaimet_tf_ops*.so" -exec ${PATCHELF_EXE} --set-rpath $ORIGIN:$ORIGIN/../../tensorflow:$ORIGIN/../../tensorflow/python {} \;

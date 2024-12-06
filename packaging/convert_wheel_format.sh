@@ -39,18 +39,28 @@
 # 1. Obtain the minimum supported value of glibc by invoking a separate script
 # 2. Rename the package wheel files to conform to manylinux format for PyPi
 
+# Usage:
+# convert_wheel_format.sh <build_path> [<package_wheel_path>]
+
 # verbose mode
 # set -x
 
 # enable exit on error
 set -e
 
+# Set the build path
 if [[ -z ${1} ]]; then
     echo "No Binary directory specified"
     exit 3
 fi
-
 BUILD_DIR=$1
+
+# Set the default packaging wheel files path relative to the build path
+WHEEL_DIR="${BUILD_DIR}/packaging/dist"
+if [[ ${2} ]]; then
+    # Override with a custom package path if provided
+    WHEEL_DIR=$2
+fi
 
 # Search for and create an array of .so files in the package
 declare -a so_file_list=($(find ${BUILD_DIR} -name *.so | grep artifacts))
@@ -70,4 +80,4 @@ glibc_min_ver=$(echo "${glibc_ver_list_sorted}" | awk '{print $1;}' | tr '.' '_'
 echo "glibc_min_ver = ${glibc_min_ver}"
 
 # Rename the package wheel files to conform to manylinux format for PyPi
-wheel tags --platform-tag="manylinux_${glibc_min_ver}_x86_64" --remove ${BUILD_DIR}/packaging/dist/*.whl
+wheel tags --platform-tag="manylinux_${glibc_min_ver}_x86_64" --remove ${WHEEL_DIR}/*.whl
