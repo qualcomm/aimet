@@ -224,10 +224,10 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 product.add_consumer(op)
                 product.tensor_dict[op] = inp # TODO: Delete Product.tensor_dict attribute
 
-            for output in node.output:
+            for idx, output in enumerate(node.output):
                 product = self._products[output]
                 # TODO: Make Op.output list of products to support multi-output ops
-                if op.output is None:
+                if idx == 0: # For backwards compatibility, op.output is always first product
                     op.output = product
                 product.producer = op
 
