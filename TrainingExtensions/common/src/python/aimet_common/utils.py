@@ -41,6 +41,7 @@ import sys
 from contextlib import contextmanager
 import functools
 import json
+import importlib.util
 import logging
 import logging.config
 import logging.handlers
@@ -519,3 +520,25 @@ def profile(label: str, file: Union[str, os.PathLike, TextIO] = None, new_file: 
     finally:
         if should_close:
             file.close()
+
+
+def import_from_path(module_name, file_path):
+    """
+    Import a module from a given file path
+
+    :param module_name: The name to assign to the module
+    :param file_path: The path to the module file
+    :return: The imported module
+    """
+
+    file_path = os.path.abspath(file_path)
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+
+    # if the module is already present return it
+    if module_name in sys.modules and sys.modules[module_name].__spec__ == spec:
+        return sys.modules[module_name]
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
