@@ -158,13 +158,15 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                 continue
             op_to_quantizers[node.name] = OpToQuantizers()
             for input_product in node.input:
-                self._populate_input_and_param_quantizer(op_to_quantizers[node.name], input_product)
+                self._populate_input_quantizer(op_to_quantizers[node.name], input_product)
             for output_product in node.output:
                 self._populate_output_quantizer(op_to_quantizers[node.name], output_product)
+            for name, _ in op.parameters.items():
+                op_to_quantizers[node.name].parameter_quantizers.append((name, self._quant_ops_dict[name]))
 
         return op_to_quantizers
 
-    def _populate_input_and_param_quantizer(self, op_to_quantizers: OpToQuantizers, input_product: str):
+    def _populate_input_quantizer(self, op_to_quantizers: OpToQuantizers, input_product: str):
         """
         Populate input and param quantizer for an op
         """
@@ -174,8 +176,6 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
             return
         if product_name in self._activation_names:
             op_to_quantizers.input_quantizers.append(self._quant_ops_dict[product_name])
-        else:
-            op_to_quantizers.parameter_quantizers.append((product_name, self._quant_ops_dict[product_name]))
 
     def _populate_output_quantizer(self, op_to_quantizers: OpToQuantizers, output_product: str):
         """

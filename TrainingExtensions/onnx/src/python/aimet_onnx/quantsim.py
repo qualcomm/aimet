@@ -540,25 +540,17 @@ class QuantizationSimModel:
         output_quantizers = []
         param_quantizers = {}
 
-        # Capture input quantizers if the op is a starting op
-        if op in self.connected_graph.starting_ops:
-            cg_products = [cg_product for cg_product in op.inputs if cg_product.is_model_input]
-            for cg_product in cg_products:
-                assert len(cg_product.tensor_dict) == 1
-                input_name = list(cg_product.tensor_dict.values())[0]
+        # Capture as input quantizer if tensor is not a layer output or parameter
+        for cg_product in op.inputs:
+            if not cg_product.producer and not cg_product.is_parm:
+                input_name = cg_product.name
                 if input_name in self.qc_quantize_op_dict:
                     input_quantizers.append(self.qc_quantize_op_dict[input_name])
 
         # Capture output quantizers of the op
-        if op.output_ops and op.output_ops[0].type == 'branch':
-            # op having multiple outputs
-            cg_product = op.output_ops[0].output
-        else:
-            # op having single output
-            cg_product = op.output
-        for output_name in set(cg_product.tensor_dict.values()):
-            if output_name in self.qc_quantize_op_dict:
-                output_quantizers.append(self.qc_quantize_op_dict[output_name])
+        cg_product = op.output
+        if cg_product.name in self.qc_quantize_op_dict:
+            output_quantizers.append(self.qc_quantize_op_dict[cg_product.name])
 
         # Capture param quantizers of the op
         for param_name, (_, param_type) in op.parameters.items():

@@ -1641,3 +1641,52 @@ class TestEncodingPropagation:
 
             assert round(add_act_encoding['max']) == 100.0
             assert round(matmul_act_encoding['max']) == 100.0
+
+    def test_matmul_with_constant_first_input(self):
+        model = models_for_tests.matmul_with_constant_first_input()
+        quantsim_config = {
+            "defaults":
+                {
+                    "hw_version": "V73",
+                    "ops":
+                        {
+                            "is_output_quantized": "True"
+                        },
+                    "params":
+                        {
+                            "is_quantized": "True",
+                            "is_symmetric": "False"
+                        },
+                    "per_channel_quantization": "False",
+                    "strict_symmetric": "False",
+                    "unsigned_symmetric": "False"
+                },
+            "params": {},
+            "op_type": {},
+            "supergroups": [],
+            "model_input": {
+                "is_input_quantized": "True"
+            },
+            "model_output": {
+                "is_output_quantized": "True"
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with open(os.path.join(tempdir, 'quantsim_config.json'), 'w') as f:
+                json.dump(quantsim_config, f)
+
+            sim = QuantizationSimModel(model, path=tempdir,
+                                       config_file=os.path.join(tempdir, 'quantsim_config.json'))
+            assert sim.qc_quantize_op_dict["model_input"].enabled
+            assert sim.qc_quantize_op_dict["matmul.weight"].enabled
+
+    def test_identity_conv_perchannel(self):
+        model = models_for_tests.conv_with_weight_identity_input()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+
+            sim = QuantizationSimModel(model, path=tempdir,
+                                       config_file=get_path_for_per_channel_config())
+            assert sim.qc_quantize_op_dict["identity.input"].quant_info.usePerChannelMode
+            assert sim.qc_quantize_op_dict["identity.input"].quant_info.channelAxis == 0

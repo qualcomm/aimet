@@ -34,7 +34,8 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
+import itertools
+import pytest
 import torch
 from aimet_common.connected_graph.connectedgraph_utils import get_all_input_ops, get_all_ops_with_constant_inputs
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE
@@ -42,35 +43,73 @@ from models import models_for_tests
 
 
 class TestConnectedGraph:
-    def test_simple_model(self):
-        model = models_for_tests.build_dummy_model()
+
+    @pytest.mark.parametrize("model", (models_for_tests.build_dummy_model(),
+                                       models_for_tests.single_residual_model().model,
+                                       models_for_tests.multi_input_model().model,
+                                       models_for_tests.transposed_conv_model().model,
+                                       models_for_tests.concat_model().model,
+                                       models_for_tests.hierarchical_model().model,
+                                       models_for_tests.elementwise_op_model().model,
+                                       models_for_tests.instance_norm_model().model,
+                                       models_for_tests.layernorm_model(),
+                                       models_for_tests.matmul_with_constant_first_input()
+                                       ))
+    def test_model_representation(self, model):
+        """
+        Given: A ConnectedGraph constructed for a given model
+        Then: 1) All non-constant nodes should be represented as ops in the CG
+              2) All tensors should be represented as products in the CG
+        """
+        nodes = {node.name for node in model.graph.node if node.op_type != "Constant"}
+        tensors = {tensor for node in model.graph.node for tensor in itertools.chain(node.input, node.output) if tensor}
         cg = ConnectedGraph(model)
         ops = cg.get_all_ops()
-        assert len(ops) == 5
-        assert ['conv', 'relu', 'maxpool', 'flatten', 'fc'] == [op_name for op_name in ops]
+        assert ops.keys() == nodes
         products = cg.get_all_products()
-        assert len(products) == 10
-        assert ['input_to_conv', 'conv_to_relu', 'relu_to_maxpool', 'maxpool_to_flatten', 'flatten_to_fc', 'fc_to_output',
-                'conv_w', 'conv_b', 'fc_w', 'fc_b'] == [product for product in products]
+        assert products.keys() == tensors
+
+        for _, product in products.items():
+            for node in model.graph.node:
+                if node.op_type == "Constant":
+                    continue
+                """
+                When: A tensor is the output of a node
+                Then: The corresponding Op should be the product's producer
+                """
+                if product.name in node.output:
+                    assert node == product.producer.get_module()
+
+                """
+                When: A tensor is the input of a node
+                Then: The corresponding Op should appear in the product's consumers
+                """
+                if product.name in node.input:
+                    assert node in [op.get_module() for op in product.consumers]
+
+            """
+            When: A tensor is a model input
+            Then: The corresponding product should have product.is_model_input set to True
+            """
+            if product.name in {t.name for t in model.graph.input}:
+                assert product.is_model_input
+            else:
+                assert not product.is_model_input
 
     def test_single_residual_model(self):
         model = models_for_tests.single_residual_model()
         conn_graph = ConnectedGraph(model)
-        operator_names = {node.name for node in model.nodes() if node.op_type not in CONSTANT_TYPE and node.op_type != 'Identity'}
-        assert operator_names.issubset(conn_graph.get_all_ops().keys())
-        non_operators = conn_graph.get_all_ops().keys() - operator_names
-        assert len(non_operators) == conn_graph._branch_count
+        operator_names = {node.name for node in model.nodes() if node.op_type not in CONSTANT_TYPE}
+        assert operator_names == conn_graph.get_all_ops().keys()
 
-        nodes_with_outputs = [node for node in model.graph().node if node.output]
         model_weights = {node.input[1] for node in model.graph().node if node.op_type == "Conv"}
         products = conn_graph.get_all_products()
-        for node in nodes_with_outputs:
-            assert any(f"{node.name}" in prod for prod in products), f"{node.name}, {products}"
-        assert {f"{model.graph().node[0].name}_to_{model.graph().node[1].name}", f"{model.graph().node[-1].name}_to_output", * model_weights}.issubset({product for product in products})
+
+        for weight in model_weights:
+            assert products[weight].is_parm
 
         input_ops = get_all_input_ops(conn_graph)
         assert len(input_ops) == 1
-        assert conn_graph._branch_count == 1
         for op in conn_graph.ordered_ops:
             if op.type == "Gemm":
                 assert op.transposed_params
@@ -78,51 +117,18 @@ class TestConnectedGraph:
     def test_multi_inputs_model(self):
         model = models_for_tests.multi_input_model()
         conn_graph = ConnectedGraph(model)
-        assert len(conn_graph.get_all_ops()) == 15
-
-        products = conn_graph.get_all_products()
-        assert len(products) == 27
-        assert {'/conv1_a/Conv_to_/maxpool1_a/MaxPool', '/conv1_b/Conv_to_/maxpool1_b/MaxPool', '/conv2/Conv_to_/maxpool2/MaxPool'}.issubset(
-            {product for product in products})
-        assert {'conv1_a.weight', 'conv1_a.bias', 'conv1_b.weight'}.issubset({product for product in products})
         input_ops = get_all_input_ops(conn_graph)
         assert len(input_ops) == 2
-
-    def test_transposed_conv_model(self):
-        model = models_for_tests.transposed_conv_model()
-
-        activations = set()
-        for node in model.graph().node:
-            if node.op_type != "Identity":
-                activations.add(node.input[0])
-                activations.add(node.output[0])
-
-        conn_graph = ConnectedGraph(model)
-        assert len(conn_graph.get_all_ops()) == 5
-
-        products = conn_graph.get_all_products()
-        assert len(products) == len(activations) + len(model.graph().initializer)
-        assert {'bn1.weight',
-                'bn1.bias'}.issubset({product for product in products})
 
     def test_concat_model(self):
         model = models_for_tests.concat_model()
         conn_graph = ConnectedGraph(model)
         ops = conn_graph.get_all_ops()
-        assert len(ops) == 6
         assert len(ops['/Concat'].inputs) == 3
-        products = conn_graph.get_all_products()
-        assert len(products) == 17
-        assert conn_graph._branch_count == 0
 
     def test_hierarchical_model(self):
         model = models_for_tests.hierarchical_model()
         conn_graph = ConnectedGraph(model)
-        operator_names = {node.name for node in model.nodes() if node.op_type not in CONSTANT_TYPE and node.op_type != 'Identity'}
-        assert operator_names.issubset(conn_graph.get_all_ops().keys())
-        non_operators = conn_graph.get_all_ops().keys() - operator_names
-        assert len(non_operators) == conn_graph._branch_count
-        assert conn_graph._branch_count == 0
         ordered_ops = conn_graph.ordered_ops
         name_to_index = {}
         for index, op in enumerate(ordered_ops):
@@ -145,9 +151,12 @@ class TestConnectedGraph:
         model = models_for_tests._convert_to_onnx_no_fold(torch_model, torch.randn(input_shape))
 
         cg = ConnectedGraph(model)
-        assert cg.ordered_ops[4].type == 'Transpose'
-        assert cg.ordered_ops[5].type == 'MatMul'
-        assert 'fc2.weight' in cg.ordered_ops[5].parameters
+        for op in cg.ordered_ops:
+            if op.type == 'MatMul':
+                assert 'fc2.weight' in op.parameters
+                break
+        else:
+            assert False
 
     def test_constant_elementwise_inputs(self):
         """ Test that constant inputs to elementwise ops are identified correctly """
@@ -155,21 +164,28 @@ class TestConnectedGraph:
         cg = ConnectedGraph(model)
 
         assert len(get_all_ops_with_constant_inputs(cg)) == 2
+        for product in cg.ordered_ops[0].inputs:
+            if product.name == "input":
+                assert not product.is_const
+                assert product.is_model_input
+            else:
+                assert product.is_const
 
-        assert not cg.ordered_ops[0].inputs[0].is_const
-        assert cg.ordered_ops[0].inputs[1].is_const
-        assert cg.ordered_ops[1].inputs[0].is_model_input == False
-        assert not cg.ordered_ops[1].inputs[0].is_const
-        assert cg.ordered_ops[1].inputs[1].is_const
+        for product in cg.ordered_ops[1].inputs:
+            assert not product.is_model_input
+            if product.producer == cg.ordered_ops[0]:
+                assert not product.is_const
+            else:
+                assert product.is_const
 
     def test_instance_norm_model(self):
         model = models_for_tests.instance_norm_model()
         cg = ConnectedGraph(model)
-        assert cg.ordered_ops[1].type == 'InstanceNormalization'
+        assert cg.ordered_ops[-2].type == 'InstanceNormalization'
 
     def test_layer_norm_model(self):
         model = models_for_tests.layernorm_model()
         cg = ConnectedGraph(model)
-        layernorm_cg_op = cg.ordered_ops[2]
+        layernorm_cg_op = cg.ordered_ops[-1]
         assert layernorm_cg_op.type == 'LayerNormalization'
         assert ['layernorm.scale', 'layernorm.bias'] == list(layernorm_cg_op.parameters.keys())
