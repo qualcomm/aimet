@@ -40,7 +40,7 @@
 """For constructing a uniform representation of the computational graph for an ONNX model,
 that is easy to navigate and stores information for the purpose of AIMET features.
 The representation graph consists of nodes that are either 'operation' or 'product';
-operations represent an operation that generates a tensor, while products represent
+operations represent a node that generates a tensor, while products represent
 the tensors that are either input to the model (input, constant or parameter) or the
 result of an operation. Furthermore the graph representation is bi-directional."""
 
@@ -190,8 +190,10 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
     def fill_op_product_graph(self):
         """
-        - DFS over the graph beginning with input op given as start_op_name
-        - Creates op/product graph
+        - Creates a product for all tensors (model inputs, constants/initializers, node outputs) in the onnx graph
+        - Creates an op for all nodes in the onnx graph
+        - Links products with their producer and consumer ops
+        - Identifies which products should be considered parameters
         """
 
         # Add products for all tensors in initializer

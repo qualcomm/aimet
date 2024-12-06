@@ -2672,34 +2672,6 @@ def matmul_with_constant_first_input():
     onnx.checker.check_model(model, True)
     return model
 
-def matmul_with_constant_second_input():
-    model = helper.make_model(
-        graph=helper.make_graph(
-            name="MatMulModel",
-            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10])],
-            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10])],
-            initializer=[
-                numpy_helper.from_array(np.random.randn(1, 10).astype('float32'), name='matmul.weight'),
-                numpy_helper.from_array(np.array([1]).astype('int64'), name='axes')
-            ],
-            nodes=[
-                helper.make_node(
-                    "Unsqueeze",
-                    inputs=["model_input", "axes"],
-                    outputs=["matmul_input"],
-                ),
-                helper.make_node(
-                    "MatMul",
-                    inputs=["matmul_input", "matmul.weight"],
-                    outputs=["model_output"],
-                    name="matmul"
-                )
-            ]
-        )
-    )
-    onnx.checker.check_model(model, True)
-    return model
-
 def conv_with_weight_identity_input():
     model = helper.make_model(
         graph=helper.make_graph(
