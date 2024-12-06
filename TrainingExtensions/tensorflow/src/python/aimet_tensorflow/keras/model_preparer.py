@@ -592,11 +592,11 @@ class _KerasModelPreparer:
         :return: Index of value in the search list
         """
         if not isinstance(value, KerasTensor):
-            return -1
+            return None
         for idx, k_tensor in enumerate(search_list):
             if isinstance(k_tensor, KerasTensor) and value.name == k_tensor.name:
                 return idx
-        return -1
+        return None
 
     def _handle_normal_keras_layer(self, layer: tf.keras.layers.Layer) -> KerasTensor:
         """
@@ -616,14 +616,11 @@ class _KerasModelPreparer:
 
                 # Remove keras tensor from call_args in case it is used in one of the keyword arguments
                 for _, values in call_kwargs.items():
-                    if isinstance(values, List):
-                        for value in values:
-                            keras_tensor_index = self._get_keras_tensor_index(value, call_args)
-                            if keras_tensor_index != -1:
-                                call_args.pop(keras_tensor_index)
-                    else:
-                        keras_tensor_index = self._get_keras_tensor_index(values, call_args)
-                        if keras_tensor_index != -1:
+                    if not isinstance(values, List):
+                        values = [values]
+                    for value in values:
+                        keras_tensor_index = self._get_keras_tensor_index(value, call_args)
+                        if keras_tensor_index is not None:
                             call_args.pop(keras_tensor_index)
 
                 if "concat" in layer.name:
