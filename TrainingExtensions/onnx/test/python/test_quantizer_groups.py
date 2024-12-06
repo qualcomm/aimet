@@ -92,8 +92,15 @@ class TestQuantizerGroups:
         sim = QuantizationSimModel(model.model)
         _, quantizer_groups = find_quantizer_group(sim)
         assert len(quantizer_groups) == 10
-        assert quantizer_groups[3].activation_quantizers[0] == '/relu2/Relu_output_0'
-        assert quantizer_groups[8].parameter_quantizers[0] == 'fc.weight'
+        conv3_group = avg_pool_group = None
+        for group in quantizer_groups:
+            if "conv3.weight" in group.parameter_quantizers:
+                conv3_group = group
+            if "/avgpool/AveragePool_output_0" in group.activation_quantizers:
+                avg_pool_group = group
+
+        assert conv3_group.activation_quantizers[0] == '/relu2/Relu_output_0'
+        assert avg_pool_group.parameter_quantizers[0] == 'fc.weight'
 
     def test_find_quantizer_groups_first_param_quantizer_disabled(self):
         model = single_residual_model()
@@ -101,16 +108,29 @@ class TestQuantizerGroups:
         # disable first param quantizer
         list(sim.qc_quantize_op_dict.values())[0].enabled = False
         _, quantizer_groups = find_quantizer_group(sim)
+        input_group = conv3_group = avg_pool_group = None
+        for group in quantizer_groups:
+            if "input" in group.activation_quantizers:
+                input_group = group
+            if "conv3.weight" in group.parameter_quantizers:
+                conv3_group = group
+            if "/avgpool/AveragePool_output_0" in group.activation_quantizers:
+                avg_pool_group = group
+
         assert len(quantizer_groups) == 10
-        assert quantizer_groups[3].activation_quantizers[0] == '/relu2/Relu_output_0'
-        assert len(quantizer_groups[0].parameter_quantizers) == 0
-        assert quantizer_groups[8].parameter_quantizers[0] == 'fc.weight'
+        assert len(input_group.parameter_quantizers) == 0
+        assert conv3_group.activation_quantizers[0] == '/relu2/Relu_output_0'
+        assert avg_pool_group.parameter_quantizers[0] == 'fc.weight'
 
     def test_set_and_get_bitwidth_quantizer_groups(self):
         model = single_residual_model()
         sim = QuantizationSimModel(model.model)
         op_name_to_quantizer_dict, quantizer_groups = find_quantizer_group(sim)
-        quantizer_group = quantizer_groups[3]
+        quantizer_group = None
+        for group in quantizer_groups:
+            if "conv3.weight" in group.parameter_quantizers:
+                quantizer_group = group
+                break
         candidate = ((8, QuantizationDataType.int), (16, QuantizationDataType.float))
         quantizer_group.set_quantizers_to_candidate(op_name_to_quantizer_dict, candidate)
         found_candidate = quantizer_group.get_candidate(op_name_to_quantizer_dict)
