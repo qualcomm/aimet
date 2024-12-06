@@ -84,20 +84,18 @@ def get_ordered_ops(list_of_starting_ops: List[Op]) -> List[Op]:
     op_stack = list_of_starting_ops[::-1]
 
     while op_stack:
-        current_op = op_stack.pop()
-        if current_op in visited_ops_set:
+        current_op = op_stack[-1]
+        unvisited_consumers = [consumer for consumer in current_op.output_ops if consumer not in visited_ops_set]
+        if unvisited_consumers:
+            op_stack.extend(reversed(unvisited_consumers))
             continue
 
-        # Check that all producers have already been visited, if not, add them to the stack and continue
-        unvisited_producers = [producer for producer in current_op.input_ops if producer not in visited_ops_set]
-        if unvisited_producers:
-            op_stack.extend(unvisited_producers)
+        op_stack.pop()
+        if current_op in visited_ops_set:
             continue
 
         visited_ops_set.add(current_op)
         ordered_ops_list.append(current_op)
-        for consumer_op in current_op.output_ops:
-            if consumer_op not in visited_ops_set:
-                op_stack.append(consumer_op)
 
+    ordered_ops_list.reverse()
     return ordered_ops_list
