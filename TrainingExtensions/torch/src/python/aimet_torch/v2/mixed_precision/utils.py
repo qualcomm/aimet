@@ -168,6 +168,6 @@ def broadcast_tuples(inp_a, inp_b):
     if isinstance(inp_a, (tuple, list)) and isinstance(inp_b, (tuple, list)):
         if len(inp_a) == len(inp_b):
             return tuple(broadcast_tuples(inp_a_elem, inp_b_elem) for inp_a_elem, inp_b_elem in \
-                         zip(inp_a, inp_b, strict=True))
+                         zip(inp_a, inp_b))
 
     raise RuntimeError("Incompatible tuple sizes.")

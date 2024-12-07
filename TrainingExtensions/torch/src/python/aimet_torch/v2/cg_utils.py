@@ -75,7 +75,7 @@ class ConnectedGraphTraverser:
             if isinstance(module, BaseQuantizationMixin) and isinstance(module.get_original_module(), module_type):
                 yield name, module
 
-    @functools.cache
+    @functools.lru_cache
     def get_module_name(self, inp_module):
         """ Find the name of the provided module"""
         for name, module in self._sim.model.named_modules():
