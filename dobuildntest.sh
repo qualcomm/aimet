@@ -397,40 +397,30 @@ if [ $run_build -eq 1 ]; then
     cd $buildFolder
 
     extra_opts=""
+
     if [ -n "$SW_VERSION" ]; then
         extra_opts+=" -DSW_VERSION=${SW_VERSION}"
     fi
-    # Add build options based on variant
+
     if [ -n "$AIMET_VARIANT" ]; then
+        # Add build options based on variant
         if [[ "$AIMET_VARIANT" == *"gpu"* ]]; then
             extra_opts+=" -DENABLE_CUDA=ON"
-        fi
-        if [[ "$AIMET_VARIANT" == *"cpu"* ]]; then
+        elif [[ "$AIMET_VARIANT" == *"cpu"* ]]; then
             extra_opts+=" -DENABLE_CUDA=OFF"
         fi
-        if [[ "$AIMET_VARIANT" == *"tf"* ]]; then
-            extra_opts+=" -DENABLE_TENSORFLOW=ON"
-        fi
-        if [[ "$AIMET_VARIANT" == *"torch"* ]]; then
-            extra_opts+=" -DENABLE_TORCH=ON"
-        fi
-        if [[ "$AIMET_VARIANT" == *"onnx"* ]]; then
-            extra_opts+=" -DENABLE_ONNX=ON"
-        fi
-        if [[ "$AIMET_VARIANT" != *"tf"* ]]; then
-            extra_opts+=" -DENABLE_TENSORFLOW=OFF"
-        fi
-        if [[ "$AIMET_VARIANT" != *"torch"* ]] && [[ "$AIMET_VARIANT" != *"onnx"* ]]; then
-            extra_opts+=" -DENABLE_TORCH=OFF"
-        fi
-        if [[ "$AIMET_VARIANT" != *"onnx"* ]]; then
-            extra_opts+=" -DENABLE_ONNX=OFF"
-        fi
         if [[ "$AIMET_VARIANT" == "${variant_docs}" ]]; then
-            #TODO For doc variant, cmake "test" targets are NOT supported at this time
-            extra_opts+=" -DENABLE_TESTS=OFF"
-            # explicitly enable ONNX for docs variant since it is not present in variant string
-            extra_opts+=" -DENABLE_ONNX=ON"
+            # For doc variant, cmake "test" targets are NOT supported AND we need to enable all frameworks.
+            extra_opts+=" -DENABLE_TESTS=OFF -DENABLE_TENSORFLOW=ON -DENABLE_TORCH=ON -DENABLE_ONNX=ON"
+        elif [[ "$AIMET_VARIANT" == *"tf"* ]]; then
+            extra_opts+=" -DENABLE_TENSORFLOW=ON -DENABLE_TORCH=OFF -DENABLE_ONNX=OFF"
+        elif [[ "$AIMET_VARIANT" == *"torch"* ]]; then
+            extra_opts+=" -DENABLE_TENSORFLOW=OFF -DENABLE_TORCH=ON -DENABLE_ONNX=OFF"
+        elif [[ "$AIMET_VARIANT" == *"onnx"* ]]; then
+            extra_opts+=" -DENABLE_TENSORFLOW=OFF -DENABLE_TORCH=OFF -DENABLE_ONNX=ON"
+        else
+            echo -e "ERROR: Invalid variant string!"
+            exit 3
         fi
     fi
     # Do not exit on failure by default from this point forward
