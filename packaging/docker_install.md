@@ -77,7 +77,9 @@ mkdir build && cd build
 # To include torch, use -DENABLE_TORCH=ON. To exclude torch, use -DENABLE_TORCH=OFF.
 # To include tensorflow, use -DENABLE_TENSORFLOW=ON. To exclude tensorflow, use -DENABLE_TENSORFLOW=OFF.
 # To include onnx, use -DENABLE_ONNX=ON. To exclude onnx, use -DENABLE_ONNX=OFF.
-cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_TENSORFLOW=ON -DENABLE_ONNX=ON
+# Add a installation location -DCMAKE_INSTALL_PREFIX="<install_path>"
+# Following is an example command for the Torch GPU variant with installation within the current build path. Please modify it as appropriate.
+cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_TENSORFLOW=OFF -DENABLE_ONNX=OFF -DCMAKE_INSTALL_PREFIX="./staging/universal"
 
 make -j8
 ```
