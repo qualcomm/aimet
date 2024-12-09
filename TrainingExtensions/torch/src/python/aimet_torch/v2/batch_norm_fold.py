@@ -39,8 +39,7 @@
 from typing import List, Tuple, Iterable
 import torch
 from aimet_torch import utils
-from aimet_torch.v1.batch_norm_fold import BatchNormFold as BatchNormFoldV1
-from aimet_torch.v1.batch_norm_fold import _BatchNormFoldingNotSupported
+from aimet_torch._base.batch_norm_fold import BatchNormFoldBase, _BatchNormFoldingNotSupported
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from torch.nn.modules.conv import _ConvTransposeNd
@@ -49,11 +48,12 @@ from aimet_common.utils import AimetLogger
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.BatchNormFolding)
 
 
-class BatchNormFold(BatchNormFoldV1):
+class BatchNormFold(BatchNormFoldBase):
     """Handles batch norm folding logic"""
 
-    @staticmethod
-    def fold_all_batch_norms_to_scale(sim: QuantizationSimModel) -> List[Tuple[BaseQuantizationMixin, BaseQuantizationMixin]]:
+    @classmethod
+    def fold_all_batch_norms_to_scale(cls, sim: QuantizationSimModel)\
+            -> List[Tuple[BaseQuantizationMixin, BaseQuantizationMixin]]:
         """
         Fold all batch_norm layers in a model into the quantization scale parameter
         of the corresponding conv layers
@@ -76,7 +76,7 @@ class BatchNormFold(BatchNormFoldV1):
             if '.' in module_name and hasattr(sim.model, module_name.split('.')[1]):
                 module_to_qmodule[module] = getattr(sim.model, module_name.split('.')[1])
 
-        conv_bn_pairs, bn_conv_pairs, _ = BatchNormFoldV1._find_all_batch_norms_to_fold(connected_graph)
+        conv_bn_pairs, bn_conv_pairs, _ = cls._find_all_batch_norms_to_fold(connected_graph)
 
         conv_bn_pairs = [
             (module_to_qmodule[conv], module_to_qmodule[bn]) for conv, bn in conv_bn_pairs
@@ -88,8 +88,9 @@ class BatchNormFold(BatchNormFoldV1):
         BatchNormFold._fold_given_batch_norms(model, conv_bn_pairs, bn_conv_pairs)
         return conv_bn_pairs + [(conv, bn) for bn, conv in bn_conv_pairs]
 
-    @staticmethod
-    def _fold_given_batch_norms(model,
+    @classmethod
+    def _fold_given_batch_norms(cls,
+                                model,
                                 conv_bn_pairs: Iterable[Tuple[torch.nn.Module, torch.nn.Module]],
                                 bn_conv_pairs: Iterable[Tuple[torch.nn.Module, torch.nn.Module]]):
         """
@@ -115,7 +116,7 @@ class BatchNormFold(BatchNormFoldV1):
                     BatchNormFold._fold_to_scale(conv, bn)
                     bn_modules.append(bn)
                 else:
-                    BatchNormFoldV1._fold_to_weight(conv, bn, fold_backward=fold_backward)
+                    cls._fold_to_weight(conv, bn, fold_backward=fold_backward)
             except _BatchNormFoldingNotSupported as e:
                 bn_name = utils.get_layer_name(model, bn)
                 conv_name = utils.get_layer_name(model, conv)
@@ -133,11 +134,11 @@ class BatchNormFold(BatchNormFoldV1):
             for bn, conv in bn_conv_pairs:
                 _fold(conv, bn, fold_backward=False)
 
-            BatchNormFoldV1._delete_bn_from_model(model, bn_modules)
+            cls._delete_bn_from_model(model, bn_modules)
 
     # pylint: disable=arguments-differ
-    @staticmethod
-    def _fold_to_scale(conv: BaseQuantizationMixin, bn: BaseQuantizationMixin):
+    @classmethod
+    def _fold_to_scale(cls, conv: BaseQuantizationMixin, bn: BaseQuantizationMixin):
         """
         Fold BatchNorm into the scale and bias of the given layer.
 
@@ -174,7 +175,7 @@ class BatchNormFold(BatchNormFoldV1):
         #       (FYI: _quantize_params takes effect only when the parameter quantizers are enabled)
 
         with bn._patch_quantized_parameters():
-            BatchNormFoldV1._fold_to_weight(conv, bn, fold_backward=True)
+            cls._fold_to_weight(conv, bn, fold_backward=True)
 
             gamma = bn.weight
             sigma = torch.sqrt(bn.running_var + bn.eps)
@@ -214,5 +215,5 @@ fold_all_batch_norms = BatchNormFold.fold_all_batch_norms_to_weight
 fold_all_batch_norms_to_scale = BatchNormFold.fold_all_batch_norms_to_scale
 fold_given_batch_norms = BatchNormFold.fold_given_batch_norms
 # pylint: disable=protected-access
-_is_valid_bn_fold = BatchNormFoldV1._is_valid_bn_fold
-_find_all_batch_norms_to_fold = BatchNormFoldV1._find_all_batch_norms_to_fold
+_is_valid_bn_fold = BatchNormFold._is_valid_bn_fold
+_find_all_batch_norms_to_fold = BatchNormFold._find_all_batch_norms_to_fold
