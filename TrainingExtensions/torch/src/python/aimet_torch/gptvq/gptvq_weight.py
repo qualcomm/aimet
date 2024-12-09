@@ -403,7 +403,7 @@ class GPTVQ:
         :param param_encodings: Dictionary of param encodings
         :param rows_per_block: The number of rows per block
         """
-        for orig_param_name, encodings in quant_module.export_param_encodings().items():
+        for orig_param_name, encodings in quant_module.export_param_encodings(encoding_version='0.6.1').items():
             if orig_param_name == "weight" and encodings:
                 per_channel_encodings = []
                 # Transform block encodings to per-channel encodings

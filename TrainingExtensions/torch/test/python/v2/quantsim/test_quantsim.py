@@ -1540,3 +1540,59 @@ class TestEncodingPropagation:
               to propagate the output encodings to.
         """
         propagate_output_encodings(sim, custom.Concat)
+
+    def test_skip_torch_encodings(self):
+        @contextlib.contextmanager
+        def swap_skip_torch_encodings(skip_torch_encodings):
+            from aimet_torch.v1 import quantsim as v1_quantsim
+            old_setting = v1_quantsim.SKIP_TORCH_ENCODINGS_EXPORT
+            v1_quantsim.SKIP_TORCH_ENCODINGS_EXPORT = skip_torch_encodings
+
+            yield
+
+            v1_quantsim.SKIP_TORCH_ENCODINGS_EXPORT = old_setting
+
+        model = test_models.SingleResidualWithAvgPool()
+        dummy_input = torch.randn(1, 3, 28, 28)
+
+        qsim = QuantizationSimModel(model, dummy_input)
+        qsim.compute_encodings(lambda m, _: m(dummy_input), None)
+
+        with tempfile.TemporaryDirectory() as temp_dir, swap_skip_torch_encodings(False):
+            qsim.export(temp_dir, 'model_export', dummy_input)
+            assert os.path.isfile(os.path.join(temp_dir, 'model_export_torch.encodings'))
+
+        with tempfile.TemporaryDirectory() as temp_dir, swap_skip_torch_encodings(True):
+            qsim.export(temp_dir, 'model_export', dummy_input)
+            assert not os.path.isfile(os.path.join(temp_dir, 'model_export_torch.encodings'))
+
+    def test_torch_encodings_parity(self):
+        @contextlib.contextmanager
+        def swap_encoding_version(encoding_version):
+            from aimet_common import quantsim as aimet_common_quantsim
+            old_setting = aimet_common_quantsim.encoding_version
+            aimet_common_quantsim.encoding_version = encoding_version
+
+            yield
+
+            aimet_common_quantsim.encoding_version = old_setting
+
+        model = test_models.SingleResidualWithAvgPool()
+        dummy_input = torch.randn(1, 3, 28, 28)
+
+        qsim = QuantizationSimModel(model, dummy_input)
+        qsim.compute_encodings(lambda m, _: m(dummy_input), None)
+
+        with tempfile.TemporaryDirectory() as temp_dir, swap_encoding_version(False):
+            with swap_encoding_version('0.6.1'):
+                qsim.export(temp_dir, 'model_export_0_6_1', dummy_input)
+            with swap_encoding_version('1.0.0'):
+                qsim.export(temp_dir, 'model_export_1_0_0', dummy_input)
+
+            with open(os.path.join(temp_dir, 'model_export_0_6_1_torch.encodings')) as encodings_0_6_1_file:
+                encodings_0_6_1 = json.load(encodings_0_6_1_file)
+            with open(os.path.join(temp_dir, 'model_export_1_0_0_torch.encodings')) as encodings_1_0_0_file:
+                encodings_1_0_0 = json.load(encodings_1_0_0_file)
+
+            assert encodings_0_6_1['activation_encodings'] == encodings_1_0_0['activation_encodings']
+            assert encodings_0_6_1['param_encodings'] == encodings_1_0_0['param_encodings']

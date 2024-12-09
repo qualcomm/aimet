@@ -1119,9 +1119,9 @@ class TestQcQuantizeOpLearnedGrid:
         wrapper.param_quantizers["weight"].encoding = [encoding] * 10
         wrapper.input_quantizers[0].encoding = encoding
         wrapper.output_quantizers[1].encoding = encoding
-        input_encodings = wrapper.export_input_encodings()
-        output_encodings = wrapper.export_output_encodings()
-        param_encodings = wrapper.export_param_encodings()
+        input_encodings = wrapper.export_input_encodings(encoding_version='0.6.1')
+        output_encodings = wrapper.export_output_encodings(encoding_version='0.6.1')
+        param_encodings = wrapper.export_param_encodings(encoding_version='0.6.1')
         assert len(input_encodings) == 2
         assert input_encodings[0] == [encoding_as_dict]
         assert input_encodings[1] is None

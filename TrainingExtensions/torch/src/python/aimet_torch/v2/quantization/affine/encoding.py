@@ -37,18 +37,19 @@
 # pylint: disable=redefined-builtin
 """ Affine encoding definition """
 
-from typing import Tuple, Optional, Dict, Any, overload
+from typing import Tuple, Optional, Dict, Any, overload, Union, List
 from itertools import chain, repeat
 import torch
 from torch._C._nn import _parse_to as parse_to_args
 
+from aimet_common.defs import EncodingType
 from aimet_torch.v2.utils import docstring
 from aimet_torch.v2.quantization.base import EncodingBase
 from aimet_torch.v2.quantization.affine.backends import quantize, dequantize, _derive_qmin_qmax
 from ._utils import _GridMixin, _register_signature # pylint: disable=import-error
 
 
-__all__ = ["AffineEncoding", "VectorEncoding"]
+__all__ = ["AffineEncoding", "VectorEncoding", "GroupedBlockEncoding"]
 
 
 class AffineEncoding(EncodingBase, _GridMixin):
@@ -283,6 +284,44 @@ class AffineEncoding(EncodingBase, _GridMixin):
     def _get_additional_properties(self) -> Dict[str, Any]:
         return {}
 
+    @staticmethod
+    def _get_block_size(block_size: Tuple):
+        assert len(block_size) >= 2
+        for dim_block_size in block_size:
+            if dim_block_size != 1:
+                return dim_block_size
+        return block_size[1]
+
+    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]:
+        """
+        Converts encoding object into QNN encoding
+        """
+        if encoding_version == '0.6.1':
+            return self._to_legacy_format()
+        if encoding_version == '1.0.0':
+            encoding_dict = {'dtype': 'INT',
+                             'bw': self.bitwidth,
+                             'is_sym': self.symmetry,
+                             'scale': self.scale.flatten().tolist()}
+
+            # Compute signed offset if necessary
+            offset = self.offset
+            if self.signed:
+                offset = offset - 2 ** (self.bitwidth - 1)
+            encoding_dict['offset'] = offset.to(torch.int).flatten().tolist()
+
+            assert self.granularity != 'unknown'
+            if self.granularity == 'pertensor':
+                encoding_dict['enc_type'] = EncodingType.PER_TENSOR.name
+            elif self.granularity == 'perchannel':
+                encoding_dict['enc_type'] = EncodingType.PER_CHANNEL.name
+            else:
+                encoding_dict['enc_type'] = EncodingType.PER_BLOCK.name
+                encoding_dict['block_size'] = self._get_block_size(self.block_size)
+            return encoding_dict
+
+        raise AssertionError(f'Export encoding version {encoding_version} not supported.')
+
 class VectorEncoding(AffineEncoding):
     """
     Encoding object for vector quantization
@@ -324,3 +363,68 @@ class VectorEncoding(AffineEncoding):
             "vector_stride": self.vector_stride,
             "index_bw": self.index_bw,
         }
+
+    def to_qnn_encoding_dict(self, encoding_version=None):
+        encodings = super().to_qnn_encoding_dict(encoding_version)
+        if encoding_version == '0.6.1':
+            for encoding in encodings:
+                encoding.update(
+                    rows_per_block=self.rows_per_block,
+                    cols_per_block=self.cols_per_block,
+                    vector_dim=self.vector_dim,
+                    vector_stride=self.vector_stride,
+                    index_bw=self.index_bw)
+        if encoding_version == '1.0.0':
+            encodings.update(
+                rows_per_block=self.rows_per_block,
+                cols_per_block=self.cols_per_block,
+                vector_dim=self.vector_dim,
+                vector_stride=self.vector_stride,
+                index_bw=self.index_bw)
+            encodings['enc_type'] = EncodingType.VECTOR.name
+        return encodings
+
+# pylint: disable=too-many-arguments
+class GroupedBlockEncoding(AffineEncoding):
+    """
+    Encoding object for grouped block quantization
+    """
+    def __init__(
+        self,
+        scale: torch.Tensor,
+        offset: torch.Tensor,
+        bitwidth: int,
+        signed=False,
+        symmetry=False,
+        block_size: Optional[Tuple[int, ...]] = None,
+        block_grouping: Optional[Tuple[int, ...]] = None,
+        decompressed_bw: Optional[int] = None,
+        per_channel_scale: Optional[torch.Tensor] = None,
+        per_block_int_scale: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        super().__init__(scale, offset, bitwidth, signed, symmetry, block_size, **kwargs)
+        self.block_grouping = block_grouping
+        self.decompressed_bw = decompressed_bw
+        self.per_channel_scale = per_channel_scale
+        self.per_block_int_scale = per_block_int_scale
+
+    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]:
+        """
+        Converts encoding object into QNN encoding
+        """
+        encoding_dict = super().to_qnn_encoding_dict(encoding_version)
+
+        # Version 0.6.1 currently used for save_encodings_to_json
+        if all(group_size == 1 for group_size in self.block_grouping) or encoding_version == '0.6.1':
+            # Equivalent to AffineEncoding
+            pass
+        else:
+            encoding_dict['bw'] = self.decompressed_bw
+            encoding_dict['compressed_bw'] = self.bitwidth
+            encoding_dict['scale'] = self.per_channel_scale.flatten().tolist()
+            encoding_dict['offset'] = \
+                [-2 ** (self.decompressed_bw - 1) for _ in encoding_dict['scale']]
+            encoding_dict['enc_type'] = EncodingType.LPBQ.name
+            encoding_dict['per_block_int_scale'] = self.per_block_int_scale.flatten().tolist()
+        return encoding_dict

@@ -37,9 +37,11 @@
 # pylint: disable=redefined-builtin
 """ Float encoding definition """
 
+from typing import Union, List, Dict
 import torch
 from torch._C._nn import _parse_to as parse_to_args
 
+from aimet_common.defs import EncodingType
 from aimet_torch.v2.quantization.base import EncodingBase
 
 
@@ -127,3 +129,14 @@ class FloatEncoding(EncodingBase):
 
     def dequantize(self, input: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
+
+    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]:
+        """
+        Converts encoding object into QNN encoding
+        """
+        if encoding_version == '0.6.1':
+            return [{'bitwidth': self.bitwidth, 'dtype': 'float'}]
+        if encoding_version == '1.0.0':
+            return {'dtype': 'FLOAT', 'bw': self.bitwidth, 'enc_type': EncodingType.PER_TENSOR.name}
+
+        raise AssertionError(f'Export encoding version {encoding_version} not supported.')

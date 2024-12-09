@@ -48,7 +48,7 @@ from torch import nn
 
 from aimet_torch.v2.utils import patch_attr, _is_expandable, StatisticsNotFoundError, docstring
 from aimet_torch.v2.quantization.encoding_analyzer import EncodingAnalyzer, MinMaxEncodingAnalyzer, _flag_extreme_min_max
-from aimet_torch.v2.quantization.affine import AffineEncoding
+from aimet_torch.v2.quantization.affine import AffineEncoding, GroupedBlockEncoding
 from aimet_torch.v2.quantization.tensor import QuantizedTensor, DequantizedTensor
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine.backends import quantize, quantize_dequantize, torch_builtins, _derive_qmin_qmax
@@ -820,3 +820,23 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         expanded_scale = self.get_scale().view(self.get_expanded_scale_shape())
         integer_scale = torch.round(expanded_scale / per_channel_scale).int().view(self.get_scale().shape)
         return integer_scale
+
+    def get_encodings(self) -> Optional[GroupedBlockEncoding]:
+        """
+        Return the quantizer's encodings as an EncodingBase object
+        """
+        if self.is_initialized():
+            if all(group_size == 1 for group_size in self.block_grouping):
+                return super().get_encodings()
+
+            return GroupedBlockEncoding(scale=self.get_scale(dtype=torch.float32),
+                                        offset=self.get_offset(dtype=torch.float32),
+                                        bitwidth=self.bitwidth,
+                                        signed=self.signed,
+                                        symmetry=self.symmetric,
+                                        block_size=self.block_size,
+                                        block_grouping=self.block_grouping,
+                                        decompressed_bw=self.decompressed_bw,
+                                        per_channel_scale=self.get_per_channel_scale(dtype=torch.float32),
+                                        per_block_int_scale=self.get_per_block_integer_scale())
+        return None

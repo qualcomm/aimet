@@ -70,7 +70,7 @@ from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, QcQuantizeStandalon
     StaticGridQuantWrapper, QcQuantizeOpMode, LearnedGridQuantWrapper, enable_recompute, no_recompute
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.v1.quantsim import QuantizationSimModel, check_accumulator_overflow, load_encodings_to_sim, \
-    has_valid_encodings, compute_encodings_for_sims
+    compute_encodings_for_sims
 from aimet_torch.v1.quantsim_straight_through_grad import compute_dloss_by_dx
 from aimet_torch.v1.nn.modules.custom import DynamicConv2d
 
@@ -2314,34 +2314,6 @@ class TestQuantizationSimStaticGrad:
 
         assert sim.model.add.input_quantizers[0].encoding is not None
         assert sim.model.add.input_quantizers[1].encoding is not None
-
-    def test_has_valid_encodings(self):
-        class Model(torch.nn.Module):
-            def __init__(self):
-                super(Model, self).__init__()
-                self.relu1 = torch.nn.ReLU()
-                self.conv = torch.nn.Conv2d(3, 8, (2, 2))
-                self.relu2 = torch.nn.ReLU()
-                self.unused_module = torch.nn.PReLU()
-
-            def forward(self, *inputs):
-                x = self.relu1(inputs[0])
-                x = self.conv(x)
-                x = self.relu2(x)
-                return x
-
-        model = Model()
-        model.eval()
-        qsim = QuantizationSimModel(model, dummy_input=torch.randn(1, 3, 8, 8))
-        modules = [qsim.model.relu1, qsim.model.conv, qsim.model.relu2, qsim.model.unused_module]
-        for m in modules:
-            assert not has_valid_encodings(m)
-        qsim.compute_encodings(lambda m, _: m(torch.randn(1, 3, 8, 8)), None)
-        for m in modules:
-            if m == qsim.model.unused_module:
-                assert not has_valid_encodings(m)
-            else:
-                assert has_valid_encodings(m)
 
     def test_save_model_with_embedded_quantization_nodes(self):
         """Test export onnx model with embedded torch native quantization nodes"""

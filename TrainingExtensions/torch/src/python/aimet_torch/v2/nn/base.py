@@ -335,14 +335,17 @@ class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):
         qtzn_module.__quant_init__()
         return qtzn_module
 
-    def export_input_encodings(self) -> List[List[Dict]]:
+    def export_input_encodings(self, encoding_version: str) -> List[List[Dict]]:
         """
         Returns a list of input encodings, each represented as a List of Dicts
         """
-        return [
-            quantizer.get_legacy_encodings() if isinstance(quantizer, QuantizerBase) else None
-            for quantizer in flatten_nn_module_list(self.input_quantizers)
-        ]
+        input_encodings = []
+        for quantizer in flatten_nn_module_list(self.input_quantizers):
+            if isinstance(quantizer, QuantizerBase) and quantizer.is_initialized():
+                input_encodings.append(quantizer.get_encodings().to_qnn_encoding_dict(encoding_version))
+            else:
+                input_encodings.append(None)
+        return input_encodings
 
     def import_input_encodings(self,
                                encodings: Mapping[str, Mapping],
@@ -385,14 +388,17 @@ class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):
 
             quantizer.allow_overwrite(allow_overwrite)
 
-    def export_output_encodings(self) -> List[List[Dict]]:
+    def export_output_encodings(self, encoding_version: str) -> List[List[Dict]]:
         """
         Returns a list of output encodings, each represented as a List of Dicts
         """
-        return [
-            quantizer.get_legacy_encodings() if isinstance(quantizer, QuantizerBase) else None
-            for quantizer in flatten_nn_module_list(self.output_quantizers)
-        ]
+        output_encodings = []
+        for quantizer in flatten_nn_module_list(self.output_quantizers):
+            if isinstance(quantizer, QuantizerBase) and quantizer.is_initialized():
+                output_encodings.append(quantizer.get_encodings().to_qnn_encoding_dict(encoding_version))
+            else:
+                output_encodings.append(None)
+        return output_encodings
 
     def import_output_encodings(self,
                                 encodings: Mapping[str, Mapping],
@@ -435,22 +441,26 @@ class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):
 
             quantizer.allow_overwrite(allow_overwrite)
 
-    def export_param_encodings(self) -> Dict[str, List[Dict]]:
+    def export_param_encodings(self, encoding_version: str) -> Dict[str, List[Dict]]:
         """
         Returns a dict of {param name: param encodings}, with each encoding represented as a List of Dicts
         """
-        encodings = {
-            param_name: quantizer.get_legacy_encodings() if isinstance(quantizer, QuantizerBase) else None
-            for param_name, quantizer in self.param_quantizers.items()
-        }
+        encodings = {}
+        for param_name, quantizer in self.param_quantizers.items():
+            if isinstance(quantizer, QuantizerBase) and quantizer.is_initialized():
+                encodings[param_name] = quantizer.get_encodings().to_qnn_encoding_dict(encoding_version)
+            else:
+                encodings[param_name] = None
+
         for param_name, quantizer in self.param_quantizers.items():
             param = getattr(self, param_name)
             if isinstance(quantizer, QuantizerBase):
-                e = encodings[param_name]
-            elif isinstance(param, QuantizedTensorBase) and param.encoding is not None:
+                # Already taken care of by earlier for loop
+                continue
+            if isinstance(param, QuantizedTensorBase) and param.encoding is not None:
                 # If parameter itself is an already-quantized tensor,
                 # export the encoding held by the parameter
-                e = param.encoding._to_legacy_format() # pylint: disable=protected-access
+                e = param.encoding.to_qnn_encoding_dict(encoding_version) # pylint: disable=protected-access
             else:
                 e = None
             encodings[param_name] = e

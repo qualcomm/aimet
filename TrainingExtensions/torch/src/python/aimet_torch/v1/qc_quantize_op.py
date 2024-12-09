@@ -478,19 +478,25 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
         """
         return self._module_to_wrap
 
-    def export_param_encodings(self) -> Dict[str, List[Dict]]:
+    # pylint: disable=unused-argument
+    # TODO: enable 1.0.0 encodings export
+    def export_param_encodings(self, encoding_version: str) -> Dict[str, List[Dict]]:
         """
         Returns the layer's parameter encodings in an exportable format
         """
         return {name: export_quantizer_encoding(quantizer) for name, quantizer in self.param_quantizers.items()}
 
-    def export_output_encodings(self) -> List[List[Dict]]:
+    # pylint: disable=unused-argument
+    # TODO: enable 1.0.0 encodings export
+    def export_output_encodings(self, encoding_version: str) -> List[List[Dict]]:
         """
         Returns the layer's output encodings in an exportable format
         """
         return [export_quantizer_encoding(quantizer) for quantizer in self.output_quantizers]
 
-    def export_input_encodings(self) -> List[List[Dict]]:
+    # pylint: disable=unused-argument
+    # TODO: enable 1.0.0 encodings export
+    def export_input_encodings(self, encoding_version: str) -> List[List[Dict]]:
         """
         Returns the layer's input encodings in an exportable format
         """

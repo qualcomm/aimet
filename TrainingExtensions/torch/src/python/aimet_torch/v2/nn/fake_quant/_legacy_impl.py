@@ -931,11 +931,11 @@ class FakeQuantizedConcat(FakeQuantizationMixin, custom.Concat):
         super().__quant_init__()
         self._num_inputs = 1
 
-    def export_input_encodings(self):
+    def export_input_encodings(self, encoding_version: str):
         """
         Extends super().export to repeat input quantizer's encodings :attr:`self._num_inputs` times
         """
-        input_encodings = super().export_input_encodings()
+        input_encodings = super().export_input_encodings(encoding_version)
         return input_encodings * self._num_inputs
 
     def import_input_encodings(self,

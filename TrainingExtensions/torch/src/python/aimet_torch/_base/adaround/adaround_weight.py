@@ -481,7 +481,7 @@ class AdaroundBase(ABC):
         :param name: name of module
         :param param_encodings: Dictionary of param encodings
         """
-        for orig_param_name, encodings in quant_module.export_param_encodings().items():
+        for orig_param_name, encodings in quant_module.export_param_encodings(encoding_version='0.6.1').items():
             if orig_param_name == 'weight' and encodings:
                 param_name = name + '.' + orig_param_name
                 param_encodings[param_name] = encodings

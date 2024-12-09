@@ -116,7 +116,7 @@ class EncodingBase(abc.ABC):
                 setattr(self_copy, name, item.clone())
         return self_copy
 
-    def to_qnn_encoding_dict(self, version=None):
+    def to_qnn_encoding_dict(self, encoding_version=None):
         """
         Converts encoding object into QNN encoding dictionary
         """
