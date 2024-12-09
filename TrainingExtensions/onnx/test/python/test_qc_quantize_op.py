@@ -1004,3 +1004,35 @@ class TestLPBQOp:
         encodings = lpbq_op.get_encodings()
         scale, _ = lpbq_utils.encodings_to_scale_offset_arrays(encodings, expected_scale.shape)
         assert np.allclose(scale, expected_scale)
+
+    def test_grouped_block_qdq_perchannel_mode(self):
+        input_shape = (4, 2)
+        bitwidth = 4
+        decompressed_bw = 8
+        block_size = 0
+        quant_info = libquant_info.QcQuantizeInfo()
+        tensor_quantizer_params = TensorQuantizerParams(input_shape, channel_axis=1, block_axis=0)
+        lpbq_op = GroupedBlockQuantizeDequantize(quant_info,
+                                                 bitwidth,
+                                                 decompressed_bw,
+                                                 block_size=block_size,
+                                                 quant_scheme=QuantScheme.post_training_tf,
+                                                 op_mode=OpMode.updateStats,
+                                                 tensor_quantizer_params=tensor_quantizer_params)
+
+        # Note: computed delta = abs_max / num_positive_steps = abs_max / 7
+        input_tensor = np.asarray([
+            [7. * 32, -7 * 1.6],
+            [-.35, 7.343],
+            [7. * 13.334, 7 * -1.1112],
+            [22.1, .11233]
+        ], np.float32)
+        expected_scale = np.asarray([
+            [32., 1.6],
+        ], np.float32)
+        session = create_qc_quantize_model_session(quant_info, input_shape)
+        session.run(None, {"input": input_tensor})
+        lpbq_op.compute_encodings()
+
+        encodings = lpbq_op.export_encodings("1.0.0")
+        assert np.allclose(np.asarray(encodings["scale"]).astype("float32"), expected_scale)

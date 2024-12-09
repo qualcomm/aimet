@@ -144,12 +144,16 @@ class QcQuantizeOp:
         assert channel_axis is not None
         assert block_axis is not None
         assert block_axis != channel_axis
-        if tensor_shape[block_axis] % block_size != 0:
-            raise ValueError(f"Input shape {tensor_shape} not divisible by block size {block_size} at axis {block_axis}")
 
-        num_quantizers = tensor_shape[channel_axis] * tensor_shape[block_axis] // block_size
+        num_quantizers = tensor_shape[channel_axis]
+
+        if block_size != 0:
+            if tensor_shape[block_axis] % block_size != 0:
+                raise ValueError(
+                    f"Input shape {tensor_shape} not divisible by block size {block_size} at axis {block_axis}")
+            num_quantizers *= tensor_shape[block_axis] // block_size
+
         self._create_tensor_quantizers(num_quantizers)
-
         self.quant_info.usePerChannelMode = True
         self.quant_info.channelAxis = channel_axis if channel_axis >= 0 else channel_axis + len(tensor_shape)
         self.quant_info.blockAxis = block_axis if block_axis >= 0 else block_axis + len(tensor_shape)
@@ -594,9 +598,6 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
                  quant_scheme: QuantScheme,
                  op_mode: OpMode,
                  tensor_quantizer_params: TensorQuantizerParams):
-        if tensor_quantizer_params.tensor_shape[tensor_quantizer_params.block_axis] % block_size != 0:
-            raise ValueError(f"Input shape {tensor_quantizer_params.tensor_shape} is not divisible by block size "
-                             f"{block_size} at axis {tensor_quantizer_params.block_axis}")
         super().__init__(
             quant_info=quant_info,
             quant_scheme=quant_scheme,
@@ -618,11 +619,11 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
 
         ch_axis, block_axis = self.quant_info.channelAxis, self.quant_info.blockAxis
         assert ch_axis >= 0
-        assert block_axis >= 0
 
         shape[ch_axis] = tensor_shape[ch_axis]
 
         if self.quant_info.blockSize > 0:
+            assert block_axis >= 0
             shape[block_axis] = tensor_shape[block_axis] // self.quant_info.blockSize
 
         return shape
@@ -653,7 +654,8 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         encodings = super()._export_1_0_0_encodings()
         if not encodings:
             return None
-        assert "block_size" in encodings.keys()
+        if "block_size" not in encodings.keys():
+            return encodings
 
         encodings["compressed_bw"] = self.bitwidth
         encodings["bw"] = self.decompressed_bw
