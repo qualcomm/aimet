@@ -28,7 +28,7 @@ Recommendations for quantization-aware training
 Here are some guidelines that can improve performance and speed convergence with QAT:
 
 Initialization
-    - It often helps to first apply post training quantization techniques like :ref:`AutoQuant<ug-auto-quant>` before applying QAT, especially if there is large drop in INT8 performance from the FP32 baseline.
+    - It often helps to first apply post training quantization techniques like :ref:`AutoQuant<featureguide-autoquant>` before applying QAT, especially if there is large drop in INT8 performance from the FP32 baseline.
 
 Hyper-parameters
     - Number of epochs: 15-20 epochs are usually sufficient for convergence

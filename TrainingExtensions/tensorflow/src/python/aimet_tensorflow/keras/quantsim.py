@@ -435,13 +435,12 @@ class QuantizationSimModel(tf.keras.Model):
     def compute_encodings(self, forward_pass_callback, forward_pass_callback_args):
         """
         Computes encodings for all quantization sim nodes in the model.
-        :param forward_pass_callback: A callback function that is expected to runs forward passes on a model.
-               This callback function should use representative data for the forward pass, so the calculated
-               encodings work for all data samples.
-        :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is. Up to
-               the user to determine the type of this parameter. E.g. could be simply an integer representing the number
-               of data samples to use. Or could be a tuple of parameters or an object representing something more
-               complex.
+
+        :param forward_pass_callback: A callback function that is expected to run forward passes on a model.
+            This callback function should use representative data for the forward pass, so the calculated encodings work for all data samples.
+        :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is.
+            Up to the user to determine the type of this parameter. E.g. could be simply an integer representing the number of data samples to use.
+            Or could be a tuple of parameters or an object representing something more complex.
         """
         ops_with_invalid_encodings = []
         self._compute_and_set_parameter_encodings(ops_with_invalid_encodings)
@@ -495,11 +494,11 @@ class QuantizationSimModel(tf.keras.Model):
 
     def export(self, path, filename_prefix, custom_objects=None, convert_to_pb=True):
         """
-        This method exports out the quant-sim model so it is ready to be run on-target.
-        Specifically, the following are saved
+        This method exports out the quant-sim model so it is ready to be run on-target. Specifically, the following are saved
+
         1. The sim-model is exported to a regular Keras model without any simulation ops
-        2. The quantization encodings are exported to a separate JSON-formatted file that can
-           then be imported by the on-target runtime (if desired)
+        2. The quantization encodings are exported to a separate JSON-formatted file that can then be imported by the on-target runtime (if desired)
+
         :param path: path where to store model pth and encodings
         :param filename_prefix: Prefix to use for filenames of the model pth and encodings files
         :param custom_objects: If there are custom objects to load, Keras needs a dict of them to map them

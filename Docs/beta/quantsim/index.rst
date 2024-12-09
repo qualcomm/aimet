@@ -20,7 +20,7 @@ AIMET’s Quantization Simulation (QuantSim) feature simulates the effects of qu
 
 When QuantSim is applied by itself, AIMET finds optimal quantization scale/offset parameters for each quantizer but does not apply techniques to mitigate accuracy loss. You can apply QuantSim directly to the original model or to a model updated using Post-Training Quantization.
 
-Once a QuantSim object has been created, you can fine-tune the model using its existing pipeline. This technique is described in :ref:`Quantization Aware Training<ug-quantization-aware-training>`.
+Once a QuantSim object has been created, you can fine-tune the model using its existing pipeline. This technique is described in :ref:`Quantization Aware Training<featureguide-qat>`.
 
 The quantization nodes used in QuantSim are custom quantizers defined in AIMET, and are not recognized by targets.
 QuantSim provides an export functionality that saves a copy of the model with quantization nodes removed and generates an encodings file containing quantization scale and offset parameters for activation and weight tensors in the model.

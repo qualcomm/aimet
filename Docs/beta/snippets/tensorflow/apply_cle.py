@@ -35,6 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-docstring
+# Step 1
 from aimet_tensorflow.keras.cross_layer_equalization import equalize_model
 from aimet_tensorflow.keras.model_preparer import prepare_model
 from tensorflow.keras import applications

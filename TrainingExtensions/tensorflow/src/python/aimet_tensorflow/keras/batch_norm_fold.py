@@ -695,8 +695,9 @@ def fold_all_batch_norms(model: tf.keras.Model) \
     Fold all batch_norm layers in a model into corresponding conv/linear layers
 
     :param model: model to find all batch norms for
-    :return: A tuple of List of conv/linear layers with associated bn op / activation info and a new model with the
-    Batch Normalization layers folded
+
+    :return: A tuple of List of conv/linear layers with associated bn op / activation info
+        and a new model with the Batch Normalization layers folded
     """
 
     conv_bn_pairs, bn_conv_pairs, folded_bns = _find_all_batch_norms_to_fold(model)

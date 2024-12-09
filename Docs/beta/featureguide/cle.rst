@@ -10,7 +10,7 @@ Quantization of floating point models into lower bitwidths introduces quantizati
 
 AIMET's cross-layer equalization tool involves the following techniques:
 
-- **Batch Norm Folding**: This feature folds batch norm layers into adjacent convolutional and linear layers. You can learn more :ref:`here <_featureguide-bnf>`
+- **Batch Norm Folding**: This feature folds batch norm layers into adjacent convolutional and linear layers. You can learn more :ref:`here <featureguide-bnf>`
   
 - **Cross Layer Scaling**: In some models, the parameter ranges for different channels in a layer show a wide variance (as shown below). This feature attempts to equalize the distribution of weights per channel of consecutive layers. Thus, different channels have a similar range and the same quantization parameters can be used for weights across all channels.
 

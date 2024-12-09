@@ -100,11 +100,11 @@ class MixedPrecisionConfigurator:
         :param param: Dict with name of the param as key and its dtype as value
 
         - If the 'module' is a leaf-module(the module doesnt compose of other torch.nn.module), the specified settings
-        would be applied to the module.
+          would be applied to the module.
         - If the 'module' is a non-leaf-module (module is composed of other torch.nn.module), the specified settings
-        would be applied to all the leaf modules in 'module'.
+          would be applied to all the leaf modules in 'module'.
         - If the 'module' is Type of module, all the modules in the model which satisfy the specified module type would
-        be set to the specified activation and param settings
+          be set to the specified activation and param settings
         - If the same 'module' is specified through multiple set_precision(...) calls, the latest one will be applied.
 
         Examples: TODO

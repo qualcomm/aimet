@@ -135,6 +135,7 @@ class QuantizerGroup(QuantizerGroupBase):
         Gets activation quantizers
 
         :param name_to_quantizer_dict: Gets module from module name
+
         :return List of activation quantizers
         """
         result = []
@@ -148,6 +149,7 @@ class QuantizerGroup(QuantizerGroupBase):
         Gets parameter quantizers
 
         :param name_to_quantizer_dict: Gets module from module name
+
         :return List of parameter quantizers
         """
         result = []

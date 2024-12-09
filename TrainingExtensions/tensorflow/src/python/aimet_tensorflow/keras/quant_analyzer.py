@@ -304,9 +304,8 @@ class QuantAnalyzer:
 
         1. All quant wrappers' parameters and activations quantizers are disabled.
         2. For every quant wrappers, based on occurrence:
-              i. Each quant wrapper's parameters and activations quantizers are enabled as per JSON config file
-                 and set to bit-width specified.
-             ii. Measure and record eval score on subset of dataset.
+            i. Each quant wrapper's parameters and activations quantizers are enabled as per JSON config file and set to bit-width specified.
+            ii. Measure and record eval score on subset of dataset.
             iii. Disable enabled quantizers in step i.
         3. Returns dictionary containing quant wrapper name and corresponding eval score.
 
@@ -339,11 +338,10 @@ class QuantAnalyzer:
         """
         NOTE: Option 2
 
-        1. All quant wrappers' parameters and activations quantizers are enabled as per JSON config file
-        and set to bit-width specified.
+        1. All quant wrappers' parameters and activations quantizers are enabled as per JSON config file and set to bit-width specified.
         2. For every quant wrappers, based on occurrence:
-              i. Each quant wrapper's parameters and activations quantizers are disabled.
-             ii. Measure and record eval score on subset of dataset.
+            i. Each quant wrapper's parameters and activations quantizers are disabled.
+            ii. Measure and record eval score on subset of dataset.
             iii. Enable disabled quantizers in step i.
         3. Returns dictionary containing quant wrapper name and corresponding eval score.
 
