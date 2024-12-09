@@ -14,6 +14,7 @@ ignore=CVS,
        apply_bn.py,
        create_quantizationsimmodel.py,
        evaluate.py,
+       installation_verification.py,       
        export.py,
        pass_calibration_data.py,
        prepare_model.py
