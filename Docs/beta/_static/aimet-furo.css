@@ -34,3 +34,23 @@
     /* Allow output block to take up maximum 25 lines */
     max-height: 25em;
 }
+
+/* Handle the scrollable TOC (sidebar-tree) and the
+ * non-scrollable portion of the TOC tree (fixed-sidebar-tree).
+ * Kind of a hack, but there are limited ways to tie the sidebar
+ * to the RST file content.
+*/
+
+.fixed-sidebar-tree li:not(:first-of-type) {
+    display: none;
+ }
+ .fixed-sidebar-tree li:first-of-type {
+    list-style: none;
+    margin: 0;
+    position: relative;
+    margin: var(--sidebar-item-spacing-vertical) 0;
+}
+ 
+ .sidebar-tree li:first-of-type {
+    display: none;
+}

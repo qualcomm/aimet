@@ -10,6 +10,7 @@ AI Model Efficiency Toolkit Documentation
    :hidden:
    :includehidden:
 
+   Previous AIMET Versions <versions> 
    Quick Start <install/quick-start>
    Installation <install/index>
    User Guide <opt-guide/index>

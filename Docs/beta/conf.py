@@ -134,7 +134,7 @@ autosectionlabel_prefix_document = True
 # a list of builtin themes.
 #
 html_theme = 'furo'
-html_title = 'AI Model Efficiency Toolkit'
+html_title = 'AI Model Efficiency Toolkit v. ' + release
 # html_short_title = 'AIMET Docs v. ' + version
 # html_logo = 'images/brain_logo.png'
 # html_favicon = 'images/brain_logo16.png'
@@ -193,8 +193,7 @@ html_sidebars = {
 # Parameters for use in templates
 
 html_context = {
-  'current_version' : "1.36",
-  'versions_page' : '<a href="https://dummypageXYZ/versions.html">Other versions</a>'
+  'current_version' : "1.36"
 }
 
 # -- Options for HTMLHelp output ---------------------------------------------
