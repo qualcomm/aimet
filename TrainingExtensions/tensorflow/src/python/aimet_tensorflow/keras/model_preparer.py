@@ -625,6 +625,13 @@ class _KerasModelPreparer:
 
                 if "concat" in layer.name:
                     new_output_tensor = layer.call([*call_args], **call_kwargs)
+                elif "cast" in layer.name:
+                    # Handling the case for cast op where the dtype of input tensor and the cast op is same
+                    source_tensor = call_kwargs['x'] if 'x' in call_kwargs else call_args[0]
+                    source_dtype = source_tensor.dtype
+                    target_dtype = call_kwargs['dtype'] if 'dtype' in call_kwargs else call_args[1].dtype
+                    new_output_tensor = source_tensor if source_dtype == target_dtype else \
+                        layer.call(*call_args, **call_kwargs)
                 else:
                     new_output_tensor = layer.call(*call_args, **call_kwargs)
             else:

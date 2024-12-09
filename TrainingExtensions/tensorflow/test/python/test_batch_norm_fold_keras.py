@@ -1663,6 +1663,26 @@ class TestBatchNormFoldToScale:
         np.testing.assert_allclose(fp32_outs[0], bn_outs[0], atol=1e-4)
         np.testing.assert_allclose(fp32_outs[1], bn_outs[1], atol=1e-4)
 
+    def test_cast_op_with_same_dtypes(self):
+        input = tf.keras.layers.Input(shape=(7, 7, 3))
+        conv1 = tf.keras.layers.Conv2D(filters=1, kernel_size=3, strides=1, padding="valid")(input)
+        bn1 = tf.keras.layers.BatchNormalization()(conv1)
+        conv2 = tf.keras.layers.Conv2D(filters=1, kernel_size=3, strides=1, padding="valid")(input)
+        bn2 = tf.keras.layers.BatchNormalization()(conv2)
+        cast1 = tf.cast(bn1, dtype=tf.float32)
+        cast2 = tf.cast(bn2, dtype=tf.float32)
+        concat = tf.concat([cast1, cast2], axis=-1)
+        model = tf.keras.models.Model(inputs=[input], outputs=[concat])
+
+        dummy_inp = np.random.randn(1, 7, 7, 3)
+        outs = model(dummy_inp)
+
+        _, bn_folded_model = fold_all_batch_norms(model)
+        bn_outs = bn_folded_model(dummy_inp)
+
+        assert np.allclose(outs, bn_outs, atol=1e-04)
+        assert not any(["cast" in layer.name for layer in bn_folded_model.layers])
+
     @pytest.mark.skip("Possible Batch norms to fold is returning None?")
     def test_fold_auto_mode_with_bn_after_Conv1d_layer(self):
         input_shape = (2, 10, 32)
