@@ -4,18 +4,23 @@
 Quantsim TensorFlow
 ###################
 
+.. toctree::
+    :hidden:
+
+    Model guidelines <model_guidelines>
+
 Workflow
 ========
 
 **Required imports**
 
-.. literalinclude:: ../../keras_code_examples/quantization.py
+.. literalinclude:: ../../../keras_code_examples/quantization.py
     :language: python
     :lines: 37-40
 
 **Quantize with Fine tuning**
 
-.. literalinclude:: ../../keras_code_examples/quantization.py
+.. literalinclude:: ../../../keras_code_examples/quantization.py
     :language: python
     :pyobject: quantize_model
 

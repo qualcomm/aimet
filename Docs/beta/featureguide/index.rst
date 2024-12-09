@@ -1,26 +1,24 @@
 .. _featureguide-index:
 
 #######################
-Optimization Techniques
+Optimization techniques
 #######################
 
 .. toctree::
     :hidden:
 
-    Adaptive rounding (Adaround) <adaround>
+    Adaptive rounding <adaround>
     Sequential MSE <seq_mse>
-    Low power blockwise quantization (LPBQ) <lpbq>
     Batch norm folding <bnf>
-    Cross-layer equalization (CLE) <cle>
-    Quantization aware training (QAT) <qat>
+    Cross-layer equalization <cle>
     Mixed precision <mixed precision/index>
-    Automatic quantization (AutoQuant) <autoquant>
+    Automatic quantization <autoquant>
     Batch norm re-estimation <bn>
     Analysis tools <analysis tools/index>
     Compression <compression/index>
 
-:ref:`Adaptive rounding (Adaround) <featureguide-adaround>`
-===========================================================
+:ref:`Adaptive rounding <featureguide-adaround>`
+================================================
 
 Uses training data to improve accuracy over naïve rounding.
 
@@ -31,38 +29,30 @@ Sequential MSE (SeqMSE) is a method that searches for optimal quantization encod
 (i.e. per layer) such that the difference between the original output activation and the
 corresponding quantization-aware output activation is minimized.
 
-:ref:`Low power blockwise quantization <featureguide-lpbq>`
-===========================================================
 
-tbd
-
-:ref:`Batch norm folding (BNF) <featureguide-bnf>`
-==================================================
+:ref:`Batch norm folding <featureguide-bnf>`
+============================================
 
 Folds BN layers into adjacent Convolution or Linear layers.
 
-:ref:`Cross-layer equalization (CLE) <featureguide-cle>`
-=========================================================
+:ref:`Cross-layer equalization <featureguide-cle>`
+==================================================
 
 Scales the parameter ranges across different channels to increase the range for layers with low range and reduce range for layers with high range, enabling the same quantizaion parameters to be used across all channels.
 
-:ref:`Quantization aware training (QAT) <featureguide-qat>`
-===========================================================
-
-Fine-tunes the model parameters in the presence of quantization noise.
 
 :ref:`Mixed precision <featureguide-mp-index>`
 ==============================================
 
 Allows quantization sensitive layers in higher precision (bit-width).
 
-:ref:`Automatic quantization (AutoQuant) <featureguide-autoquant>`
-==================================================================
+:ref:`Automatic quantization <featureguide-autoquant>`
+======================================================
 
 Analyzes the model, determines the best sequence of AIMET post-training quantization (PTQ) techniques, and applies these techniques.
 
-:ref:`Batch norm re-estimation (BN) <featureguide-bn>`
-======================================================
+:ref:`Batch norm re-estimation <featureguide-bn>`
+=================================================
 
 Re-estimated statistics are used to adjust the quantization scale parameters of preceding convolution or linear layers, effectively folding the BN layers.
 
