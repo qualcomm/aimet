@@ -85,6 +85,8 @@ still accessible via :mod:`aimet_torch` namespace as before.
     :hidden:
 
     aimet_torch.v2 migration guide <v2/migration_guide>
+    aimet_torch.v2.nn <v2/nn>
+    aimet_torch.v2.quantization <v2/quantization>
     aimet_torch.v2.adaround <v2/adaround>
     aimet_torch.v2.seq_mse <v2/seq_mse>
     aimet_torch.v2.quantsim.config_utils <v2/lpbq>
@@ -98,6 +100,8 @@ see :ref:`aimet_torch.v2 migration guide <torch-migration-guide>`
 AIMET core APIs for PyTorch framework.
 
 - :ref:`aimet_torch.v2.quantsim <apiref-torch-v2-quantsim>`
+- :ref:`aimet_torch.v2.nn <apiref-torch-nn>`
+- :ref:`aimet_torch.v2.quantization <apiref-torch-quantization>`
 - :ref:`aimet_torch.v2.adaround <apiref-torch-v2-adaround>`
 - :ref:`aimet_torch.v2.seq_mse <apiref-torch-v2-seq-mse>`
 - :ref:`aimet_torch.v2.quantsim.config_utils <apiref-torch-v2-lpbq>`
