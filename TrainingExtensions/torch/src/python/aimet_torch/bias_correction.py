@@ -262,7 +262,7 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_sa
         # forward pass for given number of batches for model
         data_loader_n_samples_quant = itertools.islice(data_loader, n_batches_quantization)
 
-        for model_input in data_loader_n_samples_quant:
+        for model_input, _ in data_loader_n_samples_quant:
             forward_pass(model, model_input)
 
     ordered_conv_linear_nodes = get_ordered_lists_of_conv_fc(model, dummy_input=dummy_input)
@@ -340,7 +340,7 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_sa
                     quantized_outputs = []
                     data_loader_n_samples_bias_corr = itertools.islice(data_loader, n_batches_bias_correction)
 
-                    for images_in_one_batch in data_loader_n_samples_bias_corr:
+                    for images_in_one_batch, _ in data_loader_n_samples_bias_corr:
                         reference_output_batch = get_output_data(reference_layer, model_copy, images_in_one_batch)
                         quantized_model_output_batch = get_output_data(quantize_layer, model, images_in_one_batch)
 
