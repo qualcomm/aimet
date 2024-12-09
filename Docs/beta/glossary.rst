@@ -78,17 +78,26 @@ Glossary
    KL Divergence
       Kullback-Leibler Divergence. A measure of the difference between two probability distributions. Used during :term:`quantization` calibration to maintain a similar distribution of :term:`activations` to the original floating-point model.
 
+   Layer
+      How nodes are organized in a model. The nodes in a layer are connected to the previous and subsequent layer via :term:`weights`.
+   
    Layer-wise quantization
       A :term:`quantization` method where each layer is quantized independently. Used to achieve balance between model accuracy and computational efficiency by more aggressively compressing layers that have minimal impact on model performance.
 
    LoRA MobileNet
       A family of :term:`convolutional neural network` architectures developed at Google optimized to operate efficiently with constrained computational resources.
 
+   Model
+      A computational structure made up of :term:`layers` of :term:`nodes` connected by :term:`weights`.
+
    Neural Network Compression Framework
       Another :term:`compression` and optimization toolkit similar to AIMET.
 
+   Node
+      A computation unit in a :model:`model`. Each node performs a mathematical function on an input to produce an output. 
+
    Normalization
-      Scaling a feature such as a layer to standardize the range of the feature.
+      Scaling a feature such as a :term:`layer` to standardize the range of the feature.
 
    NNCF
       :term:`Neural Network Compression Framework`.
@@ -141,6 +150,9 @@ Glossary
    Target Hardware Accelerator
       Specialized hardware designed to accelerate AI :term:`inference` tasks. Examples include GPUs, TPUs, and custom ASICs, for example Qualcomm's Cloud AI 100 inference accelerator. 
 
+   Target Runtime
+      A model quantized for use on a low bitwidth platform, typically an :term:`edge device`.
+
    TensorFlow
       A widely-used open-source deep learning framework developed by Google. 
 
@@ -149,3 +161,6 @@ Glossary
 
    Variant
       The combination of machine learning framework (:term:`PyTorch`, :term:`TensorFlow`, or :term:`ONNX`) and processor (Nvidia version or CPU) that determines which version of the AIMET API to install.
+
+   Weights
+      Parameters that collectively represent features in a model.
