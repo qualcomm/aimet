@@ -92,6 +92,11 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         build-essential && \
         rm -rf /var/lib/apt/lists/*
 
+RUN if [ ${PYTHON_VERSION} != "3.10" ]; then \
+        # Make sure pip is installed \
+        python${PYTHON_VERSION} -m ensurepip --upgrade; \
+    fi
+
 # Register the version in alternatives
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 # Set ${PYTHON_VERSION} as the default python
