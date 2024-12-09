@@ -9,7 +9,7 @@ Workflow
 
 **Required imports**
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # imports start
    :end-before: # imports end
@@ -19,7 +19,7 @@ Workflow
 For this example, we are going to load a pretrained MobileNetV2 model from torchvision and convert it to ONNX
 Similarly, you can use any ONNX model instead.
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # Load the model
    :end-before:  # End of loading the model
@@ -28,7 +28,7 @@ Similarly, you can use any ONNX model instead.
 
 It's recommended to apply ONNX simplification before invoking AIMET functionalities
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # Prepare model with onnx-simplifier
    :end-before:  # End of prepare model
@@ -37,7 +37,7 @@ It's recommended to apply ONNX simplification before invoking AIMET functionalit
 
 We will use the ImageNet validation data in the subsequent code example
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # Set up dataloader
    :end-before:  # End of setting up dataloader
@@ -47,7 +47,7 @@ We will use the ImageNet validation data in the subsequent code example
 Now we use AIMET to create a QuantizationSimModel. This basically means that AIMET will insert fake quantization ops in
 the model graph and will configure them. A few of the parameters are explained here
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # Create QuantSim object
    :end-before:  # End of creating QuantSim object
@@ -72,7 +72,7 @@ classes need to be covered etc. since we are only looking at the range of values
 we definitely want to avoid an extreme scenario like all 'dark' or 'light' samples are used - e.g. only using pictures
 captured at night might not give ideal results.
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :pyobject: pass_calibration_data
 
@@ -81,7 +81,7 @@ captured at night might not give ideal results.
 Now we call AIMET to use the above routine to pass data through the model and then subsequently compute the quantization
 encodings. Encodings here refer to scale/offset quantization parameters.
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # Compute quantization encodings
    :end-before:  # End of computing quantization encodings
@@ -90,7 +90,7 @@ encodings. Encodings here refer to scale/offset quantization parameters.
 
 Since we have calculated the quantization encodings, we can now evaluate the quantized accuracy
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
    :language: python
    :start-after: # Evaluate quantized accuracy
    :end-before:  # Enc of quantized accuracy
@@ -107,7 +107,7 @@ purpose, we need to export the model with the updated weights without the fake q
 encodings (scale/offset quantization parameters) that were achieved from compute_encodings.
 AIMET QuantizationSimModel provides an export API for this purpose.
 
-.. literalinclude:: ../../onnx_code_examples/quantization.py
+.. literalinclude:: ../../../onnx_code_examples/quantization.py
     :language: python
     :start-after: # Export the model
     :end-before: # End of exporting the model
