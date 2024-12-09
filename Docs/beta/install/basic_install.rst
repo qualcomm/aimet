@@ -20,6 +20,14 @@ to all frameworks variants.
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
 
+.. note::
+    Starting with the AIMET 2 release, there is no longer a dependency on ``liblapacke``. Therefore,
+    you should only install the following debian package if you are still using AIMET 1.x.
+
+.. code-block:: bash
+
+    apt-get install liblapacke
+
 Install a compatible version of pip. The latest version is *not* compatible with our wheel packages.
 
 .. code-block:: bash

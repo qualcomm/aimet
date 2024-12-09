@@ -15,7 +15,7 @@ The AIMET package requires the following host platform setup:
 
 * 64-bit Intel x86-compatible processor
 * Python 3.8–3.11
-* Ubuntu 20.04 or later
+* Ubuntu 22.04
 * For GPU variants:
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
@@ -24,6 +24,14 @@ The following software versions are required for the quick install:
 
 * CUDA Toolkit 12.0
 * PyTorch 2.2
+
+.. note::
+    Starting with the AIMET 2 release, there is no longer a dependency on ``liblapacke``. Therefore,
+    you should only install the following debian package if you are still using AIMET 1.x.
+
+.. code-block:: bash
+
+    apt-get install liblapacke
 
 Installation
 ============
