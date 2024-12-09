@@ -49,7 +49,6 @@ import torch.nn as nn
 import torch.onnx.symbolic_caffe2
 import torchvision
 import onnx
-import onnxsim
 import yaml
 from onnx import GraphProto
 from packaging import version  # pylint: disable=wrong-import-order
@@ -71,9 +70,6 @@ EXPORT_TO_ONNX_DIRECT = False
 # runs the second pass of markers for non-leaf torch module and updates names of onnx ops belonging to
 # non-leaf pytorch module
 update_all_onnx_nodes_name = True
-
-# executes onnx simplify on the onnx model with marker attached.
-simplify_onnx_model = False
 
 # Flag to adjust ONNX node output to have unique name
 MAKE_NODE_OUTPUT_NAME_UNIQUE = True
@@ -1263,11 +1259,6 @@ class OnnxSaver:
         """
         onnx_model = onnx.load(filepath)
         onnx_model = restore_onnx_graph_initializers(onnx_model, inplace=True)
-
-        if simplify_onnx_model:
-            onnx_model_simplified, check = onnxsim.simplify(onnx_model)
-            if check:
-                return onnx_model_simplified
         return onnx_model
 
     @classmethod
@@ -1785,3 +1776,14 @@ def get_layers_in_io_tensor_map(op_to_io_tensor_map: Dict) -> Dict[str, str]:
             else:
                 layers_to_onnx_op_names[pytorch_name] = [name]
     return layers_to_onnx_op_names
+
+
+__deleted_atttributes__ = {
+    'simplify_onnx_model': 'aimet_torch==2.0'
+}
+
+def __getattr__(name: str):
+    if name in __deleted_atttributes__:
+        since = __deleted_atttributes__[name]
+        raise AttributeError(f"Attribute '{name}' was deleted from aimet_torch.onnx_utils since {since}")
+
