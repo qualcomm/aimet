@@ -598,6 +598,9 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
                  quant_scheme: QuantScheme,
                  op_mode: OpMode,
                  tensor_quantizer_params: TensorQuantizerParams):
+        if block_size and tensor_quantizer_params.tensor_shape[tensor_quantizer_params.block_axis] % block_size != 0:
+            raise ValueError(f"Input shape {tensor_quantizer_params.tensor_shape} is not divisible by block size "
+                             f"{block_size} at axis {tensor_quantizer_params.block_axis}")
         super().__init__(
             quant_info=quant_info,
             quant_scheme=quant_scheme,
