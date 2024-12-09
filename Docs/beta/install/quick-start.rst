@@ -25,14 +25,6 @@ The following software versions are required for the quick install:
 * CUDA Toolkit 12.0
 * PyTorch 2.2
 
-.. note::
-    Starting with the AIMET 2 release, there is no longer a dependency on ``liblapacke``. Therefore,
-    you should only install the following debian package if you are still using AIMET 1.x.
-
-.. code-block:: bash
-
-    apt-get install liblapacke
-
 Installation
 ============
 
@@ -40,7 +32,7 @@ Type the following command to install AIMET for PyTorch framework using pip pack
 
 .. code-block:: bash
 
-    python3 -m pip install aimet-torch
+    python3 -m pip install "aimet-torch>=2"
 
 Next steps
 ==========
