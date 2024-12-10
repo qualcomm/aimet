@@ -90,15 +90,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         self.model = model
         if isinstance(self.model, ONNXModel):
             self.model = self.model.model
-
-        # Maps output to consumer node
-        self._input_to_node = self._get_input_to_node()
-        self._output_to_node = self._get_output_to_node()
-
         self.fill_op_product_graph()
-        del self._input_to_node
-        del self._output_to_node
-
         self.starting_ops = list(self._get_starting_ops())
         # List of ops in the order they are traversed using the forward function
         self.ordered_ops = get_ordered_ops(self.starting_ops)
@@ -109,30 +101,6 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :param name: Name of the module
         """
         return self._ops[name]
-
-    def _get_input_to_node(self):
-        """
-        Maps input names to nodes
-        """
-        input_to_node_dict = {}
-        for node in self.model.graph.node:
-            for input_name in node.input:
-                consumers = input_to_node_dict.get(input_name, [])
-                consumers.append(node)
-                input_to_node_dict[input_name] = consumers
-
-        return input_to_node_dict
-
-    def _get_output_to_node(self):
-        """
-        Maps output names to nodes
-        """
-        output_to_node_dict = {}
-        for node in self.model.graph.node:
-            for output_name in node.output:
-                output_to_node_dict[output_name] = node
-
-        return output_to_node_dict
 
     @staticmethod
     def _create_ir_op(node: NodeProto) -> Op:
