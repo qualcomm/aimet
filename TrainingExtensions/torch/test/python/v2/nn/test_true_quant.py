@@ -35,6 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
+import ast
 import functools
 import itertools
 from packaging import version
@@ -46,6 +47,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils._pytree import tree_flatten
 from torch.overrides import get_ignored_functions
+import transformers
+
 from aimet_torch.v2.quantization.affine.backends import quantize, quantize_dequantize, dequantize
 from aimet_torch.v2.quantization.affine import Quantize, QuantizeDequantize
 import aimet_torch.v2 as aimet
@@ -1049,3 +1052,23 @@ def test_default_kernels(module_factory, input_factory):
 
     for out_, tout_ in zip(tree_flatten(out)[0], tree_flatten(tout)[0]):
         assert torch.equal(out_, tout_)
+
+
+@pytest.mark.parametrize('module_cls', [
+    transformers.pytorch_utils.Conv1D,
+    # transformers.models.llama.modeling_llama.LlamaRotaryEmbedding, # requires latest transformer
+    # transformers.models.llama.modeling_llama.LlamaRMSNorm, # requires latest transformer
+    torch.nn.Linear,
+])
+def test_code_example(module_cls):
+    """
+    Given: A torch.nn.Module class defined with return annotation
+    When: Generate code example with _generate_code_example
+    Then: The generated code should be parseable by python interpreter
+    """
+    src_code = QuantizationMixin._generate_code_example(module_cls)
+    try:
+        ast.parse(src_code)
+    except SyntaxError as e:
+        err = SyntaxError(f"The following code example is ill-formed:\n\n{src_code}")
+        raise err from e

@@ -38,9 +38,11 @@
 
 import abc
 import contextlib
+import inspect
 import itertools
 from typing import Type, List, Dict, Union, Iterable, Mapping, Optional
 
+import torch
 import torch.nn as nn
 
 from aimet_torch.utils import is_vector_encoding
@@ -235,6 +237,63 @@ class BaseQuantizationMixin(abc.ABC):
         return wrapper
 
     @classmethod
+    def _generate_code_example(cls, module_cls) -> str:
+        mixin_clsname = cls.__name__
+        module_clsname = module_cls.__name__
+        forward_fn_signature = inspect.signature(module_cls.forward)
+        _, *forward_fn_args = list(forward_fn_signature.parameters.keys())
+        ret_type = forward_fn_signature.return_annotation
+
+        if ret_type == inspect._empty: # pylint: disable=protected-access
+            # if return annotation is unspecified, assume torch.Tensor as return type
+            ret_type = torch.Tensor
+
+        _quantize_inputs = "\n\n".join([
+f"""
+        if self.input_quantizers[{i}]:
+            {varname} = self.input_quantizers[{i}]({varname})
+""".strip('\n')
+            for i, varname in enumerate(forward_fn_args)
+        ])
+
+        _quantize_outputs = \
+"""
+        if self.output_quantizers[0]:
+            ret = self.output_quantizers[0](ret)
+""".strip('\n') \
+        if ret_type == torch.Tensor else \
+"""
+        # <TODO: Quantize `ret` as necessary>
+""".strip('\n')
+
+        return \
+f"""
+@{mixin_clsname}.implements({module_clsname})
+class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):
+    def __quant_init__(self):
+        super().__quant_init__()
+
+        # Declare the number of input/output quantizers
+        self.input_quantizers = torch.nn.ModuleList({[None for _ in forward_fn_args]})
+        self.output_quantizers = torch.nn.ModuleList({
+            [None] if ret_type == torch.Tensor else "<TODO: declare the number of output quantizers here>"
+        })
+
+    def forward{forward_fn_signature}:
+        # Quantize input tensors
+{_quantize_inputs}
+
+        # Run forward with quantized inputs and parameters
+        with self._patch_quantized_parameters():
+            ret = super().forward({", ".join(forward_fn_args)})
+
+        # Quantize output tensors
+{_quantize_outputs}
+
+        return ret
+""".strip('\n')
+
+    @classmethod
     def from_module(cls, module: nn.Module):
         r"""Create an instance of quantized module from a regular module instance.
 
@@ -249,10 +308,16 @@ class BaseQuantizationMixin(abc.ABC):
         qtzn_module_cls = cls.cls_to_qcls.get(module_cls, None)
 
         if not qtzn_module_cls:
+            api_reference_url = "https://quic.github.io/aimet-pages/releases/" \
+                                "latest/torch_docs/api/" \
+                                "nn.quantization_mixin.html#aimet_torch.v2.nn.QuantizationMixin.implements"
+
             raise RuntimeError(
                 f'The quantized module definition of {module_cls} is not registered. '
                 f'Please register the quantized module definition of {module_cls} '
-                f'using `@{cls.__name__}.implements({module_cls.__name__})` decorator.'
+                f'using `@{cls.__name__}.implements({module_cls.__name__})` decorator.\n\n'
+                f"For example:\n\n{cls._generate_code_example(module_cls)}\n\n"
+                f"For more details, please refer to the official API reference:\n{api_reference_url}"
             )
 
         qtzn_module = cls.__new__(qtzn_module_cls)
