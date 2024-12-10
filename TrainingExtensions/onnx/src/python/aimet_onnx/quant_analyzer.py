@@ -411,36 +411,11 @@ class QuantAnalyzer:
         :param sim: QuantSim object
         :return: list of input quantizers, list of output quantizers and dictionary of param quantizers
         """
-        input_quantizers = []
-        output_quantizers = []
-        param_quantizers = {}
-
-        # Capture input quantizers if the op is a starting op
-        if op in sim.connected_graph.starting_ops:
-            cg_products = [cg_product for cg_product in op.inputs if cg_product.is_model_input]
-            for cg_product in cg_products:
-                assert len(cg_product.tensor_dict) == 1
-                input_name = list(cg_product.tensor_dict.values())[0]
-                if input_name in sim.qc_quantize_op_dict and sim.qc_quantize_op_dict[input_name].enabled:
-                    input_quantizers.append(sim.qc_quantize_op_dict[input_name])
-
-        # Capture output quantizers of the op
-        if op.output_ops and op.output_ops[0].type == 'branch':
-            # op having multiple outputs
-            cg_product = op.output_ops[0].output
-        else:
-            # op having single output
-            cg_product = op.output
-        for output_name in set(cg_product.tensor_dict.values()):
-            if output_name in sim.qc_quantize_op_dict and sim.qc_quantize_op_dict[output_name].enabled:
-                output_quantizers.append(sim.qc_quantize_op_dict[output_name])
-
-        # Capture param quantizers of the op
-        for param_name in op.parameters:
-            if param_name in sim.qc_quantize_op_dict and sim.qc_quantize_op_dict[param_name].enabled:
-                param_quantizers[param_name] = sim.qc_quantize_op_dict[param_name]
-
-        return (input_quantizers, output_quantizers, param_quantizers)
+        input_quantizers, output_quantizers, param_quantizers = sim.get_op_quantizers(op)
+        input_quantizers = [q for q in input_quantizers if q.enabled]
+        output_quantizers = [q for q in output_quantizers if q.enabled]
+        param_quantizers = {name: q for name, q in param_quantizers.items() if q.enabled}
+        return input_quantizers, output_quantizers, param_quantizers
 
     # pylint: disable=no-self-use, too-many-branches, too-many-locals
     def export_per_layer_encoding_min_max_range(self, sim: QuantizationSimModel, results_dir: str) -> Tuple[Dict, Dict]:
