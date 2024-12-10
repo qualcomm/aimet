@@ -105,9 +105,18 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     steps:
+      - run: sudo sh -c "cp /tmp/certs/* /usr/local/share/ca-certificates/ && update-ca-certificates"
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_LOGIN }}
+          password: ${{ secrets.DOCKER_CREDENTIALS }}
       - name: Create the 'latest' docker image tag
         if: ${{ github.ref_name == github.event.repository.default_branch && needs.docker-tag.outputs.tag != 'latest' }}
-        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X GET "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" | curl -k -d "@-" -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X PUT "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/latest"
+        run: docker buildx imagetools create ${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}:${{ needs.docker-tag.outputs.tag }} --tag ${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}:latest
 
   cleanup:
     needs: [docker-tag, variants, docker-push-latest]
