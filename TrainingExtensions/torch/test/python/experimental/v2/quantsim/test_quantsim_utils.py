@@ -36,14 +36,23 @@
 # =============================================================================
 """ Test experimental utilities for QuantizationSimModel """
 
+import pytest
+import inspect
 import json
 import os
+from packaging import version
+import re
 import torch
 import tempfile
+import transformers
+if version.parse(transformers.__version__) >= version.parse("4.28.0"):
+    from transformers.models.llama.modeling_llama import LlamaConfig
+
+from aimet_torch.v2.nn import custom
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantization.affine.backends.torch_builtins import quantize
-from aimet_torch.v2.experimental import clip_weights_to_7f7f
-from ....models.test_models import SingleResidualWithAvgPool
+from aimet_torch.v2.experimental import clip_weights_to_7f7f, apply_requant_mask, QuantizedMaskAdd
+from ....models.test_models import SingleResidualWithAvgPool, Attention
 
 def test_clip_weights_to_7f7f():
     torch.manual_seed(0)
@@ -97,3 +106,89 @@ def test_clip_weights_to_7f7f():
         encoding = quant_layer.param_quantizers['weight'].get_encodings()
         quantized_weight = quantize(quant_layer.weight, encoding.scale, encoding.offset, -32768, 32767)
         assert torch.equal(torch.max(quantized_weight), torch.tensor(32639))
+
+@pytest.mark.skipif(version.parse(transformers.__version__) < version.parse("4.28.0"),
+                    reason="transformers 4.28.0 version is required.")
+def test_apply_requant_mask():
+
+    torch.manual_seed(0)
+
+    config = LlamaConfig(attn_implementation="eager")
+    config.hidden_size = 16
+    config.intermediate_size = 16
+    config.num_attention_heads = 4
+    config.num_key_value_heads = 4
+    config.max_position_embeddings = 32
+
+    model = Attention(config)
+
+    hidden_states_shape = (1, config.max_position_embeddings, config.hidden_size)
+    mask_shape = (1, 1, config.max_position_embeddings, config.max_position_embeddings)
+    pos_shape = (1, config.max_position_embeddings, config.hidden_size//config.num_attention_heads//2)
+    dummy_input = (
+        torch.randn(hidden_states_shape),
+        torch.randint(0, 2, mask_shape).float() * -100,
+        (torch.rand(pos_shape)*2-1, torch.rand(pos_shape)*2-1)
+    )
+
+    quantsim_config = {
+            "defaults": {
+                "ops": {
+                    "is_output_quantized": "True",
+                    "is_symmetric": "False"
+                },
+                "params": {
+                    "is_quantized": "True",
+                    "is_symmetric": "True"
+                },
+                "per_channel_quantization": "True",
+            },
+            "params": {},
+            "op_type": {},
+            "supergroups": [],
+            "model_input": {
+                "is_input_quantized": "True"
+            },
+            "model_output": {}
+    }
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        with open(os.path.join(tempdir, 'quantsim_config.json'), 'w') as f:
+            json.dump(quantsim_config, f)
+        quantsim = QuantizationSimModel(model,
+                                        dummy_input,
+                                        default_param_bw=4,
+                                        default_output_bw=16,
+                                        config_file=os.path.join(tempdir, 'quantsim_config.json'))
+        
+    quantsim.compute_encodings(lambda m, _: m(*dummy_input), None)
+    def get_connected_graph_op(connected_graph, model_name, name):
+        # pylint: disable=protected-access
+        original_module = connected_graph._name_to_module[f'{model_name}.{name}']
+        return connected_graph._module_to_op_dict[original_module]
+
+    model_name = quantsim.connected_graph._model_name
+    model_input_names = list(inspect.signature(quantsim.model.forward).parameters)
+    mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
+    for name, quant_layer in quantsim.named_qmodules():
+        if isinstance(quant_layer, custom.Add):
+            add_op = get_connected_graph_op(quantsim.connected_graph, model_name, name)
+            if add_op.inputs[1].is_model_input and \
+                model_input_names[int(re.findall(r'\d+', add_op.inputs[1].name)[0])] == 'attention_mask':
+                mask_add_names.append(name)
+                mask_add_act_mins.append(quant_layer.output_quantizers[0].min)
+                mask_maxs.append(quant_layer.input_quantizers[1].max)
+
+    assert mask_add_names
+    apply_requant_mask(quantsim)
+
+    mask_add_act_global_min = min(mask_add_act_mins)
+    for name, mask_add_act_min, mask_max in zip(mask_add_names, mask_add_act_mins, mask_maxs):
+        mask_add = quantsim.model.get_submodule(name)
+        assert isinstance(mask_add, QuantizedMaskAdd)
+        assert isinstance(mask_add.nullrequant, custom.QuantizedNullRequant)
+        assert isinstance(mask_add.add, custom.QuantizedAdd)
+        assert torch.equal(mask_add.nullrequant.input_quantizers[0].min, mask_add_act_global_min)
+        assert torch.equal(mask_add.nullrequant.input_quantizers[0].max, mask_max)
+        assert torch.equal(mask_add.nullrequant.output_quantizers[0].min, mask_add_act_min)
+        assert torch.equal(mask_add.nullrequant.output_quantizers[0].max, mask_max)

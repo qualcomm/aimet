@@ -38,7 +38,8 @@
 
 # pylint: skip-file
 from collections import namedtuple
-from typing import Dict, List
+from typing import Dict, List, Tuple, Optional
+import math
 
 import torch
 import torch.nn.functional as F
@@ -1571,5 +1572,155 @@ class ModelWithTwoInputsTwoOutputs(nn.Module):
         x1 = self.relu1_a(self.maxpool1_a(self.conv1_a(x1)))
         x2 = self.relu1_b(self.maxpool1_b(self.conv1_b(x2)))
         return x1, x2
+
+
+class RoPE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mul_rr = aimet_modules.Multiply()
+        self.mul_ii = aimet_modules.Multiply()
+        self.sub = aimet_modules.Subtract()
+        self.mul_ri = aimet_modules.Multiply()
+        self.mul_ir = aimet_modules.Multiply()
+        self.add = aimet_modules.Add()
+        self.stack = aimet_modules.Concat(3)
+
+    def forward(self, x, rope_vals: Tuple[torch.Tensor, torch.Tensor]):
+        x = self.apply_rope_single(x, rope_vals)
+        return x
+
+    def apply_rope_single(self, x, rope_vals: Tuple[torch.Tensor, torch.Tensor]):
+        '''
+        Based on FacebookResearch's llama, provided by Carl
+        '''
+        rope_real = rope_vals[0] # shape should be 1, 1, seqlen, head_dim/2
+        rope_im = rope_vals[1] # shape should be 1, 1, seqlen, head_dim/2
+
+        x_real = x[:,:,:,:x.shape[-1]//2] # extract first half elements
+        x_im = x[:,:,:,x.shape[-1]//2:] # extract second half elements
+
+        x_prod_real = self.sub(self.mul_rr(x_real,rope_real), self.mul_ii(x_im, rope_im))
+        x_prod_im = self.add(self.mul_ri(x_real,rope_im), self.mul_ir(x_im,rope_real))
+
+        x = self.stack(x_prod_real,x_prod_im).view(*x.shape)
+        return x
+
+
+class Attention(nn.Module):
+    """Multi-headed attention from 'Attention Is All You Need' paper"""
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self.hidden_size = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
+        self.num_key_value_heads = config.num_key_value_heads
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+        self.max_position_embeddings = config.max_position_embeddings
+        self.rope_theta = config.rope_theta
+
+        if (self.head_dim * self.num_heads) != self.hidden_size:
+            raise ValueError(
+                f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
+                f" and `num_heads`: {self.num_heads})."
+            )
+
+        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias)
+        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
+        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
+        self.o_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=config.attention_bias)
+        self.q_rope = RoPE()
+        self.k_rope = RoPE()
+        self.k_cat = aimet_modules.Concat(2)
+        self.v_cat = aimet_modules.Concat(2)
+        self.mm_qk = aimet_modules.MatMul()
+        self.div = aimet_modules.Divide()
+        self.mask_add = aimet_modules.Add()
+        self.sm = nn.Softmax(dim=-1)
+        self.mm_qkv = aimet_modules.MatMul()
+
+    def repeat_kv(self, hidden_states, n_rep: int):
+        """
+        This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+        num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+        """
+        batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+        if n_rep == 1:
+            return hidden_states
+        hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+        return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+    def apply_rope_single(self, x, rope_vals: Tuple[torch.Tensor, torch.Tensor]):
+        '''
+        Based on FacebookResearch's llama, provided by Carl
+        '''
+        rope_real = rope_vals[0] # shape should be 1, 1, seqlen, head_dim/2
+        rope_im = rope_vals[1] # shape should be 1, 1, seqlen, head_dim/2
+
+        x_real = x[:,:,:,:x.shape[-1]//2] # extract first half elements
+        x_im = x[:,:,:,x.shape[-1]//2:] # extract second half elements
+
+        x_prod_real = x_real*rope_real - x_im * rope_im
+        x_prod_im = x_real*rope_im + x_im*rope_real
+
+        x = torch.cat((x_prod_real,x_prod_im),dim=3).view(*x.shape)
+        return x
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        use_cache: bool = False,
+        **kwargs,
+    ) -> torch.Tensor:
+        bsz, q_len, _ = hidden_states.size()
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+        rope_embedding = position_ids
+        query_states = self.q_rope(query_states, rope_embedding)
+        key_states = self.k_rope(key_states, rope_embedding)
+
+        if past_key_value is not None:
+            key_states = self.k_cat(past_key_value[0], key_states)
+            value_states = self.v_cat(past_key_value[1], value_states)
+
+        past_key_value = (key_states, value_states) if use_cache else None
+
+        key_states = self.repeat_kv(key_states, self.num_key_value_groups)
+        value_states = self.repeat_kv(value_states, self.num_key_value_groups)
+
+        attn_weights = self.div(self.mm_qk(query_states, key_states.transpose(2, 3)), math.sqrt(self.head_dim))
+
+        if attention_mask is not None:
+            attn_weights = self.mask_add(attn_weights, attention_mask)
+
+        # upcast attention to fp32
+        attn_weights = self.sm(attn_weights).to(query_states.dtype)
+        attn_output = self.mm_qkv(attn_weights, value_states)
+
+        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
+            )
+
+        attn_output = attn_output.transpose(1, 2).contiguous()
+
+        attn_output = attn_output.reshape(bsz, q_len, -1)
+
+        attn_output = self.o_proj(attn_output)
+
+        return attn_output
 
 
