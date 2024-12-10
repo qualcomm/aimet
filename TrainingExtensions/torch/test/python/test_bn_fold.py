@@ -58,7 +58,7 @@ from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.model_preparer import prepare_model
 from aimet_common.defs import QuantScheme
-import aimet_torch.v1.batch_norm_fold as batch_norm_fold
+import aimet_torch._base.batch_norm_fold as batch_norm_fold
 from torch.nn.modules.batchnorm import _BatchNorm
 torch.manual_seed(1228)
 

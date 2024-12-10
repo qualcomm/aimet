@@ -53,8 +53,6 @@ from aimet_torch._base.batch_norm_fold import BatchNormFoldBase, _BatchNormFoldi
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.BatchNormFolding)
 
-# Temporary flag to flip underlying implementation. This flag will be removed in the future releases.
-USE_PYTHON_IMPL = True
 
 class BatchNormFold(BatchNormFoldBase):
     """Handles batch norm folding logic"""
