@@ -706,11 +706,13 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         tensor to its first consumer op, and each output tensor to its last producer op.
         """
         def get_index_in_op_inputs(op, product):
-            if not op: return None
+            if not op:
+                return None
             return SimpleNamespace(op=op, index=op.inputs.index(product))
 
         def get_index_in_op_outputs(op, product):
-            if not op: return None
+            if not op:
+                return None
             return SimpleNamespace(op=op, index=op.output_products.index(product))
 
         def flatten_unpack_consumers(construct_op: Op):

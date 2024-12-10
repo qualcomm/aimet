@@ -42,7 +42,6 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Type, List, Tuple, Literal, Optional, Union, Generator
-from types import SimpleNamespace
 import functools
 
 import torch
@@ -92,10 +91,12 @@ class MpRequest:
 
     def fuse(self, other):
         """ Function to fuse two MpRequest objects, defaulting to self, and filling in None fields from other."""
-        if not self: return other
-        if not other: return self
+        if not self:
+            return other
+        if not other:
+            return self
         if not isinstance(self, MpRequest):
-            raise NotImplemented("Cannot add MpRequest object to non-MpRequest object.")
+            raise NotImplementedError("Cannot add MpRequest object to non-MpRequest object.")
 
         fused_request = MpRequest()
 
@@ -178,12 +179,11 @@ def _rsetattr(obj, attr, val):
 def _apply_fn_recursively_to_all_elems(fn, container):
     if container is None:
         return None
-    elif isinstance(container, (List, Tuple)):
+    if isinstance(container, (List, Tuple)):
         return [_apply_fn_recursively_to_all_elems(fn, elem) for elem in container]
-    elif isinstance(container, dict):
+    if isinstance(container, dict):
         return {key: _apply_fn_recursively_to_all_elems(fn, elem) for key, elem in container.items()}
-    else:
-        return fn(container)
+    return fn(container)
 
 def _flatten_list(container):
     if not container:
@@ -194,8 +194,7 @@ def _flatten_list(container):
         return _flatten_list(container[0]) + _flatten_list(container[1:])
     if len(container) == 1:
         return container
-    else:
-        return container[:1] + _flatten_list(container[1:])
+    return container[:1] + _flatten_list(container[1:])
 
 
 def _broadcast_tuples(inp_a, inp_b):
@@ -257,12 +256,15 @@ class MpHandler:
 
     @functools.cache
     def _get_module_name(self, inp_module):
+        """ Find the name of the provided module"""
         for name, module in self._sim.model.named_modules():
             if inp_module == module:
                 return name
+        raise RuntimeError("Provided module is not part of the sim object.")
 
     def _process_user_requests(self, user_requests: Dict[int, UserRequest]):
-
+        """ Helper function to process user requests and convert them into internal format"""
+        # pylint: disable=too-many-statements
         def create_mp_request(torch_module: BaseQuantizationMixin, module_name: str, request_id: int,
                               activation: Union[List[SupportedDType], SupportedDType, None] = None,
                               param: Optional[Dict[str, SupportedDType]] = None):
@@ -300,6 +302,7 @@ class MpHandler:
         def create_mp_io_request(torch_module: BaseQuantizationMixin, io_idx: int, module_name: str, request_id: int,
                                  activation: Union[SupportedDType, None],
                                  request_type: RequestType):
+            """ For a given module and input/output index, create an MpRequest at the specified input/output"""
             if torch_module in mp_requests:
                 prev_request = mp_requests[torch_module]
                 logger.info(f"{module_name} was already encountered with request_id {prev_request.id} and request "
@@ -415,6 +418,7 @@ class MpHandler:
         return quantizer
 
     def _get_module_from_cg_op(self, cg_op: CG_Op) -> Optional[torch.nn.Module]:
+        """ Find the torch.nn.Module corresponding to the given CG_Op """
         if cg_op is None:
             return None
 
@@ -430,28 +434,51 @@ class MpHandler:
 
     @functools.cached_property
     def model_inputs(self):
+        """
+        Returns input structure of the underlying connected graph, with CG_Ops converted to a tuple of the corresponding
+        torch.nn.Modules, and the index of the input to the module
+        """
+        # pylint: disable=protected-access
         return _apply_fn_recursively_to_all_elems(
             lambda model_input: ModuleProduct(module=self._get_module_from_cg_op(model_input.op), index=model_input.index),
             self._sim.connected_graph._input_structure)
 
     @functools.cached_property
     def model_outputs(self):
+        """
+        Returns output structure of the underlying connected graph, with CG_Ops converted to a tuple of the corresponding
+        torch.nn.Modules, and the index of the output from the module
+        """
+        # pylint: disable=protected-access
         return _apply_fn_recursively_to_all_elems(
             lambda model_output: ModuleProduct(module=self._get_module_from_cg_op(model_output.op), index=model_output.index),
             self._sim.connected_graph._output_structure)
 
     @functools.cached_property
     def model_input_modules(self):
+        """
+        Returns input structure of the underlying connected graph, with CG_Ops converted to the corresponding
+        torch.nn.Modules
+        """
+        # pylint: disable=protected-access
         return _apply_fn_recursively_to_all_elems(lambda model_input: self._get_module_from_cg_op(model_input.op),
-                                                  self._sim.connected_graph._input_structure)
+                                                 self._sim.connected_graph._input_structure)
 
     @functools.cached_property
     def model_output_modules(self):
+        """
+        Returns output structure of the underlying connected graph, with CG_Ops converted to the corresponding
+        torch.nn.Modules
+        """
+        # pylint: disable=protected-access
         return _apply_fn_recursively_to_all_elems(lambda model_output: self._get_module_from_cg_op(model_output.op),
-                                                  self._sim.connected_graph._output_structure)
+                                                 self._sim.connected_graph._output_structure)
 
     @functools.cached_property
     def _module_to_cg_op_mapping(self) -> Dict[torch.nn.Module, CG_Op]:
+        """
+        Class property that maintains a mapping between torch.nn.Module objects and the corresponding CG_Op
+        """
         module_to_op_dict = {}
         for cg_op in self._sim.connected_graph.ordered_ops:
             module = self._get_module_from_cg_op(cg_op)
@@ -460,6 +487,7 @@ class MpHandler:
         return module_to_op_dict
 
     def _get_cg_op_from_module(self, module):
+        """ Helper function to lookup CG_Op corresponding to the given module """
         return self._module_to_cg_op_mapping[module]
 
     def _get_parent_module_at_input_idx(self, module, input_idx) -> torch.nn.Module:
