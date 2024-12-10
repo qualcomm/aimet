@@ -41,8 +41,9 @@ from typing import overload, Union, List, Tuple, Dict, get_args, Type, Optional,
 import torch
 
 from aimet_common.utils import AimetLogger
-from aimet_torch.v2.mixed_precision.utils import UserRequest, RequestType, SupportedDType, MpHandler, ModuleProduct
-from aimet_torch.v2.mixed_precision.utils import _broadcast_tuples, _flatten_list
+from aimet_torch.v2.utils import flatten_list
+from aimet_torch.v2.mixed_precision.utils import UserRequest, RequestType, SupportedDType, ModuleProduct, broadcast_tuples
+from aimet_torch.v2.mixed_precision.manual_mixed_precision_handler import MpHandler
 from aimet_torch.v2.quantsim import QuantizationSimModel
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -137,9 +138,9 @@ class MixedPrecisionConfigurator:
         Activation precision which needs to be set to the model inputs
         :param activations: Activation dtypes for inputs of the model
         """
-        broadcasted_activations = _broadcast_tuples(activations, self.mp_handler.model_inputs)
-        for activation, model_input in zip(_flatten_list(broadcasted_activations),
-                                           _flatten_list(self.mp_handler.model_inputs)):
+        broadcasted_activations = broadcast_tuples(activations, self.mp_handler.cg_traverser.model_inputs)
+        for activation, model_input in zip(flatten_list(broadcasted_activations),
+                                           flatten_list(self.mp_handler.cg_traverser.model_inputs)):
             if activation is not None:
                 if activation not in get_args(SupportedDType):
                     raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
@@ -150,9 +151,9 @@ class MixedPrecisionConfigurator:
         Activation precision which needs to be set to the model outputs
         :param activations: Activation dtypes for outputs of the model
         """
-        broadcasted_activations = _broadcast_tuples(activations, self.mp_handler.model_outputs)
-        for activation, model_output in zip(_flatten_list(broadcasted_activations),
-                                            _flatten_list(self.mp_handler.model_outputs)):
+        broadcasted_activations = broadcast_tuples(activations, self.mp_handler.cg_traverser.model_outputs)
+        for activation, model_output in zip(flatten_list(broadcasted_activations),
+                                            flatten_list(self.mp_handler.cg_traverser.model_outputs)):
             if activation is not None:
                 if activation not in get_args(SupportedDType):
                     raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
