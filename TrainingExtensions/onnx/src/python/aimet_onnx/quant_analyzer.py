@@ -654,11 +654,11 @@ class QuantAnalyzer:
                                                                           collect_input=False,
                                                                           collect_output=True)
             loss += mean_squared_error(fp32_out_acts[0].reshape(fp32_out_acts[0].shape[0], -1),
-                                       quantized_out_acts[0].reshape(fp32_out_acts[0].shape[0], -1)).sum()
+                                       quantized_out_acts[0].reshape(fp32_out_acts[0].shape[0], -1))
             total += fp32_out_acts[0].shape[0]
             batch_index += 1
             if batch_index == self._num_batches:
                 break
 
         average_loss = loss/total
-        return average_loss
+        return float(average_loss)
