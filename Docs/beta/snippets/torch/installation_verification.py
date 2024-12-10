@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -36,23 +36,34 @@
 # =============================================================================
 # pylint: disable=missing-docstring
 [step_1]
+# Step 1: Setup
 import torch
 from torchvision.models import mobilenet_v2
 from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_common.defs import QuantScheme
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
-model = mobilenet_v2(pretrained=True).eval().to(device)
-dummy_input = torch.randn(10, 3, 224, 224).to(device)
-sim = QuantizationSimModel(model, dummy_input, quant_scheme="tf", config_file = get_path_for_per_channel_config(), default_param_bw = 8, default_output_bw = 16)
+model = mobilenet_v2(weights='DEFAULT').eval().to(device)
+dummy_input = torch.randn((10, 3, 224, 224), device=device)
+
+# Step 2: Create QuantSim 
+sim = QuantizationSimModel(model, 
+    dummy_input, 
+    quant_scheme=QuantScheme.training_range_learning_with_tf_init, 
+    config_file=get_path_for_per_channel_config(), 
+    default_param_bw=8, 
+    default_output_bw=16)
 
 print(sim)
 
+# Step 3: Calibration
 def forward_pass(model):
     with torch.no_grad():
-        output = model(torch.randn(10, 3, 224, 224).to(device))
-    return output
+        model(torch.randn((10, 3, 224, 224), device=device))
 
-output = sim.compute_encodings(forward_pass)
+sim.compute_encodings(forward_pass)
 
+# Step 4: Evaluation
+output = sim.model(dummy_input)
 print(output)

@@ -68,68 +68,74 @@ The output should be similar to the following:
     MobileNetV2(
   (features): Sequential(
     (0): Conv2dNormActivation(
-      (0): Conv2d(3, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-      (1): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-      (2): ReLU6(inplace=True)
+      (0): QuantizedConv2d(
+        3, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False
+        (param_quantizers): ModuleDict(
+          (weight): QuantizeDequantize(shape=(32, 1, 1, 1), qmin=-128, qmax=127, symmetric=True)
+        )
+        (input_quantizers): ModuleList(
+          (0): QuantizeDequantize(shape=(), qmin=0, qmax=65535, symmetric=False)
+        )
+        (output_quantizers): ModuleList(
+          (0): None
+        )
+      )
+      (1): QuantizedBatchNorm2d(
+        32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True
+        (param_quantizers): ModuleDict(
+          (weight): None
+          (bias): None
+        )
+        (input_quantizers): ModuleList(
+          (0): None
+        )
+        (output_quantizers): ModuleList(
+          (0): None
+        )
+      )
+      (2): QuantizedReLU6(
+        inplace=True
+        (param_quantizers): ModuleDict()
+        (input_quantizers): ModuleList(
+          (0): None
+        )
+        (output_quantizers): ModuleList(
+          (0): QuantizeDequantize(shape=(), qmin=0, qmax=65535, symmetric=False)
+        )
+      )
     )
     (1): InvertedResidual(
       (conv): Sequential(
         (0): Conv2dNormActivation(
-          (0): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=32, bias=False)
-          (1): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
+          (0): QuantizedConv2d(
+            32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=32, bias=False
+            (param_quantizers): ModuleDict(
+              (weight): QuantizeDequantize(shape=(32, 1, 1, 1), qmin=-128, qmax=127, symmetric=True)
+            )
+            (input_quantizers): ModuleList(
+              (0): None
+            )
+            (output_quantizers): ModuleList(
+              (0): None
+            )
+          )
         )
-        (1): Conv2d(32, 16, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        (2): BatchNorm2d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-      )
+      ...
     )
-    (2): InvertedResidual(
-      (conv): Sequential(
-        (0): Conv2dNormActivation(
-          (0): Conv2d(16, 96, kernel_size=(1, 1), stride=(1, 1), bias=False)
-          (1): BatchNorm2d(96, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (1): Conv2dNormActivation(
-          (0): Conv2d(96, 96, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), groups=96, bias=False)
-          (1): BatchNorm2d(96, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (2): Conv2d(96, 24, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        (3): BatchNorm2d(24, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-      )
-    )
-    (3): InvertedResidual(
-      (conv): Sequential(
-        (0): Conv2dNormActivation(
-          (0): Conv2d(24, 144, kernel_size=(1, 1), stride=(1, 1), bias=False)
-          (1): BatchNorm2d(144, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (1): Conv2dNormActivation(
-          (0): Conv2d(144, 144, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=144, bias=False)
-          (1): BatchNorm2d(144, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (2): Conv2d(144, 24, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        (3): BatchNorm2d(24, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-      )
-    )
-    ...
- )
- 
+
  >> print(output)
- tensor([[-1.7005,  1.0040,  1.4427,  ..., -0.8205,  1.0819,  2.1987],
-        [-1.6857,  0.8407,  1.1712,  ..., -0.7133,  1.4292,  2.0690],
-        [-1.2297,  1.4445,  1.5354,  ..., -0.3582,  1.2740,  1.7713],
-        ...,
-        [-2.0424,  1.0941,  1.8072,  ..., -1.0994,  1.0673,  2.1096],
-        [-2.3383, -0.0288,  0.7049,  ..., -0.9732,  1.1493,  1.9687],
-        [-2.0208,  0.6688,  1.3345,  ..., -1.1382,  1.0637,  2.1645]],
-       device='cuda:0', grad_fn=<AddmmBackward0>)
+    DequantizedTensor([[-1.7466,  0.8405,  1.8606,  ..., -0.9714,  0.8366, 2.2363],
+                   [-1.6091,  1.0449,  1.7788,  ..., -0.9904,  1.0861, 2.2431],
+                   [-1.5307,  0.8442,  1.5157,  ..., -0.7793,  0.6327, 2.3861],
+                   ...,
+                   [-1.3610,  1.4499,  2.2068,  ..., -0.8188,  1.1155, 2.5962],
+                   [-1.1619,  1.2217,  2.1050,  ..., -0.5301,  0.9150, 2.1458],
+                   [-1.6340,  0.9826,  2.2459,  ..., -1.0769,  0.9054, 2.2315]], 
+                   device='cuda:0', grad_fn=<AliasBackward0>)
 
 
 See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
 
 See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.
+
 
