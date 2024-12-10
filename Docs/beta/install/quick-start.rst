@@ -44,17 +44,27 @@ Type the following command to ensure AIMET is installed via pip.
     python3 -m pip show aimet-torch
 
 If installed, you should see information about the package, similar to the output shown below: 
+
 ..
-    Temp here
+    
+    | Name: aimet-torch
+    | Version: 1.35.0
+    | Summary: AIMET torch Package
+    | Home-page: https://quic.github.io/aimet-pages/index.html
+    | Author: Qualcomm Innovation Center, Inc.
+    | Author-email: aimet.os@quicinc.com
 
 We can also verify installation by running some sample PyTorch code. Here we confirm that we can create QuantSim and perform calibration:
 
 .. literalinclude:: ../snippets/torch/installation_verification.py
             :language: python
+            :start-after: [step_1]
 
 The output should be similar to the following:
-.. 
-   >> print(sim)
+
+:: 
+   
+    >> print(sim)
     MobileNetV2(
   (features): Sequential(
     (0): Conv2dNormActivation(
@@ -103,38 +113,6 @@ The output should be similar to the following:
         )
         (2): Conv2d(144, 24, kernel_size=(1, 1), stride=(1, 1), bias=False)
         (3): BatchNorm2d(24, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-      )
-    )
-    (4): InvertedResidual(
-      (conv): Sequential(
-        (0): Conv2dNormActivation(
-          (0): Conv2d(24, 144, kernel_size=(1, 1), stride=(1, 1), bias=False)
-          (1): BatchNorm2d(144, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (1): Conv2dNormActivation(
-          (0): Conv2d(144, 144, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), groups=144, bias=False)
-          (1): BatchNorm2d(144, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (2): Conv2d(144, 32, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        (3): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-      )
-    )
-    (5): InvertedResidual(
-      (conv): Sequential(
-        (0): Conv2dNormActivation(
-          (0): Conv2d(32, 192, kernel_size=(1, 1), stride=(1, 1), bias=False)
-          (1): BatchNorm2d(192, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (1): Conv2dNormActivation(
-          (0): Conv2d(192, 192, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=192, bias=False)
-          (1): BatchNorm2d(192, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-          (2): ReLU6(inplace=True)
-        )
-        (2): Conv2d(192, 32, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        (3): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
       )
     )
     ...

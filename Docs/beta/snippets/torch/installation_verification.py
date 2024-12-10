@@ -35,6 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-docstring
+[step_1]
 import torch
 from torchvision.models import mobilenet_v2
 from aimet_torch.v2.quantsim import QuantizationSimModel
