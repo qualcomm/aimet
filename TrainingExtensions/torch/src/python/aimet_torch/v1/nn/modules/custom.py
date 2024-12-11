@@ -142,6 +142,7 @@ GroupNorm = create_wrapper_module('GroupNorm', torch.nn.functional.group_norm)
 Normalize = create_wrapper_module('Normalize', torch.nn.functional.normalize)
 Pad = create_wrapper_module('Pad', torch.nn.functional.pad)
 GridSample = create_wrapper_module('GridSample', torch.nn.functional.grid_sample)
+ScaledDotProductAttention = create_wrapper_module('ScaledDotProductAttention', torch.nn.functional.scaled_dot_product_attention)
 
 # following modules are for overloaded operators like + and *,
 # which can operate other than torch.Tensor datatype.

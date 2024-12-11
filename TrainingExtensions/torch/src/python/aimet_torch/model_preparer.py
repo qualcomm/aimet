@@ -175,6 +175,7 @@ functional_with_stateful_api = {
     'sigmoid'       : torch.nn.Sigmoid,
     'hardsigmoid'   : torch.nn.Hardsigmoid,
     'silu'          : torch.nn.SiLU,
+    'scaled_dot_product_attention': aimet_modules.ScaledDotProductAttention,
 }
 
 

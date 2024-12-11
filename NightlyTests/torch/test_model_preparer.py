@@ -118,8 +118,12 @@ class TestModelPreparer:
         from aimet_torch.meta import connectedgraph
         connectedgraph.jit_trace_args.update({"strict": False})
 
-        model = ViTModel(ViTConfig()).cuda()
-        dummy_input = torch.randn(1, 3, 224, 224).cuda()
+        model = ViTModel(ViTConfig())
+        dummy_input = torch.randn(1, 3, 224, 224)
+
+        if torch.cuda.is_available():
+            model.cuda()
+            dummy_input = dummy_input.cuda()
 
         traced_model = symbolic_trace(model, ["pixel_values"])
         _prepare_traced_model(traced_model)

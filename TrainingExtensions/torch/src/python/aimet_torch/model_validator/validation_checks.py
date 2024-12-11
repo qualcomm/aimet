@@ -107,11 +107,11 @@ def validate_for_missing_modules(model: torch.nn.Module, model_input: Union[torc
                          'locating the ops within the model definition.\n')
         max_name_len = 0
         for op in filtered_ops_with_missing_modules:
-            if len(op.name) > max_name_len:
-                max_name_len = len(op.name)
+            if len(op.name)+len(op.type) > max_name_len:
+                max_name_len = len(op.name)+len(op.type)
         for op in filtered_ops_with_missing_modules:
-            error_message += f'\t{op.name}{" " * (max_name_len + 10 - len(op.name))}parent module: ' \
-                             f'{module_to_name_dict.get(op.residing_module)}\n'
+            error_message += (f'\t{op.name}; op_type: {op.type}{" " * (max_name_len + 10 - (len(op.name)+len(op.type)))}'
+                              f'parent module: {module_to_name_dict.get(op.residing_module)}\n')
         logger.error(error_message)
     return not filtered_ops_with_missing_modules
 
