@@ -37,8 +37,8 @@
 """ Optimizer for Omniquant """
 
 import os
-import tempfile
 import torch
+import tempfile
 
 from aimet_torch.utils import CachedDataset
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -64,6 +64,11 @@ class Omniquant:
         :param output_path: path where to store artifacts.
         :return: Model with Omniquant weights.
         """
+        # Need to disable dynamic_cache for LET blockwise training.
+        assert not quant_sim.model.config.use_cache, "Expect quant_sim.model.config.use_cache to be False, but got True."
+        assert not model.config.use_cache, "Expect model.config.use_cache to be False, but got True"
+
+        cls.valiadte_omniquant_config(omniquant_config)
         quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
         return quant_sim.model
 
@@ -80,7 +85,7 @@ class Omniquant:
         :param model: Original fp32 model from which quant_sim was created.
         :param omniquant_config: Configuration for Omniquant optimization.
         :param dataloader: Dataloader used to train model.
-        :param output_path: path where to store artifacts.
+        :param output_path: Path where to store artifacts.
         :return: Model with Omniquant weights.
         """
         transformer_processor = get_transformer_processor(model)
@@ -107,18 +112,28 @@ class Omniquant:
                 lambda model, input: model.forward(*input), omniquant_config.num_batch, cached_dir, incl_kwargs=True
             )
 
+        with tempfile.TemporaryDirectory() as tempdir:
+            cached_dir = os.path.join(tempdir, 'cached_dataset')
+            cached_dataset = CachedDataset(dataloader, omniquant_config.num_batch, cached_dir)
+
+            cached_fp_dataset, cached_qt_dataset = get_block_inputs(
+                model, quant_sim, ".".join([transformer_processor.transformer_block_list_path, "0"]), cached_dataset, omniquant_config.cache_on_cpu,
+                lambda model, input: model.forward(*input), omniquant_config.num_batch, cached_dir, incl_kwargs=True
+            )
+
             for block_num, (fp_block, qt_block) in enumerate(zip(fp_transformer_block_list, qt_transformer_block_list)):
-                fp_let_pair_list = transformer_processor.get_let_module_pair(fp_block)
                 qt_let_pair_list = transformer_processor.get_let_module_pair(qt_block)
 
                 for epoch in range(omniquant_config.num_epoch):
                     for batch_num in range(omniquant_config.num_batch):
                         fp_input, qt_input = cached_fp_dataset[batch_num], cached_qt_dataset[batch_num]
+
                         # Do block-wise training.
+                        cls._block_wise_training(omniquant_config, fp_input, qt_input, fp_block, qt_block, qt_let_pair_list)
 
                 get_block_outputs(
                         fp_block, qt_block, False, cached_fp_dataset, cached_qt_dataset, omniquant_config.cache_on_cpu,
-                        lambda fp_block, *args, **kwargs: fp_block(*args, **kwargs), device, cached_dir
+                        lambda decoder_block, *args, **kwargs: decoder_block(*args, **kwargs), device, cached_dir
                     )
 
         # pylint: disable=protected-access
@@ -129,3 +144,59 @@ class Omniquant:
         quant_sim._remove_quantization_wrappers(quant_sim.model, all_modules_in_original_model)
 
         return quant_sim.model
+
+    @classmethod
+    def _block_wise_training(cls, omniquant_config, fp_input, qt_input, fp_block, qt_block, qt_let_pair_list):
+        """
+        Run block-wise traing on LET parameters. Use fp_block output as ground truth and qt_block output as
+        model output. Use omniquant_config.input_symmetry to choose input for fp and qt block.
+
+        :param omniquant_config: Configuration for Omniquant optimization.
+        :param fp_input: block output from previous block in fp model.
+        :param qt_input: block output from previous block in qt model.
+        :param fp_block: decoder block in fp model.
+        :param qt_block: decoder block in qt model.
+        :param qt_let_pair_list: let_pair_list in qt model. Use to get LET training parameters.
+        """
+        let_param = []
+        for _pair in qt_let_pair_list:
+            for q_module in _pair.prev + _pair.follow:
+                let_param.extend([q_module.get_let_param().values])
+
+        grouped_params = [
+                {"params": let_param, "lr": omniquant_config.let_lr, "weight_decay":  0.},
+            ]
+        loss_fn = torch.nn.MSELoss(reduction="sum")
+        optimizer = torch.optim.AdamW(grouped_params)
+
+        def _process_block_input(_block_input):
+            """ Unpack and detach input tensor. """
+            _args, _kwargs = _block_input
+            _args = [_arg.detach() for _arg in _args]
+            _kwargs = {_k: _v.detach() if isinstance(_v, torch.Tensor) else _v for _k, _v in _kwargs.items()}
+            return _args, _kwargs
+
+        # Get target output (ground truth)
+        target_input = fp_input if omniquant_config.input_symmetry.startswith("fp") else qt_input
+        _args, _kwargs = _process_block_input(target_input)
+        target_outputs = fp_block(*_args, **_kwargs)[0]
+
+        # Get model output (prediction)
+        model_input = fp_input if omniquant_config.input_symmetry.endswith("fp") else qt_input
+        _args, _kwargs = _process_block_input(model_input)
+        qt_output = qt_block(*_args, **_kwargs)[0]
+
+        loss = loss_fn(qt_output, target_outputs)
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+    @classmethod
+    def valiadte_omniquant_config(cls, omniquant_config):
+        """ Validate omniquant config """
+        # input_symmetry should be one of qtqt, qtfp, fpqt, fpfp
+        input_symmetry_error_msg = f"Expect omniquant_config.input_symmetry be one of qtqt, qtfp, fpqt, fpfp but got {omniquant_config.input_symmetry}."
+        assert len(omniquant_config.input_symmetry) == 4, input_symmetry_error_msg
+        assert omniquant_config.input_symmetry[:2] in ("qt", "fp"), input_symmetry_error_msg
+        assert omniquant_config.input_symmetry[2:] in ("qt", "fp"), input_symmetry_error_msg
