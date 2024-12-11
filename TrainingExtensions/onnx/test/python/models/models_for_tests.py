@@ -2076,6 +2076,14 @@ def pointwise_convtranspose3d(input_shape):
                       transpose=True,
                       auto_pad="SAME_UPPER")
 
+def padded_convtranspose2d(input_shape):
+    pads = [1, 0, 1, 3]
+    return conv_model(weight_shape=(input_shape[1], input_shape[1], 1, 1),
+                      input_shape=input_shape,
+                      output_shape=[input_shape[0], input_shape[1], input_shape[2] - pads[0] - pads[2], input_shape[3] - pads[1] - pads[3]],
+                      transpose=True,
+                      pads=pads)
+
 
 def dynamic_matmul_model(batch_size):
     class Model(torch.nn.Module):

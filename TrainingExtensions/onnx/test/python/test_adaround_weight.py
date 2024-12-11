@@ -220,7 +220,8 @@ class TestAdaround:
     @pytest.mark.parametrize("model_factory, input_shape", [(models_for_tests.pointwise_conv1d, (1, 10, 32)),
                                                             (models_for_tests.pointwise_conv3d, (1, 10, 8, 8, 8)),
                                                             (models_for_tests.pointwise_convtranspose1d, (1, 10, 32)),
-                                                            (models_for_tests.pointwise_convtranspose3d, (1, 10, 8, 4, 3))
+                                                            (models_for_tests.pointwise_convtranspose3d, (1, 10, 8, 4, 3)),
+                                                            (models_for_tests.padded_convtranspose2d, (1, 10, 32, 32))
                                                             ])
     def test_adaround_convNd_model(self, model_factory, input_shape, tmpdir):
         """

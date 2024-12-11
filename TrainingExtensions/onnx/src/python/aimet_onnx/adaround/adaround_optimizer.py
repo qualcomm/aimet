@@ -279,20 +279,20 @@ class AdaroundOptimizer:
             bias = None
             if 'bias' in quant_module.params:
                 bias = torch.from_numpy(numpy_helper.to_array(quant_module.params['bias'].tensor)).to(device)
-            out_data = functional.conv2d(inp_data, adarounded_weights, bias=bias, stride=attributes['strides'],
-                                         dilation=attributes['dilations'], groups=attributes['group'])
+            out_data = functional.conv2d(inp_data, adarounded_weights, bias=bias, stride=attributes.get('strides', 1),
+                                         dilation=attributes.get('dilations', 1), groups=attributes.get('group', 1))
         elif quant_module.type == 'ConvTranspose':
             attributes = read_attributes_for_op(quant_module)
-            if attributes['pads']:
-                onnx_padding = attributes['pads']
-                torch_padding = [onnx_padding[1], onnx_padding[3], onnx_padding[0], onnx_padding[2]]
-                # Takes care of asymmetric padding within a spatial axis
-                inp_data = functional.pad(inp_data, pad=torch_padding)
+            if attributes.get("auto_pad", "NOTSET") not in ("NOTSET", "VALID"):
+                raise NotImplementedError("Layers with auto_pad attribute are currently not supported")
+            onnx_padding = attributes.get('pads', [0, 0, 0, 0])
+            torch_padding = [-onnx_padding[i] for i in (1, 3, 0, 2)]
             bias = None
             if 'bias' in quant_module.params:
                 bias = torch.from_numpy(numpy_helper.to_array(quant_module.params['bias'].tensor)).to(device)
-            out_data = functional.conv_transpose2d(inp_data, adarounded_weights, bias=bias, stride=attributes['strides'],
-                                                   dilation=attributes['dilations'], groups=attributes['group'])
+            out_data = functional.conv_transpose2d(inp_data, adarounded_weights, bias=bias, stride=attributes.get('strides', 1),
+                                                   dilation=attributes.get('dilations', 1), groups=attributes.get('group', 1))
+            out_data = functional.pad(out_data, pad=torch_padding)
         elif quant_module.type in ['Gemm']:
             if not quant_module.transposed_params:
                 # Pytorch requires tranposed weights in functional.linear
