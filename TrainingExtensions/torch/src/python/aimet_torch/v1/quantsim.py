@@ -92,12 +92,6 @@ qc_quantize_modules_dict = {
     torch.nn.GRU: QcQuantizeRecurrent
 }
 
-# Length of the string '._module_to_wrap'
-MODULE_TO_WRAP_STRING_REVERSE_INDEX = -16
-
-MAP_PYMO_TO_ROUND_MODE = {libpymo.RoundingMode.ROUND_NEAREST: 'nearest',
-                          libpymo.RoundingMode.ROUND_STOCHASTIC: 'stochastic'}
-
 SUPPORTED_KERNELS_ACTION = SupportedKernelsAction.warn_on_error
 
 
