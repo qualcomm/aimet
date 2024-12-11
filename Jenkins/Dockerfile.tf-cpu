@@ -182,7 +182,7 @@ RUN python3 -m pip --no-cache-dir install \
         torchvision==0.14.1 \
         timm==0.3.1 \
         tqdm \
-        transformers==4.38.1 \
+        transformers \
         wget && \
     python3 -m ipykernel.kernelspec
 
