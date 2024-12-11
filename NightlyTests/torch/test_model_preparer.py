@@ -107,7 +107,6 @@ class TestModelPreparer:
         quant_sim.compute_encodings(evaluate, dummy_input)
         quant_sim.model(dummy_input)
 
-    @pytest.mark.cuda
     @pytest.mark.skipif(Version(torch.__version__) < Version('1.10.0'), reason="torch1.13.1 is required.")
     def test_fx_with_vit(self):
         """ Verify VIT """
@@ -118,8 +117,9 @@ class TestModelPreparer:
         from aimet_torch.meta import connectedgraph
         connectedgraph.jit_trace_args.update({"strict": False})
 
-        model = ViTModel(ViTConfig())
-        dummy_input = torch.randn(1, 3, 224, 224)
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        model = ViTModel(ViTConfig()).to(device)
+        dummy_input = torch.randn(1, 3, 224, 224, device=device)
 
         if torch.cuda.is_available():
             model.cuda()
