@@ -49,7 +49,7 @@ runs:
           set -x
           git config extensions.partialClone true
           git fetch --no-tags --unshallow --filter=tree:0
-          echo "DOCKER_BUILD_CONTEXT_FILES=$(git diff --name-only $(git merge-base origin/${{ github.event.repository.default_branch }} origin/${{ github.ref_name }})..origin/${{ github.ref_name }} -- $DOCKER_BUILD_CONTEXT_FILES | tr '\n' ' ')" >> $GITHUB_ENV
+          echo "DOCKER_BUILD_CONTEXT_FILES=$(git diff --name-only $(git merge-base origin/${{ github.event.repository.default_branch }} HEAD)..HEAD -- $DOCKER_BUILD_CONTEXT_FILES | tr '\n' ' ')" >> $GITHUB_ENV
         fi
 
     - name: "Set a docker image tag"
