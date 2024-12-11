@@ -521,12 +521,12 @@ class TestFX:
         data_loader = create_fake_data_loader(dataset_size=16, batch_size=16, image_size=input_shape[1:])
         params = QuantParams(weight_bw=4, act_bw=4, round_mode="nearest",
                              quant_scheme=QuantScheme.post_training_tf)
-        bias_correction.correct_bias(model, params, num_quant_samples=1, data_loader=data_loader,
+        bias_correction.correct_bias(model, params, num_quant_samples=1, dummy_input=dummy_input, data_loader=data_loader,
                                      num_bias_correct_samples=1, perform_only_empirical_bias_corr=True)
 
         # Apply Bias correction for transformed model
         model_transformed = prepare_model(model_copy)
-        bias_correction.correct_bias(model_transformed, params, num_quant_samples=1, data_loader=data_loader,
+        bias_correction.correct_bias(model_transformed, params, num_quant_samples=1, dummy_input=dummy_input, data_loader=data_loader,
                                      num_bias_correct_samples=1, perform_only_empirical_bias_corr=True)
 
         # forward pass for bias corrected original and modified model
