@@ -121,16 +121,19 @@ class SequentialMse:
 
         raw_data = dict()
         for initializer in self.model.model.graph.initializer:
-            raw_data[initializer.name] = initializer.raw_data
-            initializer.ClearField("raw_data")
+            if initializer.HasField('raw_data'):
+                raw_data[initializer.name] = initializer.raw_data
+                initializer.ClearField("raw_data")
 
         self._float_extractor = Extractor(self.model.model)
 
         for initializer in self.model.model.graph.initializer:
-            initializer.raw_data = raw_data[initializer.name]
+            if initializer.name in raw_data:
+                initializer.raw_data = raw_data[initializer.name]
 
         for initializer in self._float_extractor.model.graph.initializer:
-            initializer.raw_data = raw_data[initializer.name]
+            if initializer.name in raw_data:
+                initializer.raw_data = raw_data[initializer.name]
 
         self._sim_extractor = copy.deepcopy(self._float_extractor)
 
