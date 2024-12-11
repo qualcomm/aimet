@@ -1,8 +1,8 @@
-.. _torch-peft-lora:
+.. _apiref-torch-peft-lora:
 
-#########
-PEFT LoRA
-#########
+################
+aimet_torch.peft
+################
 
 This document provides steps for integrating LoRA adapters with AIMET Quantization flow. LoRA adapters
 are used to enhance the efficiency of fine-tuning large models with reduced memory usage. We will use

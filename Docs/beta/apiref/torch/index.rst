@@ -18,6 +18,7 @@ aimet_torch API
     aimet_torch.autoquant <autoquant>
     aimet_torch.bn_reestimation <bn>
     aimet_torch.layer_output_utils <layer_output_generation>
+    aimet_torch.peft <peft_lora>
     aimet_torch.compress <compress>
 
 aimet_torch
@@ -40,6 +41,7 @@ AIMET quantization for PyTorch models provides the following functionality.
 - :ref:`aimet_torch.autoquant <apiref-torch-autoquant>`
 - :ref:`aimet_torch.bn_reestimation <apiref-torch-bn>`
 - :ref:`aimet_torch.layer_output_utils <apiref-torch-layer-output-generation>`
+- :ref:`aimet_torch.peft <apiref-torch-peft-lora>`
 - :ref:`aimet_torch.compress <apiref-torch-compress>`
 
 aimet_torch.v2

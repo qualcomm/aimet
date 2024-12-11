@@ -2,15 +2,11 @@
 
 .. _torch-per-block-quantization:
 
-######################
 Per-block quantization
-######################
+======================
 
 .. note::
     Per-block quantization and blockwise quantization are used interchangeably.
-
-True blockwise quantization (BQ)
-===============================
 
 When performing integer quantization, it is necessary to determine quantization parameters (also known as encodings)
 like scale and offset in order to define a quantization grid for mapping floating point values to their quantized integer
@@ -77,17 +73,18 @@ Below are examples of valid and invalid combinations of tensor shape, QuantizeDe
     QuantizeDequantize shape: (2, 2)
     block_size: (-1, -1)    # block_size will be inferred to be (2, 5)
 
-Note: While the QuantizeDequantize object supports arbitrary block sizes for experimental purposes, Qualcomm runtime restricts
-Blockwise quantization to take place with the following constraints:
+.. note::
+    While the QuantizeDequantize object supports arbitrary block sizes for experimental purposes, Qualcomm runtime restricts
+    Blockwise quantization to take place with the following constraints:
 
-* Blockwise quantization must run on weight quantizers only.
+    * Blockwise quantization must run on weight quantizers only.
 
-* Block sizes must be set to 1 for the output channel dimension, may take arbitrary values for the input channel
-  dimension (it must still be divisible by the input channel tensor shape), and must have block sizes equal to the
-  tensor sizes for all other dimensions.
+    * Block sizes must be set to 1 for the output channel dimension, may take arbitrary values for the input channel
+      dimension (it must still be divisible by the input channel tensor shape), and must have block sizes equal to the
+      tensor sizes for all other dimensions.
 
-* Layers with weights running with Blockwise quantization must themselves be running with floating-point quantized
-  activations.
+    * Layers with weights running with Blockwise quantization must themselves be running with floating-point quantized
+      activations.
 
 The below code examples show how to configure Convolution and Linear layers to Blockwise quantization:
 
@@ -110,8 +107,8 @@ The below code examples show how to configure Convolution and Linear layers to B
                                                                      block_size=(1, 4))  # (-1, -1) works too
 
 
-Low power blockwise quantization (LPBQ)
-=======================================
+Low power blockwise quantization
+================================
 
 |qnn| supports an alternative to Blockwise Quantization referred to as Low Power Blockwise Quantization (LPBQ).
 
@@ -135,17 +132,18 @@ In addition to the block_size argument described in the Blockwise Quantization s
 As with block size, a block grouping value of '-1' is valid, and will correspond automatically to the number of blocks for
 that dimension.
 
-Note: While the GroupedBlockQuantizeDequantize quantizer supports arbitrary block groupings for experimental purposes,
-Qualcomm runtime restricts LPBQ to take place with the following constraints:
+.. note::
+    While the GroupedBlockQuantizeDequantize quantizer supports arbitrary block groupings for experimental purposes,
+    Qualcomm runtime restricts LPBQ to take place with the following constraints:
 
-* Blockwise quantization must run on weight quantizers only.
+    * Blockwise quantization must run on weight quantizers only.
 
-* Block sizes must be set to 1 for the output channel dimension, may take arbitrary values for the input channel
-  dimension (it must still be divisible by the input channel tensor shape), and must have block sizes equal to the
-  tensor sizes for all other dimensions.
+    * Block sizes must be set to 1 for the output channel dimension, may take arbitrary values for the input channel
+      dimension (it must still be divisible by the input channel tensor shape), and must have block sizes equal to the
+      tensor sizes for all other dimensions.
 
-* Block groupings must be set to '1' for all dimensions, except for the input channels dimension, which should be
-  set to the number of blocks for that dimension.
+    * Block groupings must be set to '1' for all dimensions, except for the input channels dimension, which should be
+      set to the number of blocks for that dimension.
 
 .. code-block:: Python
 
@@ -180,8 +178,11 @@ The following code snippet shows how to export encodings in the new 1.0.0 format
     sim.export('./data', 'exported_model', dummy_input)
 
 The 1.0.0 encodings format is supported by Qualcomm runtime and can be used to export Per-Tensor, Per-Channel, Blockwise,
-and LPBQ quantizer encodings. If Blockwise and/or LPBQ quantizers are present in the model, the 1.0.0 format must be
-used when exporting encodings for Qualcomm runtime.
+and LPBQ quantizer encodings.
+
+.. important::
+    If Blockwise and/or LPBQ quantizers are present in the model, the 1.0.0 format must be
+    used when exporting encodings for Qualcomm runtime.
 
 See the :ref:`Encoding specifications <quantsim-encoding-spec>` page, which describes various encodings
 specifications  in detail.
@@ -189,8 +190,7 @@ specifications  in detail.
 API
 ===
 
-Several top-level API functions exist to make it easier to configure BQ and LPBQ quantization for
-a model:
+**Top-level API to configure BQ quantization**
 
 As mentioned above, Qualcomm runtime is constrained to running floating point activations for layers which use Blockwise
 quantization. As a result, the following utility function is provided to assist in transforming multiple layers' quantizers
@@ -214,6 +214,8 @@ Note that this allows layers with differing weight shapes (ex. Conv layers with 
 to be handled with a single API call. If an array for block_size is passed in instead, due to the requirement for the
 length of the block_size array to match the number of dimensions for a particular layer's weight, the API would need to be
 called multiple times for each set of layers with different weight dimensions.
+
+**Top-level API to configure LPBQ quantization**
 
 .. autofunction:: aimet_torch.v2.quantsim.config_utils.set_grouped_blockwise_quantization_for_weights
 

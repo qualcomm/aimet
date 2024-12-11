@@ -61,14 +61,15 @@ Following is a general definition for the quantization function where floating-p
 number `x` is mapped to it's fixed-point representation (quantization) `xint`
 and then `xint` is approximated back to floating point axis (de-quantization) `xhat`.
 
-.. math::
-    x \approx \hat{x} = (xint + offset) * scale
-
-where
+A `quantization` step is defined as:
 
 .. math::
     xint = clamp\left(\left\lceil\frac{x}{scale}\right\rfloor - offset, qmin, qmax\right)
 
+To approximate the floating-point number `x`, we perform `de-quantization` step:
+
+.. math::
+    x \approx \hat{x} = (xint + offset) * scale
 
 An encoding for a layer consists of four numbers:
 
