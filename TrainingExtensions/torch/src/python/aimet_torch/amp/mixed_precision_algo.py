@@ -40,6 +40,7 @@ from ..utils import _get_default_api
 
 if _get_default_api() == "v1":
     from ..v1.amp.mixed_precision_algo import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from ..v1.amp.mixed_precision_algo import _compute_sqnr # pylint: disable=unused-import
 
     from ..utils import _warn_deprecated_in_v2
     from ..v1.amp import mixed_precision_algo as _v1_mixed_precision_algo
