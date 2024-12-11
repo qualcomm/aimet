@@ -54,7 +54,7 @@ from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QcQuantizeWrap
 from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
 from aimet_common.defs import QuantizationDataType
 from aimet_torch import utils
-from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.save_utils import SaveUtils
 
 
