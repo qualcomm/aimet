@@ -58,9 +58,9 @@ from aimet_common.defs import ActivationType
 from aimet_torch import utils
 from aimet_torch import quantsim as qsim
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.v1.quantsim import QcQuantizeWrapper
 from aimet_torch.save_utils import SaveUtils
 from aimet_torch.utils import get_ordered_lists_of_conv_fc
+from aimet_torch.v2.nn.base import BaseQuantizationMixin
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -95,12 +95,15 @@ def get_quantized_dequantized_weight(layer: torch.nn.Module) -> torch.Tensor:
     :return: quantized dequantized weights
     """
     # pylint: disable=protected-access
-    weight_tensor = layer._module_to_wrap.weight
+    weight_tensor = layer.weight
     weight_quantizer = layer.param_quantizers['weight']
 
-    quant_dequant_weights = weight_quantizer.quantize_dequantize(weight_tensor, weight_quantizer.round_mode)
+    # v2 quantizer
+    if callable(weight_quantizer):
+        return weight_quantizer(weight_tensor)
 
-    return quant_dequant_weights
+    # v1 quantizer
+    return weight_quantizer.quantize_dequantize(weight_tensor, weight_quantizer.round_mode)
 
 
 def register_fwd_hook_for_layer(layer: torch.nn.Module, hook: Callable) -> torch.utils.hooks.RemovableHandle:
@@ -397,11 +400,21 @@ def correct_bias(model: torch.nn.Module, quant_params: qsim.QuantParams,
     # make sure  model got updated in-place before we use it for bc updates
     assert q.model is model
 
+    def disable_output_quantizers(qmodule):
+        # v2 quantized module
+        if isinstance(qmodule, BaseQuantizationMixin):
+            qmodule._remove_output_quantizers() # pylint: disable=protected-access
+            return
+
+        # v1 QcQuantizeWrapper
+        for qtzr in qmodule.output_quantizers:
+            qtzr.enabled = False
+
     # updates to skip_output_activation and layers_to_ignore
     for _, module in model.named_modules():
         # Skip all layer's output quantization
-        if isinstance(module, QcQuantizeWrapper):
-            module.output_quantizers[0].enabled = False
+        if isinstance(module, qsim._QuantizedModuleProtocol): # pylint: disable=protected-access
+            disable_output_quantizers(module)
 
     q.compute_encodings(pass_data_through_model, None)
 

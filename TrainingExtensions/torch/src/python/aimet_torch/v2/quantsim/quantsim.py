@@ -45,7 +45,13 @@ import contextlib
 import torch
 
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_torch.v1.quantsim import QuantizationSimModel as V1QuantizationSimModel, logger, unquantizable_modules, quantized_modules
+from aimet_torch.v1.quantsim import ( # pylint: disable=unused-import
+    QuantizationSimModel as V1QuantizationSimModel,
+    logger,
+    unquantizable_modules,
+    quantized_modules,
+    QuantParams,
+)
 from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
