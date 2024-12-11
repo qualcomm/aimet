@@ -35,6 +35,8 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+# pylint: skip-file
+
 """ Quantized LoRA layers """
 
 __all__ = ["QuantizedLinear"]
@@ -147,7 +149,7 @@ else:
                     _dispatch(torch.Tensor.add, self._add), _dispatch(torch.add, self._add):
                 return super().forward(x, *args, **kwargs)
 
-        def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights, use_rslora, use_dora: bool = False):
+        def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights, use_rslora, use_dora: bool = False): # pylint:disable=arguments-differ
             raise NotImplementedError
 
         def set_scale(self, adapter, scale):
