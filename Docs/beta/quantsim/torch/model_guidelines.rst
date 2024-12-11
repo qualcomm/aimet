@@ -330,7 +330,8 @@ the outputs of both models.
 Limitations
 -----------
 
-Limitations of torch.fx symbolic trace: https://pytorch.org/docs/stable/fx.html#limitations-of-symbolic-tracing
+.. note::
+    Limitations of torch.fx symbolic trace: https://pytorch.org/docs/stable/fx.html#limitations-of-symbolic-tracing
 
 **1. Dynamic control flow is not supported by torch.fx**
 Loops or if-else statement where condition may depend on some of the input values. It can only trace one execution
@@ -465,5 +466,3 @@ API
 
 .. include:: ../../apiref/torch/model_preparer.rst
     :start-after: # start-after
-
-

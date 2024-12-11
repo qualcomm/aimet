@@ -12,7 +12,6 @@ Quantsim PyTorch
     Multi-GPU support <multi_gpu>
     Per-block quantization <block_quantization>
     Quantizers <quantizers>
-    LoRA <peft_lora>
 
 .. important::
 
@@ -23,12 +22,12 @@ Quantsim PyTorch
 * :ref:`Migrate from aimet_torch 1.x to aimet_torch 2 <torch-migration-guide>`
 * :ref:`PyTorch model guidelines <torch-model-guidelines>`
 * :ref:`Workflow <torch-workflow>`
-* :ref:`Multi-GPU support <torch-multi-gpu>`
+
 * Advanced
-    * :ref:`Quantization-aware training <torch-qat>`
-    * :ref:`Per-block quantization <torch-per-block-quantization>`
+    * :ref:`Quantized modules <torch-nn>`
     * :ref:`Quantizers <torch-quantizers>`
-    * :ref:`PEFT LoRA <torch-peft-lora>`
+    * :ref:`Per-block quantization <torch-per-block-quantization>`
+    * :ref:`Quantization-aware training <torch-qat>`
 
 .. _torch-workflow:
 
@@ -188,6 +187,20 @@ Hyper-parameters
     :language: python
     :start-after: # Finetune the model
     :end-before: # End of example
+
+Multi-GPU support
+-----------------
+
+For using multi-GPU with QAT,
+
+#. Create a :class:`QuantizationSimModel` for your pre-trained PyTorch model (Not in DataParallel mode)
+#. Perform :func:`QuantizationSimModel.compute_encodings` (NOTE: Do not use a forward function that moves the model to multi-gpu and back)
+#. Move Quantsim model to DataParallel::
+
+    # "quant_sim" here refers to QuantizationSimModel object.
+    quant_sim.model = torch.nn.DataParallel(quant_sim.model)
+
+#. Perform eval and/or training.
 
 API
 ===

@@ -1,8 +1,4 @@
-.. _torch-quantizers:
-
-##########
-Quantizers
-##########
+.. _torch-nn:
 
 Quantized modules
 =================
@@ -82,6 +78,8 @@ Example:
     True
     >>> print(qlinear.param_quantizers["weight"].is_initialized())
     True
+
+.. _torch-quantizers:
 
 Quantizers
 ==========
