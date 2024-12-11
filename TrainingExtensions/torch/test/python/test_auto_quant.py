@@ -307,9 +307,9 @@ def patch_ptq_techniques(bn_folded_acc, cle_acc, adaround_acc, fp32_acc=None, w3
 
     with patch("aimet_torch.v1.auto_quant.QuantizationSimModel", side_effect=_QuantizationSimModel) as mock_qsim,\
             patch("aimet_torch.v1.auto_quant.fold_all_batch_norms", side_effect=bn_folding) as mock_bn_folding,\
-            patch("aimet_torch.v1.auto_quant.equalize_model", side_effect=cle) as mock_cle,\
+            patch("aimet_torch._base.auto_quant.equalize_model", side_effect=cle) as mock_cle,\
             patch("aimet_torch.v1.auto_quant.Adaround._apply_adaround", side_effect=adaround) as mock_adaround,\
-            patch("aimet_torch.v1.auto_quant.Spinner"):
+            patch("aimet_torch._base.auto_quant.Spinner"):
         try:
             yield Mocks(
                 eval_callback=mock_eval_callback,
@@ -385,7 +385,7 @@ class TestAutoQuant:
         with patch_ptq_techniques(
             bn_folded_acc, cle_acc, adaround_acc
         ) as mocks:
-            with patch("aimet_torch.v1.auto_quant.prepare_model", side_effect=prepare_model) as prepare_model_mock:
+            with patch("aimet_torch._base.auto_quant.prepare_model", side_effect=prepare_model) as prepare_model_mock:
                 auto_quant = AutoQuant(cpu_model,
                                        dummy_input,
                                        unlabeled_data_loader,
@@ -539,7 +539,7 @@ class TestAutoQuant:
                                        mocks.eval_callback,
                                        results_dir=results_dir,
                                        strict_validation=False)
-                with patch("aimet_torch.v1.auto_quant.prepare_model", side_effect=error_fn):
+                with patch("aimet_torch._base.auto_quant.prepare_model", side_effect=error_fn):
                     # If prepare_model fails, should return BN folding results
                     _, acc = auto_quant.run_inference()
                     assert acc == bn_folded_acc
@@ -550,7 +550,7 @@ class TestAutoQuant:
                                        mocks.eval_callback,
                                        results_dir=results_dir,
                                        strict_validation=False)
-                with patch("aimet_torch.v1.auto_quant.ModelValidator.validate_model", side_effect=error_fn):
+                with patch("aimet_torch._base.auto_quant.ModelValidator.validate_model", side_effect=error_fn):
                     # If validate_model fails, should return BN folding results
                     _, acc = auto_quant.run_inference()
                     assert acc == bn_folded_acc
@@ -561,8 +561,8 @@ class TestAutoQuant:
                                        mocks.eval_callback,
                                        results_dir=results_dir,
                                        strict_validation=False)
-                with patch("aimet_torch.v1.auto_quant.prepare_model", side_effect=error_fn),\
-                    patch("aimet_torch.v1.auto_quant.ModelValidator.validate_model", side_effect=error_fn),\
+                with patch("aimet_torch._base.auto_quant.prepare_model", side_effect=error_fn),\
+                    patch("aimet_torch._base.auto_quant.ModelValidator.validate_model", side_effect=error_fn),\
                     patch("aimet_torch.v1.auto_quant.fold_all_batch_norms", side_effect=error_fn):
                     # If all of prepare_model, validate_model, and BN folding fail, should return raw quantsim model
                     _, acc = auto_quant.run_inference()
@@ -588,7 +588,7 @@ class TestAutoQuant:
                                        mocks.eval_callback,
                                        results_dir=results_dir,
                                        strict_validation=False)
-                with patch("aimet_torch.v1.auto_quant.prepare_model", side_effect=error_fn):
+                with patch("aimet_torch._base.auto_quant.prepare_model", side_effect=error_fn):
                     # If prepare_model fails, should return Adaround results
                     _, acc, _ = auto_quant.optimize()
                     assert acc == adaround_acc
@@ -627,7 +627,7 @@ class TestAutoQuant:
                                        mocks.eval_callback,
                                        results_dir=results_dir,
                                        strict_validation=False)
-                with patch("aimet_torch.v1.auto_quant.equalize_model", side_effect=error_fn):
+                with patch("aimet_torch._base.auto_quant.equalize_model", side_effect=error_fn):
                     # If CLE fails, should return Adaround results
                     _, acc, _ = auto_quant.optimize()
                     assert acc == adaround_acc
@@ -666,7 +666,7 @@ class TestAutoQuant:
                                        results_dir=results_dir,
                                        strict_validation=False)
                 with patch("aimet_torch.v1.auto_quant.fold_all_batch_norms", side_effect=error_fn),\
-                        patch("aimet_torch.v1.auto_quant.equalize_model", side_effect=error_fn),\
+                        patch("aimet_torch._base.auto_quant.equalize_model", side_effect=error_fn),\
                         patch("aimet_torch.v1.auto_quant.Adaround._apply_adaround", side_effect=error_fn):
                     # If everything fails, should raise an error
                     with pytest.raises(RuntimeError):
@@ -686,7 +686,7 @@ class TestAutoQuant:
                                        mocks.eval_callback,
                                        results_dir=results_dir,
                                        strict_validation=True)
-                with patch("aimet_torch.v1.auto_quant.equalize_model", side_effect=error_fn):
+                with patch("aimet_torch._base.auto_quant.equalize_model", side_effect=error_fn):
                     # Hard stop if strict_validation=True
                     with pytest.raises(_Exception):
                         auto_quant.optimize()

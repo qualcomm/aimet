@@ -41,7 +41,8 @@ import itertools
 import torch
 
 import aimet_torch.v2.quantization as Q
-from aimet_torch.v1.auto_quant import AutoQuantBase, _logger, cache # pylint: disable=unused-import
+from aimet_torch._base.auto_quant import AutoQuantBase
+from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.v2.adaround import Adaround, AdaroundParameters
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
@@ -76,6 +77,10 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
     def _get_adaround():
         """ returns AdaRound """
         return Adaround
+
+    @staticmethod
+    def _fold_all_batch_norms(*args, **kwargs):
+        return fold_all_batch_norms(*args, **kwargs)
 
     @functools.wraps(AutoQuantBase.__init__)
     def __init__(self, *args, rounding_mode: str = 'nearest', **kwargs):
