@@ -35,9 +35,11 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to legacy torch_quantizer """
-from .v1.torch_quantizer import * # pylint: disable=wildcard-import, unused-wildcard-import
+from .utils import _get_default_api
 
-if __name__ != "__main__":
+if _get_default_api() == "v1":
+    from .v1.torch_quantizer import * # pylint: disable=wildcard-import, unused-wildcard-import
+
     from .utils import _warn_deprecated_in_v2
     from .v1 import torch_quantizer as _v1_torch_quantizer
     _warn_deprecated_in_v2(__name__,

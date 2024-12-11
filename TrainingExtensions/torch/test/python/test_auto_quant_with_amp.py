@@ -51,7 +51,7 @@ from bs4 import BeautifulSoup
 
 from aimet_torch.v1.auto_quant import AutoQuantWithAutoMixedPrecision as AutoQuant
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QcQuantizeWrapper
-from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
+from aimet_torch.v1.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
 from aimet_common.defs import QuantizationDataType
 from aimet_torch import utils
 from aimet_torch.quantsim import QuantizationSimModel

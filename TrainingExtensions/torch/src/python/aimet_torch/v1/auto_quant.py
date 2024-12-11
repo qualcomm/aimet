@@ -69,8 +69,8 @@ from aimet_torch.utils import get_all_quantizers, in_eval_mode
 from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_torch.model_preparer import prepare_model
 from aimet_torch.model_validator.model_validator import ModelValidator
-from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo, EvalCallbackFactory, _default_forward_fn
-from aimet_torch.amp.quantizer_groups import QuantizerGroup
+from aimet_torch.v1.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo, EvalCallbackFactory, _default_forward_fn
+from aimet_torch.v1.amp.quantizer_groups import QuantizerGroup
 
 from aimet_common.auto_quant import Diagnostics
 from aimet_common.cache import Cache

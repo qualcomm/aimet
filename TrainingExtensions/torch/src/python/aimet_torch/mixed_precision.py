@@ -35,98 +35,28 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
-""" Mixed precision inference """
+""" Alias to v1/v2 mixed_precision """
 
-from typing import Union, Tuple, List
-import torch
+from .utils import _get_default_api
 
-from aimet_common.utils import AimetLogger
-from aimet_common.amp.utils import (
-    visualize_quantizer_group_sensitivity,
-    visualize_pareto_curve,
-    CANDIDATE_WITH_DTYPE as TORCH_CANDIDATE,
-    AMPSearchAlgo,
-)
-from aimet_common.defs import CallbackFunc
-from aimet_torch.v1.quantsim import QuantizationSimModel
-from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
-from aimet_torch.amp.quantizer_groups import QuantizerGroup
+if _get_default_api() == "v1":
+    from .v1.mixed_precision import * # pylint: disable=wildcard-import, unused-wildcard-import
 
-logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
+    from .utils import _warn_replaced_in_v2
+    from .v1 import mixed_precision as _v1_mixed_precision
+    from .v2 import mixed_precision as _v2_mixed_precision
 
+    _warn_replaced_in_v2(__name__,
+                         v2_new_api=_v2_mixed_precision.__name__,
+                         v1_legacy_api=_v1_mixed_precision.__name__)
+else:
+    from .v2.mixed_precision import * # pylint: disable=wildcard-import, unused-wildcard-import
 
-# pylint: disable=too-many-arguments
-def choose_mixed_precision(sim: QuantizationSimModel, dummy_input: Union[torch.Tensor, Tuple],
-                           candidates: List[TORCH_CANDIDATE], eval_callback_for_phase1: CallbackFunc,
-                           eval_callback_for_phase2: CallbackFunc, allowed_accuracy_drop: Union[None, float],
-                           results_dir: str, clean_start: bool, forward_pass_callback: CallbackFunc,
-                           use_all_amp_candidates: bool = False, phase2_reverse: bool = False,
-                           phase1_optimize: bool = True, amp_search_algo: AMPSearchAlgo = AMPSearchAlgo.Binary) -> \
-        Union[List[Tuple[int, float, QuantizerGroup, int]], None]:
-    """
-    High-level API to perform in place Mixed Precision evaluation on the given sim model. A pareto list is created and
-    a curve for Accuracy vs BitOps is saved under the results directory
+    __deleted_atttributes__ = {
+        'choose_mixed_precision': 'aimet_torch==2.0'
+    }
 
-    :param sim: Quantized sim model
-    :param dummy_input: Dummy input to the model. If the model has more than one input, pass a tuple.
-                        User is expected to place the tensors on the appropriate device.
-    :param candidates: List of tuples for all possible bitwidth values for activations and parameters
-                    Suppose the possible combinations are-
-                    ((Activation bitwidth - 8, Activation data type - int), (Parameter bitwidth - 16, parameter data type - int))
-                    ((Activation bitwidth - 16, Activation data type - float), (Parameter bitwidth - 16, parameter data type - float))
-                    candidates will be [((8, QuantizationDataType.int), (16, QuantizationDataType.int)),
-                                        ((16, QuantizationDataType.float), (16, QuantizationDataType.float))]
-    :param eval_callback_for_phase1: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. This evaluation callback used to measure sensitivity of each
-                                     quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
-                                     module. Therefore, a user might want to run the phase 1 with a smaller dataset
-    :param eval_callback_for_phase2: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. Evaluation callback used to get accuracy of quantized model
-                                     for phase 2 calculations. The phase 2 involves finding pareto front curve
-    :param allowed_accuracy_drop: Maximum allowed drop in accuracy from FP32 baseline. The pareto front curve is plotted only till the point where the allowable
-                                  accuracy drop is met. To get a complete plot for picking points on the curve, the user
-                                  can set the allowable accuracy drop to None.
-    :param results_dir: Path to save results and cache intermediate results
-    :param clean_start: If true, any cached information from previous runs will be deleted prior to starting the
-                        mixed-precision analysis. If false, prior cached information will be used if applicable. Note
-                        it is the user's responsibility to set this flag to true if anything in the model or
-                        quantization parameters changes compared to the previous run.
-    :param forward_pass_callback: An object of CallbackFunc class which takes in Forward pass function (callable) and its
-                                  function parameters. Forward pass callback used to compute quantization encodings
-    :param use_all_amp_candidates: Using the “supported_kernels” field in the config file (under defaults
-                    and op_type sections), a list of supported candidates can be specified. All the AMP candidates
-                    which are passed through the “candidates” field may not be supported based on the data passed
-                    through “supported_kernels”. When the field “use_all_amp_candidates” is set to True, the AMP
-                    algorithm will ignore the "supported_kernels" in the config file and continue to use all candidates.
-    :param phase2_reverse: If user will set this parameter to True, then phase1 of amp algo, that is calculating accuracy list
-                            will not be changed, whereas the phase2 algo of amp, which generate the pareto list will be changed. In phase2, algo will start,
-                            model with all quantizer groups in least candidate, and one by one, it will put nodes in higher candidate till target accuracy does not meet.
-    :param phase1_optimize: If user set this parameter to false then phase1 default logic will be executed else optimized logic will be executed.
-    :param amp_search_algo: A valid value from the Enum AMPSearchAlgo. Defines the search algorithm to be used for
-                            the phase 2 of AMP.
-
-    :return: Pareto front list containing information including Bitops, QuantizerGroup candidates and
-             corresponding eval scores. The Pareto front list can be used for plotting a pareto front curve which
-             provides information regarding how bit ops vary w.r.t. accuracy. If the allowable accuracy drop is set to
-             100% then a user can use the pareto front curve to pick points and re-run,
-             None if we early exit the mixed precision algorithm.
-    """
-    mixed_precision_algo = GreedyMixedPrecisionAlgo(sim, dummy_input, candidates, eval_callback_for_phase1,
-                                                    eval_callback_for_phase2, results_dir, clean_start,
-                                                    forward_pass_callback, use_all_amp_candidates, phase2_reverse, phase1_optimize)
-    mixed_precision_algo.run(allowed_accuracy_drop, amp_search_algo)
-
-    if mixed_precision_algo.accuracy_list is not None and mixed_precision_algo.pareto_list is not None:
-        # Print mixed precision stats
-        logger.info(mixed_precision_algo)
-
-        # Visualize quantizer group sensitivity
-        visualize_quantizer_group_sensitivity(mixed_precision_algo.accuracy_list,
-                                              mixed_precision_algo.baseline_candidate,
-                                              mixed_precision_algo.fp32_accuracy,
-                                              results_dir=results_dir)
-        # Create pareto list curve
-        visualize_pareto_curve(mixed_precision_algo.pareto_list, results_dir)
-        return mixed_precision_algo.pareto_list
-
-    return None
+    def __getattr__(name: str):
+        if name in __deleted_atttributes__:
+            since = __deleted_atttributes__[name]
+            raise AttributeError(f"Attribute '{name}' is not yet supported in {since}")

@@ -35,9 +35,11 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to legacy qc_quantize_recurrent """
-from .v1.qc_quantize_recurrent import * # pylint: disable=wildcard-import, unused-wildcard-import
+from .utils import _get_default_api
 
-if __name__ != "__main__":
+if _get_default_api() == "v1":
+    from .v1.qc_quantize_recurrent import * # pylint: disable=wildcard-import, unused-wildcard-import
+
     from .utils import _warn_deprecated_in_v2
     from .v1 import qc_quantize_recurrent as _v1_qc_quantize_recurrent
     _warn_deprecated_in_v2(__name__,

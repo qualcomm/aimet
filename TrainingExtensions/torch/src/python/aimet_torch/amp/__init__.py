@@ -34,15 +34,15 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to v1 amp.utils """
+""" Alias to v1 amp """
 
 from ..utils import _get_default_api
 
 if _get_default_api() == "v1":
-    from ..v1.amp.utils import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from ..v1.amp import * # pylint: disable=wildcard-import, unused-wildcard-import
 
     from ..utils import _warn_deprecated_in_v2
-    from ..v1.amp import utils as _v1_utils
+    from ..v1 import amp as _v1_amp
 
     _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_utils.__name__)
+                           v1_legacy_api=_v1_amp.__name__)

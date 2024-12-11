@@ -35,9 +35,11 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to legacy quantsim_straight_through_grad """
-from .v1.quantsim_straight_through_grad import * # pylint: disable=wildcard-import, unused-wildcard-import
+from .utils import _get_default_api
 
-if __name__ != "__main__":
+if _get_default_api() == "v1":
+    from .v1.quantsim_straight_through_grad import * # pylint: disable=wildcard-import, unused-wildcard-import
+
     from .utils import _warn_deprecated_in_v2
     from .v1 import quantsim_straight_through_grad as _v1_quantsim_straight_through_grad
     _warn_deprecated_in_v2(__name__,

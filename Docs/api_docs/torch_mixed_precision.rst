@@ -7,7 +7,7 @@ AIMET PyTorch Mixed Precision API
 
 Top-level API
 =============
-.. autofunction:: aimet_torch.mixed_precision.choose_mixed_precision
+.. autofunction:: aimet_torch.v1.mixed_precision.choose_mixed_precision
 
 |
 
@@ -19,7 +19,7 @@ Currently only two candidates are supported - ((8,int), (8,int)) & ((16,int), (8
 
 Quantizer Groups definition
 ===========================
-.. autoclass:: aimet_torch.amp.quantizer_groups.QuantizerGroup
+.. autoclass:: aimet_torch.v1.amp.quantizer_groups.QuantizerGroup
    :members:
 
 |
@@ -31,7 +31,7 @@ CallbackFunc Definition
 
 |
 
-.. autoclass:: aimet_torch.amp.mixed_precision_algo.EvalCallbackFactory
+.. autoclass:: aimet_torch.v1.amp.mixed_precision_algo.EvalCallbackFactory
    :members:
 
 |

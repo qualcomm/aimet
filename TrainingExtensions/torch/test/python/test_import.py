@@ -119,3 +119,15 @@ def test_default_import():
     from aimet_torch.batch_norm_fold    import fold_all_batch_norms_to_scale
     from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms_to_scale as v1_fold_all_batch_norms_to_scale
     assert fold_all_batch_norms_to_scale is v1_fold_all_batch_norms_to_scale
+
+    """
+    When: Import from aimet_torch.mixed_precision
+    Then: Import should be redirected to aimet_torch.v1.mixed_precision
+    """
+    from aimet_torch    import mixed_precision
+    from aimet_torch.v1 import mixed_precision as v1_mixed_precision
+    assert mixed_precision.choose_mixed_precision is v1_mixed_precision.choose_mixed_precision
+
+    from aimet_torch.mixed_precision    import choose_mixed_precision
+    from aimet_torch.v1.mixed_precision import choose_mixed_precision as v1_choose_mixed_precision
+    assert choose_mixed_precision is v1_choose_mixed_precision

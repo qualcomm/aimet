@@ -60,11 +60,11 @@ from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_common.defs import QuantizationDataType
 from aimet_common.amp.utils import AMPSearchAlgo, calculate_starting_bit_ops, sort_accuracy_list
 from aimet_common.amp.mixed_precision_algo import interpolation_search, brute_force_search, binary_search
-from aimet_torch.amp.mixed_precision_algo import (
+from aimet_torch.v1.amp.mixed_precision_algo import (
     GreedyMixedPrecisionAlgo,
     _compute_sqnr,
 )
-from aimet_torch.amp.quantizer_groups import QuantizerGroup
+from aimet_torch.v1.amp.quantizer_groups import QuantizerGroup
 from aimet_common.defs import CallbackFunc
 
 
@@ -292,7 +292,7 @@ class TestAutoMixedPrecision:
             call_count += 1
 
         with unittest.mock.patch(
-            'aimet_torch.amp.mixed_precision_algo.EvalCallbackFactory.sqnr',
+            'aimet_torch.v1.amp.mixed_precision_algo.EvalCallbackFactory.sqnr',
             side_effect=assert_only_one_quantizer_group_enabled
         ):
             accuracy_list = algo._create_and_save_accuracy_list(algo.baseline_candidate)
@@ -341,7 +341,7 @@ class TestAutoMixedPrecision:
             call_count += 1
 
         with unittest.mock.patch(
-            'aimet_torch.amp.mixed_precision_algo.EvalCallbackFactory.sqnr',
+            'aimet_torch.v1.amp.mixed_precision_algo.EvalCallbackFactory.sqnr',
             side_effect=assert_only_one_quantizer_group_enabled
         ):
             accuracy_list = algo._create_and_save_accuracy_list(algo.baseline_candidate)
