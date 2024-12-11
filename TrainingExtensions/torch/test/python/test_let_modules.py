@@ -167,8 +167,8 @@ def test_pair(inp_fn):
     assert torch.equal(sim_out, sim_out_with_no_scale)
 
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([20])
+    prev_scale = torch.nn.Parameter(torch.tensor([2], dtype = torch.float32))
+    foll_scale = torch.nn.Parameter(torch.tensor([20], dtype = torch.float32))
     sim.model[0].register_let_params(prev_scale = prev_scale)
     sim.model[1].register_let_params(foll_scale = foll_scale)
 
@@ -180,8 +180,8 @@ def test_pair(inp_fn):
     assert not torch.allclose(sim_out, out_with_radn_scale, atol=0.01)
 
     # Set scale to 2
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([2])
+    prev_scale = torch.nn.Parameter(torch.tensor([2], dtype = torch.float32))
+    foll_scale = torch.nn.Parameter(torch.tensor([2], dtype = torch.float32))
     sim.model[0].register_let_params(prev_scale = prev_scale)
     sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)

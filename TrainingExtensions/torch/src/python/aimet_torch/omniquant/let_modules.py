@@ -90,8 +90,10 @@ class LETModule():
     # during end-to-end integration whats the best way to initialize scale
     # pylint: disable=missing-function-docstring, attribute-defined-outside-init
     def register_let_params(self, prev_scale = None, foll_scale = None):
-        self.prev_scale = prev_scale
-        self.foll_scale = foll_scale
+        if prev_scale is not None:
+            self.prev_scale = prev_scale
+        if foll_scale is not None:
+            self.foll_scale = foll_scale
 
     def fold_let_params(self):
         '''
@@ -114,6 +116,7 @@ class LETModule():
         assert False, "Override in child class"
 
 # pylint: disable=too-many-ancestors, missing-class-docstring
+@QuantizationMixin.implements(QuantizedLinear)
 class LETQuantizedLinear(QuantizedLinear, LETModule):
     def __init__(self, module:QuantizationMixin):
         # TODO pass in all params to ctor
@@ -131,7 +134,7 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 bias = bias / prev_scale
-            weight = weight / prev_scale
+            weight = weight / prev_scale.reshape(-1, 1)
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
@@ -149,6 +152,7 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
                 return super().__call__(*args, **kwargs)
 
 # pylint: disable=too-many-ancestors, missing-class-docstring
+@QuantizationMixin.implements(QuantizedConv2d)
 class LETQuantizedConv2d(QuantizedConv2d, LETModule):
     def __init__(self, module:QuantizationMixin):
         # TODO pass in all params to ctor
@@ -166,11 +170,11 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 bias = bias / prev_scale
-            weight = weight / prev_scale
+            weight = weight / prev_scale.reshape(-1, 1, 1, 1)
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale
+            weight = weight * foll_scale.reshape(1, -1, 1, 1)
 
         return {'weight': weight, 'bias': bias}
 
@@ -184,6 +188,7 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
                 return super().__call__(*args, **kwargs)
 
 # pylint: disable=too-many-ancestors, missing-class-docstring
+@QuantizationMixin.implements(QuantizedLayerNorm)
 class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape)
@@ -212,6 +217,7 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
 
 # pylint: disable=missing-class-docstring
 QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
+@QuantizationMixin.implements(QuantizedLlamaRMSNorm)
 class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape)
@@ -236,6 +242,7 @@ class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
 
 # pylint: disable=missing-class-docstring
 QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
+@QuantizationMixin.implements(QuantizedGemmaNorm)
 class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape)

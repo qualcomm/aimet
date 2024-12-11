@@ -37,6 +37,7 @@
 """ Process transformer models to get decoder list and LET pair modules for supporting models only """
 from abc import ABC, abstractmethod
 from transformers import LlamaModel, LlamaForCausalLM
+from typing import List
 import torch
 
 from .defs import _LetPair
@@ -76,6 +77,20 @@ class TransformerProcessor(ABC):
         """ Method to get a list of let module pairs in a decoder_block. """
         pass
 
+    @classmethod
+    def init_let_params(cls, let_pair_list: List[_LetPair]):
+        """ Register let params to LET pairs. """
+        for _let_pair in let_pair_list:
+            prev_modules, foll_modules = _let_pair.prev, _let_pair.follow
+            prev_out_ch = prev_modules[0].weight.shape[0]
+            prev_scale = torch.nn.Parameter(torch.ones(prev_out_ch))
+
+            for _module in prev_modules:
+                _module.register_let_params(prev_scale = prev_scale)
+
+            for _module in foll_modules:
+                _module.register_let_params(foll_scale = prev_scale)
+
 class LlamaProcessor(TransformerProcessor):
     """
     Transformer Procesor for LlamaModelGroup = (LlamaModel, LlamaForCausalLM)
@@ -98,7 +113,7 @@ class LlamaProcessor(TransformerProcessor):
         return transformer_block_list
 
     @classmethod
-    def get_let_module_pair(cls, decoder_block) -> list:
+    def get_let_module_pair(cls, decoder_block) -> List:
         """ Method to get a list of let module pairs in a decoder_block. """
         input_layernorm = decoder_block.get_submodule("input_layernorm")
         q_proj = decoder_block.get_submodule("self_attn.q_proj")

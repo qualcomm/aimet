@@ -41,7 +41,7 @@ from torch import nn
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 
 try:
-    from transformers.models.llama.modelling_llama import LlamaRMSNorm
+    from transformers.models.llama.modeling_llama import LlamaRMSNorm
 except ImportError:
     class LlamaRMSNorm(torch.nn.Module):
         '''
