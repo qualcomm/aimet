@@ -142,7 +142,7 @@ RUN python3 -m pip --no-cache-dir install \
         dataclasses \
         datasets \
         Deprecated \
-        deepspeed==0.14.4 \
+        deepspeed \
         docutils \
         furo \
         graphviz \
