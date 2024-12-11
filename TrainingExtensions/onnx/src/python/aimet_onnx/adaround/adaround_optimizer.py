@@ -263,6 +263,8 @@ class AdaroundOptimizer:
         :return: output of the module computed with AdaRounded weights
         """
         # Compute adarounded weights
+        # pylint: disable=too-many-branches
+
         device = 'cpu'
         if inp_data.is_cuda:
             device = inp_data.device
@@ -271,11 +273,15 @@ class AdaroundOptimizer:
 
         if quant_module.type == 'Conv':
             attributes = read_attributes_for_op(quant_module)
-            if attributes['pads']:
+            if 'pads' in attributes:
                 onnx_padding = attributes['pads']
                 torch_padding = [onnx_padding[1], onnx_padding[3], onnx_padding[0], onnx_padding[2]]
                 # Takes care of asymmetric padding within a spatial axis
                 inp_data = functional.pad(inp_data, pad=torch_padding)
+            else:
+                auto_pad = attributes.get("auto_pad", "NOTSET")
+                if auto_pad not in {"NOTSET", "VALID"}:
+                    raise NotImplementedError(f"Layer with auto_pad: {auto_pad} attribute is not supported.")
             bias = None
             if 'bias' in quant_module.params:
                 bias = torch.from_numpy(numpy_helper.to_array(quant_module.params['bias'].tensor)).to(device)
