@@ -332,7 +332,7 @@ def remove_activation_quantizers(modules):
     context_2 = remove_output_quantizers(modules)
     # pylint: disable=protected-access
     return _ContextManager(action=lambda: None,
-                               cleanup=lambda: (context_1._cleanup(), context_2._cleanup()))
+                           cleanup=lambda: (context_1._cleanup(), context_2._cleanup()))
 
 def remove_all_quantizers(modules):
     '''
@@ -342,7 +342,7 @@ def remove_all_quantizers(modules):
     context_2 = remove_param_quantizers(modules)
     # pylint: disable=protected-access
     return _ContextManager(action=lambda: None,
-                               cleanup=lambda: (context_1._cleanup(), context_2._cleanup()))
+                           cleanup=lambda: (context_1._cleanup(), context_2._cleanup()))
 
 def has_no_quantizers(module, ignore_params: bool = False) -> bool:
     """

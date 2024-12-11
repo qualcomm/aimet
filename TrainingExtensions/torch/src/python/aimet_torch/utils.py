@@ -979,10 +979,6 @@ def get_all_quantizers(model: torch.nn.Module):
     from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper# pylint: disable=import-outside-toplevel
     from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent# pylint: disable=import-outside-toplevel
 
-    for m in model.modules():
-        if isinstance(m, BaseQuantizationMixin):
-            raise NotImplementedError(f'{get_all_quantizers.__qualname__} is not supported in AIMET 2')
-
     param_quantizers = []
     input_quantizers = []
     output_quantizers = []
@@ -991,7 +987,7 @@ def get_all_quantizers(model: torch.nn.Module):
         m for m in model.modules() if isinstance(m, (QcQuantizeWrapper, QcQuantizeRecurrent))
     ]
     for quant_wrapper in quant_wrappers:
-        if isinstance(quant_wrapper, QcQuantizeWrapper):
+        if isinstance(quant_wrapper, (QcQuantizeWrapper, BaseQuantizationMixin)):
             param_quantizers.extend(quant_wrapper.param_quantizers.values())
             input_quantizers.extend(quant_wrapper.input_quantizers)
             output_quantizers.extend(quant_wrapper.output_quantizers)
@@ -1003,7 +999,7 @@ def get_all_quantizers(model: torch.nn.Module):
     return param_quantizers, input_quantizers, output_quantizers
 
 
-def disable_all_quantizers(model: torch.nn.Module) -> Handle:
+def disable_all_quantizers(model: torch.nn.Module):
     """
     Temporarily disable all quantizers in the model within with-as block, or permanently disable
     without employing context manager.
@@ -1012,10 +1008,10 @@ def disable_all_quantizers(model: torch.nn.Module) -> Handle:
     :returns: Handle that enable all quantizers in the model upon handle.remove().
     """
     from aimet_torch.v2.nn.base import BaseQuantizationMixin# pylint: disable=import-outside-toplevel
+    import aimet_torch.v2.utils as v2_utils # pylint: disable=import-outside-toplevel
 
-    for m in model.modules():
-        if isinstance(m, BaseQuantizationMixin):
-            raise NotImplementedError(f'{disable_all_quantizers.__qualname__} is not supported in AIMET 2')
+    if any(isinstance(m, BaseQuantizationMixin) for m in model.modules()):
+        return v2_utils.remove_all_quantizers(model)
 
     param_quantizers, input_quantizers, output_quantizers = get_all_quantizers(model)
     all_quantizers = param_quantizers + input_quantizers + output_quantizers
