@@ -43,8 +43,10 @@ import torch
 from .models_.test_models import ModelWithMatMul2, BasicConv2d
 from aimet_common.defs import QuantScheme
 from aimet_torch.v2.experimental import set_matmul_second_input_producer_to_8bit_symmetric
+from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
+from aimet_torch.utils import get_all_quantizers, disable_all_quantizers
 from aimet_torch.v2.utils import allow_recompute, enable_recompute, reduce, patch_attr, remove_all_quantizers, remove_activation_quantizers, remove_input_quantizers, remove_output_quantizers, remove_param_quantizers
 
 @pytest.mark.parametrize('reduce_dim, target_shape', [
@@ -226,7 +228,11 @@ def test_matmul_bit_override():
     assert closest_output_quantizer_of_second_input.signed
 
 
-def test_remove_all_quantizers():
+@pytest.mark.parametrize('impl', [
+    remove_all_quantizers,
+    disable_all_quantizers, # NOTE: Alias of remove_all_quantizers for backwards compatibility
+])
+def test_remove_all_quantizers(impl):
     model = BasicConv2d(kernel_size=3)
     dummy_input = torch.rand(1, 64, 16, 16)
     qsim = QuantizationSimModel(model, dummy_input)
@@ -236,7 +242,7 @@ def test_remove_all_quantizers():
         module_list.append(module)
     
     # Ensures that temporary removal of quantizers works
-    with remove_all_quantizers(qsim.model):
+    with impl(qsim.model):
         for module in qsim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 assert all(quant is None for quant in module.input_quantizers)
@@ -247,7 +253,7 @@ def test_remove_all_quantizers():
     assert module_list == list(qsim.model.modules())
     
     # Ensures that permanent removal of quantizers works
-    remove_all_quantizers(qsim.model)
+    impl(qsim.model)
     for module in qsim.model.modules():
         if isinstance(module, BaseQuantizationMixin):
             assert all(quant is None for quant in module.input_quantizers)
@@ -352,3 +358,21 @@ def test_remove_output_quantizers():
     for module in qsim.model.modules():
         if isinstance(module, BaseQuantizationMixin):
             assert all(quant is None for quant in module.output_quantizers)
+
+
+def test_get_all_quantizers():
+    """
+    When: get_all_quantizers
+    Then: Should be equal to input/output/param quantizers respectively
+    """
+    model = BasicConv2d(kernel_size=3)
+    dummy_input = torch.rand(1, 64, 16, 16)
+    sim = QuantizationSimModel(model, dummy_input=dummy_input)
+    param_quantizers, input_quantizers, output_quantizers = get_all_quantizers(sim.model)
+
+    assert param_quantizers == \
+           sum((list(qmodule.param_quantizers.values()) for _, qmodule in sim.named_qmodules()), start=[])
+    assert input_quantizers == \
+           sum((list(qmodule.input_quantizers) for _, qmodule in sim.named_qmodules()), start=[])
+    assert output_quantizers == \
+           sum((list(qmodule.output_quantizers) for _, qmodule in sim.named_qmodules()), start=[])
