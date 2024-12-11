@@ -36,9 +36,13 @@
 # =============================================================================
 """ Optimizer for Omniquant """
 
+import os
+import tempfile
 import torch
 
+from aimet_torch.utils import CachedDataset
 from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_torch._base.adaround.activation_sampler import get_block_inputs, get_block_outputs
 
 from .decoder_processor import get_transformer_processor
 from .omniquant_config import OmniquantConfig
@@ -82,6 +86,7 @@ class Omniquant:
         transformer_processor = get_transformer_processor(model)
         fp_transformer_block_list = transformer_processor.get_decoder_list(model)
         qt_transformer_block_list = transformer_processor.get_decoder_list(quant_sim.model)
+        device = model.device
 
         def calibration_wrapper(model, dataloader):
             for batch_id, batch in enumerate(dataloader):
@@ -93,12 +98,28 @@ class Omniquant:
 
         quant_sim.compute_encodings(calibration_wrapper, dataloader)
 
-        for block_num, (fp_block, qt_block) in enumerate(zip(fp_transformer_block_list, qt_transformer_block_list)):
-            fp_let_pair_list = transformer_processor.get_let_module_pair(fp_block)
-            qt_let_pair_list = transformer_processor.get_let_module_pair(qt_block)
+        with tempfile.TemporaryDirectory() as tempdir:
+            cached_dir = os.path.join(tempdir, 'cached_dataset')
+            cached_dataset = CachedDataset(dataloader, omniquant_config.num_batch, cached_dir)
 
-            for epoch in range(omniquant_config.num_epoch):
-                pass
+            cached_fp_dataset, cached_qt_dataset = get_block_inputs(
+                model, quant_sim, ".".join([transformer_processor.transformer_block_list_path, "0"]), cached_dataset, omniquant_config.cache_on_cpu,
+                lambda model, input: model.forward(*input), omniquant_config.num_batch, cached_dir, incl_kwargs=True
+            )
+
+            for block_num, (fp_block, qt_block) in enumerate(zip(fp_transformer_block_list, qt_transformer_block_list)):
+                fp_let_pair_list = transformer_processor.get_let_module_pair(fp_block)
+                qt_let_pair_list = transformer_processor.get_let_module_pair(qt_block)
+
+                for epoch in range(omniquant_config.num_epoch):
+                    for batch_num in range(omniquant_config.num_batch):
+                        fp_input, qt_input = cached_fp_dataset[batch_num], cached_qt_dataset[batch_num]
+                        # Do block-wise training.
+
+                get_block_outputs(
+                        fp_block, qt_block, False, cached_fp_dataset, cached_qt_dataset, omniquant_config.cache_on_cpu,
+                        lambda fp_block, *args, **kwargs: fp_block(*args, **kwargs), device, cached_dir
+                    )
 
         # pylint: disable=protected-access
         # QDQ on models to fold quantizations into weight params.

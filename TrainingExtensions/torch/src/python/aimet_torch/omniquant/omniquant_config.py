@@ -44,3 +44,4 @@ class OmniquantConfig:
     num_epoch: int = 40
     num_batch: int = 32
     input_symmetry: str = "qtqt"
+    cache_on_cpu = True

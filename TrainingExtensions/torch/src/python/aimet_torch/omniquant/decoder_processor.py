@@ -62,6 +62,8 @@ but got class {model.__class__}")
 # pylint: disable=unnecessary-pass
 class TransformerProcessor(ABC):
     """ Abstract class for transformer processors. """
+    transformer_block_list_path = ""
+
     @classmethod
     @abstractmethod
     def get_decoder_list(cls, model):
@@ -75,11 +77,20 @@ class TransformerProcessor(ABC):
         pass
 
 class LlamaProcessor(TransformerProcessor):
-    """ Transformer Procesor for LlamaModelGroup = (LlamaModel, LlamaForCausalLM) """
+    """
+    Transformer Procesor for LlamaModelGroup = (LlamaModel, LlamaForCausalLM)
+    LlamaModel has transformer_block_list_path = "layers"
+    LlamaForCausalLM has transformer_block_list_path = "model.layers"
+    """
+    transformer_block_list_path = "layers" # Used for get_block_inputs
+
     @classmethod
     def get_decoder_list(cls, model)->torch.nn.ModuleList:
         """ Method to get decoder module list. """
-        model = getattr(model, "model", model)
+        if isinstance(model, LlamaForCausalLM):
+            model = getattr(model, "model", model)
+            cls.transformer_block_list_path = "model.layers"
+
         transformer_block_list = model.get_submodule("layers")
 
         assert isinstance(transformer_block_list, torch.nn.ModuleList), \
