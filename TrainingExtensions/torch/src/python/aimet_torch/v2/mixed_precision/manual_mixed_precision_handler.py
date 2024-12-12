@@ -36,6 +36,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """Mixed precision handler class"""
+# pylint: disable=logging-fstring-interpolation
 
 import copy
 from typing import Dict, List, Tuple, Optional, Union, IO

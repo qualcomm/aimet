@@ -36,7 +36,6 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """Utilities to achieve mixed precision"""
-# pylint: disable=logging-fstring-interpolation
 
 from dataclasses import dataclass
 from enum import Enum
