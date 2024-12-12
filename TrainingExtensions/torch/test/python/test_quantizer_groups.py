@@ -43,7 +43,7 @@ from aimet_common.amp.quantizer_groups import reformat_supported_kernels
 from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.examples.test_models import SingleResidual, ConcatModel
 from aimet_torch.v1.quantsim import QuantizationSimModel
-from aimet_torch.v1.amp.quantizer_groups import find_quantizer_group, find_op_groups, find_supported_candidates, \
+from aimet_torch.amp.quantizer_groups import find_quantizer_group, find_op_groups, find_supported_candidates, \
     QuantizerGroup
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph

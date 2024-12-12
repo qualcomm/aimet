@@ -49,8 +49,8 @@ from aimet_common.amp.utils import (
 )
 from aimet_common.defs import CallbackFunc
 from aimet_torch.v1.quantsim import QuantizationSimModel
-from aimet_torch.v1.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
-from aimet_torch.v1.amp.quantizer_groups import QuantizerGroup
+from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
+from aimet_torch.amp.quantizer_groups import QuantizerGroup
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
 

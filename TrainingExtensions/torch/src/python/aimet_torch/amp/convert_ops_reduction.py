@@ -34,15 +34,5 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to v1 amp.convert_ops_reduction """
-
-from ..utils import _get_default_api
-
-if _get_default_api() == "v1":
-    from ..v1.amp.convert_ops_reduction import * # pylint: disable=wildcard-import, unused-wildcard-import
-
-    from ..utils import _warn_deprecated_in_v2
-    from ..v1.amp import convert_ops_reduction as _v1_convert_ops_reduction
-
-    _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_convert_ops_reduction.__name__)
+""" Alias to aimet_torch._base.amp.convert_ops_reduction """
+from .._base.amp.convert_ops_reduction import * # pylint: disable=wildcard-import, unused-wildcard-import

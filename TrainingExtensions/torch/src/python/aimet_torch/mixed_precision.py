@@ -34,7 +34,6 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
 """ Alias to v1/v2 mixed_precision """
 
 from .utils import _get_default_api
@@ -43,20 +42,11 @@ if _get_default_api() == "v1":
     from .v1.mixed_precision import * # pylint: disable=wildcard-import, unused-wildcard-import
 
     from .utils import _warn_replaced_in_v2
-    from .v1 import mixed_precision as _v1_mixed_precision
-    from .v2 import mixed_precision as _v2_mixed_precision
+    from .v1 import mixed_precision as _v1_api
+    from .v2 import mixed_precision as _v2_api
 
     _warn_replaced_in_v2(__name__,
-                         v2_new_api=_v2_mixed_precision.__name__,
-                         v1_legacy_api=_v1_mixed_precision.__name__)
+                         v2_new_api=_v2_api.__name__,
+                         v1_legacy_api=_v1_api.__name__)
 else:
     from .v2.mixed_precision import * # pylint: disable=wildcard-import, unused-wildcard-import
-
-    __deleted_atttributes__ = {
-        'choose_mixed_precision': 'aimet_torch==2.0'
-    }
-
-    def __getattr__(name: str):
-        if name in __deleted_atttributes__:
-            since = __deleted_atttributes__[name]
-            raise AttributeError(f"Attribute '{name}' is not yet supported in {since}")

@@ -34,16 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to v1 amp.mixed_precision_algo """
-
-from ..utils import _get_default_api
-
-if _get_default_api() == "v1":
-    from ..v1.amp.mixed_precision_algo import * # pylint: disable=wildcard-import, unused-wildcard-import
-    from ..v1.amp.mixed_precision_algo import _compute_sqnr # pylint: disable=unused-import
-
-    from ..utils import _warn_deprecated_in_v2
-    from ..v1.amp import mixed_precision_algo as _v1_mixed_precision_algo
-
-    _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_mixed_precision_algo.__name__)
+# pylint: disable=wildcard-import, unused-wildcard-import, unused-import
+""" Alias to aimet_torch._base.amp.mixed_precision_algo """
+from .._base.amp.mixed_precision_algo import *
+from .._base.amp.mixed_precision_algo import _default_forward_fn, _compute_sqnr, _evaluate_sqnr

@@ -34,15 +34,5 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to v1 amp.quantizer_groups """
-
-from ..utils import _get_default_api
-
-if _get_default_api() == "v1":
-    from ..v1.amp.quantizer_groups import * # pylint: disable=wildcard-import, unused-wildcard-import
-
-    from ..utils import _warn_deprecated_in_v2
-    from ..v1.amp import quantizer_groups as _v1_quantizer_groups
-
-    _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_quantizer_groups.__name__)
+""" Alias to aimet_torch._base.amp.quantizer_groups """
+from .._base.amp.quantizer_groups import * # pylint: disable=wildcard-import, unused-wildcard-import

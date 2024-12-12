@@ -56,9 +56,9 @@ from aimet_common.amp.utils import (
 )
 from aimet_common.amp.convert_ops_reduction import SamplingStrategy
 from aimet_torch import utils
-from aimet_torch.v1.amp import utils as mixed_precision_utils
-from aimet_torch.v1.amp.convert_ops_reduction import ReduceConvertOps
-from aimet_torch.v1.amp.quantizer_groups import find_quantizer_group, QuantizerGroup, get_module_name_to_module_dict, find_supported_candidates
+from aimet_torch._base.amp import utils as mixed_precision_utils
+from aimet_torch._base.amp.convert_ops_reduction import ReduceConvertOps
+from aimet_torch._base.amp.quantizer_groups import find_quantizer_group, QuantizerGroup, get_module_name_to_module_dict, find_supported_candidates
 from aimet_torch.v1.quantsim import QuantizationSimModel
 
 

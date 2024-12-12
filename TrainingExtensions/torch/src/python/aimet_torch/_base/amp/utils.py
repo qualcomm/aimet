@@ -43,7 +43,7 @@ import torch
 from aimet_common.amp.utils import CANDIDATE_WITH_DTYPE, get_effective_bitwidth
 from aimet_torch.cost_calculator import CostCalculator
 from aimet_torch.layer_database import LayerDatabase
-from aimet_torch.v1.amp.quantizer_groups import QuantizerGroup
+from aimet_torch._base.amp.quantizer_groups import QuantizerGroup
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 
 

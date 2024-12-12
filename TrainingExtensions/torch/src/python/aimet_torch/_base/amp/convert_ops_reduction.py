@@ -52,7 +52,7 @@ from aimet_common.amp.convert_ops_reduction import ReduceConvertOps as BaseReduc
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op
 from aimet_torch.v1.quantsim import QuantizationSimModel
-from aimet_torch.v1.amp.quantizer_groups import ops_not_to_traverse, find_output_quantizer_groups, \
+from aimet_torch._base.amp.quantizer_groups import ops_not_to_traverse, find_output_quantizer_groups, \
     get_module_name_to_module_dict, find_wrapper_module
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
