@@ -318,6 +318,9 @@ class AffineEncoding(EncodingBase, _GridMixin):
             else:
                 encoding_dict['enc_type'] = EncodingType.PER_BLOCK.name
                 encoding_dict['block_size'] = self._get_block_size(self.block_size)
+                if encoding_dict['block_size'] == -1:
+                    raise NotImplementedError('Exporting encodings to 1.0.0 format with block size -1 is not '
+                                              'supported yet. Export using sim.export() instead.')
             return encoding_dict
 
         raise AssertionError(f'Export encoding version {encoding_version} not supported.')
@@ -366,14 +369,6 @@ class VectorEncoding(AffineEncoding):
 
     def to_qnn_encoding_dict(self, encoding_version=None):
         encodings = super().to_qnn_encoding_dict(encoding_version)
-        if encoding_version == '0.6.1':
-            for encoding in encodings:
-                encoding.update(
-                    rows_per_block=self.rows_per_block,
-                    cols_per_block=self.cols_per_block,
-                    vector_dim=self.vector_dim,
-                    vector_stride=self.vector_stride,
-                    index_bw=self.index_bw)
         if encoding_version == '1.0.0':
             encodings.update(
                 rows_per_block=self.rows_per_block,
@@ -428,3 +423,9 @@ class GroupedBlockEncoding(AffineEncoding):
             encoding_dict['enc_type'] = EncodingType.LPBQ.name
             encoding_dict['per_block_int_scale'] = self.per_block_int_scale.flatten().tolist()
         return encoding_dict
+
+    def quantize(self, input: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def dequantize(self, input: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError

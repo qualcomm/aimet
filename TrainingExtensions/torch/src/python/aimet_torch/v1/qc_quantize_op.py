@@ -484,6 +484,8 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
         """
         Returns the layer's parameter encodings in an exportable format
         """
+        if encoding_version not in {'0.6.1', '1.0.0'}:
+            raise AssertionError(f'Export encoding version {encoding_version} not supported.')
         return {name: export_quantizer_encoding(quantizer) for name, quantizer in self.param_quantizers.items()}
 
     # pylint: disable=unused-argument
@@ -492,6 +494,8 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
         """
         Returns the layer's output encodings in an exportable format
         """
+        if encoding_version not in {'0.6.1', '1.0.0'}:
+            raise AssertionError(f'Export encoding version {encoding_version} not supported.')
         return [export_quantizer_encoding(quantizer) for quantizer in self.output_quantizers]
 
     # pylint: disable=unused-argument
@@ -500,6 +504,8 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
         """
         Returns the layer's input encodings in an exportable format
         """
+        if encoding_version not in {'0.6.1', '1.0.0'}:
+            raise AssertionError(f'Export encoding version {encoding_version} not supported.')
         return [export_quantizer_encoding(quantizer) for quantizer in self.input_quantizers]
 
     def import_param_encodings(self,

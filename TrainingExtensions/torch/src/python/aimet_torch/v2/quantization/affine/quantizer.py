@@ -826,9 +826,6 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         Return the quantizer's encodings as an EncodingBase object
         """
         if self.is_initialized():
-            if all(group_size == 1 for group_size in self.block_grouping):
-                return super().get_encodings()
-
             return GroupedBlockEncoding(scale=self.get_scale(dtype=torch.float32),
                                         offset=self.get_offset(dtype=torch.float32),
                                         bitwidth=self.bitwidth,
