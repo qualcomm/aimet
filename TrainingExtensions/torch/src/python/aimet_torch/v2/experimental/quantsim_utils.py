@@ -43,7 +43,6 @@ import re
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.product import Product
-from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_torch.meta.connectedgraph import Op
 from aimet_torch.quantsim_config.builder import LazyQuantizer
 from aimet_torch.v2.nn import BaseQuantizationMixin, custom
@@ -307,18 +306,16 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
                 model_input_names[int(re.findall(r'\d+', add_op.inputs[1].name)[0])] == 'attention_mask':
                 q_mask_add = QuantizedMaskAdd()
                 q_mask_add.nullrequant.input_quantizers[0] = LazyQuantizer(module.input_quantizers[1].bitwidth,
-                                                               'nearest',
-                                                               QuantScheme.post_training_tf,
+                                                               sim._rounding_mode,
+                                                               sim._quant_scheme,
                                                                module.input_quantizers[1].symmetric,
-                                                               enabled_by_default=True,
-                                                               data_type=QuantizationDataType.int
+                                                               enabled_by_default=True
                                                                ).realize()
                 q_mask_add.nullrequant.output_quantizers[0] = LazyQuantizer(module.input_quantizers[1].bitwidth,
-                                                               'nearest',
-                                                               QuantScheme.post_training_tf,
+                                                               sim._rounding_mode,
+                                                               sim._quant_scheme,
                                                                module.input_quantizers[1].symmetric,
-                                                               enabled_by_default=True,
-                                                               data_type=QuantizationDataType.int
+                                                               enabled_by_default=True
                                                                ).realize()
                 q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
                 setattr(sim.model, name, q_mask_add)
