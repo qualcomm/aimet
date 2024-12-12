@@ -30,13 +30,17 @@
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 #
-#  SPDX-License-Identifier: BSD-3-Clause
-#
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+""" Mixed precision inference """
 
-# pylint: disable=all
+from aimet_torch.v1.mixed_precision import choose_mixed_precision as v1_choose_mixed_precision
+from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_torch.v2.amp.utils import _mock_v1_quantizers
 
-from .manual_mixed_precision import MixedPrecisionConfigurator
-from ..amp import choose_mixed_precision
-from .utils import Precision, SupportedDType
+
+def choose_mixed_precision(sim: QuantizationSimModel, *args, **kwargs):
+    __doc__ = v1_choose_mixed_precision.__doc__ # pylint: disable=redefined-builtin, unused-variable
+
+    with _mock_v1_quantizers(sim):
+        return v1_choose_mixed_precision(sim, *args, **kwargs)
