@@ -50,8 +50,7 @@ from aimet_common.amp.quantizer_groups import QuantizerGroupBase, get_supported_
     compute_baseline_candidate_options
 
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch.v1.quantsim import QuantizationSimModel, _QuantizedModuleProtocol
 from aimet_torch import onnx_utils
 from aimet_torch.translation_mapping import aimet_op_to_backend_op_name_map
 
@@ -192,7 +191,7 @@ def get_module_name_to_module_dict(sim: QuantizationSimModel) -> Dict:
     """
     module_name_to_quantizer_dict = {}
     for name, ref_module in sim.model.named_modules():
-        if isinstance(ref_module, QcQuantizeWrapper):
+        if isinstance(ref_module, _QuantizedModuleProtocol):
             module_name_to_quantizer_dict[name] = ref_module
     return module_name_to_quantizer_dict
 
@@ -453,7 +452,10 @@ def find_supported_candidates(quantizer_groups: List[QuantizerGroup],
         onnx_ops = defaultdict(list)
         supported_kernel_types = set()
         for supported_kernel_op in quantizer_group.supported_kernel_ops:
-            module = module_name_to_module_dict[supported_kernel_op]._module_to_wrap
+            try:
+                module = module_name_to_module_dict[supported_kernel_op]._module_to_wrap
+            except AttributeError:
+                module = module_name_to_module_dict[supported_kernel_op].get_original_module()
             backend_type = aimet_op_to_backend_op_name_map.get(type(module))
 
             if backend_type in supported_kernels:

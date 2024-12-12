@@ -34,7 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Utilities for mixed precision feature """
+""" Utilities for mixed precision feature in aimet_torch.v1 """
 
 from typing import Union, Tuple, List, Dict
 from collections import defaultdict
@@ -44,6 +44,7 @@ from aimet_common.amp.utils import CANDIDATE_WITH_DTYPE, get_effective_bitwidth
 from aimet_torch.cost_calculator import CostCalculator
 from aimet_torch.layer_database import LayerDatabase
 from aimet_torch.v1.amp.quantizer_groups import QuantizerGroup
+from aimet_torch.v2.nn.base import BaseQuantizationMixin
 
 
 def find_bit_ops_reduction(quantizer_group: QuantizerGroup, mac_dict: Dict, max_candidate: CANDIDATE_WITH_DTYPE, candidate: CANDIDATE_WITH_DTYPE) -> int:
@@ -118,11 +119,17 @@ def create_mac_dict(model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tup
     :param model: Torch model to evaluate
     :param dummy_input: Dummy input to the model
     """
+    is_v2_model = any(isinstance(module, BaseQuantizationMixin) for module in model.modules())
+
     layer_db = LayerDatabase(model, dummy_input)
     mac_dict = {}
     for compressible_layer in layer_db.get_compressible_layers().values():
-        module_name = compressible_layer.name[ : compressible_layer.name.find(
-            compressible_layer.var_name_of_module_in_parent) - 1]
+        if is_v2_model:
+            module_name =  compressible_layer.name
+        else:
+            # Should truncate "._module_to_wrap" suffix from module name
+            assert compressible_layer.name.endswith('._module_to_wrap')
+            module_name = compressible_layer.name[:-len('._module_to_wrap')]
         mac_dict[module_name] = CostCalculator.compute_layer_cost(compressible_layer).mac
     return mac_dict
 
