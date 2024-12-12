@@ -975,23 +975,27 @@ def get_all_quantizers(model: torch.nn.Module):
     :returns: List of parameter, input, and output quantizers
     """
     # pylint:disable = cyclic-import
-    from aimet_torch.v2.nn.base import BaseQuantizationMixin# pylint: disable=import-outside-toplevel
-    from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper# pylint: disable=import-outside-toplevel
-    from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent# pylint: disable=import-outside-toplevel
-
     param_quantizers = []
     input_quantizers = []
     output_quantizers = []
 
     for module in model.modules():
-        if isinstance(module, (QcQuantizeWrapper, BaseQuantizationMixin)):
-            param_quantizers.extend(module.param_quantizers.values())
-            input_quantizers.extend(module.input_quantizers)
-            output_quantizers.extend(module.output_quantizers)
-        elif isinstance(module, QcQuantizeRecurrent):
-            param_quantizers.extend(module.param_quantizers.values())
-            input_quantizers.extend(module.input_quantizers.values())
-            output_quantizers.extend(module.output_quantizers.values())
+        _param_qtzrs = getattr(module, 'param_quantizers', {}).values()
+        _input_qtzrs = getattr(module, 'input_quantizers', [])
+        _output_qtzrs = getattr(module, 'output_quantizers', [])
+
+        if _param_qtzrs:
+            param_quantizers.extend(_param_qtzrs)
+
+        if _input_qtzrs:
+            input_quantizers.extend(_input_qtzrs.values()
+                                    if isinstance(_input_qtzrs, dict)
+                                    else _input_qtzrs)
+
+        if _output_qtzrs:
+            output_quantizers.extend(_output_qtzrs.values()
+                                     if isinstance(_output_qtzrs, dict)
+                                     else _output_qtzrs)
 
     return param_quantizers, input_quantizers, output_quantizers
 
