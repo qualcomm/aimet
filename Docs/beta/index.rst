@@ -17,7 +17,7 @@ AI Model Efficiency Toolkit Documentation
    Feature Guide <featureguide/index>
    Examples <examples/index>
    API Reference <apiref/index>
-   Release Notes <rn/index>
+   Release Notes <release_notes>
 
 AI Model Efficiency Toolkit (AIMET) is a software toolkit for quantizing and compressing models.
 
@@ -68,9 +68,8 @@ For a detailed look at the AIMET API, see the :doc:`API reference <../apiref/ind
 Release Notes
 =============
 
-For information specific to this release, see :doc:`Release notes <../rn/index>`.
+For information specific to this release, see :doc:`Release notes <release_notes>`.
 
 
 | |project| is a product of |author|
 | Qualcomm\ |reg| Neural Processing SDK is a product of Qualcomm Technologies, Inc. and/or its subsidiaries.
-

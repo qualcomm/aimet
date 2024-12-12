@@ -1,7 +1,7 @@
 .. _rn-index:
 
 #############
-Release Notes
+Release notes
 #############
 
 1.35.0
