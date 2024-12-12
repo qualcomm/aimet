@@ -160,28 +160,27 @@ class MixedPrecisionConfigurator:
                 self._store_user_request(RequestType.set_model_output_precision, model_output, activation)
 
     @overload
-    def apply(self, log_file: str = './mmp_log.txt', config: str = "", strict: bool = True):
+    def apply(self, log_file: str = './mmp_log.txt', strict: bool = True):
         ...
 
     @overload
-    def apply(self, log_file: IO, config: str = "", strict: bool = True):
+    def apply(self, log_file: IO, strict: bool = True):
         ...
 
 
-    def apply(self, log_file: Optional[Union[IO, str]] = './mmp_log.txt', config: str = "", strict: bool = True):
+    def apply(self, log_file: Optional[Union[IO, str]] = './mmp_log.txt', strict: bool = True):
         """
         Apply the mp settings specified through the set_precision/set_model_input_precision/set_model_output_precision
         calls to the QuantSim object
         :param log_file: log_file to store the logs. log_file can either be a string representing the path or the IO
                         object to write the logs into.
-        :param config: Config file to be used for backend awareness. If empty no backend awareness would be checked
         :param strict: Boolean flag to indicate whether to fail (strict=True) on incorrect/conflicting inputs made by
         the user or (strict=False) take a best-effort approach to realize the MP settings
         """
         if isinstance(log_file, str):
             with open(log_file, 'w') as f:
-                self.mp_handler.apply(f, self.user_requests, config, strict)
+                self.mp_handler.apply(f, self.user_requests, strict)
         else:
-            self.mp_handler.apply(log_file, self.user_requests, config, strict)
+            self.mp_handler.apply(log_file, self.user_requests, strict)
 
-        self.user_requests = []
+        self.user_requests.clear()

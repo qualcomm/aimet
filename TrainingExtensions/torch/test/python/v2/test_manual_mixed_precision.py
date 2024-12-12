@@ -260,7 +260,7 @@ class TestManualMixedPrecisionConfigurator:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
-                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f, strict=True)
 
         assert len(mp_requests) == 4
         for m, request in mp_requests.items():
@@ -290,7 +290,7 @@ class TestManualMixedPrecisionConfigurator:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
-                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f, True)
                 mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
 
         assert len(mp_requests) == 13
@@ -320,7 +320,7 @@ class TestManualMixedPrecisionConfigurator:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
-                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f, True)
 
         assert len(mp_requests) == 13
         for m, request in mp_requests.items():
@@ -1302,7 +1302,7 @@ class TestManualMixedPrecisionConfigurator:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
-                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f, True)
                 assert len(mp_requests) == 1
                 mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
                 assert len(mp_requests) == 2  # new request for reshape added
@@ -1347,9 +1347,84 @@ class TestManualMixedPrecisionConfigurator:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
-                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f)
+                mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f, True)
                 assert len(mp_requests) == 2
                 mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
                 assert len(mp_requests) == 3  # new request for reshape added
                 for mp_request in mp_requests.values():
                     assert mp_request.id == 1  # all the modules have been updated with request_id == 1.
+
+
+    @pytest.mark.parametrize("test_pass_scenario", [True, False])
+    def test_mp_43(self, test_pass_scenario):
+        """
+        Test that the supported_kernels in the op_type section are used correctly in _apply_backend_awareness
+
+        """
+        model = SingleResidual().eval()
+
+        quantsim_config = {
+            "defaults": {
+                "ops": {
+                    "is_output_quantized": "True",
+                    "is_symmetric": "False"
+                },
+                "params": {
+                    "is_quantized": "False",
+                    "is_symmetric": "True"
+                },
+                "supported_kernels": [
+                    {
+                        "activation": {
+                            "bitwidth": 16,
+                            "dtype": "int"
+                        },
+                        "param": {
+                            "bitwidth": 16,
+                            "dtype": "int"
+                        }
+                    }
+                ]
+            },
+            "params": {
+                "weight": {
+                    "is_quantized": "True",
+                    "is_symmetric": "False"
+                }
+            },
+            "op_type": {
+                "Conv": {
+                    "supported_kernels": [
+                        {
+                            "activation": {
+                                "bitwidth": 16,
+                                "dtype": "int"
+                            },
+                            "param": {
+                                "bitwidth": 8,
+                                "dtype": "int"
+                            }
+                        }
+                    ]
+                }
+            },
+            "supergroups": [],
+            "model_input": {},
+            "model_output": {}
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, 'quantsim_config.json'), 'w') as f:
+                json.dump(quantsim_config, f)
+            sim = QuantizationSimModel(model, config_file=os.path.join(tmp_dir, 'quantsim_config.json'),
+                                       dummy_input=torch.rand(1, 3, 32, 32))
+            mp_configurator = MixedPrecisionConfigurator(sim)
+            if test_pass_scenario:
+                mp_configurator.set_precision(sim.model.conv2, 'int16', {'weight': 'int8'})
+                with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                    mp_configurator.apply(f, strict=True)
+            else:
+                mp_configurator.set_precision(sim.model.fc, 'int16', {'weight': 'int8'})
+                with pytest.raises(RuntimeError):
+                    with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
+                        mp_configurator.apply(f, strict=True)

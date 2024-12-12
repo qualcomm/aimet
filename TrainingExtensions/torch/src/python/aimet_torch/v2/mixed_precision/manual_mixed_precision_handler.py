@@ -117,8 +117,15 @@ class MpHandler:
 
         log_file.write("\n\n\n")
 
-    def _process_user_requests(self, user_requests: List, log_file: IO):
-        """ Helper function to process user requests and convert them into internal format"""
+    def _process_user_requests(self, user_requests: List, log_file: IO, strict: bool):
+        """
+        Process user requests and convert them into internal format
+
+        :param user_requests: List of user requests to process
+        :param log_file: log file to report layers MP settings
+        :param strict: Used only for backend awareness in this method. strict==true would check whether the user input
+        is supported through the backed options available for the layer
+        """
         # pylint: disable=too-many-statements
         def create_mp_request(torch_module: BaseQuantizationMixin, module_name: str, request_id: int,
                               activation: Union[List[SupportedDType], SupportedDType, None] = None,
@@ -220,18 +227,39 @@ class MpHandler:
                 raise RuntimeError(f"Unsupported request type {user_request.request_type} encountered")
 
         self._log_mp_requests(mp_requests, "Mixed Precision Requests Before Preprocessing", log_file)
+        self._apply_backend_awareness(mp_requests, strict)
         return mp_requests
 
-    # pylint: disable=unused-argument, no-self-use
-    def _apply_backend_awareness(self, mp_requests: Dict, config: str = "", strict: bool = True) -> Dict:
+    def _apply_backend_awareness(self, mp_requests: Dict, strict: bool = True) -> Dict:
         """
         Apply backend awareness to the requests from the user
 
         :param mp_requests: MP requests generated after processing user requests
-        :param config: Config file to be used for backend awareness. If empty no backend awareness would be checked
         :param strict: Boolean flag to indicate whether to fail (strict=True) on incorrect/conflicting inputs made by
         the user or (strict=False) take a best-effort approach to realize the MP settings
         """
+
+        def validate_supported_kernels_for_module(module, input_activation, param) -> bool:
+            # supported_kernels has just one entry for activation and param(and both are required fields).
+            # Choosing input activation's first entry and param's weight entry to validate.
+            # TODO enhance the logic when supported_kernels schema is improved
+            act = input_activation[0] if input_activation and len(input_activation) else None
+            weight = param['weight'] if param and 'weight' in param else None
+
+            if not module.supported_kernels:
+                return True
+
+            if act and weight:
+                input_kernel = ((act.bitwidth, act.data_type), (weight.bitwidth, weight.data_type))
+                return input_kernel in module.supported_kernels
+            return False
+
+        if strict:
+            for m, request in mp_requests.items():
+                if not validate_supported_kernels_for_module(m, request.input_candidates, request.param_candidate):
+                    raise RuntimeError(f"For module {self.cg_traverser.get_module_name(m)}, input_candidates "
+                                       f"{request.input_candidates} and {request.param_candidate} are not valid combination "
+                                       f"supported by backend. Supported combinations: {m.supported_kernels}")
         return mp_requests
 
     @staticmethod
@@ -402,6 +430,7 @@ class MpHandler:
     def _resolve_request_outputs(self, mp_requests, log_file: IO):
         """
         Determine if output candidates from request at the provided module should be applied or discarded
+
         :param mp_requests: MP requests dict with module as key and its request as value
         :param log_file: log file to write the logs into
         """
@@ -570,6 +599,7 @@ class MpHandler:
         Suppose Conv+Relu is a super group
         Op1 -> Conv2 -> Relu3 -> Op4
         In case of super groups, output of Conv2 is disabled since by definition {Conv2, Relu3} operate at one precision.
+
         :param mp_requests: MP requests to resolve contentions
         :param strict: Boolean flag to indicate whether to fail (strict=True) on contentions or (strict=False) to
         overwrite an older request with the newer one
@@ -596,22 +626,22 @@ class MpHandler:
         return mp_requests
 
 
-    def apply(self, log_file: IO, user_requests: List, config: str = "", strict: bool = True): # pylint: disable=unused-argument
+    def apply(self, log_file: IO, user_requests: List, strict: bool = True):
         """
         Apply the mp settings specified through the set_precision/set_model_input_precision/set_model_output_precision
         calls to the QuantSim object
+
         :param log_file: Log file to store the logs
         :param user_requests: List of user requests to apply to sim
-        :param config: Config file to be used for backend awareness. If empty no backend awareness would be checked
         :param strict: Boolean flag to indicate whether to fail (strict=True) on incorrect/conflicting inputs made by
         the user or (strict=False) take a best-effort approach to realize the MP settings
+
         Note: If a layer has multiple requests through different set_precision(...) calls, the latest one would be honored
         In strict==True mode
             - the apply() call would error out if the precision specified is not supported based on the backend config file
             - the apply() call would error out if the parent request needs to be changed to honor a child op's request
         """
-        mp_requests = self._process_user_requests(user_requests, log_file)
-        mp_requests = self._apply_backend_awareness(mp_requests, config, strict)
+        mp_requests = self._process_user_requests(user_requests, log_file, strict)
         mp_requests = self._resolve_contentions(mp_requests, strict, log_file)
         mp_requests = self._propagate_requests_upstream(mp_requests, strict)
         mp_requests = self._resolve_request_outputs(mp_requests, log_file)
