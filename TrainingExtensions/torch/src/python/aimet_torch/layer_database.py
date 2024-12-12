@@ -95,6 +95,14 @@ class LayerDatabase(aimet_common.layer_database.LayerDatabase):
     Stores, creates and updates the Layer database
     Also stores compressible layers to model optimization
     """
+    _SUPPORTED_MODULE_TYPES = (
+        torch.nn.Conv2d,
+        torch.nn.Linear,
+        torch.nn.Sigmoid,
+        torch.nn.AvgPool2d,
+        aimet_modules.Multiply,
+    )
+
 
     def __init__(self, model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tuple]):
         """
@@ -244,7 +252,7 @@ class LayerDatabase(aimet_common.layer_database.LayerDatabase):
         """
         for module_name, module_ref in module.named_children():
             # first check if the module is leaf module or not
-            if utils.is_leaf_module(module_ref):
+            if isinstance(module_ref, cls._SUPPORTED_MODULE_TYPES):
                 # iterate over all the layer attributes and if the match is found
                 # then set the parent class and module name for that module
                 if id(module_ref) in layers:
@@ -266,10 +274,10 @@ class LayerDatabase(aimet_common.layer_database.LayerDatabase):
                             pass a tuple.
         """
 
-        module_type_for_attaching_hook = (torch.nn.Conv2d, torch.nn.Linear, torch.nn.Sigmoid, torch.nn.AvgPool2d, aimet_modules.Multiply)
         utils.run_hook_for_layers_with_given_input(model, dummy_input,
                                                    hook=self._custom_hook_to_collect_layer_attributes,
-                                                   module_type_for_attaching_hook=module_type_for_attaching_hook)
+                                                   module_type_for_attaching_hook=self._SUPPORTED_MODULE_TYPES,
+                                                   leaf_node_only=False)
 
         # set the parent_class reference
         self.set_reference_to_parent_module(self._model, self._compressible_layers)
