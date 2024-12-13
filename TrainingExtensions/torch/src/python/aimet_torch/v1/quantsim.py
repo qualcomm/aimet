@@ -77,7 +77,7 @@ from aimet_torch.onnx_utils import (
 )
 from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
-from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
+from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, _V1LazyQuantizeWrapper
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
 from aimet_torch._base.quantsim import ( # pylint: disable=unused-import
     _QuantizationSimModelInterface,
@@ -219,7 +219,7 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
         """
         for module_name, module_ref in model.named_children():
             if isinstance(module_ref, LazyQuantizeWrapper):
-                quantized_module = module_ref.realize_v1_wrapper()
+                quantized_module = module_ref.realize()
                 setattr(model, module_name, quantized_module)
 
             elif not utils.is_leaf_module(module_ref):
@@ -1325,6 +1325,8 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
                 quantized_layers.append((name, module))
         return quantized_layers
 
+    _lazy_quant_wrapper_cls = _V1LazyQuantizeWrapper
+
     def _create_quantizer_module(self, module_to_quantize: torch.nn.Module, num_inout_tensors: Dict,
                                  data_type: QuantizationDataType) -> torch.nn.Module:
         """Instantiates wrapper based on quant scheme
@@ -1340,7 +1342,7 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
 
         # Set quantizer to be a module replacer if it is in qc_quantize_modules_dict, otherwise set as
         # StaticGridQuantWrapper.
-        quantizer_wrapper_type = qc_quantize_modules_dict.get(type(module_to_quantize), LazyQuantizeWrapper)
+        quantizer_wrapper_type = qc_quantize_modules_dict.get(type(module_to_quantize), self._lazy_quant_wrapper_cls)
 
         if quantizer_wrapper_type == LazyQuantizeWrapper:
             quant_scheme_for_initialization = self._quant_scheme
