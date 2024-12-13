@@ -55,7 +55,8 @@ from aimet_common.bias_correction import (
 from aimet_common.defs import ActivationType
 
 from aimet_torch import utils
-from aimet_torch.v1 import quantsim as qsim
+from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizedModuleProtocol, QuantParams
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.save_utils import SaveUtils
 from aimet_torch.utils import get_ordered_lists_of_conv_fc
@@ -214,7 +215,7 @@ def call_analytical_correct_bias(layer: torch.nn.Module,
                                                                             dtype=layer.bias.dtype)
 
 
-def correct_bias(model: torch.nn.Module, quant_params: qsim.QuantParams,
+def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
                  num_quant_samples: int, data_loader, num_bias_correct_samples: int,
                  conv_bn_dict: Union[Dict[torch.nn.Module, ConvBnInfoType], None] = None,
                  perform_only_empirical_bias_corr: bool = True,
@@ -278,12 +279,12 @@ def correct_bias(model: torch.nn.Module, quant_params: qsim.QuantParams,
 
     # Quantize full model
     dummy_tensors = utils.create_rand_tensors_given_shapes(input_shape, utils.get_device(model))
-    q = qsim.QuantizationSimModel(model=model, quant_scheme=quant_params.quant_scheme,
-                                  rounding_mode=quant_params.round_mode,
-                                  default_output_bw=quant_params.act_bw,
-                                  default_param_bw=quant_params.weight_bw,
-                                  in_place=True,
-                                  dummy_input=dummy_tensors, config_file=quant_params.config_file)
+    q = QuantizationSimModel(model=model, quant_scheme=quant_params.quant_scheme,
+                             rounding_mode=quant_params.round_mode,
+                             default_output_bw=quant_params.act_bw,
+                             default_param_bw=quant_params.weight_bw,
+                             in_place=True,
+                             dummy_input=dummy_tensors, config_file=quant_params.config_file)
 
     # make sure  model got updated in-place before we use it for bc updates
     assert q.model is model
@@ -301,7 +302,7 @@ def correct_bias(model: torch.nn.Module, quant_params: qsim.QuantParams,
     # updates to skip_output_activation and layers_to_ignore
     for _, module in model.named_modules():
         # Skip all layer's output quantization
-        if isinstance(module, qsim._QuantizedModuleProtocol): # pylint: disable=protected-access
+        if isinstance(module, _QuantizedModuleProtocol): # pylint: disable=protected-access
             disable_output_quantizers(module)
 
     q.compute_encodings(pass_data_through_model, None)
@@ -322,8 +323,6 @@ def correct_bias(model: torch.nn.Module, quant_params: qsim.QuantParams,
         if module in layers_to_ignore:
             continue
         else:
-            # make sure module is in the model used by qsim.
-            assert module in list(q.model.modules())
             # Analytical Bias Correction is only done for Conv layers
             reference_layer = utils.get_layer_by_name(model_copy, module_name)
             quantize_layer = utils.get_layer_by_name(model, module_name)

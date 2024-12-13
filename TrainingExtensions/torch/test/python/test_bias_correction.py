@@ -315,16 +315,16 @@ class TestTrainingExtensionBnFold:
 
     @pytest.mark.cuda
     @pytest.mark.parametrize("device", ['cpu', 'cuda'])
-    @pytest.mark.parametrize("activation", [torch.nn.ReLU(), torch.nn.ReLU6()])
-    def test_python_only_analytical(self, device, activation):
+    @pytest.mark.parametrize("activation_cls", [torch.nn.ReLU, torch.nn.ReLU6])
+    def test_python_only_analytical(self, device, activation_cls):
         torch.manual_seed(10)
         model = torch.nn.Sequential(
             torch.nn.Conv2d(3, 10, 3),
             torch.nn.BatchNorm2d(10),
-            activation,
+            activation_cls(),
             torch.nn.Conv2d(10, 10, 3),
             torch.nn.BatchNorm2d(10),
-            activation,
+            activation_cls(),
         )
         # Initialize BN params.
         torch.nn.init.normal_(model[1].weight)
