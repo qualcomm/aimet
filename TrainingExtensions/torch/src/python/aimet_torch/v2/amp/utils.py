@@ -50,6 +50,7 @@ from aimet_torch.v2.quantsim import QuantizationSimModel
 
 @contextmanager
 def _mock_v1_quantizers(sim: QuantizationSimModel):
+    # pylint: disable=too-many-branches
     assert isinstance(sim, QuantizationSimModel)
 
     try:
