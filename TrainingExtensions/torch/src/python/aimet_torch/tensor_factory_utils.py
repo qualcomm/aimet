@@ -35,12 +35,14 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to legacy tensor_factory_utils """
-from .utils import _get_default_api
+from .utils import _get_default_api, _warn_deprecated_in_v2, _deleted_module_import_error
+from .v1 import tensor_factory_utils as _v1_api
 
 if _get_default_api() == "v1":
     from .v1.tensor_factory_utils import * # pylint: disable=wildcard-import, unused-wildcard-import
-
-    from .utils import _warn_deprecated_in_v2
-    from .v1 import tensor_factory_utils as _v1_tensor_factory_utils
     _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_tensor_factory_utils.__name__)
+                           v1_legacy_api=_v1_api.__name__)
+else:
+    raise _deleted_module_import_error(name=__name__,
+                                       since="2.0.0",
+                                       v1_legacy_api=_v1_api.__name__)

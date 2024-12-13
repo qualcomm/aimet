@@ -1213,6 +1213,16 @@ def get_v1_quant_scheme_for_initialization(quant_scheme: QuantScheme) -> QuantSc
     return quant_scheme
 
 
+def _deleted_module_import_error(name: str, since: str, v1_legacy_api: str = None) -> ImportError:
+    msg = f"{name} module is deleted since aimet_torch=={since}."
+
+    if v1_legacy_api:
+        msg += f" If you must keep using the v1 legacy API for backwards-compatibility,"\
+               f" please import \"{v1_legacy_api}\" instead."
+
+    return ImportError(msg)
+
+
 def _warn_deprecated_in_v2(name: str, v1_legacy_api: str = None):
     msg = f"\"{name}\" will be deprecated soon in the later versions."
 

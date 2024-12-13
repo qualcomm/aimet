@@ -35,12 +35,14 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to legacy qc_quantize_op """
-from .utils import _get_default_api
+from .utils import _get_default_api, _warn_deprecated_in_v2, _deleted_module_import_error
+from .v1 import qc_quantize_op as _v1_api
 
 if _get_default_api() == "v1":
     from .v1.qc_quantize_op import * # pylint: disable=wildcard-import, unused-wildcard-import
-
-    from .utils import _warn_deprecated_in_v2
-    from .v1 import qc_quantize_op as _v1_qc_quantize_op
     _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_qc_quantize_op.__name__)
+                           v1_legacy_api=_v1_api.__name__)
+else:
+    raise _deleted_module_import_error(name=__name__,
+                                       since="2.0.0",
+                                       v1_legacy_api=_v1_api.__name__)

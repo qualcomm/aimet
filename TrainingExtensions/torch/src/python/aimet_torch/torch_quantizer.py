@@ -35,12 +35,14 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to legacy torch_quantizer """
-from .utils import _get_default_api
+from .utils import _get_default_api, _warn_deprecated_in_v2, _deleted_module_import_error
+from .v1 import torch_quantizer as _v1_api
 
 if _get_default_api() == "v1":
     from .v1.torch_quantizer import * # pylint: disable=wildcard-import, unused-wildcard-import
-
-    from .utils import _warn_deprecated_in_v2
-    from .v1 import torch_quantizer as _v1_torch_quantizer
     _warn_deprecated_in_v2(__name__,
-                           v1_legacy_api=_v1_torch_quantizer.__name__)
+                           v1_legacy_api=_v1_api.__name__)
+else:
+    raise _deleted_module_import_error(name=__name__,
+                                       since="2.0.0",
+                                       v1_legacy_api=_v1_api.__name__)
