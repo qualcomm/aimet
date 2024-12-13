@@ -254,12 +254,12 @@ class MpHandler:
                 return input_kernel in module.supported_kernels
             return False
 
-        if strict:
-            for m, request in mp_requests.items():
-                if not validate_supported_kernels_for_module(m, request.input_candidates, request.param_candidate):
-                    raise RuntimeError(f"For module {self.cg_traverser.get_module_name(m)}, input_candidates "
-                                       f"{request.input_candidates} and {request.param_candidate} are not valid combination "
-                                       f"supported by backend. Supported combinations: {m.supported_kernels}")
+        for m, request in mp_requests.items():
+            if not validate_supported_kernels_for_module(m, request.input_candidates, request.param_candidate):
+                error_str = (
+                    f"For module {self.cg_traverser.get_module_name(m)}, input_candidates {request.input_candidates} and"
+                    f" {request.param_candidate} are not valid combination supported by backend. Supported combinations: {m.supported_kernels}")
+                raise RuntimeError(error_str) if strict else logger.warn(error_str)
         return mp_requests
 
     @staticmethod
