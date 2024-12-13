@@ -103,7 +103,7 @@ class _V1QuantizerMixin:
             if self.bitwidth == 32:
                 return x
             if self.bitwidth == 16:
-                return x.float16().to(x.dtype)
+                return x.to(torch.float16).to(x.dtype)
             raise RuntimeError
 
         return super().forward(x)

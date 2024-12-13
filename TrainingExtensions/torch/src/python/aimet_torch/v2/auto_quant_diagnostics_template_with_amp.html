@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    {{ head }}
+    <style>
+        text {
+            font-family: Arial;
+        }
+        text.node-label {
+            font-size: 12px;
+        }
+        text.edge-label {
+            font-size: 12px;
+            fill: #D5D8DC; /* light grey */
+        }
+        rect {
+            width: 140px;
+            height: 40px;
+            fill: #FFFFFF;
+            stroke: #D5D8DC; /* light grey */
+        }
+        polygon.diamond {
+            fill: #FFFFFF;
+            stroke: #D5D8DC; /* light grey */
+        }
+        path {
+            stroke: #D5D8DC; /* light grey */
+        }
+        polygon.arrow-tip {
+            stroke: #D5D8DC; /* light grey */
+            fill: #D5D8DC; /* light grey */
+        }
+
+        [data-visited="true"] {
+            stroke: #000000;
+        }
+        polygon.arrow-tip[data-visited="true"] {
+            stroke: #000000;
+            fill: #000000;
+        }
+        polygon.diamond[data-visited="true"] {
+            stroke: #000000;
+        }
+        text.edge-label[data-visited="true"] {
+            fill: #000000;
+        }
+
+        rect[data-stage-result="discarded"] {
+            fill: #CECECE; /* grey */
+        }
+        rect[data-stage-result="success"] {
+            fill: #2ECC71; /* green */
+        }
+        rect[data-stage-result="error-ignored"] {
+            fill: #F9FF3B; /* yellow */
+        }
+        rect[data-stage-result="error-failed"] {
+            fill: #F94D4D; /* red */
+        }
+        rect.result-success[data-visited="true"] {
+            fill: #2ECC71; /* green */
+        }
+        rect.result-fail[data-visited="true"] {
+            fill: #F94D4D; /* red */
+        }
+
+        rect.legend {
+            width: 135px;
+            height: 150px;
+            fill: #FFFFFF;
+            stroke: #000000;
+        }
+
+        rect.legend-item {
+            width: 20px;
+            height: 10px;
+        }
+        text.legend-label {
+            font-size: 10px;
+        }
+    </style>
+  </head>
+  <body>
+    <svg  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">
+      <g transform="translate(128 20) rotate(90)">
+        <path {{edge_prepare_model_in}} stroke-linecap="square" d="M0 0 h35"/>
+        <polygon {{edge_prepare_model_in}} class="arrow-tip" points="24,7.5 24,-7.5 40,0"/>
+      </g>
+
+      <g transform="translate(60 60)">
+        <rect id='node_prepare_model' {{node_prepare_model}}/>
+        <text class="node-label">
+          <tspan x="25" y="25">Prepare Model</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(128 100) rotate(90)">
+        <path {{edge_prepare_model_out}} stroke-linecap="square" d="M0 0 h43"/>
+        <polygon {{edge_prepare_model_out}} class="arrow-tip" points="32,7.5 32,-7.5 48,0"/>
+      </g>
+
+      <g transform="translate(60 150)">
+        <rect id='node_quant_scheme_selection' {{node_quant_scheme_selection}} />
+        <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+          <tspan x="5" y="25">QuantScheme Selection</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(128 190) rotate(90)">
+        <path {{edge_quant_scheme_selection_out}} stroke-linecap="square" d="M0 0 h37"/>
+        <polygon {{edge_quant_scheme_selection_out}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+      </g>
+
+      <g transform="translate(30 230)">
+        <polygon id='node_test_w32_eval_score' {{node_test_w32_eval_score}} class="diamond" points="0,30 97,60 194,30 97,0"/>
+          <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+            <tspan x="35" y="32">W32 eval score >= target?</tspan>
+          </text>
+        <polygon/>
+      </g>
+
+      <g transform="translate(225 260)">
+        <path {{edge_test_w32_eval_score_if_false}} stroke-linecap="square" d="M0 0 h510"/>
+        <polygon {{edge_test_w32_eval_score_if_false}} class="arrow-tip" points="506,7.5 506,-7.5 522,0"/>
+        <text class="edge-label" {{edge_test_w32_eval_score_if_false}}>
+          <tspan x="-10" y="20">no</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(128 290)">
+        <g transform="rotate(90)">
+          <path {{edge_test_w32_eval_score_if_true}} stroke-linecap="square" d="M0 0 h37"/>
+          <polygon {{edge_test_w32_eval_score_if_true}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+        </g>
+        <text class="edge-label" {{edge_test_w32_eval_score_if_true}}>
+          <tspan x="10" y="10">yes</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(60 330)">
+        <rect id='node_batchnorm_folding' {{node_batchnorm_folding}}/>
+        <text class="node-label">
+          <tspan x="15" y="25">BatchNorm Folding</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(128 370) rotate(90)">
+        <path {{edge_batchnorm_folding_out}} stroke-linecap="square" d="M0 0 h37"/>
+        <polygon {{edge_batchnorm_folding_out}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+      </g>
+
+      <g transform="translate(30 410)">
+        <polygon id='node_test_batchnorm_folding' {{node_test_batchnorm_folding}} class="diamond" points="0,30 97,60 194,30 97,0"/>
+          <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+            <tspan x="40" y="32">eval score >= target?</tspan>
+          </text>
+        <polygon/>
+      </g>
+
+      <g transform="translate(162 420)">
+        <g transform="rotate(335)">
+          <path {{edge_test_batchnorm_folding_if_false}} stroke-linecap="square" d="M0 0 h135"/>
+          <polygon {{edge_test_batchnorm_folding_if_false}} class="arrow-tip" points="123,7.5 123,-7.5 139,0"/>
+        </g>
+        <text class="edge-label" {{edge_test_batchnorm_folding_if_false}}>
+          <tspan x="0" y="-10">no</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(170 457)">
+        <g transform="rotate(25)">
+          <path {{edge_test_batchnorm_folding_if_true}} stroke-linecap="square" d="M0 0 h135"/>
+          <polygon {{edge_test_batchnorm_folding_if_true}} class="arrow-tip" points="121,7.5 121,-7.5 137,0"/>
+        </g>
+        <text class="edge-label" {{edge_test_batchnorm_folding_if_true}}>
+          <tspan x="0" y="20">yes</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(290 330)">
+        <rect id='node_cross_layer_equalization' {{node_cross_layer_equalization}}/>
+        <text class="node-label">
+          <tspan x="55" y="25">CLE</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(357 370) rotate(90)">
+        <path {{edge_cross_layer_equalization_out}} stroke-linecap="square" d="M0 0 h37"/>
+        <polygon {{edge_cross_layer_equalization_out}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+      </g>
+
+      <g transform="translate(260 410)">
+        <polygon id='node_test_cross_layer_equalization' {{node_test_cross_layer_equalization}} class="diamond" points="0,30 97,60 194,30 97,0"/>
+          <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+            <tspan x="40" y="32">eval score >= target?</tspan>
+          </text>
+        <polygon/>
+      </g>
+
+      <g transform="translate(398 422)">
+        <g transform="rotate(335)">
+          <path {{edge_test_cross_layer_equalization_if_false}} stroke-linecap="square" d="M0 0 h128"/>
+          <polygon {{edge_test_cross_layer_equalization_if_false}} class="arrow-tip" points="116,7.5 116,-7.5 132,0"/>
+          <text class="edge-label" {{edge_test_cross_layer_equalization_if_false}}>
+            <tspan x="30" y="15">no</tspan>
+          </text>
+        </g>
+      </g>
+
+      <g transform="translate(357 470)">
+        <g transform="rotate(90)">
+          <path {{edge_test_cross_layer_equalization_if_true}} stroke-linecap="square" d="M0 0 h37"/>
+          <polygon {{edge_test_cross_layer_equalization_if_true}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+        </g>
+        <text class="edge-label" {{edge_test_cross_layer_equalization_if_true}}>
+          <tspan x="5" y="15">yes</tspan>
+        </text>
+      </g>
+
+
+      <g transform="translate(520 330)">
+        <rect id='node_adaround' {{node_adaround}}/>
+        <text class="node-label">
+          <tspan x="35" y="25">AdaRound</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(587 370)">
+        <g transform="rotate(90)">
+          <path {{edge_adaround_out}} stroke-linecap="square" d="M0 0 h37"/>
+          <polygon {{edge_adaround_out}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+        </g>
+      </g>
+
+      <g transform="translate(490 410)">
+        <polygon id='node_test_adaround' {{node_test_adaround}} class="diamond" points="0,30 97,60 194,30 97,0"/>
+          <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+            <tspan x="40" y="32">eval score >= target?</tspan>
+          </text>
+        <polygon/>
+      </g>
+
+      <g transform="translate(628 422)">
+        <g transform="rotate(335)">
+          <path {{edge_test_adaround_if_false}} stroke-linecap="square" d="M0 0 h128"/>
+          <polygon {{edge_test_adaround_if_false}} class="arrow-tip" points="116,7.5 116,-7.5 132,0"/>
+          <text class="edge-label" {{edge_test_cross_layer_equalization_if_false}}>
+            <tspan x="30" y="15">no</tspan>
+          </text>
+        </g>
+      </g>
+
+      <g transform="translate(545 457)">
+        <g transform="rotate(155)">
+            <path {{edge_test_adaround_if_true}} stroke-linecap="square" d="M0 0 h130"/>
+            <polygon {{edge_test_adaround_if_true}} class="arrow-tip" points="116,7.5 116,-7.5 132,0"/>
+        </g>
+        <text class="edge-label" {{edge_test_adaround_if_true}}>
+          <tspan x="-10" y="20">yes</tspan>
+        </text>
+      </g>
+
+
+      <g transform="translate(750 330)">
+        <rect id='node_automatic_mixed_precision' {{node_automatic_mixed_precision}}/>
+        <text class="node-label" lengthAdjust="spacing" textLength="130">
+          <tspan x="5" y="25">Automatic Mixed Precision</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(817 370)">
+        <g transform="rotate(90)">
+          <path {{edge_automatic_mixed_precision_out}} stroke-linecap="square" d="M0 0 h37"/>
+          <polygon {{edge_automatic_mixed_precision_out}} class="arrow-tip" points="23,7.5 23,-7.5 39,0"/>
+        </g>
+      </g>
+
+      <g transform="translate(720 410)">
+        <polygon id='node_test_automatic_mixed_precision' {{node_test_automatic_mixed_precision}} class="diamond" points="0,30 97,60 194,30 97,0"/>
+          <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+            <tspan x="40" y="32">eval score >= target?</tspan>
+          </text>
+        <polygon/>
+      </g>
+
+      <g transform="translate(915 440)">
+        <path {{edge_test_automatic_mixed_precision_if_false}} stroke-linecap="square" d="M0 0 h37 v-180 h-50" fill="none"/>
+        <polygon {{edge_test_automatic_mixed_precision_if_false}} class="arrow-tip" points="-7,-187.5 -7,-172.5 -23,-180"/>
+        <text class="edge-label" {{edge_test_automatic_mixed_precision_if_false}}>
+          <tspan x="5" y="15">no</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(817 469)">
+        <path {{edge_test_automatic_mixed_precision_if_true}} stroke-linecap="square" d="M0 0 v60 h-400" fill="none"/>
+        <polygon {{edge_test_automatic_mixed_precision_if_true}} class="arrow-tip" points="-370,68.5 -370,53.5 -386,61"/>
+        <text class="edge-label" {{edge_test_automatic_mixed_precision_if_true}}>
+          <tspan x="-30" y="20">yes</tspan>
+        </text>
+      </g>
+
+
+      <g transform="translate(750 240)">
+        <rect id='node_result_fail' {{node_result_fail}} class="result-fail" rx="20"/>
+        <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+          <tspan x="5" y="25">Target accuracy not achieved</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(290 510)">
+        <rect id='node_result_success' {{node_result_success}} class="result-success" rx="20"/>
+        <text class="node-label" lengthAdjust="spacing" textLength= "130" >
+          <tspan x="5" y="25">Target accuracy achieved</tspan>
+        </text>
+      </g>
+
+
+
+      <!---------------------- Legend ---------------------->
+
+      <g transform="translate(760 0)">
+        <rect {{node_result_success}} class="legend" />
+        <text class="legend-title" >
+          <tspan x="40" y="25">Legend</tspan>
+        </text>
+
+        <g transform="translate(10 40)">
+          <rect class="legend-item" />
+          <text class="legend-label">
+            <tspan x="23" y="8">: not visited</tspan>
+          </text>
+        </g>
+
+        <g transform="translate(10 55)">
+          <rect class="legend-item" data-visited="true" data-stage-result="success" />
+          <text class="legend-label">
+            <tspan x="23" y="8">: applied successfully </tspan>
+          </text>
+        </g>
+
+        <g transform="translate(10 70)">
+          <rect class="legend-item" data-visited="true" data-stage-result="discarded" />
+          <text class="legend-label">
+            <tspan x="23" y="8">: discarded </tspan>
+          </text>
+        </g>
+
+        <g transform="translate(10 85)">
+          <rect class="legend-item" data-visited="true" data-stage-result="error-failed" />
+          <text class="legend-label">
+            <tspan x="23" y="8">: failed with error </tspan>
+          </text>
+        </g>
+
+        <g transform="translate(10 100)">
+          <rect class="legend-item" data-visited="true" data-stage-result="error-ignored" />
+          <text class="legend-label">
+            <tspan x="23" y="8">: error ignored </tspan>
+          </text>
+        </g>
+
+        <g transform="translate(10 120)">
+          <path stroke-linecap="square" d="M0 0 h15" />
+          <polygon class="arrow-tip" points="15,3 15,-3 20,0" />
+          <text class="legend-label">
+            <tspan x="23" y="3">: not visited </tspan>
+          </text>
+        </g>
+
+        <g transform="translate(10 135)">
+          <path stroke-linecap="square" d="M0 0 h15" data-visited="true"/>
+          <polygon class="arrow-tip" points="15,3 15,-3 20,0" data-visited="true"/>
+          <text class="legend-label">
+            <tspan x="23" y="3">: visited </tspan>
+          </text>
+        </g>
+      </g>
+      <!-------------------- Legend End -------------------->
+
+    </svg>
+
+    {{ log }}
+
+  </body>
+</html>
