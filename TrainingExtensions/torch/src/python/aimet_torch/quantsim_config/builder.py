@@ -146,6 +146,10 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC): # pylint: disable=too-many-inst
         """
         raise RuntimeError("forward function of LazyQuantizeWrapper should not be called before it is realized")
 
+    @abstractmethod
+    def realize(self):
+        """ Returns v1 or v2 quantized module using collected information. """
+
 
 class LazyQuantizer(ABC):
     """
