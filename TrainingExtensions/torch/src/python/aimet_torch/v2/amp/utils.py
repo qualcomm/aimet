@@ -129,9 +129,6 @@ class _V1QuantizerMixin:
         #       Any attribute changes made to the mock quantizer will be
         #       also applied to the original quantizer
         mock_v1_qtzr.__dict__ = qtzr.__dict__
-        mock_v1_qtzr._modules = qtzr._modules
-        mock_v1_qtzr._parameters = qtzr._parameters
-        mock_v1_qtzr._buffers = qtzr._buffers
         mock_v1_qtzr.enabled = True
         mock_v1_qtzr.data_type = QuantizationDataType.int
         return mock_v1_qtzr
