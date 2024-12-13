@@ -187,6 +187,10 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             for inp in node.input:
                 if not inp:
                     continue # Empty string indicates omitted optional input
+                if inp not in self._products:
+                    raise RuntimeError(f"Input tensor {inp} to node {node.name} was not found as a graph input, "
+                                       "initializer, or as the output of another node. Please verify that the input "
+                                       "model is properly defined.")
                 product = self._products[inp]
                 op.add_input(product)
                 product.add_consumer(op)

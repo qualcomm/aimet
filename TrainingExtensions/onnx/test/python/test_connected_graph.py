@@ -216,3 +216,9 @@ class TestConnectedGraph:
         layernorm_cg_op = cg.ordered_ops[-1]
         assert layernorm_cg_op.type == 'LayerNormalization'
         assert ['layernorm.scale', 'layernorm.bias'] == list(layernorm_cg_op.parameters.keys())
+
+    def test_malformed_model(self):
+        model = models_for_tests.layernorm_model()
+        model.graph.node.pop(1) # Remove constant node
+        with pytest.raises(RuntimeError):
+            cg = ConnectedGraph(model)
