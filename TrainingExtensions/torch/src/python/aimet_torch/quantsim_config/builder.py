@@ -37,7 +37,7 @@
 """ Wrapper and quantizer builder class for supporting both v1 and v2 blocks """
 
 import itertools
-from typing import List, Optional, Tuple
+from typing import Sequence, Optional, Tuple
 import torch
 
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
@@ -106,13 +106,15 @@ class LazyQuantizeWrapper(torch.nn.Module):
 
         for name, param in module_to_wrap.named_parameters(recurse=recurse):
             logger.debug("Adding quantizer for parameter: %s", name)
-            self.param_quantizers[name] = LazyParamQuantizer(weight_bw,
-                                                             rounding_mode,
-                                                             quant_scheme,
-                                                             is_symmetric,
-                                                             enabled_by_default=True,
-                                                             param=param,
-                                                             data_type=data_type)
+            qtzr = LazyQuantizer(weight_bw,
+                                 rounding_mode,
+                                 quant_scheme,
+                                 is_symmetric,
+                                 enabled_by_default=True,
+                                 data_type=data_type)
+            from aimet_torch.v2.deepspeed_utils import _get_shape
+            qtzr.input_tensor_shape = _get_shape(param)
+            self.param_quantizers[name] = qtzr
 
         # Create quantizer for layer input
         self.input_quantizers = [LazyQuantizer(activation_bw,
@@ -137,7 +139,7 @@ class LazyQuantizeWrapper(torch.nn.Module):
                 channel_axis = 1 if param_name == 'weight' else 0
 
             # pylint: disable = protected-access
-            param_quantizer.enable_per_channel_quantization(channel_axis)
+            param_quantizer.channel_axis = channel_axis
 
     def _update_quant_param_requires_grad(self, quantized_module):
         """
@@ -264,6 +266,8 @@ class LazyQuantizer:
         self.is_parm = False
         self.is_singleton = False
         self._encoding_min_max_fixed_vals = None
+        self.input_tensor_shape = None # None indicates unknown
+        self.channel_axis = None
 
     @property
     def encoding_min_max_fixed_vals(self) -> Optional[Tuple[float, float]]:
@@ -292,6 +296,11 @@ class LazyQuantizer:
             assert not self.use_unsigned_symmetric, "Unsigned symmetric is not supported in quantsim v1.5"
             assert not self.is_unsigned_symmetric, "Unsigned symmetric is not supported in quantsim v1.5"
 
+        if self.channel_axis:
+            assert self.input_tensor_shape
+            assert 0 <= self.channel_axis < len(self.input_tensor_shape), \
+                f"Channel axis {self.channel_axis} is out of bound of param shape {self.input_tensor_shape}"
+
     def _get_v2_encoding_analyzer(self, shape):
         """
         Converts v1 quant scheme into v2 quant scheme.
@@ -309,14 +318,17 @@ class LazyQuantizer:
             return SqnrEncodingAnalyzer(shape)
         raise NotImplementedError(f"Quant scheme {self.quant_scheme} in old quantsim is not supported yet in quantsim v1.5")
 
-    @staticmethod
-    def _get_param_shape() -> List[int]:
-        """
-        Returns param shape for quantization parameter.
-        Can be overriden in child class.
+    def _get_scale_shape(self) -> Sequence[int]:
+        """ Returns shape of quantization scale/offset. """
+        if self.channel_axis is not None:
+            assert self.input_tensor_shape
+            channel_axis = self.channel_axis if self.channel_axis else 0
 
-        :return: param shape for quantization parameter
-        """
+            scale_shape = [1] * len(self.input_tensor_shape)
+            scale_shape[channel_axis] = self.input_tensor_shape[channel_axis]
+
+            return scale_shape
+
         return tuple()
 
     def realize(self):
@@ -335,11 +347,11 @@ class LazyQuantizer:
 
         self._validate_quantizer_properties()
 
-        quantizer_param_shape = self._get_param_shape()
+        scale_shape = self._get_scale_shape()
 
         if self.data_type == QuantizationDataType.int:
-            encoding_analyzer = self._get_v2_encoding_analyzer(quantizer_param_shape)
-            quantizer = QuantizeDequantize(quantizer_param_shape, self.bitwidth,
+            encoding_analyzer = self._get_v2_encoding_analyzer(scale_shape)
+            quantizer = QuantizeDequantize(scale_shape, self.bitwidth,
                                            self.use_symmetric_encodings, encoding_analyzer)
         else:
             if self.bitwidth == 16:
@@ -348,7 +360,7 @@ class LazyQuantizer:
                 assert self.bitwidth == 8
                 mantissa_bits = v1_fp_quantization.NUM_MANTISSA_BITS
                 exponent_bits = 7 - mantissa_bits
-                encoding_analyzer = self._get_v2_encoding_analyzer(quantizer_param_shape)
+                encoding_analyzer = self._get_v2_encoding_analyzer(scale_shape)
                 quantizer = FloatQuantizeDequantize(exponent_bits, mantissa_bits,
                                                     encoding_analyzer=encoding_analyzer)
             # Float quantizers are not trainable in V1 quantsim
@@ -379,81 +391,17 @@ class LazyQuantizer:
         """
         quant_scheme_for_initialization = get_v1_quant_scheme_for_initialization(self.quant_scheme)
 
-        quantizer = tensor_quantizer_factory(self.bitwidth, self.round_mode, quant_scheme_for_initialization,
-                                             self.use_symmetric_encodings, self.enabled, self.data_type)
-
-        self._set_internal_quantizer_properties(quantizer)
-
-        return quantizer
-
-
-#pylint: disable=W0223
-class LazyParamQuantizer(LazyQuantizer):
-    """
-    Quantizer builder class for supporting both v1 and v2 blocks
-    """
-    # pylint: disable=too-many-instance-attributes
-    def __init__(self, bitwidth: int, round_mode, quant_scheme: QuantScheme,
-                 use_symmetric_encodings: bool, enabled_by_default: bool,
-                 param: torch.nn.Parameter,
-                 data_type: QuantizationDataType = QuantizationDataType.int):
-        from aimet_torch.v2.deepspeed_utils import _get_shape
-        super().__init__(bitwidth, round_mode, quant_scheme, use_symmetric_encodings, enabled_by_default, data_type)
-        self.param_shape = _get_shape(param)
-        self.channel_axis = None
-
-    def enable_per_channel_quantization(self, channel_axis: int):
-        """
-        Set channel axis
-
-        :param channel_axis: channel axis to quantize
-        """
-        self.channel_axis = channel_axis
-
-    def _validate_quantizer_properties(self):
-        """
-        Checks quantizer properties before creating quantizer.
-        """
-        super()._validate_quantizer_properties()
-
-        if self.channel_axis:
-            assert 0 <= self.channel_axis < len(self.param_shape), \
-                f"Channel axis {self.channel_axis} is out of bound of param shape {self.param_shape}"
-
-    def _get_param_shape(self) -> List[int]:
-        """
-        Returns param shape for quantization parameter.
-        Can be overriden in child class.
-
-        :return: param shape for quantization parameter
-        """
         if self.channel_axis is not None:
-            channel_axis = self.channel_axis if self.channel_axis else 0
-
-            quantizer_param_shape = [1] * len(self.param_shape)
-            quantizer_param_shape[channel_axis] = self.param_shape[channel_axis]
-
-            return quantizer_param_shape
-
-        return super()._get_param_shape()
-
-    def get_v1_quantizer(self) -> TensorQuantizer:
-        """
-        Returns v1 quantizer using collected information.
-
-        :return: v1 quantizer with specified properties
-        """
-        if self.channel_axis is not None:
-            quant_scheme_for_initialization = get_v1_quant_scheme_for_initialization(self.quant_scheme)
-            channel_axis = self.channel_axis if self.channel_axis else 0
-            num_channels = self.param_shape[channel_axis]
+            assert self.input_tensor_shape
+            num_channels = self.input_tensor_shape[self.channel_axis]
 
             quantizer = StaticGridPerChannelQuantizer(self.bitwidth, self.round_mode, quant_scheme_for_initialization,
                                                       self.use_symmetric_encodings, num_channels,
-                                                      self.enabled, channel_axis, self.data_type)
-
-            self._set_internal_quantizer_properties(quantizer)
+                                                      self.enabled, self.channel_axis, self.data_type)
         else:
-            quantizer = super().get_v1_quantizer()
+            quantizer = tensor_quantizer_factory(self.bitwidth, self.round_mode, quant_scheme_for_initialization,
+                                                 self.use_symmetric_encodings, self.enabled, self.data_type)
+
+        self._set_internal_quantizer_properties(quantizer)
 
         return quantizer
