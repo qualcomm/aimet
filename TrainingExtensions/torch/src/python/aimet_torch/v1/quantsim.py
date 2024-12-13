@@ -43,7 +43,7 @@ import os
 import io
 import copy
 import pickle
-from typing import Tuple, List, Union, Dict, Callable, Optional, Any, runtime_checkable, Protocol, Mapping, TYPE_CHECKING
+from typing import Tuple, List, Union, Dict, Callable, Optional, Any, Mapping
 from collections import OrderedDict, defaultdict
 import json
 import warnings
@@ -78,8 +78,12 @@ from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
-if TYPE_CHECKING:
-    from aimet_torch.v2.quantization.base.encoding import EncodingBase
+from aimet_torch._base.quantsim import ( # pylint: disable=unused-import
+    _QuantizationSimModelInterface,
+    QuantParams,
+    _QuantizerProtocol,
+    _QuantizedModuleProtocol,
+)
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -97,126 +101,6 @@ SKIP_TORCH_ENCODINGS_EXPORT = False
 
 
 
-class QuantParams:
-    """
-    Data type to hold quantization related params.
-    """
-
-    def __init__(self,
-                 weight_bw: int = 8,
-                 act_bw: int = 8,
-                 round_mode: str = 'nearest',
-                 quant_scheme: Union[QuantScheme, str] = QuantScheme.post_training_tf_enhanced,
-                 config_file: str = None):
-        """
-        Constructor
-
-        :param weight_bw: Weight bitwidth (4-31) to use for quantizing layer weights. Default = 8
-        :param act_bw: Activation bitwidth(4-31) to use for quantizing layer activations. Default = 8
-        :param round_mode: Rounding mode. Supported options are 'nearest' or 'stochastic'
-        :param quant_scheme: Quantization scheme. Supported options are 'tf_enhanced' or 'tf' or using Quant Scheme Enum
-                             QuantScheme.post_training_tf or QuantScheme.post_training_tf_enhanced
-        :param config_file: Path to Configuration file for model quantizers
-        """
-
-        self.weight_bw = weight_bw
-        self.act_bw = act_bw
-        self.round_mode = round_mode
-        self.quant_scheme = quant_scheme
-        self.config_file = config_file
-
-
-class _QuantizerProtocol(Protocol):
-    def get_encodings(self) -> Optional["EncodingBase"]:
-        """
-        Return the quantizer's encodings as an EncodingBase object
-        """
-
-    def set_encodings(self, encoding: "EncodingBase"):
-        """
-        Set the quantizer's encodings
-        """
-
-
-@runtime_checkable
-class _QuantizedModuleProtocol(Protocol):
-    """
-    Defines the minimum interface requirements for exporting encodings from a module.
-    """
-    input_quantizers: List[_QuantizerProtocol]
-    output_quantizers: List[_QuantizerProtocol]
-    param_quantizers: Dict[str, _QuantizerProtocol]
-
-    def export_input_encodings(self, encoding_version: str) -> List[List[Dict]]:
-        """
-        Returns a list of input encodings, each represented as a List of Dicts
-        """
-
-    def export_output_encodings(self, encoding_version: str) -> List[List[Dict]]:
-        """
-        Returns a list of output encodings, each represented as a List of Dicts
-        """
-
-    def export_param_encodings(self, encoding_version: str) -> Dict[str, List[Dict]]:
-        """
-        Returns a dict of {param name: param encodings}, with each encoding represented as a List of Dicts
-        """
-
-    def import_input_encodings(self,
-                               encodings: Mapping[str, Mapping],
-                               strict: bool,
-                               partial: bool,
-                               requires_grad: Optional[bool],
-                               allow_overwrite: bool):
-        """
-        Import input encodings represented in below format:
-        {
-            '0': dict,
-            '1': dict,
-            ...
-        }
-        """
-
-    def import_output_encodings(self,
-                                encodings: Mapping[str, Mapping],
-                                strict: bool,
-                                partial: bool,
-                                requires_grad: Optional[bool],
-                                allow_overwrite: bool):
-        """
-        Import output encodings represented in below format:
-        {
-            '0': dict,
-            '1': dict,
-            ...
-        }
-        """
-
-    def import_param_encodings(self,
-                               encodings: Mapping[str, Mapping],
-                               strict: bool,
-                               partial: bool,
-                               requires_grad: Optional[bool],
-                               allow_overwrite: bool):
-        """
-        Import parameter encodings represented in below format:
-        {
-            'param_name_0': [dict, dict, ...],
-            'param_name_1': [dict, dict, ...],
-            ...
-        }
-        """
-
-    def get_original_module(self) -> torch.nn.Module:
-        """
-        Returns the floating point version of quantized module
-        """
-
-
-# Temporary alias for backwards-compatibility
-ExportableQuantModule = _QuantizedModuleProtocol
-
-
 # Types of modules which cannot be quantized
 unquantizable_modules = (
     torch.nn.Identity,
@@ -231,7 +115,7 @@ quantized_modules = (
 )
 
 
-class QuantizationSimModel:
+class QuantizationSimModel(_QuantizationSimModelInterface):
     """
     Implements mechanism to add quantization simulations ops to a model. This allows for off-target simulation of
     inference accuracy. Also allows the model to be fine-tuned to counter the effects of quantization.
@@ -441,7 +325,7 @@ class QuantizationSimModel:
 
         sim.replace_wrappers_for_quantize_dequantize()
 
-    def compute_encodings(self, forward_pass_callback, forward_pass_callback_args):
+    def compute_encodings(self, forward_pass_callback, forward_pass_callback_args): # pylint: disable=arguments-differ
         """
         Computes encodings for all quantization sim nodes in the model. It is also used to find initial encodings for
         Range Learning
@@ -502,7 +386,7 @@ class QuantizationSimModel:
             raise ValueError("Percentile value must be in range [90, 100]")
         self._percentile_value = percentile_value
 
-    def export(self, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple],
+    def export(self, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple], # pylint: disable=arguments-differ
                onnx_export_args: Optional[Union[OnnxExportApiArgs, Dict]] = None, propagate_encodings: bool = False,
                export_to_torchscript: bool = False, use_embedded_encodings: bool = False, export_model: bool = True,
                filename_prefix_encodings: str = None):
@@ -1736,7 +1620,7 @@ class QuantizationSimModel:
         return QuantSimConfigurator(self.model, self.connected_graph, config_file, default_output_bw,
                                     default_param_bw, default_data_type)
 
-    def load_encodings(self, encodings: Union[Mapping, str, os.PathLike],
+    def load_encodings(self, encodings: Union[Mapping, str, os.PathLike], # pylint: disable=arguments-differ
                        strict: bool = True,
                        partial: bool = True,
                        requires_grad: Optional[bool] = None,
