@@ -124,8 +124,8 @@ class ImageNetTrainer:
             if (i+1) % debug_steps == 0:
                 eval_accuracy = self._evaluator.evaluate(model, use_cuda=use_cuda)
                 logger.info('Epoch #%d/%d: iteration #%d/%d: Global Avg Loss=%f, Eval Accuracy=%f',
-                            current_epoch, max_epochs, curr_iter, max_iterations,
-                            avg_loss / curr_iter, eval_accuracy)
+                            current_epoch, max_epochs, i, max_iterations,
+                            avg_loss / i, eval_accuracy)
                 # switch to training mode after evaluation
                 model.train()
 
