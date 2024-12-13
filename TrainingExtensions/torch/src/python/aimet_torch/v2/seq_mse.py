@@ -51,6 +51,7 @@ from aimet_torch.v2.quantization.affine.backends import torch_builtins
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.utils import reduce, _is_reducible
+from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
 
 __all__ = [
     'SequentialMse',
@@ -189,9 +190,7 @@ class SequentialMse(SequentialMseBase):
         with quantize_dequantize.compute_encodings():
             _ = quantize_dequantize(torch.stack([x_min, x_max]))
 
-        with torch.no_grad():
-            quantizer.min.copy_(quantize_dequantize.min)
-            quantizer.max.copy_(quantize_dequantize.max)
+        quantizer.set_range(quantize_dequantize.min, quantize_dequantize.max)
 
     @classmethod
     def _is_symmetric_quantizer(cls, quantizer: AffineQuantizerBase):
@@ -250,7 +249,7 @@ class SequentialMse(SequentialMseBase):
         block_size = quant_module.param_quantizers['weight'].block_size
         if block_size is None:
             # Per tensor or per channel case
-            assert _is_reducible(quant_module.weight.shape, quant_module.param_quantizers['weight'].min.shape)
+            assert _is_reducible(quant_module.weight.shape, quant_module.param_quantizers['weight'].shape)
             if cls._is_symmetric_quantizer(quant_module.param_quantizers['weight']):
                 max_tensor = reduce(quant_module.weight.abs(),
                                     quant_module.param_quantizers['weight'].shape, torch.max).values
@@ -348,29 +347,30 @@ class SequentialMse(SequentialMseBase):
         :param params: Sequenial MSE parameters
         """
         # pylint: disable=too-many-locals
-        min_tensor, max_tensor = cls.get_min_and_max_for_candidate_selection(quant_module)
+        with SafeGatheredParameters(quant_module.parameters(recurse=False)):
+            min_tensor, max_tensor = cls.get_min_and_max_for_candidate_selection(quant_module)
 
-        total_loss = []
-        for i in range(params.num_candidates):
-            cand_min, cand_max = cls._get_candidate(i, params.num_candidates, min_tensor, max_tensor)
-            cls.compute_param_encodings(quant_module.param_quantizers['weight'], cand_min, cand_max)
-            w = quant_module.weight
-            wq = cls._get_quantized_weight(quant_module)
-            with torch.no_grad():
-                for batch_idx in range(params.num_batches):
-                    if batch_idx == 0:
-                        loss = cls._compute_loss(quant_module, x[batch_idx], xq[batch_idx], w, wq, params)
-                    else:
-                        loss += cls._compute_loss(quant_module, x[batch_idx], xq[batch_idx], w, wq, params)
-                total_loss.append(loss)
+            total_loss = []
+            for i in range(params.num_candidates):
+                cand_min, cand_max = cls._get_candidate(i, params.num_candidates, min_tensor, max_tensor)
+                cls.compute_param_encodings(quant_module.param_quantizers['weight'], cand_min, cand_max)
+                w = quant_module.weight
+                wq = cls._get_quantized_weight(quant_module)
+                with torch.no_grad():
+                    for batch_idx in range(params.num_batches):
+                        if batch_idx == 0:
+                            loss = cls._compute_loss(quant_module, x[batch_idx], xq[batch_idx], w, wq, params)
+                        else:
+                            loss += cls._compute_loss(quant_module, x[batch_idx], xq[batch_idx], w, wq, params)
+                    total_loss.append(loss)
 
-        best_indices = torch.stack(total_loss).min(0)[1]
-        block_size = cls._get_input_channel_block_size(quant_module)
-        # In the input_channels dimension, best_indices is of size num_blocks. We use repeat_interleave to expand
-        # each blockwise index into block_size number of indices. This makes best_indices input_channels dimension
-        # become size num_blocks * block_size, and allows for elementwise operation with min_tensor and max_tensor.
-        if block_size != quant_module.weight.shape[1]:
-            best_indices = best_indices.repeat_interleave(block_size, dim=-1)
+            best_indices = torch.stack(total_loss).min(0)[1]
+            block_size = cls._get_input_channel_block_size(quant_module)
+            # In the input_channels dimension, best_indices is of size num_blocks. We use repeat_interleave to expand
+            # each blockwise index into block_size number of indices. This makes best_indices input_channels dimension
+            # become size num_blocks * block_size, and allows for elementwise operation with min_tensor and max_tensor.
+            if block_size != quant_module.weight.shape[1]:
+                best_indices = best_indices.repeat_interleave(block_size, dim=-1)
 
         # Unsqueeze best_indices until it matches dim length of max_tensor
         while best_indices.dim() < max_tensor.dim():
