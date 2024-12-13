@@ -193,8 +193,8 @@ html_sidebars = {
 # Parameters for use in templates
 
 html_context = {
-  'current_version' : "1.36",
-  'versions_page' : '<a href="https://dummypageXYZ/versions.html">Other versions</a>'
+  'current_version' : "2.0",
+  'versions_page' : '<a href="versions.html">Other versions</a>'
 }
 
 # -- Options for HTMLHelp output ---------------------------------------------
