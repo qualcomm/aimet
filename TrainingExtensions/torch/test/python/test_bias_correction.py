@@ -39,7 +39,6 @@ import unittest.mock
 import copy
 import numpy as np
 import pytest
-from contextlib import contextmanager
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
@@ -50,7 +49,6 @@ from models.test_models import TransposedConvModel
 
 from aimet_common.defs import QuantScheme
 
-import aimet_torch.bias_correction as bc
 from aimet_torch import bias_correction
 from aimet_torch.utils import to_numpy, create_fake_data_loader
 from aimet_torch.cross_layer_equalization import get_ordered_list_of_conv_modules
@@ -73,24 +71,6 @@ class TestNet(nn.Module):
         x = functional.relu(self.fc1(x))
         x = self.fc2(x)
         return functional.log_softmax(x, dim=1)
-
-
-@contextmanager
-def _use_python_impl(flag: bool):
-    orig_flag = bc.USE_PYTHON_IMPL
-    try:
-        bc.USE_PYTHON_IMPL = flag
-        yield
-    finally:
-        bc.USE_PYTHON_IMPL = orig_flag
-
-
-@pytest.fixture(params=[True, False])
-def use_python_impl(request):
-    param: bool = request.param
-
-    with _use_python_impl(param):
-        yield
 
 
 class BatchIterator:
@@ -158,7 +138,7 @@ class TestTrainingExtensionBnFold:
         quant_dequant_weights = bias_correction.get_quantized_dequantized_weight(layer)
         assert quant_dequant_weights.shape == torch.Size([64, 32, 5, 5])
 
-    def test_bias_correction_analytical_and_empirical(self, use_python_impl):
+    def test_bias_correction_analytical_and_empirical(self):
         torch.manual_seed(10)
         model = MockMobileNetV1()
         model = model.eval()
@@ -221,14 +201,14 @@ class TestTrainingExtensionBnFold:
         reference_output_batch = np.random.randn(*shape)
         quantized_model_output_batch = np.random.randn(*shape)
 
-        bias_correction.call_empirical_mo_correct_bias(layer, reference_output_batch, quantized_model_output_batch)
+        bias_correction.call_empirical_correct_bias(layer, reference_output_batch, quantized_model_output_batch)
 
         bias_after = layer.bias.detach()
 
         # Assert bias has changed after running bias correction
         assert not torch.allclose(bias_before, bias_after)
 
-    def test_bias_correction_analytical_and_empirical_ignore_layer(self, use_python_impl):
+    def test_bias_correction_analytical_and_empirical_ignore_layer(self):
 
         torch.manual_seed(10)
         model = MockMobileNetV1()
@@ -255,7 +235,7 @@ class TestTrainingExtensionBnFold:
         assert empirical_mock.call_count == 9
         assert model.model[1][0].bias.detach().cpu().numpy() is not None
 
-    def test_hybrid_bias_correction_for_transposed_conv2d(self, use_python_impl):
+    def test_hybrid_bias_correction_for_transposed_conv2d(self):
         torch.manual_seed(10)
         model = TransposedConvModel()
         model = model.eval()
@@ -274,7 +254,7 @@ class TestTrainingExtensionBnFold:
         assert analytical_mock.call_count == 2 # one layer ignored
         assert empirical_mock.call_count == 0
 
-    def test_bias_correction_for_depthwise_transposed_conv2d(self, use_python_impl):
+    def test_bias_correction_for_depthwise_transposed_conv2d(self):
         torch.manual_seed(10)
         model = torch.nn.Sequential(
             torch.nn.ConvTranspose2d(10, 10, 3, groups=10),
@@ -304,105 +284,65 @@ class TestTrainingExtensionBnFold:
     @pytest.mark.parametrize("device", ['cpu', 'cuda'])
     @pytest.mark.parametrize("perform_empirical", [True, False])
     def test_python_only_bias_correction(self, device, perform_empirical):
-        flag = bc.USE_PYTHON_IMPL
-        try:
-            torch.manual_seed(10)
-            model = torch.nn.Sequential(
-                torch.nn.Conv2d(3, 10, 3),
-                torch.nn.BatchNorm2d(10),
-                torch.nn.ReLU(),
-                torch.nn.Conv2d(10, 10, 3),
-                torch.nn.BatchNorm2d(10),
-                torch.nn.ReLU(),
-            )
-            # Initialize BN params.
-            torch.nn.init.normal_(model[1].weight)
-            torch.nn.init.normal_(model[1].bias)
-            torch.nn.init.normal_(model[4].weight)
-            torch.nn.init.normal_(model[4].bias)
+        torch.manual_seed(10)
+        model = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 10, 3),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(10, 10, 3),
+            torch.nn.BatchNorm2d(10),
+            torch.nn.ReLU(),
+        )
+        # Initialize BN params.
+        torch.nn.init.normal_(model[1].weight)
+        torch.nn.init.normal_(model[1].bias)
+        torch.nn.init.normal_(model[4].weight)
+        torch.nn.init.normal_(model[4].bias)
 
-            model = model.eval().to(device)
-            model_copy = copy.deepcopy(model).eval()
-            dataset_size = 2
-            batch_size = 1
-            data_loader = create_fake_data_loader(dataset_size=dataset_size, batch_size=batch_size, image_size=(3, 32, 32))
-            params = qsim.QuantParams(weight_bw=8, act_bw=8, round_mode="nearest",
-                                      quant_scheme=QuantScheme.post_training_tf)
+        model = model.eval().to(device)
+        dataset_size = 2
+        batch_size = 1
+        data_loader = create_fake_data_loader(dataset_size=dataset_size, batch_size=batch_size, image_size=(3, 32, 32))
+        params = qsim.QuantParams(weight_bw=8, act_bw=8, round_mode="nearest",
+                                  quant_scheme=QuantScheme.post_training_tf)
 
-            bc.USE_PYTHON_IMPL = True
-            conv_bn_dict = find_all_conv_bn_with_activation(model, input_shape=(1, 3, 32, 32))
-            params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
-            bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
-                                         perform_only_empirical_bias_corr=perform_empirical)
-            params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
-            assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
-
-            bc.USE_PYTHON_IMPL = False
-            conv_bn_dict = find_all_conv_bn_with_activation(model_copy, input_shape=(1, 3, 32, 32))
-            params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
-            bias_correction.correct_bias(model_copy, params, 2, data_loader, 2, conv_bn_dict,
-                                         perform_only_empirical_bias_corr=perform_empirical)
-            params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
-            assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
-
-            with torch.no_grad():
-                dummy_input = torch.randn(1, 3, 32, 32).to(device)
-                assert torch.allclose(model(dummy_input), model_copy(dummy_input))
-                assert torch.allclose(model[0].bias, model_copy[0].bias)
-                assert torch.allclose(model[3].bias, model_copy[3].bias)
-        finally:
-            bc.USE_PYTHON_IMPL = flag
+        conv_bn_dict = find_all_conv_bn_with_activation(model, input_shape=(1, 3, 32, 32))
+        params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
+        bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
+                                     perform_only_empirical_bias_corr=perform_empirical)
+        params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
+        assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
 
     @pytest.mark.cuda
     @pytest.mark.parametrize("device", ['cpu', 'cuda'])
     @pytest.mark.parametrize("activation", [torch.nn.ReLU(), torch.nn.ReLU6()])
     def test_python_only_analytical(self, device, activation):
-        flag = bc.USE_PYTHON_IMPL
-        try:
-            torch.manual_seed(10)
-            model = torch.nn.Sequential(
-                torch.nn.Conv2d(3, 10, 3),
-                torch.nn.BatchNorm2d(10),
-                activation,
-                torch.nn.Conv2d(10, 10, 3),
-                torch.nn.BatchNorm2d(10),
-                activation,
-            )
-            # Initialize BN params.
-            torch.nn.init.normal_(model[1].weight)
-            torch.nn.init.normal_(model[1].bias)
-            torch.nn.init.normal_(model[4].weight)
-            torch.nn.init.normal_(model[4].bias)
+        torch.manual_seed(10)
+        model = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 10, 3),
+            torch.nn.BatchNorm2d(10),
+            activation,
+            torch.nn.Conv2d(10, 10, 3),
+            torch.nn.BatchNorm2d(10),
+            activation,
+        )
+        # Initialize BN params.
+        torch.nn.init.normal_(model[1].weight)
+        torch.nn.init.normal_(model[1].bias)
+        torch.nn.init.normal_(model[4].weight)
+        torch.nn.init.normal_(model[4].bias)
 
-            model = model.eval().to(device)
-            model_copy = copy.deepcopy(model).eval()
-            dataset_size = 2
-            batch_size = 1
-            data_loader = create_fake_data_loader(dataset_size=dataset_size, batch_size=batch_size,
-                                                  image_size=(3, 32, 32))
-            params = qsim.QuantParams(weight_bw=8, act_bw=8, round_mode="nearest",
-                                      quant_scheme=QuantScheme.post_training_tf)
+        model = model.eval().to(device)
+        dataset_size = 2
+        batch_size = 1
+        data_loader = create_fake_data_loader(dataset_size=dataset_size, batch_size=batch_size,
+                                              image_size=(3, 32, 32))
+        params = qsim.QuantParams(weight_bw=8, act_bw=8, round_mode="nearest",
+                                  quant_scheme=QuantScheme.post_training_tf)
 
-            bc.USE_PYTHON_IMPL = True
-            conv_bn_dict = find_all_conv_bn_with_activation(model, input_shape=(1, 3, 32, 32))
-            params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
-            bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
-                                         perform_only_empirical_bias_corr=False)
-            params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
-            assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
-
-            bc.USE_PYTHON_IMPL = False
-            conv_bn_dict = find_all_conv_bn_with_activation(model_copy, input_shape=(1, 3, 32, 32))
-            params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
-            bias_correction.correct_bias(model_copy, params, 2, data_loader, 2, conv_bn_dict,
-                                         perform_only_empirical_bias_corr=False)
-            params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
-            assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
-
-            with torch.no_grad():
-                dummy_input = torch.randn(1, 3, 32, 32).to(device)
-                assert torch.allclose(model(dummy_input), model_copy(dummy_input))
-                assert torch.allclose(model[0].bias, model_copy[0].bias)
-                assert torch.allclose(model[3].bias, model_copy[3].bias)
-        finally:
-            bc.USE_PYTHON_IMPL = flag
+        conv_bn_dict = find_all_conv_bn_with_activation(model, input_shape=(1, 3, 32, 32))
+        params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
+        bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
+                                     perform_only_empirical_bias_corr=False)
+        params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
+        assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
