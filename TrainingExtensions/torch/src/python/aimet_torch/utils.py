@@ -71,7 +71,6 @@ from aimet_common.utils import AimetLogger, Handle, log_with_error_and_assert_if
 from aimet_common.utils import profile as _profile, deprecated, _red # pylint:disable = unused-import
 import aimet_common.libpymo as libpymo
 from aimet_torch.v1.nn.modules.custom import CustomSparseConv3DLayer, Cast
-from aimet_torch.v1.tensor_quantizer import TensorQuantizer, StaticGridPerChannelQuantizer, StaticGridPerTensorQuantizer # pylint:disable = cyclic-import
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 
@@ -803,7 +802,7 @@ def get_inout_tensor_shape_per_module(model: torch.nn.Module, input_tensor) -> D
     return inout_tensor_shape_map
 
 
-def create_encoding_from_dict(encoding_dict: dict) -> (libpymo.TfEncoding):
+def create_encoding_from_dict(encoding_dict: dict) -> libpymo.TfEncoding:
     """
     Create encoding object from encoding dictionary
     :param encoding_dict: Dictionary containing encodings
@@ -1212,112 +1211,6 @@ def get_v1_quant_scheme_for_initialization(quant_scheme: QuantScheme) -> QuantSc
         return QuantScheme.post_training_tf_enhanced
 
     return quant_scheme
-
-
-def _validate_is_symmetric_flag(quantizer: TensorQuantizer, encoding_dict: Dict, strict: bool):
-    """
-    sub utility of 'validate_is_symmetric_flag'
-    """
-    if 'is_symmetric' in encoding_dict:
-        is_symmetric = encoding_dict['is_symmetric'] == 'True'
-        if quantizer.use_symmetric_encodings != is_symmetric:
-            # If not strict, raise a warning and override the quantizer
-            # setting with provided 'is_symmetric' flag from encoding_dict
-            if not strict:
-                logger.warning("Using Provided 'is_symmetric' flag in encodings (set to %s) "
-                               "which doesn't match with quantizer setting (set to %s), to "
-                               "compute partial encodings", is_symmetric, quantizer.use_symmetric_encodings)
-            else:
-                raise AssertionError("Provided 'is_symmetric' flag in encodings (set to %s) doesn't match with "
-                                     "quantizer setting (set to %s)" % (is_symmetric, quantizer.use_symmetric_encodings))
-    else:
-        raise AttributeError("Provided encoding doesn't have 'is_symmetric' flag")
-
-
-def get_per_channel_quantizer_from_per_tensor(quantizer: TensorQuantizer, original_module: torch.nn.Module):
-    """ Get PerChannel Quantizer with same settings as given PerTensor Quantizer """
-    channel_axis = 0
-    if isinstance(original_module, (torch.nn.ConvTranspose1d,
-                          torch.nn.ConvTranspose2d,
-                          torch.nn.ConvTranspose3d)):
-        if len(original_module.weight.shape) > 1:
-            channel_axis = 1
-
-    num_channels = original_module.weight.shape[channel_axis]
-    use_strict_symmetric = quantizer.use_strict_symmetric
-    use_unsigned_symmetric = quantizer.use_unsigned_symmetric
-    quantizer = StaticGridPerChannelQuantizer(quantizer.bitwidth, quantizer.round_mode,
-                                              quantizer.quant_scheme,
-                                              quantizer.use_symmetric_encodings,
-                                              num_channels=num_channels,
-                                              enabled_by_default=quantizer.enabled,
-                                              ch_axis=channel_axis,
-                                              data_type=quantizer.data_type)
-    quantizer.use_strict_symmetric = use_strict_symmetric
-    quantizer.use_unsigned_symmetric = use_unsigned_symmetric
-    return quantizer
-
-
-def get_per_tensor_quantizer_from_per_channel(quantizer: TensorQuantizer):
-    """ Get PerTensor Quantizer with same settings as given PerChannel Quantizer """
-    use_strict_symmetric = quantizer.use_strict_symmetric
-    use_unsigned_symmetric = quantizer.use_unsigned_symmetric
-    quantizer = StaticGridPerTensorQuantizer(quantizer.bitwidth, quantizer.round_mode,
-                                             quantizer.quant_scheme,
-                                             quantizer.use_symmetric_encodings,
-                                             enabled_by_default=quantizer.enabled,
-                                             data_type=quantizer.data_type)
-    quantizer.use_strict_symmetric = use_strict_symmetric
-    quantizer.use_unsigned_symmetric = use_unsigned_symmetric
-    return quantizer
-
-
-def validate_is_symmetric_flag(quantizer: TensorQuantizer, encoding_dict: Dict, strict: bool = True):
-    """
-    Validate 'is_symmetric' flag from encoding_dict with quantizer.use_symmetric_encodings and set the later accordingly
-    :param quantizer: Quantizer for which use_symmetric_encodings needs to be validated and set
-    :param encoding_dict: encoding_dict from external overrides
-    :param strict: flag to decide whether to raise an error or soft warning
-    :return:
-    """
-    if not (encoding_dict.get('max', 0) == 0 and encoding_dict.get('min', 0) == 0) and encoding_dict.get('delta', 0) != 0:
-        # In case of full encoding, error out when quantizer setting doesn't match with provided 'is_symmetric' flag
-        _validate_is_symmetric_flag(quantizer, encoding_dict, strict=True)
-
-    # In case of partial encodings, use is_symmetric from encodings provided to compute full encoding
-    _validate_is_symmetric_flag(quantizer, encoding_dict, strict=strict)
-
-
-def compute_partial_encoding(quantizer: TensorQuantizer, encoding_dict: Dict) -> Dict:
-    """
-    Generates the full encoding from partially provided encoding.
-
-    :param quantizer:  Quantizer object for which the encoding needs to be computed.
-    :param encoding_dict: Partial Encoding
-    :return: Full encoding
-    """
-
-    encoding = libpymo.TfEncoding()
-    encoding.bw = encoding_dict.get('bitwidth')
-    encoding.max = encoding_dict.get('max', 0)
-    encoding.min = encoding_dict.get('min', 0)
-    encoding.delta = encoding_dict.get('scale', 0)
-    encoding.offset = encoding_dict.get('offset', 0)
-
-    if not (encoding.max == 0 and encoding.min == 0) and encoding.delta != 0:
-        return encoding_dict
-
-    partial_quantizer = libpymo.TensorQuantizer(libpymo.QuantizationMode.QUANTIZATION_TF, quantizer.round_mode)
-    partial_quantizer.computePartialEncoding(encoding.bw, encoding, quantizer.use_symmetric_encodings,
-                                             quantizer.use_unsigned_symmetric, quantizer.use_strict_symmetric)
-
-    encoding_dict['max'] = encoding.max
-    encoding_dict['min'] = encoding.min
-    encoding_dict['scale'] = encoding.delta
-    encoding_dict['offset'] = encoding.offset
-    encoding_dict['is_symmetric'] = 'True' if quantizer.use_symmetric_encodings else 'False'
-
-    return encoding_dict
 
 
 def _warn_deprecated_in_v2(name: str, v1_legacy_api: str = None):

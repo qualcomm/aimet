@@ -55,7 +55,15 @@ from aimet_torch.v1.tensor_quantizer import StaticGridPerTensorQuantizer, Static
     LearnedGridTensorQuantizer, set_encoding_min_max_gating_threshold, StaticGridTensorQuantizer
 from aimet_torch.v1.torch_quantizer import TorchQuantizer
 import aimet_torch.v1.quantsim_straight_through_grad as ste
-from aimet_torch.utils import compute_partial_encoding, validate_is_symmetric_flag
+from aimet_torch.v1.utils import (
+    compute_partial_encoding,
+    create_encoding_dict,
+    create_encoding_from_dict,
+    get_per_tensor_quantizer_from_per_channel,
+    get_per_channel_quantizer_from_per_tensor,
+    validate_is_symmetric_flag,
+)
+
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -532,7 +540,7 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
                                          f"PerChannelQuantizer. To avoid this, disable per_channel_quantization")
                     # Modifying PerChannel quantizer to PerTensor
                     _logger.warning('Replacing PerChannel Quantizer with PerTensor based on encoding provided')
-                    quantizer = utils.get_per_tensor_quantizer_from_per_channel(quantizer)
+                    quantizer = get_per_tensor_quantizer_from_per_channel(quantizer)
                     self.param_quantizers[param_name] = quantizer
                 elif isinstance(quantizer, StaticGridPerTensorQuantizer) and len(encoding) != 1:
                     if strict:
@@ -540,7 +548,7 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
                                          f"PerTensorQuantizer. To avoid this, enable per_channel_quantization")
                     # Modifying PerTensor quantizer to PerChannel
                     _logger.warning('Replacing PerTensor Quantizer with PerChannel based on encoding provided..')
-                    quantizer = utils.get_per_channel_quantizer_from_per_tensor(quantizer, self.get_original_module())
+                    quantizer = get_per_channel_quantizer_from_per_tensor(quantizer, self.get_original_module())
                     assert len(quantizer._cppOp) == len(encoding), (f'Number of per channel encodings ({len(encoding)})'
                                                                     f' should much with number of output '
                                                                     f'channels ({len(quantizer._cppOp)})')
@@ -556,7 +564,7 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
                     # Compute partial encodings if needed
                     encoding = [compute_partial_encoding(quantizer, enc) for enc in encoding]
                     quantizer.bitwidth = encoding[0]['bitwidth']
-                    quantizer.encoding = [utils.create_encoding_from_dict(enc_dict) for enc_dict in encoding]
+                    quantizer.encoding = [create_encoding_from_dict(enc_dict) for enc_dict in encoding]
                     quantizer.data_type = QuantizationDataType.int
                 elif encoding[0]['dtype'] == 'float':
                     quantizer.bitwidth = encoding[0]['bitwidth']
@@ -654,7 +662,7 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
                 quantizer.use_strict_symmetric = quantizer.use_strict_symmetric if is_symmetric else False
                 # Compute partial encodings if needed
                 encoding = compute_partial_encoding(quantizer, encoding)
-                encoding = utils.create_encoding_from_dict(encoding)
+                encoding = create_encoding_from_dict(encoding)
                 quantizer.bitwidth = encoding.bw
                 quantizer.encoding = encoding
                 quantizer.data_type = QuantizationDataType.int
@@ -1538,8 +1546,8 @@ def export_quantizer_encoding(quantizer: Union[StaticGridTensorQuantizer, Learne
         return None
     encoding = get_encoding_by_quantizer(quantizer)
     if isinstance(encoding, List):
-        encoding = [utils.create_encoding_dict(enc, quantizer, False) for enc in encoding]
+        encoding = [create_encoding_dict(enc, quantizer, False) for enc in encoding]
     else:
-        encoding = utils.create_encoding_dict(encoding, quantizer, False)
+        encoding = create_encoding_dict(encoding, quantizer, False)
         encoding = [encoding] if encoding else None
     return encoding
