@@ -53,12 +53,10 @@ from aimet_common.quantsim_config.json_config_importer import ConfigDictKeys, Co
 from aimet_common.quantsim_config.quantsim_config import QuantSimConfigurator as AimetCommonQuantSimConfigurator, \
     get_all_ops_in_neighborhood, get_setting_type, ENFORCE_TARGET_DTYPE_BITWIDTH_CONFIG, reformat_supported_kernels
 from aimet_common.quantsim_config.quantsim_config import SupergroupConfigCallback as AimetCommonSupergroupConfigCallback
-from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
-from aimet_torch.v1.tensor_quantizer import TensorQuantizer
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.onnx_utils import map_torch_types_to_onnx, pytorch_functional_name_to_onnx_dict
 from aimet_torch.translation_mapping import aimet_op_to_backend_op_name_map
-from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
+from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, LazyQuantizer
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 MAP_PYTORCH_PARAM_NAME_TO_QUANTSIM_NAME = {
@@ -67,14 +65,14 @@ MAP_PYTORCH_PARAM_NAME_TO_QUANTSIM_NAME = {
     "weight": "weight"
 }
 
-TensorQuantizersTupleType = Tuple[List[TensorQuantizer], List[TensorQuantizer], List[TensorQuantizer],
-                                  List[TensorQuantizer]]
+TensorQuantizersTupleType = Tuple[List[LazyQuantizer], List[LazyQuantizer], List[LazyQuantizer],
+                                  List[LazyQuantizer]]
 
 
 class SupergroupConfigCallback(AimetCommonSupergroupConfigCallback):
     """ Class acting as a callback for when supergroups are found """
 
-    def __init__(self, module_to_quantsim_wrapper_dict: Dict[torch.nn.Module, QcQuantizeWrapper]):
+    def __init__(self, module_to_quantsim_wrapper_dict: Dict[torch.nn.Module, LazyQuantizeWrapper]):
         self._module_to_quantsim_wrapper_dict = module_to_quantsim_wrapper_dict
 
     def __call__(self, _, op_list: List[Op]):
@@ -181,7 +179,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                                                     output_false_list)
         return module_to_tensor_quantizers_dict
 
-    def _get_tensor_quantizers_for_input_true_setting(self, op: Op) -> List[TensorQuantizer]:
+    def _get_tensor_quantizers_for_input_true_setting(self, op: Op) -> List[LazyQuantizer]:
         """
         Get a list of tensor quantizers that would be affected if the given op is specified to have input quantization
         enabled.
@@ -209,7 +207,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                             queue.append(input_op)
         return tensor_quantizers_for_input_true
 
-    def _get_tensor_quantizers_for_output_true_setting(self, op: Op) -> List[TensorQuantizer]:
+    def _get_tensor_quantizers_for_output_true_setting(self, op: Op) -> List[LazyQuantizer]:
         """
         Get a list of tensor quantizers that would be affected if the given op is specified to have output quantization
         enabled.
@@ -236,7 +234,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                             queue.append(output_op)
         return tensor_quantizers_for_output_true
 
-    def _get_tensor_quantizers_for_input_false_setting(self, op: Op) -> List[TensorQuantizer]:
+    def _get_tensor_quantizers_for_input_false_setting(self, op: Op) -> List[LazyQuantizer]:
         """
         Get a list of tensor quantizers that would be affected if the given op is specified to have input quantization
         disabled.
@@ -256,7 +254,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                     tensor_quantizers_for_input_false += qc_quantize_wrapper.output_quantizers
         return tensor_quantizers_for_input_false
 
-    def _get_tensor_quantizers_for_output_false_setting(self, op: Op) -> List[TensorQuantizer]:
+    def _get_tensor_quantizers_for_output_false_setting(self, op: Op) -> List[LazyQuantizer]:
         """
         Get a list of tensor quantizers that would be affected if the given op is specified to have output quantization
         disabled.
@@ -431,7 +429,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                 self._set_config_for_module(input_output_tensor_quantizers, op_config, modified_tensor_quantizers)
 
     def _set_config_for_module(self, input_output_tensor_quantizers: TensorQuantizersTupleType, op_config: OpType,
-                               modified_tensor_quantizers: Dict[TensorQuantizer, Set], module: torch.nn.Module = None):
+                               modified_tensor_quantizers: Dict[LazyQuantizer, Set], module: torch.nn.Module = None):
         """
         Set configurations for a specific op
         :param input_output_tensor_quantizers: Tuple of 4 lists containing the following:
@@ -615,7 +613,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                 output_quantizer.bitwidth = bitwidth
 
     # pylint: disable=arguments-differ
-    def _override_param_bw_dtype(self, quantize_wrapper: QcQuantizeWrapper, data_type: QuantizationDataType = None,
+    def _override_param_bw_dtype(self, quantize_wrapper: LazyQuantizeWrapper, data_type: QuantizationDataType = None,
                                  bitwidth: int = None):
         """
         overrides data type and bitwidth default config for param quantizers of given quantsim wrapper.
@@ -631,7 +629,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                 param_quantizer.bitwidth = bitwidth
 
     # pylint: disable=arguments-differ
-    def _override_act_bw_dtype(self, quantize_wrapper: QcQuantizeWrapper, data_type: QuantizationDataType,
+    def _override_act_bw_dtype(self, quantize_wrapper: LazyQuantizeWrapper, data_type: QuantizationDataType,
                                bitwidth: int):
         """
         Override activation bw and dtype for activation quantizers of the quantsim wrapper if applicable.
@@ -731,7 +729,7 @@ def config_generator_factory(hw_version, supported_kernels, per_channel_quantiza
     return config_generator
 
 
-def _create_module_to_quantsim_wrapper_dict(model: torch.nn.Module) -> Dict[torch.nn.Module, QcQuantizeWrapper]:
+def _create_module_to_quantsim_wrapper_dict(model: torch.nn.Module) -> Dict[torch.nn.Module, LazyQuantizeWrapper]:
     """
     Create a dictionary mapping modules in the model to corresponding quantsim wrappers
     :param model: Pytorch model with quantsim wrappers in place
@@ -739,12 +737,12 @@ def _create_module_to_quantsim_wrapper_dict(model: torch.nn.Module) -> Dict[torc
     """
     module_to_quantsim_wrapper_dict = {}
     for _, module in model.named_modules():
-        if isinstance(module, (QcQuantizeWrapper, LazyQuantizeWrapper)):
+        if isinstance(module, LazyQuantizeWrapper):
             module_to_quantsim_wrapper_dict[module._module_to_wrap] = module      # pylint: disable=protected-access
     return module_to_quantsim_wrapper_dict
 
 
-def _set_config_for_param(param_quantizer: TensorQuantizer, param_config: ConfigType):
+def _set_config_for_param(param_quantizer: LazyQuantizer, param_config: ConfigType):
     """
     Set configurations for a specific param tensor quantizer
     :param param_quantizer: Tensor quantizer to set configurations for
@@ -759,7 +757,7 @@ def _set_config_for_param(param_quantizer: TensorQuantizer, param_config: Config
 
 def _modify_tensor_quantizers(input_output_tensor_quantizers: TensorQuantizersTupleType, setting_name: str,
                               quantizer_setting: Union[dict, bool],
-                              modified_tensor_quantizers: Dict[TensorQuantizer, Set]):
+                              modified_tensor_quantizers: Dict[LazyQuantizer, Set]):
     """
     Modify the appropriate tensor quantizers for the given quantizer setting.  If a tensor quantizer has already been
     modified, compare the old setting with the new setting and assert if the settings conflict.
@@ -806,7 +804,7 @@ def _modify_tensor_quantizers(input_output_tensor_quantizers: TensorQuantizersTu
 
 
 def _get_tensor_quantizers_to_modify(input_output_tensor_quantizers: TensorQuantizersTupleType, setting_name: str,
-                                     quantizer_setting: bool) -> List[TensorQuantizer]:
+                                     quantizer_setting: bool) -> List[LazyQuantizer]:
     """
     Given the tuple containing lists of tensor quantizers to modify under different situations, identify a list of
     tensor quantizers to modify given the specific setting name and quantizer setting.
