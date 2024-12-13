@@ -58,6 +58,7 @@ class LazyQuantizeWrapper(torch.nn.Module):
     """
     # pylint: disable=too-many-arguments
     # pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-locals
     def __init__(self, module_to_wrap: torch.nn.Module, weight_bw: int, activation_bw: int, rounding_mode,
                  quant_scheme: QuantScheme, is_output_quantized=True, is_symmetric=False, num_inputs=1, num_outputs=1,
                  data_type: QuantizationDataType = QuantizationDataType.int):
