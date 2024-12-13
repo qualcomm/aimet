@@ -44,12 +44,12 @@ from torch.utils.data import Dataset
 from aimet_common.utils import AimetLogger
 from aimet_torch.utils import CachedDataset, ModuleData, get_named_module, cache_intermediate_datasets,\
     change_tensor_device_placement, in_eval_mode, save_to_cache, get_ordered_list_of_modules
-from aimet_torch.v1.quantsim import QuantizationSimModel, _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface, _QuantizedModuleProtocol
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
 
-def create_modulelist_for_group_modules(model: torch.nn.Module, sim: QuantizationSimModel, grouped_modules: Dict)\
+def create_modulelist_for_group_modules(model: torch.nn.Module, sim: _QuantizationSimModelInterface, grouped_modules: Dict)\
         -> Tuple[List[torch.nn.ModuleList], List[torch.nn.ModuleList]]:
     """
     Use torch.nn.ModuleList to group modules from a single block.
@@ -73,7 +73,7 @@ def create_modulelist_for_group_modules(model: torch.nn.Module, sim: Quantizatio
     return sub_fp_models, sub_sim_models
 
 
-def get_block_inputs(model: torch.nn.Module, sim: QuantizationSimModel,
+def get_block_inputs(model: torch.nn.Module, sim: _QuantizationSimModelInterface,
                      breakpoint_module_name: str, cached_dataset: CachedDataset,
                      cache_on_cpu: bool, forward_fn: Callable, num_batches: int, working_dir: str,
                      incl_kwargs: bool = False) \
