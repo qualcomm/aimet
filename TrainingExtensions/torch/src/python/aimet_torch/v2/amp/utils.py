@@ -38,7 +38,7 @@
 """ Utilities for mixed precision feature in aimet_torch.v2 """
 
 from contextlib import contextmanager
-from typing import Union, Optional
+from typing import Union
 
 from aimet_common.defs import QuantizationDataType
 from aimet_torch.v2.quantization.base import QuantizerBase
@@ -125,24 +125,6 @@ class _V1QuantizerMixin:
         mock_v1_qtzr._buffers = qtzr._buffers
         mock_v1_qtzr.enabled = True
         return mock_v1_qtzr
-
-    def to_v2_quantizer(self) -> Optional[QuantizerBase]:
-        """ Revert v1 quantizer mock to v2 quantizer """
-        # pylint: disable=protected-access
-        if isinstance(self, _V1DisabledQuantizer):
-            return None
-        if isinstance(self, _V1QuantizeDequantize):
-            v2_qtzr = self.__new__(QuantizeDequantize)
-        elif isinstance(self, _V1FloatQuantizeDequantize):
-            v2_qtzr = self.__new__(FloatQuantizeDequantize)
-        else:
-            raise RuntimeError
-
-        v2_qtzr.__dict__ = self.__dict__.copy()
-        v2_qtzr._parameters = self._parameters.copy()
-        v2_qtzr._buffers = self._buffers.copy()
-        v2_qtzr._modules = self._modules.copy()
-        return v2_qtzr
 
 
 
