@@ -44,17 +44,18 @@ from typing import Tuple, List, Type, Optional, Generator
 import torch
 
 from aimet_common.quant_analyzer import export_stats_histogram_plot
-from aimet_torch.v1.quant_analyzer import QuantAnalyzer as V1QuantAnalyzer
+from aimet_torch._base.quant_analyzer import QuantAnalyzerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.encoding_analyzer import _HistogramObserver, _Histogram
+from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms
 
 
 V1Encoding = namedtuple('V1Encoding', ['min', 'max'])
 
 
-class QuantAnalyzer(V1QuantAnalyzer):
+class QuantAnalyzer(QuantAnalyzerBase):
     """
     QuantAnalyzer tool provides
 
@@ -94,6 +95,16 @@ class QuantAnalyzer(V1QuantAnalyzer):
 
         for index, (histogram, encoding) in enumerate(zip(histograms, encodings)):
             export_stats_histogram_plot(histogram, encoding, results_dir, title=f"{title}_{index}")
+
+    @staticmethod
+    def _enable_disable_quantizers(quantizers: List[QuantizerBase], enabled: bool):
+        """
+        For given list of quantizers, set (enable/disable) quantizer's enabled.
+
+        :param quantizers: List of quantizers.
+        :param enabled: Enabled flag.
+        """
+        raise RuntimeError("Changing enabled attribute is not allowed in quantsim v2")
 
     @classmethod
     def _disable_param_quantizers(cls, sim: QuantizationSimModel):
@@ -154,3 +165,7 @@ class QuantAnalyzer(V1QuantAnalyzer):
         for module in sim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 yield module
+
+    @staticmethod
+    def _fold_all_batch_norms(*args, **kwargs):
+        return fold_all_batch_norms(*args, **kwargs)
