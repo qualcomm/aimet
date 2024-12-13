@@ -50,7 +50,7 @@ from aimet_common.amp.quantizer_groups import QuantizerGroupBase, get_supported_
     compute_baseline_candidate_options
 
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.v1.quantsim import QuantizationSimModel, _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface, _QuantizedModuleProtocol
 from aimet_torch import onnx_utils
 from aimet_torch.translation_mapping import aimet_op_to_backend_op_name_map
 
@@ -183,7 +183,7 @@ def find_wrapper_module(op_name: str, module_name_to_quantizer_dict: Dict) -> \
     return None, None
 
 
-def get_module_name_to_module_dict(sim: QuantizationSimModel) -> Dict:
+def get_module_name_to_module_dict(sim: _QuantizationSimModelInterface) -> Dict:
     """
     Creates a dictionary of wrapped module's name to quantizer module
     :param sim: quantization sim
@@ -333,7 +333,7 @@ def get_input_and_param_quantizers(
 
 
 # pylint: disable=too-many-branches, too-many-locals
-def find_quantizer_group(sim: QuantizationSimModel) -> Tuple[Dict, List[QuantizerGroup]]:
+def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, List[QuantizerGroup]]:
     """
     Finds quantizer groups in a quantization sim model
     :param sim: Quantization sim

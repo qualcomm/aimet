@@ -50,7 +50,8 @@ import torch
 from aimet_common.utils import AimetLogger
 from aimet_common.layer_output_utils import SaveInputOutput, save_layer_output_names
 
-from aimet_torch.v1.quantsim import _QuantizedModuleProtocol, QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizedModuleProtocol
+from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch import utils
 from aimet_torch import torchscript_utils
 from aimet_torch.onnx_utils import OnnxSaver, OnnxExportApiArgs

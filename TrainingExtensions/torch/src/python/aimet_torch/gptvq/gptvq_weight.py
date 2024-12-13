@@ -52,7 +52,7 @@ from aimet_torch import utils
 from aimet_torch.gptvq.defs import GPTVQSupportedModules, GPTVQParameters
 from aimet_torch.gptvq.gptvq_optimizer import GPTVQOptimizer
 from aimet_torch.gptvq.utils import get_module_name_to_hessian_tensor
-from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch.save_utils import SaveUtils
 from aimet_torch.utils import get_named_module
 from aimet_torch.v2.nn import BaseQuantizationMixin

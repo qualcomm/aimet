@@ -41,7 +41,7 @@ from typing import Tuple
 import torch
 
 from aimet_common.defs import AdaroundConstants
-from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch.v2.utils import patch_attr
 
 class AdaroundWrapperBase(abc.ABC, torch.nn.Module):

@@ -54,7 +54,7 @@ from aimet_common.utils import AimetLogger
 from aimet_torch.defs import PassThroughOp
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.v1.quantsim import QuantizationSimModel, _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface, _QuantizedModuleProtocol
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.BatchNormFolding)
 
@@ -458,7 +458,7 @@ class BatchNormFoldBase(ABC):
     @classmethod
     @abstractmethod
     def fold_all_batch_norms_to_scale(
-            cls, sim: QuantizationSimModel,
+            cls, sim: _QuantizationSimModelInterface,
     ) -> List[Tuple[_QuantizedModuleProtocol, _QuantizedModuleProtocol]]:
         """
         Fold all batch_norm layers in a model into the quantization scale parameter

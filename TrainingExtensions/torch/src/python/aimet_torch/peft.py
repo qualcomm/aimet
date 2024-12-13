@@ -54,7 +54,7 @@ from aimet_torch.utils import replace_modules_of_type1_using_constructor
 from aimet_torch.v1.nn.modules.custom import Add, Multiply
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
-from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch.v2.nn import BaseQuantizationMixin
 
 

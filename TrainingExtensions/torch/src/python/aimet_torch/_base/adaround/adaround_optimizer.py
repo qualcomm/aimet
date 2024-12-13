@@ -49,7 +49,7 @@ import torch.distributed as dist
 # Import AIMET specific modules
 from aimet_common.utils import AimetLogger
 from aimet_torch import utils
-from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
+from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch._base.adaround.activation_sampler import ActivationSampler
 from aimet_torch._base.adaround.adaround_loss import AdaroundLoss, AdaroundHyperParameters
 from aimet_torch._base.adaround.adaround_wrapper import AdaroundWrapperBase
