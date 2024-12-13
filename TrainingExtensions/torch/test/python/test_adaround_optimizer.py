@@ -47,8 +47,8 @@ import torch.nn.functional as functional
 
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantizationDataType
-from aimet_torch.utils import to_numpy, create_fake_data_loader, compute_encoding_for_given_bitwidth,\
-    create_encoding_from_dict, CachedDataset
+from aimet_torch.utils import to_numpy, create_fake_data_loader, CachedDataset
+from aimet_torch.v1.utils import compute_encoding_for_given_bitwidth, create_encoding_from_dict
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QuantScheme
 from models.test_models import TinyModel

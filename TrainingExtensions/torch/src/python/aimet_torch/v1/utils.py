@@ -36,16 +36,46 @@
 # pylint: disable = too-many-lines
 """ v1-specific utils """
 
-from typing import Dict
+from typing import Dict, Union
 
+import numpy as np
 import torch
 
-from aimet_common.utils import AimetLogger
+from aimet_common.utils import AimetLogger, log_with_error_and_assert_if_false
+from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_QUANT_SCHEME_TO_PYMO
 import aimet_common.libpymo as libpymo
-from aimet_torch.utils import create_encoding_dict, create_encoding_from_dict # pylint: disable=unused-import
 from aimet_torch.v1.tensor_quantizer import TensorQuantizer, StaticGridPerChannelQuantizer, StaticGridPerTensorQuantizer # pylint:disable = cyclic-import
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
+
+
+def compute_encoding_for_given_bitwidth(data: np.ndarray, bitwidth: int, quant_scheme: QuantScheme,
+                                        is_symmetric: bool, data_type: QuantizationDataType) -> Dict:
+    """
+    Return encoding dictionary for given bitwidth
+    :param data: Numpy data
+    :param bitwidth: bitwidth (4-31) to use for quantizing data
+    :param quant_scheme: Quantization scheme
+    :param is_symmetric: True if symmetric encodings is used, False otherwise
+    :return: Encoding Dictionary
+    """
+    # Create Encodings Analyzer and collect statistical data to compute encodings
+    # Since the data is numpy array and on CPU memory, useCuda is False
+    encoding_analyzer = libpymo.EncodingAnalyzerForPython(MAP_QUANT_SCHEME_TO_PYMO[quant_scheme])
+    encoding_analyzer.updateStats(data, False)
+
+    encoding, is_encoding_valid = encoding_analyzer.computeEncoding(bitwidth, is_symmetric, False, False)
+
+    if is_encoding_valid:
+        return {'min': encoding.min,
+                'max': encoding.max,
+                'scale': encoding.delta,
+                'offset': encoding.offset,
+                'bitwidth': encoding.bw,
+                'is_symmetric': str(is_symmetric),
+                'dtype': 'int' if data_type == QuantizationDataType.int else 'float'}
+
+    return {}
 
 
 def compute_partial_encoding(quantizer: TensorQuantizer, encoding_dict: Dict) -> Dict:
@@ -78,6 +108,56 @@ def compute_partial_encoding(quantizer: TensorQuantizer, encoding_dict: Dict) ->
     encoding_dict['is_symmetric'] = 'True' if quantizer.use_symmetric_encodings else 'False'
 
     return encoding_dict
+
+
+def create_encoding_dict(encoding: libpymo.TfEncoding, quantizer, propagate_encodings: bool) -> Union[Dict, None]:
+    """
+    Create encoding dictionary from encoding object
+    :param encoding: Encoding of the quantizer
+    :param quantizer: Tensor Quantizer
+    :param propagate_encodings: If True, encoding entries for intermediate ops (when one PyTorch ops results in
+            multiple ONNX nodes) are filled with the same BW and data_type as the output tensor for that series of
+            ops.
+    :return: Encoding Dictionary
+    """
+    data_type, bitwidth = quantizer.data_type, quantizer.bitwidth
+
+    if data_type == QuantizationDataType.float:
+        enc_dict = {'bitwidth': bitwidth, 'dtype': "float"}
+    else:
+        if encoding:
+            if propagate_encodings:
+                # Shortened encodings will be filled into a layer that only exists due to expansion of PyTorch ops
+                # into multiple ONNX ops so that it's necessarily to use the same bitwidth and type
+                enc_dict = {'bitwidth': encoding.bw, 'dtype': "int"}
+            else:
+                encoding_min, encoding_max, bw, scale, offset = encoding.min, encoding.max, encoding.bw, \
+                                                                encoding.delta, encoding.offset
+                is_symmetric = quantizer.use_symmetric_encodings
+
+                enc_dict = {'min': encoding_min, 'max': encoding_max, 'scale': scale, 'offset': int(offset),
+                            'bitwidth': bw, 'is_symmetric': str(is_symmetric), 'dtype': "int"}
+        else:
+            enc_dict = None
+    return enc_dict
+
+
+def create_encoding_from_dict(encoding_dict: dict) -> libpymo.TfEncoding:
+    """
+    Create encoding object from encoding dictionary
+    :param encoding_dict: Dictionary containing encodings
+    :return: Encoding object, is_symmetric
+    """
+    encoding = libpymo.TfEncoding()
+    encoding.bw = encoding_dict.get('bitwidth')
+    encoding.max = encoding_dict.get('max')
+    encoding.min = encoding_dict.get('min')
+    encoding.delta = encoding_dict.get('scale')
+    encoding.offset = encoding_dict.get('offset')
+    log_with_error_and_assert_if_false(encoding_dict.get('is_symmetric') in ['True', 'False'],
+                                       logger,
+                                       f'Unexpected value for is_symmetric: {encoding_dict.get("is_symmetric")}')
+    return encoding
 
 
 def get_per_channel_quantizer_from_per_tensor(quantizer: TensorQuantizer, original_module: torch.nn.Module):

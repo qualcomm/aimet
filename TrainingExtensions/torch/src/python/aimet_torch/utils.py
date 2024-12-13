@@ -66,10 +66,9 @@ except ImportError:
 
 from torchvision import datasets, transforms
 
-from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_QUANT_SCHEME_TO_PYMO
-from aimet_common.utils import AimetLogger, Handle, log_with_error_and_assert_if_false
+from aimet_common.defs import QuantScheme
+from aimet_common.utils import AimetLogger, Handle
 from aimet_common.utils import profile as _profile, deprecated, _red # pylint:disable = unused-import
-import aimet_common.libpymo as libpymo
 from aimet_torch.v1.nn.modules.custom import CustomSparseConv3DLayer, Cast
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
@@ -802,53 +801,6 @@ def get_inout_tensor_shape_per_module(model: torch.nn.Module, input_tensor) -> D
     return inout_tensor_shape_map
 
 
-def create_encoding_from_dict(encoding_dict: dict) -> libpymo.TfEncoding:
-    """
-    Create encoding object from encoding dictionary
-    :param encoding_dict: Dictionary containing encodings
-    :return: Encoding object, is_symmetric
-    """
-    encoding = libpymo.TfEncoding()
-    encoding.bw = encoding_dict.get('bitwidth')
-    encoding.max = encoding_dict.get('max')
-    encoding.min = encoding_dict.get('min')
-    encoding.delta = encoding_dict.get('scale')
-    encoding.offset = encoding_dict.get('offset')
-    log_with_error_and_assert_if_false(encoding_dict.get('is_symmetric') in ['True', 'False'],
-                                       logger,
-                                       f'Unexpected value for is_symmetric: {encoding_dict.get("is_symmetric")}')
-    return encoding
-
-
-def compute_encoding_for_given_bitwidth(data: np.ndarray, bitwidth: int, quant_scheme: QuantScheme,
-                                        is_symmetric: bool, data_type: QuantizationDataType) -> Dict:
-    """
-    Return encoding dictionary for given bitwidth
-    :param data: Numpy data
-    :param bitwidth: bitwidth (4-31) to use for quantizing data
-    :param quant_scheme: Quantization scheme
-    :param is_symmetric: True if symmetric encodings is used, False otherwise
-    :return: Encoding Dictionary
-    """
-    # Create Encodings Analyzer and collect statistical data to compute encodings
-    # Since the data is numpy array and on CPU memory, useCuda is False
-    encoding_analyzer = libpymo.EncodingAnalyzerForPython(MAP_QUANT_SCHEME_TO_PYMO[quant_scheme])
-    encoding_analyzer.updateStats(data, False)
-
-    encoding, is_encoding_valid = encoding_analyzer.computeEncoding(bitwidth, is_symmetric, False, False)
-
-    if is_encoding_valid:
-        return {'min': encoding.min,
-                'max': encoding.max,
-                'scale': encoding.delta,
-                'offset': encoding.offset,
-                'bitwidth': encoding.bw,
-                'is_symmetric': str(is_symmetric),
-                'dtype': 'int' if data_type == QuantizationDataType.int else 'float'}
-
-    return {}
-
-
 def get_reused_modules(model: torch.nn.Module, model_input: Union[torch.Tensor, Tuple]) -> \
         List[Tuple[str, torch.nn.Module]]:
     """
@@ -1154,38 +1106,6 @@ def get_inout_tensors_dtypes_for_cast_modules(model: torch.nn.Module, input_tens
     return inout_dtypes_map
 
 
-def create_encoding_dict(encoding: libpymo.TfEncoding, quantizer, propagate_encodings: bool) -> Union[Dict, None]:
-    """
-    Create encoding dictionary from encoding object
-    :param encoding: Encoding of the quantizer
-    :param quantizer: Tensor Quantizer
-    :param propagate_encodings: If True, encoding entries for intermediate ops (when one PyTorch ops results in
-            multiple ONNX nodes) are filled with the same BW and data_type as the output tensor for that series of
-            ops.
-    :return: Encoding Dictionary
-    """
-    data_type, bitwidth = quantizer.data_type, quantizer.bitwidth
-
-    if data_type == QuantizationDataType.float:
-        enc_dict = {'bitwidth': bitwidth, 'dtype': "float"}
-    else:
-        if encoding:
-            if propagate_encodings:
-                # Shortened encodings will be filled into a layer that only exists due to expansion of PyTorch ops
-                # into multiple ONNX ops so that it's necessarily to use the same bitwidth and type
-                enc_dict = {'bitwidth': encoding.bw, 'dtype': "int"}
-            else:
-                encoding_min, encoding_max, bw, scale, offset = encoding.min, encoding.max, encoding.bw, \
-                                                                encoding.delta, encoding.offset
-                is_symmetric = quantizer.use_symmetric_encodings
-
-                enc_dict = {'min': encoding_min, 'max': encoding_max, 'scale': scale, 'offset': int(offset),
-                            'bitwidth': bw, 'is_symmetric': str(is_symmetric), 'dtype': "int"}
-        else:
-            enc_dict = None
-    return enc_dict
-
-
 def get_propagated_encoding_dict(encoding_dict: List[Dict[str, any]]) -> List[Dict[str, any]]:
     """
     Creates encoding dictionary for intermediate ops (when one PyTorch ops results in multiple ONNX nodes), which are
@@ -1384,3 +1304,20 @@ def _get_default_api() -> Union[Literal["v1"], Literal["v2"]]:
                            f"Expected either 'v1' or 'v2', but got '{default_api}'")
 
     return default_api
+
+
+__migrated__ = {
+    'compute_encoding_for_given_bitwidth',
+    'compute_partial_encoding',
+    'create_encoding_dict',
+    'create_encoding_from_dict',
+    'get_per_channel_quantizer_from_per_tensor',
+    'get_per_tensor_quantizer_from_per_channel',
+    '_validate_is_symmetric_flag',
+    'validate_is_symmetric_flag',
+}
+
+
+def __getattr__(name: str):
+    if _get_default_api() == "v2" and name in __migrated__:
+        raise ImportError(f'"{name}" has been moved to aimet_torch.v1.utils since aimet-torch==2.0.0')
