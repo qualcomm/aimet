@@ -43,7 +43,6 @@ import torch
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
 from aimet_common.utils import AimetLogger, log_with_error_and_assert_if_false
 from aimet_torch.utils import is_leaf_module
-from aimet_torch.v1.qc_quantize_op import QcQuantizeOpMode
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -79,7 +78,6 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC): # pylint: disable=too-many-inst
         self._num_outputs = num_outputs
         self._data_type = data_type
         self._module_to_wrap = module_to_wrap
-        self._mode = QcQuantizeOpMode.ANALYSIS
 
         # Create quantizer for layer output
         self.output_quantizers = [self._lazy_qtzr_cls(activation_bw,
