@@ -51,7 +51,7 @@ from aimet_common.amp.convert_ops_reduction import ReduceConvertOps as BaseReduc
 
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface
 from aimet_torch._base.amp.quantizer_groups import ops_not_to_traverse, find_output_quantizer_groups, \
     get_module_name_to_module_dict, find_wrapper_module
 
@@ -68,7 +68,8 @@ class ReduceConvertOps(BaseReduceConvertOps):
         H = 2
         W = 3
 
-    def __init__(self, aimet_sim: QuantizationSimModel, quantizer_groups: List[QuantizerGroupBase],
+    def __init__(self, aimet_sim: _QuantizationSimModelInterface,
+                 quantizer_groups: List[QuantizerGroupBase],
                  candidates: List, mac_dict: Dict):
         """
         :param aimet_sim: Sim object with loaded quantizer settings
@@ -225,7 +226,7 @@ class ReduceConvertOps(BaseReduceConvertOps):
 
         solution_dict = dict()
         # pylint: disable=protected-access
-        for layer_name, layer in QuantizationSimModel._get_qc_quantized_layers(self._sim.model):
+        for layer_name, layer in self._sim.named_qmodules():
             if isinstance(layer.input_quantizers, list):
                 for quantizer in layer.input_quantizers:
                     if quantizer.enabled:

@@ -59,7 +59,7 @@ from tqdm import tqdm
 
 from aimet_torch import utils
 from aimet_torch.cross_layer_equalization import equalize_model
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface
 from aimet_torch.utils import in_eval_mode
 from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_torch.model_preparer import prepare_model
@@ -517,7 +517,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             self,
             applied_techniques: List[str],
             model: torch.nn.Module = None,
-            sim: QuantizationSimModel = None,
+            sim: _QuantizationSimModelInterface = None,
             acc: float = None,
             export_kwargs: Mapping = None,
             **kwargs
@@ -552,7 +552,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
 
     def _set_ptq_result(
             self,
-            sim: QuantizationSimModel,
+            sim: _QuantizationSimModelInterface,
             acc: float,
             applied_techniques: List[str],
             export_kwargs: Mapping,
@@ -582,7 +582,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
         )
         return self._ptq_result
 
-    def _export(self, sim: QuantizationSimModel, export_kwargs: Mapping) -> Tuple[str, str]:
+    def _export(self, sim: _QuantizationSimModelInterface, export_kwargs: Mapping) -> Tuple[str, str]:
         """
         Export quantsim.
         :param sim: QuantizationSimModel object to export.
@@ -839,7 +839,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
         """
         return self.eval_callback(model, NUM_SAMPLES_FOR_PERFORMANCE_EVALUATION)
 
-    def run_inference(self) -> Tuple[QuantizationSimModel, float]:
+    def run_inference(self) -> Tuple[_QuantizationSimModelInterface, float]:
         '''
         Creates a quantization model and performs inference
 
@@ -943,7 +943,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
             param_percentile: float = None,
             config_file: str = None,
             encoding_path: str = None,
-    ) -> QuantizationSimModel:
+    ) -> _QuantizationSimModelInterface:
         """
         Create a QuantizationSimModel and compute encoding. If `encoding_path` is not None,
         it is prioritized over other arguments (`output_bw`, `param_bw`, ...).

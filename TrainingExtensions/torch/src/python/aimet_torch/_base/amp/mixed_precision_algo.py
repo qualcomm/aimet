@@ -59,7 +59,7 @@ from aimet_torch import utils
 from aimet_torch._base.amp import utils as mixed_precision_utils
 from aimet_torch._base.amp.convert_ops_reduction import ReduceConvertOps
 from aimet_torch._base.amp.quantizer_groups import find_quantizer_group, QuantizerGroup, get_module_name_to_module_dict, find_supported_candidates
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
@@ -214,7 +214,8 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
     ENABLE_CONVERT_OP_REDUCTION = False # Run phase-3
 
     # pylint: disable=too-many-arguments
-    def __init__(self, sim: QuantizationSimModel, dummy_input: Union[torch.Tensor, Tuple],
+    def __init__(self, sim: _QuantizationSimModelInterface,
+                 dummy_input: Union[torch.Tensor, Tuple],
                  candidates: List[CANDIDATE_WITH_DTYPE],
                  eval_callback_for_phase1: CallbackFunc,
                  eval_callback_for_phase2: CallbackFunc,
