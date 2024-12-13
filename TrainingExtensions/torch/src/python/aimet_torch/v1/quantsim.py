@@ -77,7 +77,8 @@ from aimet_torch.onnx_utils import (
 )
 from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
-from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, _V1LazyQuantizeWrapper
+from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
+from aimet_torch.v1._builder import _V1LazyQuantizeWrapper
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
 from aimet_torch._base.quantsim import ( # pylint: disable=unused-import
     _QuantizationSimModelInterface,

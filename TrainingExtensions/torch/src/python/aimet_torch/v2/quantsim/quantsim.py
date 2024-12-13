@@ -55,7 +55,8 @@ from aimet_torch.v1.quantsim import ( # pylint: disable=unused-import
 from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
-from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, _V2LazyQuantizeWrapper
+from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
+from aimet_torch.v2._builder import _V2LazyQuantizeWrapper
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase
 from aimet_torch.v2.quantization.encoding_analyzer import PercentileEncodingAnalyzer
