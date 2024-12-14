@@ -1345,7 +1345,7 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
         # StaticGridQuantWrapper.
         quantizer_wrapper_type = qc_quantize_modules_dict.get(type(module_to_quantize), self._lazy_quant_wrapper_cls)
 
-        if quantizer_wrapper_type == LazyQuantizeWrapper:
+        if issubclass(quantizer_wrapper_type, LazyQuantizeWrapper):
             quant_scheme_for_initialization = self._quant_scheme
         else:
             quant_scheme_for_initialization = utils.get_v1_quant_scheme_for_initialization(self._quant_scheme)
