@@ -454,7 +454,7 @@ class AutoQuantWithAutoMixedPrecision:
         """
         return self._auto_quant_base.set_quant_scheme_candidates(candidates)
 
-    @cache.mark("mixed_precision")
+    # @cache.mark("mixed_precision")
     def _apply_mixed_precision(
             self,
             model: torch.nn.Module,

@@ -748,6 +748,8 @@ class TestAutoQuant:
                             'node_automatic_mixed_precision': _NOT_VISITED,
                         })
 
+    @pytest.mark.skip(reason="GraphModule's custom pickle serialization mechanism doesn't work"
+                             "when it contains v2 quantized modules")
     def test_auto_quant_caching(
         self, cpu_model, dummy_input, unlabeled_data_loader,
     ):
