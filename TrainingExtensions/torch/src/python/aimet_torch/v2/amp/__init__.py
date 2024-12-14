@@ -35,14 +35,3 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Mixed precision inference """
-
-from aimet_torch.v1.mixed_precision import choose_mixed_precision as v1_choose_mixed_precision
-from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.amp.utils import _mock_v1_quantizers
-
-
-def choose_mixed_precision(sim: QuantizationSimModel, *args, **kwargs):
-    __doc__ = v1_choose_mixed_precision.__doc__ # pylint: disable=redefined-builtin, unused-variable
-
-    with _mock_v1_quantizers(sim):
-        return v1_choose_mixed_precision(sim, *args, **kwargs)
