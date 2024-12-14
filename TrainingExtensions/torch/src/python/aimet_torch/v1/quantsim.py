@@ -1430,13 +1430,10 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
 
             # If modules is in the exclude list, remove the wrapper
             if module_ref in list_of_modules_to_exclude:
-                if isinstance(module_ref, _QuantizedModuleProtocol):
+                if isinstance(module_ref, (_QuantizedModuleProtocol, QcQuantizeRecurrent)):
                     orig_module = module_ref.get_original_module()
                 elif isinstance(module_ref, QcQuantizeStandAloneBase):
                     orig_module = torch.nn.Identity()
-                elif isinstance(module_ref, QcQuantizeRecurrent):
-                    module_ref.update_params()
-                    orig_module = module_ref.module_to_quantize
                 else:
                     orig_module = None
 
