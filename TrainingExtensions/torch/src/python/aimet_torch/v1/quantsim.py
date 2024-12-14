@@ -1926,7 +1926,12 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to Embedding module
         """
+        from aimet_torch.v2.nn import BaseQuantizationMixin
+
         for wrapper in self.qmodules():
+            if isinstance(wrapper, BaseQuantizationMixin):
+                continue
+
             original_module = wrapper.get_original_module()
 
             if isinstance(original_module, torch.nn.Embedding):

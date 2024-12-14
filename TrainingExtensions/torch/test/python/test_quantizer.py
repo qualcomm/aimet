@@ -5196,11 +5196,8 @@ class TestQuantizationSimLearnedGrid:
         qsim.model.permute.output_quantizers[0].enabled = False
         qsim.compute_encodings(lambda m, _: m(dummy_input), None)
 
-        module_to_quant_wrapper = {}
-        for _, wrapper in qsim.quant_wrappers():
-            module_to_quant_wrapper[wrapper._module_to_wrap] = wrapper
         # Use connected graph op corresponding to reshape to test
-        closest_wrapper = qsim._get_closest_producer_wrapper(qsim.connected_graph.ordered_ops[1], module_to_quant_wrapper)
+        closest_wrapper = qsim._get_closest_producer_wrapper(qsim.connected_graph.ordered_ops[1])
         assert closest_wrapper == qsim.model.permute
 
 
