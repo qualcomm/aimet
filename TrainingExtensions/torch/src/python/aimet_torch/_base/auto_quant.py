@@ -99,7 +99,7 @@ class _MixedPrecisionResult:
     Mixed precision result
     """
     pareto_list: ParetoFrontType
-    sim: QuantizationSimModel
+    sim: _QuantizationSimModelInterface
     final_eval_score: float
     sensitivity_plot: bokeh.plotting.figure
     pareto_plot: bokeh.plotting.figure
