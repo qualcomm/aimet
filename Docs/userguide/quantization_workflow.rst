@@ -24,10 +24,10 @@ without requiring actual quantized hardware.
 
 A quantization simulation workflow is illustrated here:
 
-.. image:: ../images/quant_use_case_1.PNG
-
-2. Post-training quantization
------------------------------
+.. image:: ../images/quantization_workflow_1.png
+  
+2. Post-training quantization (PTQ):
+------------------------------------
 
 Post-training quantization (PTQ) techniques make a model more quantization-friendly without requiring model retraining
 or fine-tuning. PTQ is recommended as a go-to tool in a quantization workflow because:
@@ -37,7 +37,7 @@ or fine-tuning. PTQ is recommended as a go-to tool in a quantization workflow be
 
 The PTQ workflow is illustrated here:
 
-.. image:: ../images/quant_use_case_3.PNG
+.. image:: ../images/quantization_workflow_2.png
 
 3. Quantization-aware training
 ------------------------------
@@ -55,7 +55,7 @@ but it can provide better accuracy, especially at lower bit-widths.
 
 A typical QAT workflow is illustrated here:
 
-.. image:: ../images/quant_use_case_2.PNG
+.. image:: ../images/quantization_workflow_3.png
 
 Supported precisions for on-target inference
 ============================================
@@ -108,7 +108,7 @@ lowering the precision.
 The figure below illustrates the recommended quantization workflow and the steps required
 to deploy the quantized model on the target device.
 
-.. figure:: ../images/overall_quantization_workflow.png
+.. figure:: images/quantization_workflow_4.PNG
 
    Recommended quantization workflow
 

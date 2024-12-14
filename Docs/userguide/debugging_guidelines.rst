@@ -15,11 +15,11 @@ Debugging workflow
 
 The steps are shown as a flow chart in the following figure and are described in more detail below:
 
-.. image:: ../images/quantization_debugging_flow_chart.png
-   :height: 800
-   :width: 700
+.. image:: ../images/debugging_guidelines_1.png
+   :height: 500
 
-1. FP32 confidence check
+
+1. FP32 confidence checks
 ------------------------
 
 First, ensure that the floating-point and quantized model behave similarly in the forward pass,

@@ -27,7 +27,7 @@ allowable accuracy drop, is passed to the API.
 The function changes the QuantSim Sim model in place with different quantizers having different
 bit-widths. This QuantSim model can be either exported or evaluated to get a quantization accuracy.
 
-.. image:: ../../images/work_flow_amp.png
+.. image:: ../../images/automatic_mixed_precision_1.png
     :width: 900px
 
 Mixed Precision Algorithm
@@ -35,8 +35,8 @@ Mixed Precision Algorithm
 
 The algorithm involves 4 phases:
 
-    .. image:: ../../images/stages.png
-        :width: 150px
+.. image:: ../../images/automatic_mixed_precision_2.png
+    :width: 700px
 
 1) Find layer groups
 --------------------
@@ -45,8 +45,8 @@ The algorithm involves 4 phases:
     This helps in reducing search space over which the mixed precision algorithm operates.
     It also ensures that we search only over the valid bit-width settings for parameters and activations.
 
-    .. image:: ../../images/quantizer_groups.png
-        :width: 900px
+.. image:: ../../images/automatic_mixed_precision_3.png
+    :width: 900px
 
 2) Perform sensitivity analysis (Phase 1)
 -----------------------------------------

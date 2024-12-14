@@ -26,8 +26,8 @@ Workflow
 
 The workflow looks like this:
 
-    .. image:: ../../images/auto_quant_v2_flowchart.png
-
+.. image:: ../images/auto_quant_1.png
+   :height: 450
 Before entering the optimization workflow, AutoQuant prepares by:
 
 1. Checking the validity of the model and converting the model into an AIMET quantization-friendly format (`Prepare Model`).
