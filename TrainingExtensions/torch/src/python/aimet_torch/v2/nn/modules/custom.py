@@ -41,7 +41,7 @@ import torch
 from torch import Tensor
 from torch import nn
 import torch.nn.functional as F
-from aimet_torch.v1.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import
+from aimet_torch._base.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import
 from aimet_torch.v2.quantization.tensor import QuantizedTensorBase
 from ..true_quant import (
     QuantizationMixin,

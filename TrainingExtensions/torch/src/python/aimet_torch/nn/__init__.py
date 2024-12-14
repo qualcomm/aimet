@@ -34,5 +34,9 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-""" Alias to legacy nn """
-from ..v1.nn import * # pylint: disable=wildcard-import, unused-wildcard-import
+""" Alias to v1/v2 nn """
+from ..utils import _get_default_api
+from .._base.nn import * # pylint: disable=wildcard-import, unused-wildcard-import
+
+if _get_default_api() == "v2":
+    from ..v2.nn import * # pylint: disable=wildcard-import, unused-wildcard-import
