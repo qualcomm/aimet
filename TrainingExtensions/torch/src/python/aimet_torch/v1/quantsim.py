@@ -66,7 +66,7 @@ from aimet_torch.v1.nn.modules.custom import MatMul
 from aimet_torch.quantsim_config.quantsim_config import QuantSimConfigurator
 from aimet_torch.v1.qc_quantize_op import QcQuantizeStandAloneBase, QcQuantizeWrapper, QcQuantizeOpMode, \
     StaticGridQuantWrapper, LearnedGridQuantWrapper, NativeTorchQuantWrapper, QUANTIZER_TYPE_INPUT, QUANTIZER_TYPE_OUTPUT
-from aimet_torch.v1.tensor_quantizer import initialize_learned_grid_quantizer_attributes, TensorQuantizer
+from aimet_torch.v1.tensor_quantizer import initialize_learned_grid_quantizer_attributes
 from aimet_torch.v1.qc_quantize_op import get_encoding_by_quantizer as _get_encoding_by_quantizer
 from aimet_torch import torchscript_utils, utils, onnx_utils
 from aimet_torch.v1.utils import create_encoding_dict
@@ -2003,7 +2003,10 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
                         target_quantizer_for_second_input.use_symmetric_encodings = True
                         target_quantizer_for_first_input.bitwidth = 16
 
-    def _get_target_quantizer(self, input_quantizer: TensorQuantizer, input_op: Op, module_to_quant_wrapper: Dict[torch.nn.Module, QcQuantizeWrapper]) -> TensorQuantizer:
+    def _get_target_quantizer(self,
+                              input_quantizer: _QuantizerProtocol,
+                              input_op: Op,
+                              module_to_quant_wrapper: Dict[torch.nn.Module, _QuantizedModuleProtocol]) -> _QuantizerProtocol:
         """
         Returns input quantizer if enabled otherwise returns closest enabled parent output quantizer.
 
