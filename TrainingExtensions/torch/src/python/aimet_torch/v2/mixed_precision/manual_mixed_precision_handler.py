@@ -47,7 +47,7 @@ from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.float.quantizer import FloatQuantizeDequantize
-from aimet_torch.quantsim_config.builder import LazyQuantizer
+from aimet_torch.v2._builder import _V2LazyQuantizer
 
 from aimet_torch.v2.utils import flatten_list, has_no_quantizers
 from aimet_torch.v2.cg_utils import ConnectedGraphTraverser
@@ -244,13 +244,13 @@ class MpHandler:
         if candidate.data_type == QuantizationDataType.float:
             if not isinstance(quantizer, FloatQuantizeDequantize):
                 # convert to float QDQ
-                quantizer = LazyQuantizer(candidate.bitwidth,
-                                          'nearest',
-                                          QuantScheme.post_training_tf,
-                                          quantizer.symmetric,
-                                          enabled_by_default=True,
-                                          data_type=QuantizationDataType.float
-                                          ).realize()
+                quantizer = _V2LazyQuantizer(candidate.bitwidth,
+                                             'nearest',
+                                             QuantScheme.post_training_tf,
+                                             quantizer.symmetric,
+                                             enabled_by_default=True,
+                                             data_type=QuantizationDataType.float
+                                             ).realize()
 
             if candidate.bitwidth == 16:
                 quantizer.exponent_bits = 5
@@ -263,13 +263,13 @@ class MpHandler:
         else:
             if isinstance(quantizer, FloatQuantizeDequantize):
                 # convert to int QDQ
-                quantizer = LazyQuantizer(candidate.bitwidth,
-                                          'nearest',
-                                          QuantScheme.post_training_tf,
-                                          quantizer.symmetric,
-                                          enabled_by_default=True,
-                                          data_type=QuantizationDataType.int
-                                          ).realize()
+                quantizer = _V2LazyQuantizer(candidate.bitwidth,
+                                             'nearest',
+                                             QuantScheme.post_training_tf,
+                                             quantizer.symmetric,
+                                             enabled_by_default=True,
+                                             data_type=QuantizationDataType.int
+                                             ).realize()
 
             quantizer.bitwidth = candidate.bitwidth
 
