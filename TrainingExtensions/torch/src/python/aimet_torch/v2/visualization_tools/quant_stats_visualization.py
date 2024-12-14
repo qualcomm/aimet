@@ -66,7 +66,7 @@ def _visualize(sim: QuantizationSimModel, dummy_input, mode: str, save_path: str
     :param percentile_list: Percentiles to be extracted and used.
     """
 
-    # Ensure that sim is an instance of aimet_torch.v1.quantsim.QuantizationSimModel
+    # Ensure that sim is an instance of QuantizationSimModel
     if not isinstance(sim, QuantizationSimModel):
         raise TypeError(f"Expected type 'aimet_torch.v2.quantsim.QuantizationSimModel', got '{type(sim)}'.")
 

@@ -51,12 +51,17 @@ from aimet_common.utils import AimetLogger
 from aimet_common.layer_output_utils import SaveInputOutput, save_layer_output_names
 
 from aimet_torch._base.quantsim import _QuantizedModuleProtocol
-from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch import utils
 from aimet_torch import torchscript_utils
 from aimet_torch.onnx_utils import OnnxSaver, OnnxExportApiArgs
-from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
+
+try:
+    from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
+    _quantized_module_types = (_QuantizedModuleProtocol, QcQuantizeRecurrent)
+except ImportError:
+    _quantized_module_types = (_QuantizedModuleProtocol,)
+
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LayerOutputs)
 
@@ -171,7 +176,7 @@ class LayerOutput:
         self.module_to_name_dict = utils.get_module_to_name_dict(model=model, prefix='')
 
         # Check whether the given model is quantsim model
-        self.is_quantsim_model = any(isinstance(module, (_QuantizedModuleProtocol, QcQuantizeRecurrent)) for module in model.modules())
+        self.is_quantsim_model = any(isinstance(module, _quantized_module_types) for module in model.modules())
 
         # Obtain layer-name to layer-output name mapping
         self.layer_name_to_layer_output_dict = {}
@@ -206,7 +211,7 @@ class LayerOutput:
         if self.is_quantsim_model:
             # Apply record-output hook to QuantizeWrapper modules (one node above leaf node in model graph)
             utils.run_hook_for_layers_with_given_input(self.model, input_instance, self.record_outputs,
-                                                       module_type_for_attaching_hook=(_QuantizedModuleProtocol, QcQuantizeRecurrent),
+                                                       module_type_for_attaching_hook=_quantized_module_types,
                                                        leaf_node_only=False)
         else:
             # Apply record-output hook to Original modules (leaf node in model graph)
@@ -271,6 +276,11 @@ class LayerOutput:
         :param dir_path: directory to temporarily save the constructed onnx/torchscrip model
         :return: dictionary of layer-name to layer-output name
         """
+        from aimet_torch.v2.nn import BaseQuantizationMixin
+        if any(isinstance(module, BaseQuantizationMixin) for module in model.modules()):
+            from aimet_torch.v2.quantsim import QuantizationSimModel
+        else:
+            from aimet_torch.v1.quantsim import QuantizationSimModel
 
         # Restore original model by removing quantization wrappers if present.
         original_model = QuantizationSimModel.get_original_model(model)

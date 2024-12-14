@@ -42,8 +42,7 @@ import aimet_common.libpymo as libpymo
 from aimet_common.defs import MAP_ROUND_MODE_TO_PYMO, MAP_QUANT_SCHEME_TO_PYMO
 from aimet_common.quantsim import recompute_grid_params
 
-from aimet_torch.v1.tensor_quantizer import TensorQuantizer
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface, _QuantizerProtocol
 
 
 class WeightPaddingParams:
@@ -60,7 +59,7 @@ class WeightPaddingParams:
         self.target_kernel_bw = target_kernel_bw
 
 
-def weight_pad(sim: QuantizationSimModel, layer_bw_dict: Dict[str, WeightPaddingParams]):
+def weight_pad(sim: _QuantizationSimModelInterface, layer_bw_dict: Dict[str, WeightPaddingParams]):
     """
     This method simulates low bit-width quantization on higher bit-width hardware to pad weights
     with consecutive zeros. This weight padding helps reduce power consumption of neural networks.
@@ -70,7 +69,7 @@ def weight_pad(sim: QuantizationSimModel, layer_bw_dict: Dict[str, WeightPadding
     :return None
     """
     # iterate through quant wrappers in model
-    for layer_name, layer in sim.quant_wrappers():
+    for layer_name, layer in sim.named_qmodules():
         # access bitwidth params per layer
         bw_values = layer_bw_dict[layer_name]
 
@@ -105,7 +104,7 @@ def weight_pad(sim: QuantizationSimModel, layer_bw_dict: Dict[str, WeightPadding
             param_weight_quant.encoding = recompute_encodings(param_weight_quant, bw_values)
 
 
-def recompute_encodings(quantizer: TensorQuantizer, bw_params: WeightPaddingParams):
+def recompute_encodings(quantizer: _QuantizerProtocol, bw_params: WeightPaddingParams):
     """
    Recomputes encodings for both per channel and per tensor quantization
 

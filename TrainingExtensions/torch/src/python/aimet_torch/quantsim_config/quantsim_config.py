@@ -736,7 +736,7 @@ def _create_module_to_quantsim_wrapper_dict(model: torch.nn.Module) -> Dict[torc
     :return: Dictionary mapping modules in the model to corresponding quantsim wrappers
     """
     # pylint: disable=import-outside-toplevel
-    from aimet_torch.v1.quantsim import _QuantizedModuleProtocol
+    from aimet_torch._base.quantsim import _QuantizedModuleProtocol
     from aimet_torch.v2.nn import BaseQuantizationMixin
     module_to_quantsim_wrapper_dict = {}
     for _, module in model.named_modules():

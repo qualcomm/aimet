@@ -250,7 +250,7 @@ except ImportError as e:
     QuantizableSparseSequential = None
     create_quantizable_sparse_sequential = None
 else:
-    import aimet_torch
+    from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 
 
     def is_spconv_module(module):
@@ -262,8 +262,8 @@ else:
         """
         # pylint: disable=protected-access
         spconv_modules = (spconv.SparseModule, )
-        if isinstance(module, aimet_torch.v1.qc_quantize_op.QcQuantizeWrapper):
-            return isinstance(module._module_to_wrap, spconv_modules)
+        if isinstance(module, _QuantizedModuleProtocol):
+            return isinstance(module.get_original_module(), spconv_modules)
         return isinstance(module, spconv_modules)
 
 
