@@ -454,9 +454,16 @@ class QuantizationSimModel(V1QuantizationSimModel):
                     module._patch_dequantized_parameters()
                 cls._update_parameters_by_attr(module)
 
-    @deprecated(f'Use {V1QuantizationSimModel.named_qmodules.__qualname__} instead.')
+    def named_qmodules(self):
+        """Generator that yields all quantized modules in the model and their names
+        """
+        for name, module in self.model.named_modules():
+            if isinstance(module, (BaseQuantizationMixin, LazyQuantizeWrapper)):
+                yield name, module
+
+    @deprecated(f'Use {named_qmodules.__qualname__} instead.')
     def quant_wrappers(self): # pylint: disable=missing-docstring
-        return super().quant_wrappers()
+        return self.named_qmodules()
 
     # Overrides V1QuantizationSimModel._add_quantization_wrappers
     def _add_quantization_wrappers(self, module, num_inout_tensors, default_data_type):

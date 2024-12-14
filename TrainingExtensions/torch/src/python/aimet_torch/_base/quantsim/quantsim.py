@@ -36,7 +36,18 @@
 # =============================================================================
 """ QuantizationSimModel interface """
 from abc import ABC, abstractmethod
-from typing import List, Union, Dict, Optional, runtime_checkable, Protocol, Mapping, TYPE_CHECKING
+from typing import (
+    List,
+    Union,
+    Dict,
+    Optional,
+    runtime_checkable,
+    Protocol,
+    Mapping,
+    TYPE_CHECKING,
+    Tuple,
+    Iterable,
+)
 import torch
 
 from aimet_common.defs import QuantScheme
@@ -166,6 +177,8 @@ ExportableQuantModule = _QuantizedModuleProtocol
 
 
 class _QuantizationSimModelInterface(ABC):
+    model: torch.nn.Module
+
     @abstractmethod
     def compute_encodings(self, *args, **kwargs): # pylint: disable=missing-function-docstring
         ...
@@ -177,3 +190,13 @@ class _QuantizationSimModelInterface(ABC):
     @abstractmethod
     def load_encodings(self, *args, **kwargs): # pylint: disable=missing-function-docstring
         ...
+
+    @abstractmethod
+    def named_qmodules(self) -> Iterable[Tuple[str, torch.nn.Module]]:
+        """Generator that yields all quantized modules in the model and their names
+        """
+
+    def qmodules(self) -> Iterable[torch.nn.Module]:
+        """Generator that yields all quantized modules in the model
+        """
+        yield from (module for _, module in self.named_qmodules())

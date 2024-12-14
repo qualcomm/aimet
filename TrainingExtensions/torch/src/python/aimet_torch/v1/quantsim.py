@@ -1786,13 +1786,8 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
         """Generator that yields all quantized modules in the model and their names
         """
         for name, module in self.model.named_modules():
-            if isinstance(module, (QcQuantizeRecurrent, LazyQuantizeWrapper, _QuantizedModuleProtocol)):
+            if isinstance(module, (QcQuantizeWrapper, QcQuantizeRecurrent, LazyQuantizeWrapper)):
                 yield name, module
-
-    def qmodules(self):
-        """Generator that yields all quantized modules in the model
-        """
-        yield from (module for _, module in self.named_qmodules())
 
     quant_wrappers = named_qmodules
 
