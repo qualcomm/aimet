@@ -34,7 +34,8 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
-# pylint: disable=all
-
+# pylint: disable=missing-docstring
 from .tensor import *
+from . import base
+from . import affine
+from . import float # pylint: disable=, redefined-builtin

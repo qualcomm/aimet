@@ -34,8 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
-# pylint: disable=missing-docstring
+""" aimet_torch.v2 subpackage """
 from . import experimental
 from . import nn
 from . import quantization
