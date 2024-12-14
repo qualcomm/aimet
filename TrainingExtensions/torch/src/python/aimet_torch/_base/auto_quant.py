@@ -55,6 +55,7 @@ import torch
 from torch.utils.data import DataLoader
 import jinja2
 from bokeh.resources import CDN
+import bokeh.plotting
 from tqdm import tqdm
 
 from aimet_torch import utils
@@ -64,17 +65,46 @@ from aimet_torch.utils import in_eval_mode
 from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_torch.model_preparer import prepare_model
 from aimet_torch.model_validator.model_validator import ModelValidator
+from aimet_torch.amp.quantizer_groups import QuantizerGroup
 
 from aimet_common.auto_quant import Diagnostics
 from aimet_common.cache import Cache
-from aimet_common.defs import QuantScheme
+from aimet_common.defs import QuantScheme, CallbackFunc
 from aimet_common.utils import AimetLogger, Spinner
 from aimet_common.quantsim import validate_quantsim_inputs
+from aimet_common.amp.utils import AmpCandidate
 
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AutoQuant)
 
 cache = Cache()
+
+ParetoFrontType = List[Tuple[int, float, QuantizerGroup, Tuple]]
+
+
+@dataclass
+class _MixedPrecisionArgs:
+    """
+    Mixed-precision specific arguments.
+    """
+    candidates: List[AmpCandidate]
+    forward_pass_callback: CallbackFunc
+    eval_callback_for_phase1: CallbackFunc
+    eval_callback_for_phase2: CallbackFunc
+
+
+@dataclass
+class _MixedPrecisionResult:
+    """
+    Mixed precision result
+    """
+    pareto_list: ParetoFrontType
+    sim: QuantizationSimModel
+    final_eval_score: float
+    sensitivity_plot: bokeh.plotting.figure
+    pareto_plot: bokeh.plotting.figure
+
+
 
 
 # The number of samples to be used for performance evaluation.

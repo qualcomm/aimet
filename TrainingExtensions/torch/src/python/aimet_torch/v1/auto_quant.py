@@ -39,7 +39,6 @@
 """ Implementation of AIMET AutoQuantBase and v1 AutoQuant """
 import copy
 import contextlib
-from dataclasses import dataclass
 import functools
 import itertools
 import os
@@ -47,19 +46,25 @@ from unittest.mock import patch
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.utils.data import DataLoader
-import bokeh.plotting
 
 from aimet_torch import utils
-from aimet_torch._base.auto_quant import AutoQuantBase, _EvalManager, _QuantSchemePair, PtqResult, _EvalSession, cache
+from aimet_torch._base.auto_quant import (
+    AutoQuantBase,
+    _EvalManager,
+    _QuantSchemePair,
+    PtqResult,
+    _EvalSession,
+    cache,
+    _MixedPrecisionArgs,
+    _MixedPrecisionResult,
+    ParetoFrontType,
+)
 from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters
 from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.utils import get_all_quantizers
 from aimet_torch.onnx_utils import OnnxExportApiArgs
-from aimet_torch.model_preparer import prepare_model
-from aimet_torch.model_validator.model_validator import ModelValidator
 from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo, EvalCallbackFactory, _default_forward_fn
-from aimet_torch.amp.quantizer_groups import QuantizerGroup
 
 from aimet_common.defs import QuantScheme, CallbackFunc, QuantizationDataType
 from aimet_common.utils import AimetLogger
@@ -203,32 +208,6 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
         for quantizer in itertools.chain(input_quantizers, output_quantizers):
             quantizer.enabled = False
 
-
-
-ParetoFrontType = List[Tuple[int, float, QuantizerGroup, Tuple]]
-
-
-@dataclass
-class _MixedPrecisionArgs:
-    """
-    Mixed-precision specific arguments.
-    """
-    candidates: List[AmpCandidate]
-    forward_pass_callback: CallbackFunc
-    eval_callback_for_phase1: CallbackFunc
-    eval_callback_for_phase2: CallbackFunc
-
-
-@dataclass
-class _MixedPrecisionResult:
-    """
-    Mixed precision result
-    """
-    pareto_list: ParetoFrontType
-    sim: QuantizationSimModel
-    final_eval_score: float
-    sensitivity_plot: bokeh.plotting.figure
-    pareto_plot: bokeh.plotting.figure
 
 
 # The number of samples to be used for performance evaluation and AMP.

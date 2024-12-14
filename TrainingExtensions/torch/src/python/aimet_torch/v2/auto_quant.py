@@ -40,16 +40,23 @@
 import functools
 import itertools
 import copy
-from dataclasses import dataclass
 import os
 from unittest.mock import patch
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.utils.data import DataLoader
-import bokeh.plotting
 
 import aimet_torch.v2.quantization as Q
-from aimet_torch._base.auto_quant import AutoQuantBase, _EvalManager, _EvalSession, _QuantSchemePair, _logger, cache
+from aimet_torch._base.auto_quant import (
+    AutoQuantBase,
+    _EvalManager,
+    _QuantSchemePair,
+    _EvalSession,
+    _MixedPrecisionArgs,
+    _MixedPrecisionResult,
+    _logger,
+    ParetoFrontType,
+)
 from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.v2.adaround import Adaround, AdaroundParameters
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -57,7 +64,6 @@ from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization import encoding_analyzer
 from aimet_torch.v2.utils import flatten_nn_module_list
 from aimet_torch.v2.amp.utils import _mock_v1_quantizers
-from aimet_torch.amp.quantizer_groups import QuantizerGroup
 from aimet_torch.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo, EvalCallbackFactory, _default_forward_fn
 from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_common.defs import QuantScheme, CallbackFunc, QuantizationDataType
@@ -67,10 +73,6 @@ from aimet_common.amp.utils import (
     CANDIDATE_WITH_DTYPE,
     AmpCandidate,
 )
-
-# The number of samples to be used for performance evaluation.
-# NOTE: None means "all".
-NUM_SAMPLES_FOR_PERFORMANCE_EVALUATION = None
 
 _MAP_QSCHEME_TO_ENCODING_ANALYZER = {
     QuantScheme.post_training_tf: encoding_analyzer.MinMaxEncodingAnalyzer,
@@ -109,12 +111,6 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
     @staticmethod
     def _get_adaround_parameters(data_loader, num_batches):
         return AdaroundParameters(data_loader, num_batches)
-
-    def _evaluate_model_performance(self, model) -> float:
-        """
-        Evaluate the model performance.
-        """
-        return self.eval_callback(model, NUM_SAMPLES_FOR_PERFORMANCE_EVALUATION)
 
     @staticmethod
     def _get_quantsim(model, dummy_input, **kwargs):
@@ -199,32 +195,6 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
                 for name, _ in module.param_quantizers.items():
                     module.param_quantizers[name] = None
 
-
-
-ParetoFrontType = List[Tuple[int, float, QuantizerGroup, Tuple]]
-
-
-@dataclass
-class _MixedPrecisionArgs:
-    """
-    Mixed-precision specific arguments.
-    """
-    candidates: List[AmpCandidate]
-    forward_pass_callback: CallbackFunc
-    eval_callback_for_phase1: CallbackFunc
-    eval_callback_for_phase2: CallbackFunc
-
-
-@dataclass
-class _MixedPrecisionResult:
-    """
-    Mixed precision result
-    """
-    pareto_list: ParetoFrontType
-    sim: QuantizationSimModel
-    final_eval_score: float
-    sensitivity_plot: bokeh.plotting.figure
-    pareto_plot: bokeh.plotting.figure
 
 
 # The number of samples to be used for performance evaluation and AMP.
