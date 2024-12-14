@@ -1202,13 +1202,6 @@ class TestQuantsimUtilities:
         assert conv_name in sim._module_marker_map.keys()
         assert torch.equal(sim._module_marker_map[conv_name](dummy_input), conv_layer.get_original_module()(dummy_input))
 
-    def test_get_qc_quantized_modules(self):
-        model = test_models.BasicConv2d(kernel_size=3)
-        dummy_input = torch.rand(1, 64, 16, 16)
-        sim = QuantizationSimModel(model, dummy_input)
-        conv_layer = sim.model.conv
-        assert ("conv", conv_layer) in sim._get_qc_quantized_layers(sim.model)
-
     def test_get_leaf_module_to_name_map(self):
         model = test_models.NestedConditional()
         dummy_input = torch.rand(1, 3), torch.tensor([True])
@@ -1578,13 +1571,13 @@ class TestEncodingPropagation:
     def test_skip_torch_encodings(self):
         @contextlib.contextmanager
         def swap_skip_torch_encodings(skip_torch_encodings):
-            from aimet_torch.v1 import quantsim as v1_quantsim
-            old_setting = v1_quantsim.SKIP_TORCH_ENCODINGS_EXPORT
-            v1_quantsim.SKIP_TORCH_ENCODINGS_EXPORT = skip_torch_encodings
+            from aimet_torch._base import quantsim
+            old_setting = quantsim.SKIP_TORCH_ENCODINGS_EXPORT
+            quantsim.SKIP_TORCH_ENCODINGS_EXPORT = skip_torch_encodings
 
             yield
 
-            v1_quantsim.SKIP_TORCH_ENCODINGS_EXPORT = old_setting
+            quantsim.SKIP_TORCH_ENCODINGS_EXPORT = old_setting
 
         model = test_models.SingleResidualWithAvgPool()
         dummy_input = torch.randn(1, 3, 28, 28)

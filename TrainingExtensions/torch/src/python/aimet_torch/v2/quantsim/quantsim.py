@@ -45,16 +45,14 @@ import contextlib
 import torch
 
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_torch.v1.quantsim import (
-    QuantizationSimModel as V1QuantizationSimModel,
+from aimet_torch._base.quantsim import (
+    _QuantizationSimModelBase,
     logger,
     unquantizable_modules,
-    quantized_modules,
 )
 from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
-from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.v2._builder import _V2LazyQuantizeWrapper
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase
@@ -66,7 +64,7 @@ from aimet_torch.v2.deepspeed_utils import _register_zero3_forward_hooks
 
 
 unquantizable_modules = (QuantizerBase, *unquantizable_modules)
-quantized_modules = (BaseQuantizationMixin, *quantized_modules)
+quantized_modules = (BaseQuantizationMixin, _V2LazyQuantizeWrapper)
 containers = (
     torch.nn.Container,
     torch.nn.Sequential,
@@ -101,7 +99,7 @@ def _convert_to_qmodule(module: torch.nn.Module):
     return module
 
 
-class QuantizationSimModel(V1QuantizationSimModel):
+class QuantizationSimModel(_QuantizationSimModelBase):
     """
     Class that simulates the quantized model execution on a target hardware backend.
 
@@ -138,7 +136,7 @@ class QuantizationSimModel(V1QuantizationSimModel):
           ...
         )
     """
-    _lazy_quant_wrapper_cls = _V2LazyQuantizeWrapper
+    _quantized_modules = quantized_modules
 
     def __init__(self, # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
                  model: torch.nn.Module,
@@ -284,13 +282,14 @@ class QuantizationSimModel(V1QuantizationSimModel):
     T = TypeVar('T')
 
     @overload
-    def compute_encodings(self,
+    def compute_encodings(self, # pylint: disable=arguments-differ
                           forward_pass_callback: Callable[[torch.nn.Module, T], Any],
                           forward_pass_callback_args: T):
         ...
 
     del T
 
+    # pylint: disable=arguments-differ
     def compute_encodings(self, forward_pass_callback, forward_pass_callback_args=_NOT_SPECIFIED):
         r"""
         Computes encodings for all quantizers in the model.
@@ -416,15 +415,18 @@ class QuantizationSimModel(V1QuantizationSimModel):
                 if param_name_to_exclude in module.param_quantizers:
                     module.param_quantizers[param_name_to_exclude] = None
 
+    # pylint: disable=missing-function-docstring
     @staticmethod
     def compute_layer_encodings_for_sim(sim: 'QuantizationSimModel'):
         raise NotImplementedError("QuantizationSimModel.compute_layer_encodings_for_sim has been removed.")
 
+    # pylint: disable=missing-function-docstring, unused-argument
     @staticmethod
     def prepare_sim_for_compute_encodings(sim: 'QuantizationSimModel'):
         logger.warning("QuantizationSimModel.prepare_sim_for_compute_encodings has been deprecated and is no longer necessary. "
                        "Any calls can be safely removed.")
 
+    # pylint: disable=missing-function-docstring
     @classmethod
     def set_mode_for_recurrent_module(cls, layer, name: str):
         raise NotImplementedError("QuantizationSimModel.set_mode_for_recurrent_module has been removed.")
@@ -460,7 +462,7 @@ class QuantizationSimModel(V1QuantizationSimModel):
         """Generator that yields all quantized modules in the model and their names
         """
         for name, module in self.model.named_modules():
-            if isinstance(module, (BaseQuantizationMixin, LazyQuantizeWrapper)):
+            if isinstance(module, (BaseQuantizationMixin, _V2LazyQuantizeWrapper)):
                 yield name, module
 
     @deprecated(f'Use {named_qmodules.__qualname__} instead.')
@@ -479,7 +481,35 @@ class QuantizationSimModel(V1QuantizationSimModel):
 
     def _realize_quant_wrappers_in_model(self, model: torch.nn.Module):
         for name, child in model.named_children():
-            if isinstance(child, LazyQuantizeWrapper):
+            if isinstance(child, _V2LazyQuantizeWrapper):
                 child = child.realize()
                 setattr(model, name, child)
             self._realize_quant_wrappers_in_model(child)
+
+    def _create_quantizer_module(self, module_to_quantize: torch.nn.Module, num_inout_tensors,
+                                 data_type: QuantizationDataType) -> torch.nn.Module:
+        """Instantiates wrapper based on quant scheme
+        """
+        # We lookup the number of input and output tensors already determined
+        # Special case, we are adding a wrapper for a module not in the forward pass: Use default of 1, 1
+        num_in_tensors, num_out_tensors = num_inout_tensors.get(module_to_quantize, (1, 1))
+        quantized_module = _V2LazyQuantizeWrapper(module_to_quantize, self._default_param_bw, self._default_output_bw,
+                                                  self._rounding_mode, self._quant_scheme, num_inputs=num_in_tensors,
+                                                  num_outputs=num_out_tensors, data_type=data_type)
+        return quantized_module
+
+    @classmethod
+    def _remove_quantization_wrappers(cls, starting_module, list_of_modules_to_exclude):
+        """
+        Recursively remove quantization wrappers from all appropriate modules starting with a given module
+        :param starting_module: Module to recursive search downstream from
+        :param list_of_modules_to_exclude: List of torch modules to remove quantization wrappers from (if present)
+        :return: None
+        """
+        for name, module in starting_module.named_children():
+            if module in list_of_modules_to_exclude:
+                if isinstance(module, BaseQuantizationMixin):
+                    setattr(starting_module, name, module.get_original_module())
+            # Recursively call children modules if present
+            if not utils.is_leaf_module(module):
+                cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)

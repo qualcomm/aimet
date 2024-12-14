@@ -61,7 +61,7 @@ from ..models_.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNN
     ModelWithTwoInputs, SimpleConditional, RoiModel, InputOutputDictModel, Conv3dModel
 from ..models_.models_to_test import ModelWith5Output
 from aimet_torch.onnx_utils import OnnxExportApiArgs
-from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, QcQuantizeStandalone, StaticGridQuantWrapper
+from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, StaticGridQuantWrapper
 from aimet_torch.v1.quantsim import check_accumulator_overflow, compute_encodings_for_sims
 import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.v2.nn.fake_quant._legacy_impl import _FakeQuantizedUnaryOpMixin
@@ -150,38 +150,6 @@ class SoftMaxAvgPoolModel(torch.nn.Module):
     def forward(self, inp):
         x = self.sfmax(inp)
         return self.avgpool(x)
-
-
-class ModelWithStandaloneOps(nn.Module):
-    def __init__(self):
-        super(ModelWithStandaloneOps, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.maxpool1 = nn.MaxPool2d(2)
-        self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.myquant = QcQuantizeStandalone(activation_bw=8, round_mode=MAP_ROUND_MODE_TO_PYMO['nearest'],
-                                            quant_scheme=QuantScheme.post_training_tf_enhanced,
-                                            is_symmetric=False, data_type=QuantizationDataType.int)
-        self.conv2_drop = nn.Dropout2d()
-        self.maxpool2 = nn.MaxPool2d(2)
-        self.relu2 = nn.ReLU()
-        self.fc1 = nn.Linear(320, 50)
-        self.relu3 = nn.ReLU()
-
-        self.dropout = nn.Dropout2d()
-        self.fc2 = nn.Linear(50, 10)
-        self.log_softmax = nn.LogSoftmax(dim=1)
-
-    def forward(self, *inputs):
-        x = self.relu1(self.maxpool1(self.conv1(inputs[0])))
-        x = self.conv2(x)
-        x = self.myquant(x)
-        x = self.relu2(self.maxpool2(self.conv2_drop(x)))
-        x = x.view(-1, 320)
-        x = self.relu3(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return self.log_softmax(x)
 
 
 class ModelWithTwoInputsOneToAdd(nn.Module):
@@ -432,11 +400,6 @@ class ModelWithConstantQuantization(torch.nn.Module):
 
 # From https://github.com/quic/aimet/blob/8ed479b24010834bfea09885cf6879b9bd916e8a/TrainingExtensions/torch/test/python/test_quantizer.py#L467
 class TestQuantizationSimStaticGrad:
-    def test_is_quantizable_module_negative(self):
-        """With a non-quantizable module"""
-        conv1 = aimet_nn.QuantizedConv2d(1, 10, 5)
-        assert not QuantizationSimModel._is_quantizable_module(conv1)
-
     def verify_quantization_wrappers(self, original_model, quantized_model):
         """Test utility to determine if quantization wrappers were added correctly"""
 
@@ -1457,25 +1420,6 @@ class TestQuantizationSimStaticGrad:
         sim.compute_encodings(dummy_forward_pass, None)
         dummy_forward_pass(sim.model, None)
 
-    def test_with_standalone_ops(self):
-        model = ModelWithStandaloneOps()
-        dummy_input = torch.rand(1, 1, 28, 28)
-
-        sim = QuantizationSimModel(model=model, dummy_input=dummy_input,
-                                   quant_scheme=QuantScheme.post_training_tf)
-
-        # Quantize
-        sim.compute_encodings(dummy_forward_pass, None)
-        dummy_forward_pass(sim.model, None)
-
-        # Save encodings
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            sim.export(f"{tmp_dir}/", "encodings_with_standalone_ops", dummy_input)
-            with open(f'{tmp_dir}/encodings_with_standalone_ops.encodings') as json_file:
-                encoding_data = json.load(json_file)
-            # in onnx definition tensor 16 is output of Reshape, to be ignored
-            assert "32" not in encoding_data["activation_encodings"].keys()
-
     def test_layers_to_ignore(self):
         """ Test the  capability to skip quantizing the layers specified by the user"""
 
@@ -1529,7 +1473,7 @@ class TestQuantizationSimStaticGrad:
             assert_equal(quantizer, loaded_quantizer)
 
     def test_save_and_load(self):
-        model = ModelWithStandaloneOps()
+        model = SmallMnist()
 
         sim = QuantizationSimModel(model, dummy_input=torch.rand(32, 1, 28, 28),
                                    quant_scheme=QuantScheme.post_training_tf)
@@ -1637,11 +1581,6 @@ class TestQuantizationSimStaticGrad:
         assert isinstance(sim.model.recurrent, aimet_nn.QuantizedLSTM)
 
         sim.compute_encodings(lambda model, _: model(dummy_input), None) # Should not throw error
-
-    def test_quantizing_qc_quantize_module(self):
-        """ Test that qc_quantize_module is identified as not quantizable """
-        q_rnn = aimet_nn.FakeQuantizedRNN(input_size=3, hidden_size=5, num_layers=1)
-        assert not QuantizationSimModel._is_quantizable_module(q_rnn)
 
     @pytest.mark.skip("Exporting RNN is not supported yet")
     def test_export_recurrent_model(self):

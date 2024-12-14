@@ -78,8 +78,6 @@ class QcQuantizeOpMode(Enum):
     LEARN_ENCODINGS = 4
 
 
-QUANTIZER_TYPE_INPUT = 'input'
-QUANTIZER_TYPE_OUTPUT = 'output'
 TF_ENHANCED_USE_DOWNSAMPLING = bool(int(os.environ.get("AIMET_TFE_USE_DOWNSAMPLING", "0")))
 TF_ENHANCED_OFFSET_FACTOR = 0
 TF_ENHANCED_STRIDE_FACTOR = 2
@@ -448,10 +446,10 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
         """
         for input_quantizer, output_quantizer in zip(self.input_quantizers, self.output_quantizers):
             if name in activation_encoding:
-                if QUANTIZER_TYPE_INPUT in activation_encoding[name] and input_quantizer.enabled:
+                if 'input' in activation_encoding[name] and input_quantizer.enabled:
                     input_quantizer.freeze_encoding()
                     _logger.info("Freezing quantization encodings for input activation: %s", name)
-                if QUANTIZER_TYPE_OUTPUT in activation_encoding[name] and output_quantizer.enabled:
+                if 'output' in activation_encoding[name] and output_quantizer.enabled:
                     output_quantizer.freeze_encoding()
                     _logger.info("Freezing quantization encodings for output activation: %s", name)
 

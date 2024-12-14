@@ -60,6 +60,7 @@ from aimet_common.utils import AimetLogger
 from aimet_torch import elementwise_ops
 from aimet_torch import onnx_utils
 from aimet_torch import utils
+from aimet_torch.v1.utils import create_encoding_dict
 import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.model_preparer import prepare_model
 from models.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
@@ -1980,7 +1981,7 @@ class TestQuantizationSimStaticGrad:
                                    default_data_type=QuantizationDataType.float)
 
         quantizer = sim.model.mul1.input_quantizers[0]
-        enc_dict = sim._create_encoding_dict(encoding=None, quantizer=quantizer, propagate_encodings=False)
+        enc_dict = create_encoding_dict(encoding=None, quantizer=quantizer, propagate_encodings=False)
         assert enc_dict['dtype'] == 'float'
         assert enc_dict['bitwidth'] == 16
         assert 'min' not in enc_dict
