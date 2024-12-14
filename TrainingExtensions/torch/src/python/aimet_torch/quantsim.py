@@ -38,12 +38,7 @@
 """ Alias to v1/v2 quantsim """
 
 from .utils import _get_default_api
-from ._base.quantsim import (
-    _QuantizerProtocol,
-    _QuantizedModuleProtocol,
-    QuantParams,
-    ExportableQuantModule,
-)
+from ._base.quantsim import QuantParams
 
 if _get_default_api() == "v1":
     from .v1.quantsim import *

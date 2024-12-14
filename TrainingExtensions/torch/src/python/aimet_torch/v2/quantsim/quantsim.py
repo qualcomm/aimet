@@ -45,12 +45,11 @@ import contextlib
 import torch
 
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_torch.v1.quantsim import ( # pylint: disable=unused-import
+from aimet_torch.v1.quantsim import (
     QuantizationSimModel as V1QuantizationSimModel,
     logger,
     unquantizable_modules,
     quantized_modules,
-    QuantParams,
 )
 from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
@@ -478,7 +477,6 @@ class QuantizationSimModel(V1QuantizationSimModel):
                 child = child_wrapper._module_to_wrap
             self._add_quantization_wrappers(child, num_inout_tensors, default_data_type)
 
-    # Overrides V1QuantizationSimModel._realize_quant_wrappers_in_model
     def _realize_quant_wrappers_in_model(self, model: torch.nn.Module):
         for name, child in model.named_children():
             if isinstance(child, LazyQuantizeWrapper):

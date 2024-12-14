@@ -47,7 +47,7 @@ from aimet_common.defs import QuantScheme, QuantizationDataType, QuantDtypeBwInf
 from models.test_models import SingleResidual, QuantSimTinyModel, MultiInput, SingleResidualWithModuleAdd, \
     SingleResidualWithAvgPool
 from aimet_torch.v1.quantsim import QuantizationSimModel
-import aimet_torch.v1.quantsim
+import aimet_torch._base.quantsim
 from aimet_torch.quantsim_config import quantsim_config as qsim_config
 from aimet_torch.quantsim_config.quantsim_config import get_all_ops_in_neighborhood
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
@@ -792,14 +792,14 @@ class TestQuantsimConfig:
                 json.dump(quantsim_config, f)
 
             try:
-                aimet_torch.v1.quantsim.SUPPORTED_KERNELS_ACTION = SupportedKernelsAction.assert_on_error
+                aimet_torch._base.quantsim.SUPPORTED_KERNELS_ACTION = SupportedKernelsAction.assert_on_error
                 with pytest.raises(RuntimeError):
                     QuantizationSimModel(model, quant_scheme=QuantScheme.post_training_tf_enhanced,
                                            config_file=os.path.join(tmp_dir, 'quantsim_config.json'),
                                            dummy_input=torch.rand(1, 3, 32, 32), default_param_bw=16, default_output_bw=8,
                                            default_data_type=QuantizationDataType.int)
             finally:
-                aimet_torch.v1.quantsim.SUPPORTED_KERNELS_ACTION = SupportedKernelsAction.warn_on_error
+                aimet_torch._base.quantsim.SUPPORTED_KERNELS_ACTION = SupportedKernelsAction.warn_on_error
 
     def test_parse_config_file_supergroups(self):
         """ Test that supergroup quantization parameters are set correctly when using json config file """
