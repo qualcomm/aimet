@@ -1926,17 +1926,8 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to Embedding module
         """
-        module_to_quant_wrapper = {}
-        for _, wrapper in self.quant_wrappers():
-            if isinstance(wrapper, LazyQuantizeWrapper):
-                original_module = wrapper._module_to_wrap
-            elif isinstance(wrapper, QcQuantizeRecurrent):
-                original_module = wrapper.module_to_quantize
-            else:
-                continue
-            module_to_quant_wrapper[original_module] = wrapper
-
-        for original_module, wrapper in module_to_quant_wrapper.items():
+        for wrapper in self.qmodules():
+            original_module = wrapper.get_original_module()
 
             if isinstance(original_module, torch.nn.Embedding):
                 if self._hw_version not in {'V73', 'V75', 'V79'}:
@@ -1967,8 +1958,8 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
                 first_input_op = op.inputs[0].producer if (not first_input_quantizer.enabled) else None
                 second_input_op = op.inputs[1].producer if (not second_input_quantizer.enabled) else None
 
-                target_quantizer_for_first_input = self._get_target_quantizer(first_input_quantizer, first_input_op, module_to_quant_wrapper)
-                target_quantizer_for_second_input = self._get_target_quantizer(second_input_quantizer, second_input_op, module_to_quant_wrapper)
+                target_quantizer_for_first_input = self._get_target_quantizer(first_input_quantizer, first_input_op)
+                target_quantizer_for_second_input = self._get_target_quantizer(second_input_quantizer, second_input_op)
 
                 # We don't need to apply exception rule when both first and second inputs are FP quantization
                 if (
@@ -2003,25 +1994,19 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
                         target_quantizer_for_second_input.use_symmetric_encodings = True
                         target_quantizer_for_first_input.bitwidth = 16
 
-    def _get_target_quantizer(self,
-                              input_quantizer: _QuantizerProtocol,
-                              input_op: Op,
-                              module_to_quant_wrapper: Dict[torch.nn.Module, _QuantizedModuleProtocol]) -> _QuantizerProtocol:
+    def _get_target_quantizer(self, input_quantizer: _QuantizerProtocol, input_op: Op) -> _QuantizerProtocol:
         """
         Returns input quantizer if enabled otherwise returns closest enabled parent output quantizer.
 
         :param input_quantizer: Input quantizer
         :param input_op: Input Op
-        :param module_to_quant_wrapper: Dict of module to quant wrapper
         :return: Target quantizer
         """
         target_quantizer = None
         if input_quantizer.enabled:
             target_quantizer = input_quantizer
         elif input_op:
-            closest_producer_wrapper = self._get_closest_producer_wrapper(
-                input_op, module_to_quant_wrapper
-            )
+            closest_producer_wrapper = self._get_closest_producer_wrapper(input_op)
             if closest_producer_wrapper:
                 target_quantizer = closest_producer_wrapper.output_quantizers[0] \
                         if closest_producer_wrapper.output_quantizers[0] else closest_producer_wrapper.input_quantizers[0]
@@ -2031,28 +2016,20 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
         return target_quantizer
 
 
-    def _get_closest_producer_wrapper(self,
-                                      op: Op,
-                                      module_to_quant_wrapper: Dict[torch.nn.Module, QcQuantizeWrapper]) -> \
-            Optional[QcQuantizeWrapper]:
+    def _get_closest_producer_wrapper(self, op: Op) -> Optional[_QuantizedModuleProtocol]:
         """
         Find the closest producer QcQuantizeWrapper and return it
 
         :param op: Target operation
-        :param module_to_quant_wrapper: Module to Wrapper dictionary
         :return: QcQuantizerWrapper if exists else None
         """
-        def get_quant_wrapper() -> Optional[QcQuantizeWrapper]:
-            module = op.get_module()
-            return module_to_quant_wrapper.get(module) if module else None
-
-        wrapper = get_quant_wrapper()
+        wrapper = self._get_qmodule(op)
         if wrapper:
             if wrapper.output_quantizers[0].enabled or wrapper.input_quantizers[0].enabled:
                 return wrapper
 
             if len(op.input_ops) == 1:
-                return self._get_closest_producer_wrapper(op.input_ops[0], module_to_quant_wrapper)
+                return self._get_closest_producer_wrapper(op.input_ops[0])
 
             logger.warning("A wrapper of %s with output quantization disabled has no input or more than one input "
                            "exists. It's ambiguous to find the nearest producer in this case", str(op.get_module()))
@@ -2066,7 +2043,21 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
             logger.warning("Multiple input ops exist, traversal to find closest producer is performed based on the "
                            "first input")
 
-        return self._get_closest_producer_wrapper(op.input_ops[0], module_to_quant_wrapper)
+        return self._get_closest_producer_wrapper(op.input_ops[0])
+
+    def _get_qmodule(self, op: Op) -> Optional[_QuantizedModuleProtocol]:
+        orig_module = op.get_module()
+        if not orig_module:
+            return None
+
+        full_name = self.connected_graph._module_to_name[orig_module] # pylint: disable=protected-access
+        _, *module_names = full_name.split('.')
+
+        if not module_names:
+            return None
+
+        module_name = '.'.join(module_names)
+        return utils.get_named_module(self.model, module_name)
 
     @staticmethod
     def save_model_with_embedded_quantization_nodes(sim_model, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple],

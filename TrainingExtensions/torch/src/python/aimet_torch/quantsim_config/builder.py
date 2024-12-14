@@ -125,6 +125,12 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC): # pylint: disable=too-many-inst
 
         self.supported_kernels = {}
 
+    def get_original_module(self):
+        """
+        Returns the floating point version of quantized module
+        """
+        return self._module_to_wrap
+
     def enable_per_channel_quantization(self):
         """
         Changes all parameter quantizers (if any) to per-channel mode.

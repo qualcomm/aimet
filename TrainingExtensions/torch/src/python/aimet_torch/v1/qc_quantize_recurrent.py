@@ -176,6 +176,9 @@ class QcQuantizeRecurrent(torch.nn.Module):
         # to be sub-optimal.
         self._reorder_initial_h_c_stats_update = QcQuantizeRecurrent._is_initial_h_c_stats_update_reordered()
 
+    def get_original_module(self):
+        return self.module_to_quantize
+
     @staticmethod
     def _is_initial_h_c_stats_update_reordered() -> bool:
         """
