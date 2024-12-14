@@ -48,7 +48,7 @@ from aimet_torch.amp.quantizer_groups import find_quantizer_group, find_op_group
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch import onnx_utils
-from aimet_torch.v1.nn.modules import custom
+from aimet_torch._base.nn.modules import custom
 from torchvision.models import mobilenet_v3_large as mobilenetv3
 from models import test_models
 

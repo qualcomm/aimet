@@ -47,7 +47,7 @@ from aimet_common.defs import QuantizationDataType
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.mixed_precision import MixedPrecisionConfigurator, SupportedDType, Precision
-import aimet_torch.v1.nn.modules.custom as aimet_elementwise
+import aimet_torch._base.nn.modules.custom as aimet_elementwise
 from .models_.test_models import SingleResidual, ModelWithTwoInputs
 
 class ModelWithMultiInputMultiOutput(nn.Module):

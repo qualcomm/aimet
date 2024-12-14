@@ -52,7 +52,7 @@ from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op
 from aimet_torch.meta import connectedgraph_utils
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 
 
 class TestConnectedGraph(unittest.TestCase):

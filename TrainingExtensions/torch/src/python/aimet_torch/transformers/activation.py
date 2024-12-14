@@ -137,7 +137,7 @@ import torch
 from torch import Tensor
 from torch import nn
 import torch.nn.functional as nnF
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 
 # pylint: disable=too-many-arguments
 class QuantizableMultiheadAttention(nn.MultiheadAttention):

@@ -51,7 +51,7 @@ from aimet_torch.quantsim_config import quantsim_config as qsim_config
 from aimet_torch.quantsim_config.quantsim_config import get_all_ops_in_neighborhood
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch.v1.nn.modules.custom import Add
+from aimet_torch._base.nn.modules.custom import Add
 
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.encoding_analyzer import MinMaxEncodingAnalyzer

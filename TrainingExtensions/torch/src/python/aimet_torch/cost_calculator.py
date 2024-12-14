@@ -44,7 +44,7 @@ import torch
 
 from aimet_common.cost_calculator import CostCalculator as GenericCostCalculator, Cost
 from aimet_torch.layer_database import Layer
-from aimet_torch.v1.nn.modules.custom import Multiply
+from aimet_torch._base.nn.modules.custom import Multiply
 
 SUPPORTED_LAYER_TYPES = [torch.nn.modules.conv.Conv2d,
                          torch.nn.modules.linear.Linear,

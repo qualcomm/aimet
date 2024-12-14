@@ -55,7 +55,7 @@ from packaging import version  # pylint: disable=wrong-import-order
 
 from aimet_common.utils import AimetLogger
 import aimet_torch.utils
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.defs import OpToIOTensors
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)

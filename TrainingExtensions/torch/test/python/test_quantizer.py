@@ -60,7 +60,7 @@ from aimet_common.utils import AimetLogger
 from aimet_torch import elementwise_ops
 from aimet_torch import onnx_utils
 from aimet_torch import utils
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.model_preparer import prepare_model
 from models.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
     ModelWithTwoInputs, SimpleConditional, RoiModel, InputOutputDictModel, Conv3dModel, SmallLinearModel
@@ -72,7 +72,7 @@ from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.v1.quantsim import QuantizationSimModel, check_accumulator_overflow, load_encodings_to_sim, \
     compute_encodings_for_sims
 from aimet_torch.v1.quantsim_straight_through_grad import compute_dloss_by_dx
-from aimet_torch.v1.nn.modules.custom import DynamicConv2d
+from aimet_torch._base.nn.modules.custom import DynamicConv2d
 
 from models import test_models
 

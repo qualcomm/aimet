@@ -53,7 +53,7 @@ class SpConvModel(torch.nn.Module):
         super(SpConvModel, self).__init__()
 
         # "SparseTensorWrapper" needs to be used to convert a dense tensor to a sparse tensor
-        self.spconv_tensor = aimet_torch.v1.nn.modules.custom.SparseTensorWrapper()
+        self.spconv_tensor = aimet_torch._base.nn.modules.custom.SparseTensorWrapper()
 
         # First SparseConv3D layer
         self.spconv1 = spconv.SparseConv3d(in_channels=3, out_channels=9, kernel_size=2,
@@ -66,7 +66,7 @@ class SpConvModel(torch.nn.Module):
         self.normal_conv3d = torch.nn.Conv3d(in_channels=5, out_channels=3, kernel_size=3, bias=True)
 
         # "ScatterDense" needs to be used to convert a sparse tensor to a dense tensor
-        self.spconv_scatter_dense = aimet_torch.v1.nn.modules.custom.ScatterDense()
+        self.spconv_scatter_dense = aimet_torch._base.nn.modules.custom.ScatterDense()
 
         # Adding ReLU activation
         self.relu1 = torch.nn.ReLU()

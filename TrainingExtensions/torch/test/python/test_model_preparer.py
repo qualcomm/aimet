@@ -55,7 +55,7 @@ from math import sqrt
 from torch.utils.data import DataLoader
 
 from aimet_common.defs import QuantScheme
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from models.test_models import (
     ModelWithFunctionalReLU,
     SingleResidual,

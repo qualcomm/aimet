@@ -55,7 +55,7 @@ from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_common.utils import AimetLogger
 from aimet_torch import onnx_utils
 from aimet_torch import utils
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.model_preparer import prepare_model
 from ..models_.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
     ModelWithTwoInputs, SimpleConditional, RoiModel, InputOutputDictModel, Conv3dModel

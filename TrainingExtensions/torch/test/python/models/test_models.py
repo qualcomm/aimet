@@ -46,11 +46,9 @@ from scipy import ndimage
 from torch import nn as nn
 from torchvision.ops import roi_align
 
-import aimet_torch.v1.nn.modules.custom as aimet_elementwise
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 
 # pylint: disable=too-many-instance-attributes
-from aimet_torch.v1.nn.modules.custom import Multiply
 
 
 class ModelWithMatMul(torch.nn.Module):
@@ -118,7 +116,7 @@ class ModelWithMatMul6(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.act1 = nn.ReLU()
-        self.permute = aimet_elementwise.Permute()
+        self.permute = aimet_modules.Permute()
         self.matmul = aimet_modules.MatMul()
 
     def forward(self, *inputs):
@@ -286,7 +284,7 @@ class SingleResidualWithModuleAdd(nn.Module):
 
         # The output of Conv2d layer above(conv3) is added with the the residual from
         # MaxPool2d and then fed to the relu layer below.
-        self.add = aimet_elementwise.Add()
+        self.add = aimet_modules.Add()
         self.relu3 = nn.ReLU(inplace=True)
 
         self.avgpool = nn.AvgPool2d(3, stride=1)
@@ -1115,9 +1113,9 @@ class RoiModel(torch.nn.Module):
 class InputOutputDictModel(nn.Module):
     def __init__(self):
         super(InputOutputDictModel, self).__init__()
-        self.mul1 = Multiply()
-        self.mul2 = Multiply()
-        self.mul3 = Multiply()
+        self.mul1 = aimet_modules.Multiply()
+        self.mul2 = aimet_modules.Multiply()
+        self.mul3 = aimet_modules.Multiply()
 
     def forward(self, inputs: Dict[str, torch.Tensor]):
         ab = self.mul1(inputs['a'], inputs['b'])
@@ -1139,7 +1137,7 @@ class Float32AndInt64InputModel(nn.Module):
         self.index_y = 2
         self.conv1 = nn.Conv2d(3, 32, kernel_size=2, stride=2, padding=2, bias=False)
         self.bn1 = nn.BatchNorm2d(32)
-        self.add = aimet_elementwise.Add()
+        self.add = aimet_modules.Add()
 
     def forward(self, *inputs: List[torch.Tensor]):
         grid_x = inputs[self.index_x]

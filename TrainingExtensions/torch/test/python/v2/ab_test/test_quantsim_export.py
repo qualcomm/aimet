@@ -50,7 +50,7 @@ import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.v2.nn import QuantizationMixin
 from aimet_torch.v2.quantization.affine import Quantize, QuantizeDequantize
 from aimet_torch.v2.quantization.encoding_analyzer import MinMaxEncodingAnalyzer
-from aimet_torch.v1.nn.modules.custom import Add
+from aimet_torch._base.nn.modules.custom import Add
 from aimet_torch import onnx_utils
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v1.quantsim import OnnxExportApiArgs

@@ -43,7 +43,7 @@ import torch
 from aimet_common.utils import AimetLogger
 import aimet_common.layer_database
 from aimet_torch import utils
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Svd)
 

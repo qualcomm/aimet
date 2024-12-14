@@ -69,7 +69,7 @@ from torchvision import datasets, transforms
 from aimet_common.defs import QuantScheme
 from aimet_common.utils import AimetLogger, Handle
 from aimet_common.utils import profile as _profile, deprecated, _red # pylint:disable = unused-import
-from aimet_torch.v1.nn.modules.custom import CustomSparseConv3DLayer, Cast
+from aimet_torch._base.nn.modules.custom import CustomSparseConv3DLayer, Cast
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 

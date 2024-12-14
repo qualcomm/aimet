@@ -47,7 +47,7 @@ import time
 import torch
 import torch.nn as nn
 from aimet_torch.v1.quantsim import QuantizationSimModel, QuantScheme
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_common.utils import AimetLogger
 from models import mnist_torch_model
 

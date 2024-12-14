@@ -46,7 +46,7 @@ from aimet_torch.model_validator import validation_checks
 from models import test_models
 from aimet_torch.meta import connectedgraph_utils
 from aimet_torch.model_preparer import prepare_model
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 
 
 class CustomModule(torch.nn.Module):

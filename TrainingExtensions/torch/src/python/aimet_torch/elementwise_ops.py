@@ -35,13 +35,13 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
-""" This module is deprecated. Use aimet_torch.v1.nn.modules.custom instead. """
+""" This module is deprecated. Use aimet_torch._base.nn.modules.custom instead. """
 
-from aimet_torch.v1.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import
+from aimet_torch._base.nn.modules.custom import * # pylint: disable=wildcard-import, unused-wildcard-import
 
 
 if __name__ != "__main__":
-    import aimet_torch.v1.nn.modules.custom as modules
+    import aimet_torch._base.nn.modules.custom as modules
     from aimet_torch.utils import _red
     import warnings
     warnings.warn(

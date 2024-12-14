@@ -491,7 +491,7 @@ class Mask:
         self._output_channel_masks[index] = out_channel_mask
         new_mask = self._output_channel_masks[index]
         if original_mask != new_mask:
-            # NOTE: aimet_pytorch uses "Split" to CG_SPLIT to distinguish with aimet_torch.v1.nn.modules.custom.Split
+            # NOTE: aimet_pytorch uses "Split" to CG_SPLIT to distinguish with aimet_torch._base.nn.modules.custom.Split
             #   After migrating to use CG_SPLIT across other frameworks, we can clean up below line
             split_type = CG_SPLIT if self._model_api == ModelApi.pytorch else "Split"
             if self._op_type == split_type:

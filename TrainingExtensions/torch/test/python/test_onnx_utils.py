@@ -42,7 +42,7 @@ import os
 import tempfile
 from collections import defaultdict
 
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 import onnx
 import pytest
 import torch
@@ -227,7 +227,7 @@ class TestOnnxUtils:
 
     def test_onnx_export_complex_model(self):
 
-        from aimet_torch.v1.nn.modules.custom import Add
+        from aimet_torch._base.nn.modules.custom import Add
 
         class ResidualLayer1(torch.nn.Module):
             def __init__(self):

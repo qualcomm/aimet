@@ -47,7 +47,7 @@ from unittest import mock
 
 import aimet_common.libpymo as libpymo
 from aimet_common.defs import QuantScheme
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.v1.quantsim import QuantizationSimModel
 
 

@@ -51,7 +51,7 @@ import aimet_torch.model_validator.validation_checks
 import aimet_torch.utils
 from aimet_common.utils import round_up_to_multiplicity, round_down_to_multiplicity
 from aimet_torch import utils
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from models.test_models import TinyModel, MultiInput, ModelWithReusedNodes, SingleResidual, EmbeddingModel

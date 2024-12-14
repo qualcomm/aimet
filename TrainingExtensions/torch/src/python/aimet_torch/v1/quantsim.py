@@ -62,7 +62,7 @@ from aimet_common.quantsim import validate_quantsim_inputs, extract_global_quant
 from aimet_common.quant_utils import get_conv_accum_bounds
 from aimet_common.utils import deprecated, _red
 
-from aimet_torch.v1.nn.modules.custom import MatMul
+from aimet_torch._base.nn.modules.custom import MatMul
 from aimet_torch.quantsim_config.quantsim_config import QuantSimConfigurator
 from aimet_torch.v1.qc_quantize_op import QcQuantizeStandAloneBase, QcQuantizeWrapper, QcQuantizeOpMode, \
     StaticGridQuantWrapper, LearnedGridQuantWrapper, NativeTorchQuantWrapper, QUANTIZER_TYPE_INPUT, QUANTIZER_TYPE_OUTPUT

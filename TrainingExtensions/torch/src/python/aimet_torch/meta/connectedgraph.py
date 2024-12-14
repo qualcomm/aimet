@@ -55,7 +55,7 @@ from aimet_common.connected_graph.product import Product
 from aimet_common.connected_graph.operation import determine_preceding_op_input_product_index_in_multi_input_op
 from aimet_common.model_module import PytorchModelModule
 from aimet_common.utils import AimetLogger
-import aimet_torch.v1.nn.modules.custom as aimet_modules
+import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.meta.operation import Op
 from aimet_torch.utils import is_leaf_module, run_hook_for_layers_with_given_input, in_eval_mode, \
     is_torch_nn_leaf_module, is_custom_leaf_module, get_torch_tensortype_shape
