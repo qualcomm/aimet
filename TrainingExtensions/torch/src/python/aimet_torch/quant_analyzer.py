@@ -38,7 +38,7 @@
 from .utils import _get_default_api
 
 if _get_default_api() == "v1":
-    from .v1.quant_analyzer import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from .v1.quant_analyzer import QuantAnalyzer
 
     from .utils import _warn_replaced_in_v2
     from .v1 import quant_analyzer as _v1_api
@@ -48,4 +48,14 @@ if _get_default_api() == "v1":
                          v2_new_api=_v2_api.__name__,
                          v1_legacy_api=_v1_api.__name__)
 else:
-    from .v2.quant_analyzer import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from .v2.quant_analyzer import QuantAnalyzer
+
+
+__all__ = [
+    'QuantAnalyzer',
+]
+
+undefined = set(__all__) - set(globals())
+assert not undefined, \
+       f"The following attributes are undefined: {list(undefined)}"
+del undefined

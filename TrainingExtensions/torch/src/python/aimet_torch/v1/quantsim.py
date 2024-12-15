@@ -59,12 +59,19 @@ from aimet_torch.onnx_utils import OnnxSaver, OnnxExportApiArgs
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.v1._builder import _V1LazyQuantizeWrapper
-from aimet_torch._base.quantsim import ( # pylint: disable=unused-import
+from aimet_torch._base.quantsim import (
     _QuantizationSimModelBase,
     _QuantizedModuleProtocol,
     unquantizable_modules,
     QuantParams,
+    ExportableQuantModule,
 )
+
+__all__ = [
+    'QuantizationSimModel',
+    'QuantParams',
+    'ExportableQuantModule',
+]
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)

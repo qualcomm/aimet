@@ -34,14 +34,15 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
- # pylint: disable=wildcard-import, unused-wildcard-import, unused-import
 """ Alias to v1/v2 quantsim """
-
 from .utils import _get_default_api
-from ._base.quantsim import QuantParams
 
 if _get_default_api() == "v1":
-    from .v1.quantsim import *
+    from .v1.quantsim import (
+        QuantizationSimModel,
+        QuantParams,
+        ExportableQuantModule,
+    )
 
     from .utils import _warn_replaced_in_v2
     from .v1 import quantsim as _v1_quantsim
@@ -51,4 +52,20 @@ if _get_default_api() == "v1":
                          v2_new_api=_v2_quantsim.__name__,
                          v1_legacy_api=_v1_quantsim.__name__)
 else:
-    from .v2.quantsim import *
+    from .v2.quantsim import (
+        QuantizationSimModel,
+        QuantParams,
+        ExportableQuantModule,
+    )
+
+
+__all__ = [
+    'QuantizationSimModel',
+    'QuantParams',
+    'ExportableQuantModule',
+]
+
+undefined = set(__all__) - set(globals())
+assert not undefined, \
+       f"The following attributes are undefined: {list(undefined)}"
+del undefined

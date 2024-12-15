@@ -49,6 +49,8 @@ from aimet_torch._base.quantsim import (
     _QuantizationSimModelBase,
     logger,
     unquantizable_modules,
+    QuantParams,
+    ExportableQuantModule,
 )
 from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
@@ -62,6 +64,11 @@ from aimet_torch import utils
 from aimet_torch.utils import deprecated, _red
 from aimet_torch.v2.deepspeed_utils import _register_zero3_forward_hooks
 
+__all__ = [
+    'QuantizationSimModel',
+    'QuantParams',
+    'ExportableQuantModule',
+]
 
 unquantizable_modules = (QuantizerBase, *unquantizable_modules)
 quantized_modules = (BaseQuantizationMixin, _V2LazyQuantizeWrapper)

@@ -59,8 +59,10 @@ import bokeh.plotting
 from tqdm import tqdm
 
 from aimet_torch import utils
+from aimet_torch._base.adaround.adaround_weight import AdaroundParameters
 from aimet_torch.cross_layer_equalization import equalize_model
 from aimet_torch._base.quantsim import _QuantizationSimModelInterface
+from aimet_torch.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.utils import in_eval_mode
 from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_torch.model_preparer import prepare_model
@@ -830,7 +832,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
         batch_size = self.data_loader.batch_size or 1
         num_batches = math.ceil(num_samples / batch_size)
         num_batches = min(num_batches, len(self.data_loader))
-        self.adaround_params = self._get_adaround_parameters(self.data_loader, num_batches)
+        self.adaround_params = AdaroundParameters(self.data_loader, num_batches)
 
         self._export_kwargs = dict(
             onnx_export_args=OnnxExportApiArgs(),
@@ -856,12 +858,6 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
     @abc.abstractmethod
     def _get_adaround():
         """ returns AdaRound """
-
-    @staticmethod
-    @abc.abstractmethod
-    def _get_adaround_parameters(data_loader, num_batches):
-        """ Returns AdaroundParameters(data_loader, num_batches) """
-
 
     def _evaluate_model_performance(self, model) -> float:
         """
@@ -1042,11 +1038,6 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
     def _get_quantsim(model, dummy_input, **kwargs):
         """ Returns QuantizationSimModel(model, dummy_input, **kwargs) """
 
-    @staticmethod
-    @abc.abstractmethod
-    def _fold_all_batch_norms(*args, **kwargs):
-        ...
-
     @abc.abstractmethod
     def _configure_quantsim(self, # pylint: disable=too-many-arguments
                             sim,
@@ -1093,7 +1084,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
         :return: Output model and folded pairs.
         """
         model = copy.deepcopy(model)
-        folded_pairs = self._fold_all_batch_norms(model, None, self.dummy_input)
+        folded_pairs = fold_all_batch_norms(model, None, self.dummy_input)
         return model, folded_pairs
 
     @cache.mark("cle")

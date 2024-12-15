@@ -51,6 +51,15 @@ from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
 from aimet_torch.v1.tensor_quantizer import LearnedGridTensorQuantizer
 from aimet_torch._base.batch_norm_fold import BatchNormFoldBase, _BatchNormFoldingNotSupported
 
+__all__ = [
+    "fold_all_batch_norms",
+    "fold_all_batch_norms_to_scale",
+    "fold_given_batch_norms",
+    "_is_valid_bn_fold",
+    "_find_all_batch_norms_to_fold",
+    "find_standalone_batchnorm_ops",
+]
+
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.BatchNormFolding)
 
 

@@ -45,6 +45,15 @@ from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from torch.nn.modules.conv import _ConvTransposeNd
 from aimet_common.utils import AimetLogger
 
+__all__ = [
+    "fold_all_batch_norms",
+    "fold_all_batch_norms_to_scale",
+    "fold_given_batch_norms",
+    "_is_valid_bn_fold",
+    "_find_all_batch_norms_to_fold",
+    "find_standalone_batchnorm_ops",
+]
+
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.BatchNormFolding)
 
 
@@ -217,3 +226,4 @@ fold_given_batch_norms = BatchNormFold.fold_given_batch_norms
 # pylint: disable=protected-access
 _is_valid_bn_fold = BatchNormFold._is_valid_bn_fold
 _find_all_batch_norms_to_fold = BatchNormFold._find_all_batch_norms_to_fold
+find_standalone_batchnorm_ops = BatchNormFold.find_standalone_batchnorm_ops

@@ -59,8 +59,8 @@ from aimet_torch._base.auto_quant import (
     _MixedPrecisionResult,
     ParetoFrontType,
 )
-from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters
-from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.v1.adaround.adaround_weight import Adaround
+from aimet_torch._base.adaround.adaround_weight import AdaroundParameters
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.utils import get_all_quantizers
 from aimet_torch.onnx_utils import OnnxExportApiArgs
@@ -74,6 +74,12 @@ from aimet_common.amp.utils import (
     CANDIDATE_WITH_DTYPE,
     AmpCandidate,
 )
+
+
+__all__ = [
+    'AutoQuant',
+    'AutoQuantWithAutoMixedPrecision',
+]
 
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AutoQuant)
@@ -141,14 +147,6 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
     def _get_adaround():
         """ returns AdaRound """
         return Adaround
-
-    @staticmethod
-    def _fold_all_batch_norms(*args, **kwargs):
-        return fold_all_batch_norms(*args, **kwargs)
-
-    @staticmethod
-    def _get_adaround_parameters(data_loader, num_batches):
-        return AdaroundParameters(data_loader, num_batches)
 
     @staticmethod
     def _get_quantsim(model, dummy_input, **kwargs):

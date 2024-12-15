@@ -57,8 +57,8 @@ from aimet_torch._base.auto_quant import (
     _logger,
     ParetoFrontType,
 )
-from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms
-from aimet_torch.v2.adaround import Adaround, AdaroundParameters
+from aimet_torch._base.adaround.adaround_weight import AdaroundParameters
+from aimet_torch.v2.adaround import Adaround
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization import encoding_analyzer
@@ -73,6 +73,12 @@ from aimet_common.amp.utils import (
     CANDIDATE_WITH_DTYPE,
     AmpCandidate,
 )
+
+
+__all__ = [
+    'AutoQuant',
+    'AutoQuantWithAutoMixedPrecision',
+]
 
 _MAP_QSCHEME_TO_ENCODING_ANALYZER = {
     QuantScheme.post_training_tf: encoding_analyzer.MinMaxEncodingAnalyzer,
@@ -98,19 +104,11 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
         """ returns AdaRound """
         return Adaround
 
-    @staticmethod
-    def _fold_all_batch_norms(*args, **kwargs):
-        return fold_all_batch_norms(*args, **kwargs)
-
     @functools.wraps(AutoQuantBase.__init__)
     def __init__(self, *args, rounding_mode: str = 'nearest', **kwargs):
         if rounding_mode == 'stochastic':
             raise ValueError("Stochastic rounding mode is not supported.")
         super().__init__(*args, **kwargs)
-
-    @staticmethod
-    def _get_adaround_parameters(data_loader, num_batches):
-        return AdaroundParameters(data_loader, num_batches)
 
     @staticmethod
     def _get_quantsim(model, dummy_input, **kwargs):

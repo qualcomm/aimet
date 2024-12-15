@@ -48,11 +48,18 @@ from aimet_torch._base.adaround.adaround_wrapper import AdaroundWrapperBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase
-from aimet_torch._base.adaround.adaround_weight import ( # pylint: disable=unused-import
+from aimet_torch._base.adaround.adaround_weight import (
     AdaroundBase,
-    AdaroundParameters as AdaroundParametersBase,
+    AdaroundParameters,
     AdaroundSupportedModules,
 )
+
+
+__all__ = [
+    'Adaround',
+    'AdaroundParameters',
+    'AdaroundSupportedModules',
+]
 
 
 class Adaround(AdaroundBase):
@@ -192,9 +199,3 @@ class AdaroundWrapper(AdaroundWrapperBase):
         if quantizer.signed:
             self.clip_max = 2 ** (self.bitwidth - 1) - 1
             self.clip_min = - 2 ** (self.bitwidth - 1)
-
-
-class AdaroundParameters(AdaroundParametersBase):
-    """
-    Configuration parameters for Adaround
-    """

@@ -52,6 +52,13 @@ from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.utils import reduce, _is_reducible
 
+__all__ = [
+    'SequentialMse',
+    'SeqMseParams',
+    'apply_seq_mse',
+    'get_candidates',
+    'optimize_module',
+]
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SeqMse)
 

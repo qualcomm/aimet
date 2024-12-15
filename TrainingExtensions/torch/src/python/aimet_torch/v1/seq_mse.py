@@ -52,6 +52,14 @@ from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, QcQuantizeOpMode
 from aimet_torch.v1.tensor_quantizer import TensorQuantizer, StaticGridPerTensorQuantizer, StaticGridPerChannelQuantizer
 from aimet_torch.v1.quantsim import QuantizationSimModel
 
+__all__ = [
+    'SequentialMse',
+    'SeqMseParams',
+    'apply_seq_mse',
+    'get_candidates',
+    'optimize_module',
+]
+
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SeqMse)
 
 

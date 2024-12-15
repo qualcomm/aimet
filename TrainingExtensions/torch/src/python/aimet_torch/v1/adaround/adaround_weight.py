@@ -47,7 +47,7 @@ from aimet_common.defs import QuantScheme, QuantizationDataType
 
 from aimet_torch import utils
 from aimet_torch.save_utils import SaveUtils
-from aimet_torch._base.adaround.adaround_weight import ( # pylint: disable=unused-import
+from aimet_torch._base.adaround.adaround_weight import (
     AdaroundBase,
     AdaroundParameters,
     AdaroundSupportedModules,
@@ -55,6 +55,13 @@ from aimet_torch._base.adaround.adaround_weight import ( # pylint: disable=unuse
 from aimet_torch.v1.quantsim import QuantizationSimModel, QcQuantizeWrapper
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QcQuantizeOpMode
 from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper
+
+
+__all__ = [
+    'Adaround',
+    'AdaroundParameters',
+    'AdaroundSupportedModules',
+]
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 

@@ -35,11 +35,17 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Alias to v1/v2 batch_norm_fold """
-
 from .utils import _get_default_api
 
 if _get_default_api() == "v1":
-    from .v1.batch_norm_fold import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from .v1.batch_norm_fold import (
+        fold_all_batch_norms,
+        fold_all_batch_norms_to_scale,
+        fold_given_batch_norms,
+        _is_valid_bn_fold,
+        _find_all_batch_norms_to_fold,
+        find_standalone_batchnorm_ops,
+    )
 
     from .utils import _warn_replaced_in_v2
     from .v1 import batch_norm_fold as _v1_batch_norm_fold
@@ -49,4 +55,26 @@ if _get_default_api() == "v1":
                          v2_new_api=_v2_batch_norm_fold.__name__,
                          v1_legacy_api=_v1_batch_norm_fold.__name__)
 else:
-    from .v2.batch_norm_fold import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from .v2.batch_norm_fold import (
+        fold_all_batch_norms,
+        fold_all_batch_norms_to_scale,
+        fold_given_batch_norms,
+        _is_valid_bn_fold,
+        _find_all_batch_norms_to_fold,
+        find_standalone_batchnorm_ops,
+    )
+
+
+__all__ = [
+    "fold_all_batch_norms",
+    "fold_all_batch_norms_to_scale",
+    "fold_given_batch_norms",
+    "_is_valid_bn_fold",
+    "_find_all_batch_norms_to_fold",
+    "find_standalone_batchnorm_ops",
+]
+
+undefined = set(__all__) - set(globals())
+assert not undefined, \
+       f"The following attributes are undefined: {list(undefined)}"
+del undefined
