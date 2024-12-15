@@ -34,6 +34,16 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+import sys
+from contextlib import contextmanager
+import os
+import pkgutil
+from typing import Iterable, Union, Literal
+
+import pytest
+
+import aimet_torch
+
 
 def test_default_import():
     """
@@ -131,3 +141,110 @@ def test_default_import():
     from aimet_torch.mixed_precision    import choose_mixed_precision
     from aimet_torch.v1.mixed_precision import choose_mixed_precision as v1_choose_mixed_precision
     assert choose_mixed_precision is v1_choose_mixed_precision
+
+
+def _get_all_modules():
+    """ Returns all module names in current AIMET package """
+    def iter_modules(path: str, pkgname: str) -> Iterable[str]:
+        assert os.path.isdir(path)
+
+        for _, basename, is_pkg in pkgutil.iter_modules([path]):
+            fullname = ".".join((pkgname, basename))
+            if is_pkg:
+                subpkg_path = os.path.join(path, basename)
+                yield from iter_modules(path=subpkg_path, pkgname=fullname)
+            else:
+                yield fullname
+
+    all_modules = []
+
+    for path in aimet_torch.__path__:
+        all_modules += iter_modules(path, pkgname='aimet_torch')
+
+    return all_modules
+
+
+@contextmanager
+def _use_api(version: Union[Literal["v1"], Literal["v2"]]):
+    """ Temporarily use "version" as default API """
+    orig = os.environ.get('AIMET_DEFAULT_API', None)
+    try:
+        os.environ['AIMET_DEFAULT_API'] = version
+        yield
+    finally:
+        if orig:
+            os.environ['AIMET_DEFAULT_API'] = orig
+        else:
+            os.environ.pop('AIMET_DEFAULT_API')
+
+
+@pytest.fixture
+def use_v1_api():
+    with _use_api("v1"):
+        yield
+
+
+@pytest.fixture
+def use_v2_api():
+    with _use_api("v2"):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def no_cache():
+    orig_modules = {}
+
+    try:
+        for m in list(sys.modules):
+            if m.startswith('aimet_torch') or m.startswith('aimet_common'):
+                orig_modules[m] = sys.modules.pop(m)
+        yield
+    finally:
+        for name, module in orig_modules.items():
+            sys.modules[name] = module
+
+
+@pytest.mark.parametrize('module_name', _get_all_modules())
+def test_v1_import(module_name, use_v1_api):
+    """
+    Given: aimet_torch.v1 is set to default API
+    When: Import all modules/packages in aimet_torch
+    Then: Shouldn't throw import error
+    """
+    for m in list(sys.modules):
+        if m.startswith('aimet_torch') or m.startswith('aimet_common'):
+            sys.modules.pop(m)
+
+    __import__(module_name)
+
+
+@pytest.mark.parametrize('module_name', _get_all_modules())
+def test_v2_import(module_name, use_v2_api):
+    """
+    Given: aimet_torch.v2 is set to default API
+    When: Import all modules/packages in aimet_torch except aimet_torch.v1
+    Then: aimet_torch.v1 shouldn't be imported
+    """
+    if module_name == "aimet_torch.layer_output_utils":
+        # aimet_torch.layer_output_utils still have optional v1 dependency
+        # TODO: Remove optional v1 dependency in layer_output.utils
+        pytest.skip()
+
+    if module_name in ('aimet_torch.adaround.adaround_wrapper',
+                          'aimet_torch.tensor_quantizer',
+                          'aimet_torch.qc_quantize_op',
+                          'aimet_torch.quantsim_straight_through_grad',
+                          'aimet_torch.tensor_factory_utils',
+                          'aimet_torch.tensor_quantizer',
+                          'aimet_torch.torch_quantizer'):
+        with pytest.raises(ImportError):
+            __import__(module_name)
+        return
+
+    __import__(module_name)
+
+    if not module_name.startswith('aimet_torch.v1.'):
+        v1_dependencies = [m for m in sys.modules if m.startswith('aimet_torch.v1.')]
+
+        assert not v1_dependencies, \
+               f"{module_name} is dependent on {v1_dependencies}"
