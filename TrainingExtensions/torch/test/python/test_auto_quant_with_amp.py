@@ -356,7 +356,7 @@ def patch_ptq_techniques(bn_folded_acc, cle_acc, adaround_acc, amp_final_acc,
         GreedyMixedPrecisionAlgo: MagicMock
 
     with patch("aimet_torch.v1.auto_quant.QuantizationSimModel", side_effect=_QuantizationSimModel) as mock_qsim,\
-            patch("aimet_torch.v1.auto_quant.fold_all_batch_norms", side_effect=bn_folding) as mock_bn_folding,\
+            patch("aimet_torch._base.auto_quant.fold_all_batch_norms", side_effect=bn_folding) as mock_bn_folding,\
             patch("aimet_torch._base.auto_quant.equalize_model", side_effect=cle) as mock_cle,\
             patch("aimet_torch.v1.auto_quant.Adaround._apply_adaround", side_effect=adaround) as mock_adaround,\
             patch("aimet_torch.v1.auto_quant.GreedyMixedPrecisionAlgo", side_effect=_GreedyMixedPrecisionAlgo) as mock_amp:
@@ -618,7 +618,7 @@ class TestAutoQuant:
                                        strict_validation=False)
                 auto_quant.set_mixed_precision_params(candidates=[_W8A8, _W8A16, _FP16])
 
-                with patch("aimet_torch.v1.auto_quant.fold_all_batch_norms", side_effect=error_fn):
+                with patch("aimet_torch._base.auto_quant.fold_all_batch_norms", side_effect=error_fn):
                     # If batchnorm folding fails, should return AMP results
                     _, acc, _, _ = auto_quant.optimize(allowed_accuracy_drop)
                     assert acc == amp_acc
@@ -706,7 +706,7 @@ class TestAutoQuant:
                                        strict_validation=False)
                 auto_quant.set_mixed_precision_params(candidates=[_W8A8, _W8A16, _FP16])
 
-                with patch("aimet_torch.v1.auto_quant.fold_all_batch_norms", side_effect=error_fn),\
+                with patch("aimet_torch._base.auto_quant.fold_all_batch_norms", side_effect=error_fn),\
                         patch("aimet_torch._base.auto_quant.equalize_model", side_effect=error_fn),\
                         patch("aimet_torch.v1.auto_quant.Adaround._apply_adaround", side_effect=error_fn),\
                         patch("aimet_torch.v1.auto_quant.GreedyMixedPrecisionAlgo", side_effect=error_fn):
