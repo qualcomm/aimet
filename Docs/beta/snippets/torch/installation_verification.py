@@ -36,18 +36,17 @@
 # =============================================================================
 # pylint: disable=missing-docstring
 [step_1]
-# Step 1: Setup
 import torch
 from torchvision.models import mobilenet_v2
-from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_common.defs import QuantScheme
-from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model = mobilenet_v2(weights='DEFAULT').eval().to(device)
 dummy_input = torch.randn((10, 3, 224, 224), device=device)
+[step_2]
+from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_common.defs import QuantScheme
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 
-# Step 2: Create QuantSim 
 sim = QuantizationSimModel(model, 
     dummy_input, 
     quant_scheme=QuantScheme.training_range_learning_with_tf_init, 
@@ -56,14 +55,12 @@ sim = QuantizationSimModel(model,
     default_output_bw=16)
 
 print(sim)
-
-# Step 3: Calibration
+[step_3]
 def forward_pass(model):
     with torch.no_grad():
         model(torch.randn((10, 3, 224, 224), device=device))
 
 sim.compute_encodings(forward_pass)
-
-# Step 4: Evaluation
+[step_4]
 output = sim.model(dummy_input)
 print(output)
