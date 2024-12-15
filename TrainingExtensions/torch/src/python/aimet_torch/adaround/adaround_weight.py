@@ -42,10 +42,10 @@ if _get_default_api() == "v1":
 
     from ..utils import _warn_replaced_in_v2
     from ..v1.adaround import adaround_weight as _v1_api
-    from ..v2 import adaround as _v2_api
+    from ..v2.adaround import adaround_weight as _v2_api
 
     _warn_replaced_in_v2(__name__,
                          v2_new_api=_v2_api.__name__,
                          v1_legacy_api=_v1_api.__name__)
 else:
-    from ..v2.adaround import * # pylint: disable=wildcard-import, unused-wildcard-import
+    from ..v2.adaround.adaround_weight import * # pylint: disable=wildcard-import, unused-wildcard-import

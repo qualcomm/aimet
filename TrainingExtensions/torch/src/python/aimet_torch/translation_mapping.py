@@ -38,7 +38,7 @@
 import torch
 from aimet_common.libpymo import QnnDatatype
 from aimet_common.defs import QuantizationDataType
-from aimet_torch.nn.modules import custom
+from aimet_torch._base.nn.modules import custom
 
 backend_datatype_to_aimet_map = {QnnDatatype.QNN_DATATYPE_INT_8: {'bitwidth': 8,
                                                                   'dtype': QuantizationDataType.int},
