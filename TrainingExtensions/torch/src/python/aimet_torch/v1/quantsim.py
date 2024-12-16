@@ -1918,7 +1918,7 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
             if not utils.is_leaf_module(module_ref):
                 QuantizationSimModel._replace_quantization_wrapper_with_native_torch_quantization_nodes(module_ref, device)
 
-    # pylint: disable=protected-access, too-many-branches, too-many-locals
+    # pylint: disable=protected-access, too-many-branches, too-many-locals, import-outside-toplevel
     def _apply_exception_rules(self):
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to Embedding module
