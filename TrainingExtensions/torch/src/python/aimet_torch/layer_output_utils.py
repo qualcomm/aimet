@@ -276,7 +276,7 @@ class LayerOutput:
         :param dir_path: directory to temporarily save the constructed onnx/torchscrip model
         :return: dictionary of layer-name to layer-output name
         """
-        from aimet_torch.v2.nn import BaseQuantizationMixin
+        # pylint: disable=import-outside-toplevel
         if any(isinstance(module, BaseQuantizationMixin) for module in model.modules()):
             from aimet_torch.v2.quantsim import QuantizationSimModel
         else:
