@@ -39,8 +39,10 @@ from unittest.mock import patch
 from torch.nn.modules.batchnorm import _BatchNorm
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper
 import pytest
-from aimet_torch.v1.quantsim import QuantizationSimModel
+import aimet_torch.v1.quantsim as v1
+import aimet_torch.v2.quantsim as v2
 from aimet_torch.v1.tensor_quantizer import StaticGridTensorQuantizer, LearnedGridTensorQuantizer
+from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_common.defs import QuantScheme
 from aimet_torch.bn_reestimation import reestimate_bn_stats, _get_active_bn_modules
 
@@ -72,14 +74,6 @@ def fp32_model(data_loader):
         for data in data_loader:
             model(data)
     return model
-
-
-def quantsim_model(fp32_model, dummy_input, quant_scheme):
-    sim = QuantizationSimModel(fp32_model,
-                               dummy_input,
-                               quant_scheme=quant_scheme)
-    sim.compute_encodings(lambda model, _: model(dummy_input), None)
-    return sim.model
 
 
 @pytest.fixture(scope="session")
@@ -115,19 +109,28 @@ def test_reestimation_with_fp32_model(fp32_model, data_loader):
                                           QuantScheme.post_training_tf_enhanced,
                                           QuantScheme.training_range_learning_with_tf_init,
                                           QuantScheme.training_range_learning_with_tf_enhanced_init])
-def test_reestimation_with_quantsim_model(fp32_model, dummy_input, quant_scheme, data_loader):
-    model = quantsim_model(fp32_model, dummy_input, quant_scheme)
+@pytest.mark.parametrize('QuantizationSimModel', [v1.QuantizationSimModel, v2.QuantizationSimModel])
+def test_reestimation_with_quantsim_model(QuantizationSimModel, fp32_model, dummy_input, quant_scheme, data_loader):
+    sim = QuantizationSimModel(fp32_model, dummy_input, quant_scheme=quant_scheme)
+    sim.compute_encodings(lambda model, _: model(dummy_input), None)
+    model = sim.model
 
     def quantize_input(data):
         input_quantizer = model._bn.input_quantizers[0]
         if isinstance(input_quantizer, StaticGridTensorQuantizer):
             return input_quantizer.quantize_dequantize(data, input_quantizer.round_mode)
 
-        assert isinstance(input_quantizer, LearnedGridTensorQuantizer)
-        encoding = input_quantizer.encoding
-        encoding_min = torch.tensor([encoding.min])
-        encoding_max = torch.tensor([encoding.max])
-        return input_quantizer.quantize_dequantize(data, encoding_min, encoding_max)
+        if isinstance(input_quantizer, LearnedGridTensorQuantizer):
+            encoding = input_quantizer.encoding
+            encoding_min = torch.tensor([encoding.min])
+            encoding_max = torch.tensor([encoding.max])
+            return input_quantizer.quantize_dequantize(data, encoding_min, encoding_max)
+
+        if isinstance(input_quantizer, QuantizerBase):
+            return input_quantizer(data)
+
+        assert input_quantizer is None
+        return data
 
     expected_mean = [torch.mean(quantize_input(data), dim=(0,2,3)) for data in data_loader]
     expected_mean = sum(expected_mean) / len(data_loader)
