@@ -720,6 +720,8 @@ def test_seqmse_with_zero3_offload(per_channel_quantsim_config,
       1) All parameters must be initialized with deepspeed zero3 parameter partitioning mechanism
       2) Forward pass outputs must be equal with or without deepspeed
     """
+    if "optimizer" in deepspeed_zero3_offload_config:
+        del deepspeed_zero3_offload_config["optimizer"]
     engine, ds_optimizer, *_ = ds.initialize(model=sim_deepspeed.model,
                                              model_parameters=sim_deepspeed.model.parameters(),
                                              config=deepspeed_zero3_offload_config,
