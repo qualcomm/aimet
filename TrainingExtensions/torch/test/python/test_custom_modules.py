@@ -35,20 +35,20 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
+import pytest
 import os
 import json
 import tempfile
-import unittest.mock
 import numpy as np
 import torch
 import torch.nn as nn
 
 from unittest import mock
 
-import aimet_common.libpymo as libpymo
 from aimet_common.defs import QuantScheme
 import aimet_torch._base.nn.modules.custom as aimet_modules
-from aimet_torch.v1.quantsim import QuantizationSimModel
+import aimet_torch.v1.quantsim as v1
+import aimet_torch.v2.quantsim as v2
 
 
 class Model(nn.Module):
@@ -103,7 +103,7 @@ def evaluate(model: torch.nn.Module, dummy_input: torch.Tensor):
         model(*dummy_input)
 
 
-class TestTrainingExtensionElementwiseOps(unittest.TestCase):
+class TestTrainingExtensionElementwiseOps:
     def test_add_op(self):
         torch.manual_seed(10)
         model = Model(aimet_modules.Add())
@@ -111,31 +111,23 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = input1 + input2
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
-    def test_quantsim_export(self):
+    @pytest.mark.parametrize("QuantizationSimModel", [v1.QuantizationSimModel, v2.QuantizationSimModel])
+    def test_quantsim_export(self, QuantizationSimModel):
         torch.manual_seed(10)
         model = Model2(aimet_modules.Add())
         dummy_input = torch.randn(5, 10, 10, 20)
         sim = QuantizationSimModel(model, dummy_input)
-        encodings = libpymo.TfEncoding()
-        encodings.bw = 8
-        encodings.max = 5
-        encodings.min = -5
-        encodings.delta = 1
-        encodings.offset = 0.2
-        sim.model.op1.output_quantizers[0].encoding = encodings
-        sim.model.op1.input_quantizers[1].enabled = False
-        sim.model.conv1.output_quantizers[0].encoding = encodings
-        sim.model.conv1.param_quantizers['weight'].encoding = encodings
+        sim.compute_encodings(lambda model, _: model(dummy_input), None)
         with tempfile.TemporaryDirectory() as tmp_dir:
             sim.export(path=tmp_dir, filename_prefix='quant_model', dummy_input=dummy_input)
 
             with open(os.path.join(tmp_dir, 'quant_model.encodings')) as f:
                 data = json.load(f)
 
-            self.assertTrue(len(data['activation_encodings']) == 2)
-            self.assertTrue(len(data['param_encodings']) == 1)
+            assert len(data['activation_encodings']) == 3
+            assert len(data['param_encodings']) == 1
 
     def test_subtract_op(self):
         torch.manual_seed(10)
@@ -144,7 +136,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = input1 - input2
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_multiply_op(self):
         torch.manual_seed(10)
@@ -153,7 +145,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = input1 * input2
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_divide_op(self):
         torch.manual_seed(10)
@@ -162,7 +154,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.div(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_concat_op_two_input_tensors(self):
         torch.manual_seed(10)
@@ -171,7 +163,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.cat((input1, input2), 0)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_concat_op_four_input_tensors(self):
         torch.manual_seed(10)
@@ -182,9 +174,10 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input4 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2, input3, input4)
         out1 = torch.cat((input1, input2, input3, input4), 0)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
-    def test_concat_compute_encodings(self):
+    @pytest.mark.parametrize("QuantizationSimModel", [v1.QuantizationSimModel, v2.QuantizationSimModel])
+    def test_concat_compute_encodings(self, QuantizationSimModel):
         torch.manual_seed(10)
         model = Model3(aimet_modules.Concat())
         dummy_input = torch.randn(5, 10, 10, 20)
@@ -201,9 +194,10 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         tensor2 = torch.randn(10, 4, 5)
         out = model(tensor1, tensor2)
         out1 = torch.matmul(tensor1, tensor2)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
-    def test_concat_op_with_qat(self):
+    @pytest.mark.parametrize("QuantizationSimModel", [v1.QuantizationSimModel, v2.QuantizationSimModel])
+    def test_concat_op_with_qat(self, QuantizationSimModel):
         """
         Test torch.cat op for both QAT and QAT-range learning
         """
@@ -249,7 +243,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
             loss.backward()
             assert quant_sim.model.cat.output_quantizers[0] is not None
 
-    def test_dtypes_to_ignore_for_quantization(self):
+    @pytest.mark.parametrize("QuantizationSimModel", [v1.QuantizationSimModel, v2.QuantizationSimModel])
+    def test_dtypes_to_ignore_for_quantization(self, QuantizationSimModel):
         """
         test dtypes to be ignored for quantization when inputs to elementwise ops are scalar numbers.
         We just skip quantization for scalars.
@@ -274,15 +269,14 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         sim.compute_encodings(dummy_forward_pass, None)
         sim.model(dummy_input)
 
-        assert not sim.model.add.input_quantizers[0].encoding
-        assert not sim.model.add.input_quantizers[1].encoding
-        assert sim.model.add.output_quantizers[0].encoding
+        assert all(e is None for e in sim.model.add.export_input_encodings('0.6.1'))
+        assert all(e is not None for e in sim.model.add.export_output_encodings('0.6.1'))
 
-        assert not sim.model.mul.input_quantizers[0].encoding
-        assert not sim.model.mul.input_quantizers[1].encoding
-        assert sim.model.mul.output_quantizers[0].encoding
+        assert all(e is None for e in sim.model.mul.export_input_encodings('0.6.1'))
+        assert all(e is not None for e in sim.model.mul.export_output_encodings('0.6.1'))
 
-    def test_dtypes_to_ignore_for_quantization_quant_scheme_range_learning(self):
+    @pytest.mark.parametrize("QuantizationSimModel", [v1.QuantizationSimModel, v2.QuantizationSimModel])
+    def test_dtypes_to_ignore_for_quantization_quant_scheme_range_learning(self, QuantizationSimModel):
         """
         test dtypes to be ignored for quantization when inputs to elementwise ops are scalar numbers.
         We just skip quantization for scalars.
@@ -311,13 +305,11 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         loss = out.flatten().sum()
         loss.backward()
 
-        assert not sim.model.add.input_quantizers[0].encoding
-        assert not sim.model.add.input_quantizers[1].encoding
-        assert sim.model.add.output_quantizers[0].encoding
+        assert all(e is None for e in sim.model.add.export_input_encodings('0.6.1'))
+        assert all(e is not None for e in sim.model.add.export_output_encodings('0.6.1'))
 
-        assert not sim.model.mul.input_quantizers[0].encoding
-        assert not sim.model.mul.input_quantizers[1].encoding
-        assert sim.model.mul.output_quantizers[0].encoding
+        assert all(e is None for e in sim.model.mul.export_input_encodings('0.6.1'))
+        assert all(e is not None for e in sim.model.mul.export_output_encodings('0.6.1'))
 
     def test_erf_op(self):
         """
@@ -357,8 +349,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.gt(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_less_op(self):
         torch.manual_seed(10)
@@ -367,8 +359,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.lt(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_greater_equal_op(self):
         torch.manual_seed(10)
@@ -377,8 +369,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.ge(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_less_equal_op(self):
         torch.manual_seed(10)
@@ -387,8 +379,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.le(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_not_equal_op(self):
         torch.manual_seed(10)
@@ -397,8 +389,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.ne(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_equal_op(self):
         torch.manual_seed(10)
@@ -407,8 +399,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1, input2)
         out1 = torch.eq(input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_where_op(self):
         torch.manual_seed(10)
@@ -417,8 +409,8 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input2 = torch.rand((5, 10, 10, 20))
         out = model(input1 > input2, input1, input2)
         out1 = torch.where(input1 > input2, input1, input2)
-        self.assertTrue(np.allclose(out, out1))
-        self.assertEqual(input1.shape, out.shape)
+        assert np.allclose(out, out1)
+        assert input1.shape == out.shape
 
     def test_mean_op(self):
         torch.manual_seed(10)
@@ -426,7 +418,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input1 = torch.rand((5, 10, 10, 20))
         out = model(input1)
         out1 = torch.mean(input1)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_sum_op(self):
         torch.manual_seed(10)
@@ -434,7 +426,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input1 = torch.rand((5, 10, 10, 20))
         out = model(input1)
         out1 = torch.sum(input1)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_prod_op(self):
         torch.manual_seed(10)
@@ -442,7 +434,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         input1 = torch.rand((5, 10, 10, 20))
         out = model(input1)
         out1 = torch.prod(input1)
-        self.assertTrue(np.allclose(out, out1))
+        assert np.allclose(out, out1)
 
     def test_log_op(self):
         torch.manual_seed(42)
@@ -451,7 +443,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(inputs)
         original_module_out = torch.log(inputs)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_abs_op(self):
         torch.manual_seed(42)
@@ -460,7 +452,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(inputs)
         original_module_out = torch.abs(inputs)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_neg_op(self):
         torch.manual_seed(42)
@@ -469,7 +461,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(inputs)
         original_module_out = torch.neg(inputs)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_slice_op(self):
         torch.manual_seed(42)
@@ -479,7 +471,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(input1, input2)
         original_module_out = input1[input2[0][0]:input2[0][1]:input2[0][2]]
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_channel_shuffle_op(self):
         torch.manual_seed(42)
@@ -490,7 +482,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         dummy_input = torch.rand(4, 16, 28, 28)
         custom_module_out = custom_module(dummy_input)
         original_module_out = original_module(dummy_input)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_logical_or_op(self):
         torch.manual_seed(42)
@@ -500,7 +492,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(input1, input2)
         original_module_out = torch.logical_or(input1, input2)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_logical_and_op(self):
         torch.manual_seed(42)
@@ -510,7 +502,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(input1, input2)
         original_module_out = torch.logical_and(input1, input2)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_logical_not_op(self):
         torch.manual_seed(42)
@@ -519,7 +511,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(inputs)
         original_module_out = torch.logical_not(inputs)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_cast_ops(self):
         torch.manual_seed(42)
@@ -531,7 +523,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
             custom_module_out = model(inputs)
             original_module_out = inputs.to(dtype)
-            self.assertTrue(np.allclose(custom_module_out, original_module_out))
+            assert np.allclose(custom_module_out, original_module_out)
 
     def test_split_ops(self):
         torch.manual_seed(42)
@@ -542,7 +534,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
             custom_module_out = model(inputs, split_size_or_sections, dim)
             original_module_out = torch.split(inputs, split_size_or_sections=split_size_or_sections, dim=dim)
             for i in range(len(original_module_out)):
-                self.assertTrue(np.allclose(custom_module_out[i], original_module_out[i]))
+                assert np.allclose(custom_module_out[i], original_module_out[i])
 
     def test_reshape_op(self):
         torch.manual_seed(42)
@@ -552,7 +544,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(input1, input2)
         original_module_out = torch.reshape(input1, input2)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_permute_op(self):
         torch.manual_seed(42)
@@ -562,7 +554,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
 
         custom_module_out = model(input1, input2)
         original_module_out = torch.permute(input1, input2)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_custom_gather_op(self):
         torch.manual_seed(42)
@@ -574,7 +566,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         for indices in indices_list:
             custom_module_out = model(inputs, indices, axis)
             original_module_out = np.take(inputs, indices, axis=axis)
-            self.assertTrue(np.allclose(custom_module_out, original_module_out))
+            assert np.allclose(custom_module_out, original_module_out)
 
     def test_custom_scatternd_op(self):
         torch.manual_seed(42)
@@ -589,7 +581,7 @@ class TestTrainingExtensionElementwiseOps(unittest.TestCase):
         original_module_out[0, 0, 2] = updates[0, 2, 0]
 
         custom_module_out = model(inputs, indices, updates)
-        self.assertTrue(np.allclose(custom_module_out, original_module_out))
+        assert np.allclose(custom_module_out, original_module_out)
 
     def test_gather_nd_jit_trace(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
