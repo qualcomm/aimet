@@ -14,13 +14,13 @@ Workflow
 
 **Required imports**
 
-.. literalinclude:: ../../../keras_code_examples/quantization.py
+.. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
     :language: python
     :lines: 37-40
 
 **Quantize with Fine tuning**
 
-.. literalinclude:: ../../../keras_code_examples/quantization.py
+.. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
     :language: python
     :pyobject: quantize_model
 

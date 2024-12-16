@@ -35,7 +35,7 @@ All of the compression schemes in AIMET use a two-phase process:
 1. Compression ratio selection
 2. Model compression
 
-.. image:: ../../../images/compression_use_case.PNG
+.. image:: ../../images/compression_use_case.PNG
 
 Both of these phases are explained below.
 

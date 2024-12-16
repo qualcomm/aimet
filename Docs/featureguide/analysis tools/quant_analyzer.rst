@@ -136,14 +136,14 @@ Step 1 Prepare callback for calibration
 
         **Required imports**
 
-        .. literalinclude:: ../../../torch_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Prepare forward pass callback**
 
-        .. literalinclude:: ../../../torch_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 1. Prepare forward pass callback
             :end-before: # End step 1
@@ -153,20 +153,20 @@ Step 1 Prepare callback for calibration
 
         **Required imports**
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :lines: 39-47
 
         **Prepare toy dataset to run example code**
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 0. Prepare toy dataset to run example code
             :end-before: # End step 0
 
         **Prepare forward pass callback**
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 1. Prepare forward pass callback
             :end-before: # End step 1
@@ -176,14 +176,14 @@ Step 1 Prepare callback for calibration
 
         **Required imports**
 
-        .. literalinclude:: ../../../onnx_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Prepare forward pass callback**
 
-        .. literalinclude:: ../../../onnx_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 1. Prepare forward pass callback
             :end-before: # End step 1
@@ -199,7 +199,7 @@ Step 2 Prepare callback for quantized model evaluation
 
         **Prepare eval callback**
 
-        .. literalinclude:: ../../../torch_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 2. Prepare eval callback
             :end-before: # End step 2
@@ -209,7 +209,7 @@ Step 2 Prepare callback for quantized model evaluation
 
         **Prepare eval callback**
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 2. Prepare eval callback
             :end-before: # End step 2
@@ -219,7 +219,7 @@ Step 2 Prepare callback for quantized model evaluation
 
         **Prepare eval callback**
 
-        .. literalinclude:: ../../../onnx_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 2. Prepare eval callback
             :end-before: # End step 2
@@ -235,7 +235,7 @@ Step 3 Prepare model and callback functions
 
         **Prepare model and callback functions**
 
-        .. literalinclude:: ../../../torch_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 3. Prepare model and callback functions
             :end-before: # End step 3
@@ -243,7 +243,7 @@ Step 3 Prepare model and callback functions
     .. tab-item:: TensorFlow
         :sync: tf
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 3. Prepare model
             :end-before: # End step 3
@@ -253,7 +253,7 @@ Step 3 Prepare model and callback functions
 
         **Prepare model, callback functions and dataloader**
 
-        .. literalinclude:: ../../../onnx_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 3. Prepare model, callback functions and dataloader
             :end-before: # End step 3
@@ -269,14 +269,14 @@ Step 4 Create QuantAnalyzer and run analysis
 
         **Create QuantAnalyzer object**
 
-        .. literalinclude:: ../../../torch_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 4. Create QuantAnalyzer object
             :end-before: # End step 4
 
         **Run QuantAnalyzer**
 
-        .. literalinclude:: ../../../torch_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 5. Run QuantAnalyzer
             :end-before: # End step 5
@@ -286,14 +286,14 @@ Step 4 Create QuantAnalyzer and run analysis
 
         **Create QuantAnalyzer object**
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 4. Create QuantAnalyzer object
             :end-before: # End step 4
 
         **Run QuantAnalyzer**
 
-        .. literalinclude:: ../../../keras_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 5. Run QuantAnalyzer
             :end-before: # End step 5
@@ -303,14 +303,14 @@ Step 4 Create QuantAnalyzer and run analysis
 
         **Create QuantAnalyzer object**
 
-        .. literalinclude:: ../../../onnx_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 4. Create QuantAnalyzer object
             :end-before: # End step 4
 
         **Run QuantAnalyzer**
 
-        .. literalinclude:: ../../../onnx_code_examples/quant_analyzer_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 5. Run QuantAnalyzer
             :end-before: # End step 5

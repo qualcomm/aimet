@@ -34,14 +34,14 @@ Step 1 Obtain Original or QuantSim model from AIMET Export Artifacts
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. literalinclude:: ../../../torch_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Obtain Original or QuantSim model from AIMET Export Artifacts**
 
-        .. literalinclude:: ../../../torch_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 1. Obtain original or quantsim model
             :end-before: # End step 1
@@ -49,14 +49,14 @@ Step 1 Obtain Original or QuantSim model from AIMET Export Artifacts
     .. tab-item:: TensorFlow
         :sync: tf
 
-        .. literalinclude:: ../../../keras_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Obtain Original or QuantSim model from AIMET Export Artifacts**
 
-        .. literalinclude:: ../../../keras_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 1. Obtain original or quantsim model
             :end-before: # End step 1
@@ -64,14 +64,14 @@ Step 1 Obtain Original or QuantSim model from AIMET Export Artifacts
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. literalinclude:: ../../../onnx_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Obtain Original or QuantSim model from AIMET Export Artifacts**
 
-        .. literalinclude:: ../../../onnx_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 1. Obtain original or quantsim model
             :end-before: # End step 1
@@ -87,14 +87,14 @@ Step 2 Generate layer-outputs
 
         **Obtain inputs for which we want to generate intermediate layer-outputs**
 
-        .. literalinclude:: ../../../torch_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 2. Obtain pre-processed inputs
             :end-before: # End step 2
 
         **Generate layer-outputs**
 
-        .. literalinclude:: ../../../torch_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/torch_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 3. Generate outputs
             :end-before: # End step 3
@@ -104,14 +104,14 @@ Step 2 Generate layer-outputs
 
         **Obtain inputs for which we want to generate intermediate layer-outputs**
 
-        .. literalinclude:: ../../../keras_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 2. Obtain pre-processed inputs
             :end-before: # End step 2
 
         **Generate layer-outputs**
 
-        .. literalinclude:: ../../../keras_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/keras_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 3. Generate outputs
             :end-before: # End step 3
@@ -121,14 +121,14 @@ Step 2 Generate layer-outputs
 
         **Obtain inputs for which we want to generate intermediate layer-outputs**
 
-        .. literalinclude:: ../../../onnx_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 2. Obtain pre-processed inputs
             :end-before: # End step 2
 
         **Generate layer-outputs**
 
-        .. literalinclude:: ../../../onnx_code_examples/layer_output_generation_code_example.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/layer_output_generation_code_example.py
             :language: python
             :start-after: # Step 3. Generate outputs
             :end-before: # End step 3

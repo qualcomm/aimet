@@ -37,7 +37,7 @@ Simulate quantization noise
 The diagram below illustrates how quantization noise is introduced to a model when its inputs, outputs,
 or parameters are quantized and de-quantized.
 
-    .. image:: ../../images/quant_3.png
+    .. image:: ../images/quant_3.png
 
 A de-quantizated value is not exactly equal to its corresponding original value. The discrepancy between
 the two is known as quantization noise.
@@ -55,7 +55,7 @@ To do this, AIMET passes calibration samples through the model and, using hooks,
 flowing through the model. AIMET creates a histogram to model the distribution of the floating point values
 in the output tensor for each layer.
 
-.. image:: ../../images/quant_2.png
+.. image:: ../images/quant_2.png
 
 Following is a general definition for the quantization function where floating-point
 number `x` is mapped to it's fixed-point representation (quantization) `xint`

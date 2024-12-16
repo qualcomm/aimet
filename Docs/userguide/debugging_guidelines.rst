@@ -15,7 +15,7 @@ Debugging workflow
 
 The steps are shown as a flow chart in the following figure and are described in more detail below:
 
-.. image:: ../../images/quantization_debugging_flow_chart.png
+.. image:: ../images/quantization_debugging_flow_chart.png
    :height: 800
    :width: 700
 

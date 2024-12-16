@@ -24,7 +24,7 @@ without requiring actual quantized hardware.
 
 A quantization simulation workflow is illustrated here:
 
-    .. image:: ../../images/quant_use_case_1.PNG
+.. image:: ../images/quant_use_case_1.PNG
 
 1. Post-training quantization
 -----------------------------
@@ -37,7 +37,7 @@ or fine-tuning. PTQ is recommended as a go-to tool in a quantization workflow be
 
 The PTQ workflow is illustrated here:
 
-    .. image:: ../../images/quant_use_case_3.PNG
+.. image:: ../images/quant_use_case_3.PNG
 
 1. Quantization-aware training
 ------------------------------
@@ -55,7 +55,7 @@ but it can provide better accuracy, especially at lower bit-widths.
 
 A typical QAT workflow is illustrated here:
 
-    .. image:: ../../images/quant_use_case_2.PNG
+.. image:: ../images/quant_use_case_2.PNG
 
 Supported precisions for on-target inference
 ============================================
@@ -108,7 +108,7 @@ lowering the precision.
 The figure below illustrates the recommended quantization workflow and the steps required
 to deploy the quantized model on the target :term:`device`.
 
-.. figure:: ../images/quantization_workflow.png
+.. figure:: ../images/overall_quantization_workflow.png
 
    Recommended quantization workflow
 
@@ -143,6 +143,8 @@ pages to know more about such model guidelines.
 If the off-target quantized accuracy metric is not meeting expectations, you can use PTQ or QAT
 techniques to improve the quantized accuracy for the desired precision. The decision between
 PTQ and QAT should be based on the quantized accuracy and runtime needs.
+
+.. image:: ../images/quantization_workflow.png
 
 Once the off-target quantized accuracy metric is satisfactory, proceed to :ref:`evaluate the
 on-target metrics<opt-guide-on-target-inference>` at this precision. If the on-target metrics

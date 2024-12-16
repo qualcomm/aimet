@@ -23,7 +23,7 @@ where 𝑘 is called the `rank`. The smaller the value of 𝑘, the larger the d
 The following figure illustrates how spatial SVD decomposes both the output channel dimension and the size
 of the Conv kernel itself.
 
-.. image:: ../../../images/spatial_svd.png
+.. image:: ../../images/spatial_svd.png
    :width: 900px
 
 Workflow
@@ -41,22 +41,22 @@ Setup
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. literalinclude:: ../../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../legacy/torch_code_examples/code_examples.py
            :language: python
            :lines: 40-49
 
-        .. literalinclude:: ../../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../legacy/torch_code_examples/code_examples.py
            :language: python
            :pyobject: evaluate_model
 
     .. tab-item:: TensorFlow
         :sync: tf
 
-        .. literalinclude:: ../../../keras_code_examples/compression_code_examples.py
+        .. literalinclude:: ../../legacy/keras_code_examples/compression_code_examples.py
            :language: python
            :lines: 39-49
 
-        .. literalinclude:: ../../../keras_code_examples/compression_code_examples.py
+        .. literalinclude:: ../../legacy/keras_code_examples/compression_code_examples.py
            :language: python
            :pyobject: get_eval_func
 
@@ -71,13 +71,13 @@ Compressing using Spatial SVD
 
         **Compressing using Spatial SVD in auto mode with multiplicity = 8 for rank rounding**
 
-        .. literalinclude:: ../../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../legacy/torch_code_examples/code_examples.py
            :language: python
            :pyobject: spatial_svd_auto_mode
 
         **Compressing using Spatial SVD in manual mode**
 
-        .. literalinclude:: ../../../torch_code_examples/code_examples.py
+        .. literalinclude:: ../../legacy/torch_code_examples/code_examples.py
            :language: python
            :pyobject: spatial_svd_manual_mode
 
@@ -86,13 +86,13 @@ Compressing using Spatial SVD
 
         **Compressing using Spatial SVD in auto mode**
 
-        .. literalinclude:: ../../../keras_code_examples/compression_code_examples.py
+        .. literalinclude:: ../../legacy/keras_code_examples/compression_code_examples.py
             :language: python
             :pyobject: aimet_spatial_svd
 
         **Sample Driver Code for Spatial SVD using Resnet50**
 
-        .. literalinclude:: ../../../keras_code_examples/compression_code_examples.py
+        .. literalinclude:: ../../legacy/keras_code_examples/compression_code_examples.py
             :language: python
             :pyobject: compress
 

@@ -17,20 +17,20 @@ AIMET visualization starts a Bokeh server session on which you invoke functions 
 
 The figure below illustrates the server arrangement:
 
-.. image:: ../../../images/vis_1.png
+.. image:: ../../images/vis_1.png
 
 Compression
 ===========
 
 You can view evaluation scores during compression in a table as they are computed. Progress is updated in real time. After :doc:`greedy selection<greedy_compression_ratio_selection>` has run, per-layer optimal compression ratios are displayed in a graph.
 
-.. image:: ../../../images/vis_4.png
+.. image:: ../../images/vis_4.png
 
-.. image:: ../../../images/vis_5.png
+.. image:: ../../images/vis_5.png
 
-.. image:: ../../../images/vis_6.png
+.. image:: ../../images/vis_6.png
 
-.. image:: ../../../images/vis_7.png
+.. image:: ../../images/vis_7.png
 
 
 Starting a Bokeh server session

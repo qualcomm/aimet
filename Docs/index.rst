@@ -12,7 +12,7 @@ AI Model Efficiency Toolkit Documentation
 
    Quick Start <install/quick-start>
    Installation <install/index>
-   User Guide <opt-guide/index>
+   User Guide <userguide/index>
    Quantization Simulation Guide <quantsim/index>
    Feature Guide <featureguide/index>
    Examples <examples/index>
@@ -40,7 +40,7 @@ For other install options, including for TensorFlow and ONNX platforms or to run
 User Guide
 ==========
 
-For a high-level explanation of how to use AIMET to optimize a model, see the :doc:`Optimization user guide <../opt-guide/index>`.
+For a high-level explanation of how to use AIMET to optimize a model, see the :doc:`Optimization user guide <../userguide/index>`.
 
 Quantization Simulation Guide
 =============================

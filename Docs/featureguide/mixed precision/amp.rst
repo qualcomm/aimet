@@ -27,7 +27,7 @@ allowable accuracy drop, is passed to the API.
 The function changes the QuantSim Sim model in place with different quantizers having different
 bit-widths. This QuantSim model can be either exported or evaluated to get a quantization accuracy.
 
-.. image:: ../../../images/work_flow_amp.png
+.. image:: ../../images/work_flow_amp.png
     :width: 900px
 
 Mixed Precision Algorithm
@@ -35,7 +35,7 @@ Mixed Precision Algorithm
 
 The algorithm involves 4 phases:
 
-    .. image:: ../../../images/stages.png
+    .. image:: ../../images/stages.png
         :width: 150px
 
 1) Find layer groups
@@ -45,7 +45,7 @@ The algorithm involves 4 phases:
     This helps in reducing search space over which the mixed precision algorithm operates.
     It also ensures that we search only over the valid bit-width settings for parameters and activations.
 
-    .. image:: ../../../images/quantizer_groups.png
+    .. image:: ../../images/quantizer_groups.png
         :width: 900px
 
 2) Perform sensitivity analysis (Phase 1)
@@ -57,7 +57,7 @@ The algorithm involves 4 phases:
 
     Below is an example of a list generated using sensitivity analysis:
 
-    .. image:: ../../../images/accuracy_list.png
+    .. image:: ../../images/accuracy_list.png
         :width: 900px
 
 3) Create a Pareto-front list (Phase 2)
@@ -69,7 +69,7 @@ The algorithm involves 4 phases:
 
     An example of a Pareto list:
 
-    .. image:: ../../../images/pareto.png
+    .. image:: ../../images/pareto.png
         :width: 900px
 
     Bit-ops are computed as
@@ -78,7 +78,7 @@ The algorithm involves 4 phases:
 
     The Pareto list can be used for plotting a Pareto curve. A Bokeh plot for Pareto curve is generated and saved in the results directory.
 
-    .. image:: ../../../images/pareto_curve.png
+    .. image:: ../../images/pareto_curve.png
         :width: 900px
 
 .. note::
@@ -140,14 +140,14 @@ Step 1
 
         **Required imports**
 
-        .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/torch_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Load the model, define forward_pass and evaluation callbacks**
 
-        .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/torch_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 1
             :end-before: # End step 1
@@ -157,14 +157,14 @@ Step 1
 
         **Required imports**
 
-        .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/keras_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Load the model, define forward_pass and evaluation callbacks**
 
-        .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/keras_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 1
             :end-before: # End step 1
@@ -174,14 +174,14 @@ Step 1
 
         **Required imports**
 
-        .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
         **Instantiate a PyTorch model, convert to ONNX graph, define forward_pass and evaluation callbacks**
 
-        .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 1
             :end-before: # End step 1
@@ -197,7 +197,7 @@ Step 2
 
         **Quantization with mixed precision**
 
-        .. literalinclude:: ../../../torch_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/torch_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 2
             :end-before: # End step 2
@@ -207,7 +207,7 @@ Step 2
 
         **Quantization with regular mixed precision**
 
-        .. literalinclude:: ../../../keras_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/keras_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 2
             :end-before: # End step 2
@@ -217,7 +217,7 @@ Step 2
 
         **Quantization with mixed precision**
 
-        .. literalinclude:: ../../../onnx_code_examples/mixed_precision.py
+        .. literalinclude:: ../../legacy/onnx_code_examples/mixed_precision.py
             :language: python
             :start-after: # Step 2
             :end-before: # End step 2

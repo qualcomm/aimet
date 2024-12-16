@@ -31,11 +31,11 @@ Inputs to the process include:
 
 The following figures provide a high-level overview. Details of each step follow.
 
-.. image:: ../../../images/greedy_2.png
+.. image:: ../../images/greedy_2.png
 
 where the eval dictionary consists of per-layer sets of compression/accuracy maps:
 
-.. image:: ../../../images/greedy_3.png
+.. image:: ../../images/greedy_3.png
 
 Per-layer exploration
 =====================
@@ -44,7 +44,7 @@ Per-layer exploration produces a column of scores over a range of compression ra
 
 The figure below shows a model with 4 layers and 10 compression-ratio candidates (the default). The Evaluation Dictionary omits the eval score for the baseline compression ratio of 1.0 (for which the score is always 1.0).
 
-.. image:: ../../../images/greedy_4.jpg
+.. image:: ../../images/greedy_4.jpg
 
 **Monotonic Fit**: In some cases the model performance does not increase monotonically with increasing compression ratio. To help with the greedy selection procedure, AIMET can fit a monotonically increasing curve to the model-performance numbers. This functionality is disabled by default.
 
@@ -62,6 +62,6 @@ Assuming a constant accuracy, the compression ratio selection algorithm calculat
 
 The following figure illustrates how the compression ratio for each layer can be different for a given accuracy.
 
-.. image:: ../../../images/greedy_5.jpg
+.. image:: ../../images/greedy_5.jpg
 
 As suggested by the figure, the algorithm picks a lower compression ratio (higher compression) for layers that are more compressible and vice versa. For the less compressible layer (layer 2) the accuracy falls drastically with greater compression.

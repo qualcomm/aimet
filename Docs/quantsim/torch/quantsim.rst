@@ -40,12 +40,12 @@ you can load any pretrained PyTorch model instead.
 QuantSim creation
 -----------------
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # PyTorch imports
    :end-before: # End of PyTorch imports
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # Load the model
    :end-before:  # End of load the model
@@ -64,7 +64,7 @@ definition changes required to comply with the guidelines, please refer: :ref:`P
 
     :func:`prepare_model` function uses :mod:`torch.fx` under the hood, which means it inherits all the limitations of :mod:`torch.fx`. Therefore, if :func:`prepare_model` cannot automatically prepare the model, you will need to manually adjust the model definition to comply with the model definition guidelines.
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # Prepare the model
    :end-before:  # End of prepare_model
@@ -78,7 +78,7 @@ To accurately simulate inference in these runtimes, it is generally a good idea 
 folding on the floating-point (FP32) model before applying quantization. AIMET provides the
 :mod:`batch_norm_fold` API to do this.
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # Fold the batchnorm
    :end-before:  # End of fold_all_batch_norms
@@ -87,7 +87,7 @@ Now we use AIMET to create a :class:`QuantizationSimModel`. This basically means
 fake quantization operations in the model graph and will configure them. A few of the parameters are
 explained here.
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # Create Quantization Simulation Model
    :end-before:  # End of QuantizationSimModel
@@ -111,7 +111,7 @@ to the model.
 In practice, we need a very small percentage of the overall data samples for computing encodings.
 For computing encodings we only need 500 or 1000 representative data samples.
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :pyobject: pass_calibration_data
 
@@ -122,11 +122,11 @@ Now we call :func:`QuantizationSimModel.compute_encodings` to use the above call
 the model and then subsequently compute the quantization encodings. Encodings here refer to scale/offset
 quantization parameters.
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :pyobject: get_calibration_and_eval_data_loaders
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # Compute the Quantization Encodings
    :end-before:  # End of compute_encodings
@@ -138,7 +138,7 @@ Lastly, evaluate the :class:`QuantizationSimModel` to get quantized accuracy and
 of the model with quantization operations removed and create an encodings JSON file with quantization
 scale and offset parameters for the model's activation and weight tensors.
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
     :language: python
     :start-after: # Export the model for on-target inference.
     :end-before: # End of export
@@ -183,7 +183,7 @@ Hyper-parameters
       Results in AIMET are with learning of the order 1e-6.
     - Learning rate schedule: Divide learning rate by 10 every 5-10 epochs
 
-.. literalinclude:: ../../../torch_code_examples/quantsim_code_example.py
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
     :language: python
     :start-after: # Finetune the model
     :end-before: # End of example
