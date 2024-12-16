@@ -527,10 +527,14 @@ def get_ordered_lists_of_conv_fc(model: torch.nn.Module, input_shapes: Union[Tup
     :param dummy_input: A dummy input to the model. Can be a Tensor or a Tuple of Tensors
     :return: List of names in graph in order
     """
+    if input_shapes is None and dummy_input is None:
+        raise ValueError('Both input shapes and dummy input cannot be None')
 
-    device = get_device(model)
     if dummy_input is None:
-        dummy_input = create_rand_tensors_given_shapes(input_shapes, device)
+        dummy_input = create_rand_tensors_given_shapes(input_shapes, get_device(model))
+        msg = _red("Input shapes argument will be deprecated in a future release. Start using dummy input argument instead")
+        warnings.warn(msg, DeprecationWarning, stacklevel=2)
+
     module_list = get_ordered_list_of_modules(model, dummy_input)
     module_list = [[name, module] for name, module in module_list if
                    isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Linear, torch.nn.ConvTranspose2d,
