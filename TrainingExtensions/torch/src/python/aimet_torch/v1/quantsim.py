@@ -1430,18 +1430,19 @@ class QuantizationSimModel(_QuantizationSimModelInterface):
 
             # If modules is in the exclude list, remove the wrapper
             if module_ref in list_of_modules_to_exclude:
-
                 if isinstance(module_ref, _QuantizedModuleProtocol):
-                    # Remove the wrapper, gets auto-deleted
-                    # pylint: disable=protected-access
-                    setattr(starting_module, module_name, module_ref.get_original_module())
-
+                    orig_module = module_ref.get_original_module()
                 elif isinstance(module_ref, QcQuantizeStandAloneBase):
-                    setattr(starting_module, module_name, torch.nn.Identity())
-
+                    orig_module = torch.nn.Identity()
                 elif isinstance(module_ref, QcQuantizeRecurrent):
                     module_ref.update_params()
-                    setattr(starting_module, module_name, module_ref.module_to_quantize)
+                    orig_module = module_ref.module_to_quantize
+                else:
+                    orig_module = None
+
+                if orig_module:
+                    setattr(starting_module, module_name, orig_module)
+                    module_ref = orig_module
 
             # Recursively call children modules if present
             if not utils.is_leaf_module(module_ref):

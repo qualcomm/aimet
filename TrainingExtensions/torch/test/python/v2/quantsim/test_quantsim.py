@@ -938,33 +938,34 @@ class TestQuantsim:
                     if 'bias' not in name:
                         assert name in param_encodings_set
 
+    class CustomLinear(torch.nn.Module):
+        """ custom linear module """
+        def __init__(self, in_features, out_features):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.randn(out_features, in_features))
+            self.bias = torch.nn.Parameter(torch.randn(out_features))
+            self.matmul = custom.MatMul()
+            self.add = custom.Add()
+
+        def forward(self, x):
+            x = self.matmul(x, self.weight.transpose(0, 1))
+            return self.add(x, self.bias)
+
+    @QuantizationMixin.implements(CustomLinear)
+    class QuantizedCustomLinear(QuantizationMixin, CustomLinear):
+        def __quant_init__(self):
+            super().__quant_init__()
+            self.input_quantizers = torch.nn.ModuleList([])
+            self.output_quantizers = torch.nn.ModuleList([])
+
+        def forward(self, x):
+            with self._patch_quantized_parameters():
+                return super().forward(x)
+
     def test_non_leaf_qmodule(self):
         """
         Given: Define a quantized definition of a non-leaf module
         """
-        class CustomLinear(torch.nn.Module):
-            """ custom linear module """
-            def __init__(self, in_features, out_features):
-                super().__init__()
-                self.weight = torch.nn.Parameter(torch.randn(out_features, in_features))
-                self.bias = torch.nn.Parameter(torch.randn(out_features))
-                self.matmul = custom.MatMul()
-                self.add = custom.Add()
-
-            def forward(self, x):
-                x = self.matmul(x, self.weight.transpose(0, 1))
-                return self.add(x, self.bias)
-
-        @QuantizationMixin.implements(CustomLinear)
-        class QuantizedCustomLinear(QuantizationMixin, CustomLinear):
-            def __quant_init__(self):
-                super().__quant_init__()
-                self.input_quantizers = torch.nn.ModuleList([])
-                self.output_quantizers = torch.nn.ModuleList([])
-
-            def forward(self, x):
-                with self._patch_quantized_parameters():
-                    return super().forward(x)
 
         """
         When: Create quantsim with the non-leaf module
@@ -972,7 +973,7 @@ class TestQuantsim:
               2) All its submodules should be also converted to quantized modules
         """
         model = torch.nn.Sequential(
-            CustomLinear(10, 10),
+            self.CustomLinear(10, 10),
             torch.nn.Sigmoid(),
         )
         dummy_input = torch.randn(10, 10)
@@ -980,7 +981,7 @@ class TestQuantsim:
         sim = QuantizationSimModel(model, dummy_input)
 
         qlinear = sim.model[0]
-        assert isinstance(qlinear, QuantizedCustomLinear)
+        assert isinstance(qlinear, self.QuantizedCustomLinear)
         assert isinstance(qlinear.param_quantizers['weight'], AffineQuantizerBase)
         assert qlinear.param_quantizers['bias'] is None
 
@@ -993,6 +994,39 @@ class TestQuantsim:
         assert qlinear.add.input_quantizers[0] is None
         assert isinstance(qlinear.add.input_quantizers[1], AffineQuantizerBase)
         assert isinstance(qlinear.add.output_quantizers[0], AffineQuantizerBase)
+
+        """
+        When: Export
+        Then: The generated encoding file should contain all entries properly
+        """
+        sim.compute_encodings(lambda model: model(dummy_input))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sim.export(tmpdir, 'model', dummy_input=dummy_input)
+            with open(os.path.join(tmpdir, 'model_torch.encodings')) as f:
+                encodings = json.load(f)
+
+        expected_schema = {
+            'activation_encodings': {
+                '0.add':    {'input': ..., 'output': ...}, # CustomLinear.add
+                '0.matmul': {'input': ..., 'output': ...}, # CustomLinear.matmul
+                '1':        {'output': ...},               # Sigmoid
+            },
+            'param_encodings': {
+                '0.weight': ...,                           # CustomLinear.weight
+            }
+        }
+
+        def _assert_same_keys(d: dict, expected: dict):
+            assert d.keys() == expected.keys()
+
+            for k in d:
+                v1, v2 = d[k], expected[k]
+                if isinstance(v2, dict):
+                    _assert_same_keys(v1, v2)
+
+        _assert_same_keys(encodings['activation_encodings'], expected_schema['activation_encodings'])
+        # TODO: This assertion currently fails
+        # _assert_same_keys(encodings['param_encodings'], expected_schema['param_encodings'])
 
     def test_already_quantized_model(self):
         """

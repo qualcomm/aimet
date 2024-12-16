@@ -37,9 +37,12 @@
 # =============================================================================
 
 import pytest
+import json
+import os
 import torch
 from torch import nn
 import peft.tuners.lora.layer as lora
+import tempfile
 
 import aimet_torch.v2 as aimet
 from aimet_torch.v2.quantization import affine
@@ -49,7 +52,7 @@ from aimet_torch.v2.experimental import lora as qlora
 
 
 class TestQuantizedLinear:
-    def test_quantsim_construction(self):
+    def test_quantsim_basics(self):
         model = lora.Linear(nn.Linear(10, 10), adapter_name='adapter_0', r=1)
         dummy_input = torch.randn(10, 10)
         sim = QuantizationSimModel(model, dummy_input)
@@ -89,6 +92,41 @@ class TestQuantizedLinear:
         for qtzr in sim.model.modules():
             if isinstance(qtzr, QuantizerBase):
                 assert qtzr.is_initialized()
+
+        """
+        When: Export
+        Then: The generated encoding file should contain all entries properly
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sim.export(tmpdir, 'model', dummy_input=dummy_input)
+            with open(os.path.join(tmpdir, 'model_torch.encodings')) as f:
+                encodings = json.load(f)
+
+        expected_schema = {
+            'activation_encodings': {
+                'base_layer':       {'input': {'0': ...}, 'output': ...},
+                'lora_A.adapter_0': {'input': {'0': ...}, 'output': ...},
+                'lora_B.adapter_0': {                     'output': ...},
+                'mul.adapter_0':    {'input': {'1': ...}, 'output': ...},
+                'add.adapter_0':    {                     'output': ...},
+            },
+            'param_encodings': {
+                'base_layer.weight': ...,
+                'lora_A.adapter_0.weight': ...,
+                'lora_B.adapter_0.weight': ...,
+            }
+        }
+
+        def _assert_same_keys(d: dict, expected: dict):
+            assert d.keys() == expected.keys()
+
+            for k in d:
+                v1, v2 = d[k], expected[k]
+                if isinstance(v2, dict):
+                    _assert_same_keys(v1, v2)
+
+        _assert_same_keys(encodings['activation_encodings'], expected_schema['activation_encodings'])
+        _assert_same_keys(encodings['param_encodings'], expected_schema['param_encodings'])
 
     @pytest.mark.skip(reason="To be discussed")
     def test_update_layer(self):
