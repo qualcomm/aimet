@@ -671,6 +671,21 @@ class TestTrainingExtensionsCrossLayerScaling:
         assert torch.allclose(output_before_cle, output_after_cle, rtol=1.e-2)
 
 class TestTrainingExtensionsCrossLayerScalingPythonOnly:
+    @pytest.mark.cuda
+    def test_cle_using_python_impl(self):
+        torch.manual_seed(10)
+        random_input = torch.rand(2, 10, 24, 24).cuda()
+        model = MyModel().eval().cuda()
+        model_copy = copy.deepcopy(model).eval()
+        # original outputs
+        output = model(random_input)
+
+        equalize_model(model_copy, (2, 10, 24, 24), dummy_input=random_input)
+        output_using_python = model_copy(random_input)
+
+        assert torch.allclose(output, output_using_python)
+       
+
     def test_divide_by_zero(self):
         """ Ensure scale factors are computed using python implementation """
         torch.manual_seed(10)
