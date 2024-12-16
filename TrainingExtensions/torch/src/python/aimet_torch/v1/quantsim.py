@@ -77,7 +77,7 @@ from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.v1._builder import _V1LazyQuantizeWrapper
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
-from aimet_torch._base.quantsim import ( # pylint disable=unused-import
+from aimet_torch._base.quantsim import ( # pylint: disable=unused-import
     _QuantizationSimModelBase,
     _QuantizedModuleProtocol,
     QuantParams
@@ -117,7 +117,7 @@ class QuantizationSimModel(_QuantizationSimModelBase):
     Implements mechanism to add quantization simulations ops to a model. This allows for off-target simulation of
     inference accuracy. Also allows the model to be fine-tuned to counter the effects of quantization.
     """
-
+    # pylint: disable=too-many-arguments, too-many-locals, too-many-public-methods
     def _realize_quant_wrappers_in_model(self, model: torch.nn.Module):
         """
         Prepare QuantSim for compute encodings. Resets encodings for each quantizable layer and sets mode to Analysis.

@@ -490,6 +490,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to Embedding module
         """
+        # pylint: disable=import-outside-toplevel
         from aimet_torch.v2.nn import BaseQuantizationMixin
 
         for wrapper in self.qmodules():
