@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2022, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -41,19 +41,13 @@ import os
 
 import numpy as np
 import onnx
-import onnxsim
 import torch
-from aimet_common.defs import QuantScheme
-from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
-from aimet_onnx.defs import DataLoader
-from aimet_onnx.quantsim import QuantizationSimModel
-from datasets import load_dataset
-from torchvision import transforms
-from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
 from tqdm import tqdm
 # imports end
 
 # Load the model
+from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
+
 pt_model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
 input_shape = (1, 3, 224, 224)
 dummy_input = torch.randn(input_shape)
@@ -77,13 +71,25 @@ model = onnx.load_model(file_path)
 # End of loading the model
 
 # Prepare model with onnx-simplifier
+import onnxsim
+
 try:
     model, _ = onnxsim.simplify(model)
 except:
     print('ONNX Simplifier failed. Proceeding with unsimplified model')
 # End of prepare model
 
+# Fold batch norm
+from aimet_onnx.batch_norm_fold import fold_all_batch_norms_to_weight
+
+_ = fold_all_batch_norms_to_weight(model=model)
+# End of folding batch norm
+
 # Set up dataloader
+from datasets import load_dataset
+from aimet_onnx.defs import DataLoader
+from torchvision import transforms
+
 dataset = load_dataset(
     'ILSVRC/imagenet-1k',
     split='validation',
@@ -152,6 +158,10 @@ eval_data_loader = CustomDataLoader(
 # End of setting up dataloader
 
 # Create QuantSim object
+from aimet_common.defs import QuantScheme
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
+from aimet_onnx.quantsim import QuantizationSimModel
+
 PARAM_BITWIDTH = 8
 ACTIVATION_BITWIDTH = 16
 sim = QuantizationSimModel(

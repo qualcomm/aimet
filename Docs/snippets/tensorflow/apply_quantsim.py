@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2022, 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -34,40 +34,85 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+# pylint: skip-file
+from tensorflow.keras import losses, metrics, optimizers, preprocessing
+# End of imports
 
-import numpy as np
-import tensorflow as tf
-from aimet_tensorflow.keras import quantsim
+# Load the model
+from tensorflow.keras import applications
 
-def evaluate(model: tf.keras.Model, forward_pass_callback_args):
-    """
-    This is intended to be the user-defined model evaluation function. AIMET requires the above signature. So if the
-    user's eval function does not match this signature, please create a simple wrapper.
-    Use representative dataset that covers diversity in training data to compute optimal encodings.
+model = applications.MobileNetV2()
+# End of loading model
 
-    :param model: Model to evaluate
-    :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is. Up to
-           the user to determine the type of this parameter. E.g. could be simply an integer representing the number
-           of data samples to use. Or could be a tuple of parameters or an object representing something more complex.
-           If set to None, forward_pass_callback will be invoked with no parameters.
-    """
-    dummy_x, _ = forward_pass_callback_args
-    model(dummy_x)
+# Fold batch norm
+from aimet_tensorflow.keras.batch_norm_fold import fold_all_batch_norms
 
-def quantize_model():
-    model = tf.keras.applications.resnet50.ResNet50(weights=None, classes=10)
-    sim = quantsim.QuantizationSimModel(model)
+_, model = fold_all_batch_norms(model)
+# End of folding batch norm
 
-    # Generate some dummy data
-    dummy_x = np.random.randn(10, 224, 224, 3)
-    dummy_y = np.random.randint(0, 10, size=(10,))
-    dummy_y = tf.keras.utils.to_categorical(dummy_y, num_classes=10)
+# Set up dataset
+from tensorflow.keras.applications import mobilenet_v2
 
-    # Compute encodings
-    sim.model.compile(optimizer=tf.keras.optimizers.Adam(lr=0.001),loss='categorical_crossentropy',metrics=['accuracy'])
-    sim.compute_encodings(evaluate, forward_pass_callback_args=(dummy_x, dummy_y))
+BATCH_SIZE = 32
+imagenet_dataset = preprocessing.image_dataset_from_directory(
+    directory='<your_imagenet_validation_data_path>',
+    label_mode='categorical',
+    image_size=(224, 224),
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+)
 
-    # Do some fine-tuning
-    sim.model.fit(x=dummy_x, y=dummy_y, epochs=10)
+imagenet_dataset = imagenet_dataset.map(
+    lambda x, y: (mobilenet_v2.preprocess_input(x), y)
+)
 
-quantize_model()
+NUM_CALIBRATION_SAMPLES = 1024
+calibration_dataset = imagenet_dataset.take(NUM_CALIBRATION_SAMPLES // BATCH_SIZE)
+eval_dataset = imagenet_dataset.skip(NUM_CALIBRATION_SAMPLES // BATCH_SIZE)
+# End of dataset
+
+# Create QuantSim object
+from aimet_common.defs import QuantScheme
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
+from aimet_tensorflow.keras.quantsim import QuantizationSimModel
+
+PARAM_BITWIDTH = 8
+ACTIVATION_BITWIDTH = 16
+sim = QuantizationSimModel(
+    model,
+    quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+    default_param_bw=PARAM_BITWIDTH,
+    default_output_bw=ACTIVATION_BITWIDTH,
+    config_file=get_path_for_per_channel_config(),
+)
+# End of creating QuantSim object
+
+
+def pass_calibration_data(model, _):
+    for inputs, _ in calibration_dataset:
+        _ = model(inputs)
+
+
+# Compute quantization encodings
+sim.compute_encodings(pass_calibration_data, None)
+
+sim.model.compile(
+    optimizer=optimizers.SGD(1e-6),
+    loss=[losses.CategoricalCrossentropy()],
+    metrics=[metrics.CategoricalAccuracy()],
+)
+# End of computing quantization encodings
+
+# Export the model
+_, accuracy = sim.model.evaluate(eval_dataset)
+print(f'Quantized accuracy (W{PARAM_BITWIDTH}A{ACTIVATION_BITWIDTH}): {accuracy:.4f}')
+
+sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2')
+# End of exporting the model
+
+# Perform QAT
+sim.model.fit(calibration_dataset, epochs=10)
+
+_, accuracy = sim.model.evaluate(eval_dataset)
+print(f'Model accuracy after QAT: {accuracy:.4f}')
+# End of QAT
