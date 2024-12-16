@@ -34,7 +34,6 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-
 import copy
 import math
 import pytest
@@ -44,14 +43,12 @@ from pathlib import Path
 import torch
 from torchvision import models
 
-from aimet_torch.v2.batch_norm_fold import (
-    fold_given_batch_norms,
-    fold_all_batch_norms_to_scale,
-)
+from aimet_torch.batch_norm_fold import fold_given_batch_norms
 from models.test_models import TransposedConvModel
-from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.model_preparer import prepare_model
 from aimet_common.defs import QuantScheme
+from aimet_torch.v1.batch_norm_fold import fold_all_batch_norms_to_scale
+from aimet_torch.v1.quantsim import QuantizationSimModel
 
 from ..test_bn_fold import MyModel, _initialize_bn_params
 
@@ -59,12 +56,13 @@ from ..test_bn_fold import MyModel, _initialize_bn_params
 torch.manual_seed(1228)
 
 
+
 symmetric_quantsim_config ={
     "defaults": {
         "ops": { "is_output_quantized": "True" },
         "params": { "is_quantized": "True", "is_symmetric": "True"},
         "strict_symmetric": "False",
-        "unsigned_symmetric": "False",
+        "unsigned_symmetric": "True",
         "per_channel_quantization": "True"
     },
     "params": {
@@ -85,12 +83,12 @@ asymmetric_quantsim_config = copy.deepcopy(symmetric_quantsim_config)
 asymmetric_quantsim_config["defaults"]["params"]["is_symmetric"] = "False"
 
 strict_symmetric_quantsim_config = copy.deepcopy(symmetric_quantsim_config)
-strict_symmetric_quantsim_config["defaults"]["strict_symmetric"] = "False"
+strict_symmetric_quantsim_config["defaults"]["strict_symmetric"] = "True"
 
 quantsim_config_map = {
     "symmetric": symmetric_quantsim_config,
     "asymmetric": asymmetric_quantsim_config,
-    "strict_symmetric": strict_symmetric_quantsim_config,
+    # "strict_symmetric": strict_symmetric_quantsim_config,
 }
 
 def quantsim(model, dummy_input, quantsim_config=None):
@@ -134,11 +132,11 @@ class TestTrainingExtensionBnFoldToScale:
         #         - output: not quantized   - output: not quantized   - output: quantized
 
         # Check quantizers are enabled/disabled properly
-        assert not layer2_0.conv1.output_quantizers[0]
-        assert layer2_0.conv1.param_quantizers["weight"]
-        assert not layer2_0.bn1.output_quantizers[0]
-        assert not layer2_0.bn1.param_quantizers or not layer2_0.bn1.param_quantizers["weight"]
-        assert layer2_0.relu.output_quantizers[0]
+        assert not layer2_0.conv1.output_quantizers[0].enabled
+        assert layer2_0.conv1.param_quantizers["weight"].enabled
+        assert not layer2_0.bn1.output_quantizers[0].enabled
+        assert not layer2_0.bn1.param_quantizers["weight"].enabled
+        assert layer2_0.relu.output_quantizers[0].enabled
 
         buffer = None
         def collect_output(module, inp, output):
@@ -148,8 +146,9 @@ class TestTrainingExtensionBnFoldToScale:
 
         def int8_repr(x, quantizer):
             # Return fake-quantized output in INT8 representation
-            delta = float((quantizer.max - quantizer.min)/255)
-            offset = float(torch.round(-quantizer.min/255))
+            encoding = quantizer.encoding
+            delta = float((encoding.max - encoding.min)/255)
+            offset = float(round(-encoding.min/255))
             return x / delta + offset
 
         ### Outputs before batchnorm folding
@@ -171,15 +170,17 @@ class TestTrainingExtensionBnFoldToScale:
             int8_relu_output_after_folding = int8_repr(fakequant_relu_output_after_folding, layer2_0.relu.output_quantizers[0])
 
         # Check batchnorm is replaced with identity
-        assert isinstance(layer2_0.bn1, torch.nn.Identity)
+        assert isinstance(layer2_0.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert not layer2_0.conv1.output_quantizers[0]
-        assert layer2_0.conv1.param_quantizers["weight"]
-        assert layer2_0.relu.output_quantizers[0]
+        assert not layer2_0.conv1.output_quantizers[0].enabled
+        assert layer2_0.conv1.param_quantizers["weight"].enabled
+        assert not layer2_0.bn1.output_quantizers[0].enabled
+        assert not layer2_0.bn1.param_quantizers["weight"].enabled
+        assert layer2_0.relu.output_quantizers[0].enabled
 
         # test 1: All final outputs should be contained within 3-tick difference
-        last_output_encoding = sim.model.fc.output_quantizers[0]
+        last_output_encoding = sim.model.fc.output_quantizers[0].encoding
         delta = float((last_output_encoding.max - last_output_encoding.min)/255)
         assert torch.allclose(fakequant_output, fakequant_output_after_folding, atol=3*delta) # Allow 3-tick difference
         assert torch.allclose(int8_output, int8_output_after_folding, atol=3) # Allow 3-tick difference
@@ -189,7 +190,7 @@ class TestTrainingExtensionBnFoldToScale:
         assert torch.isclose(int8_output, int8_output_after_folding, atol=1).sum() >= math.floor(int8_output.numel() * 0.99)
 
         # test 3: All ReLU outputs should be contained within 1-tick difference
-        relu_output_encoding = layer2_0.relu.output_quantizers[0]
+        relu_output_encoding = layer2_0.relu.output_quantizers[0].encoding
         delta = float((relu_output_encoding.max - relu_output_encoding.min)/255)
         assert torch.allclose(fakequant_relu_output, fakequant_relu_output_after_folding, atol=1*delta) # Allow 1-tick difference
         assert torch.allclose(int8_relu_output, int8_relu_output_after_folding, atol=1) # Allow 1-tick difference
@@ -223,8 +224,8 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
 
         layer_list = [(model.bn1, model.conv2)]
 
@@ -258,8 +259,8 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
 
         layer_list = [(model.bn1, model.conv2)]
 
@@ -293,11 +294,11 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert not model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers or not model.bn1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert not model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
         baseline_output = model(random_input)
 
@@ -307,18 +308,20 @@ class TestTrainingExtensionBnFoldToScale:
 
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert not model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
-        relu_output_encoding = model.relu1.output_quantizers[0]
+        relu_output_encoding = model.relu1.output_quantizers[0].encoding
         delta = float((relu_output_encoding.max - relu_output_encoding.min)/255)
         assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
 
-        conv1 = model.conv1
+        conv1 = model.conv1._module_to_wrap
         assert conv1.weight.requires_grad == conv1.bias.requires_grad
         assert conv1.weight.device == conv1.bias.device
         assert conv1.weight.dtype == conv1.bias.dtype
@@ -350,11 +353,11 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert not model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert not model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
         baseline_output = model(random_input)
 
@@ -362,15 +365,17 @@ class TestTrainingExtensionBnFoldToScale:
 
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert not model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
-        relu_output = model.relu1.output_quantizers[0]
-        delta = float((relu_output.max - relu_output.min)/255)
+        relu_output_encoding = model.relu1.output_quantizers[0].encoding
+        delta = float((relu_output_encoding.max - relu_output_encoding.min)/255)
         assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
 
     def test_fold_bn_after_transposed_conv_depthwise(self):
@@ -398,26 +403,26 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        # NOTE: Batchnorm quantizers should be enabled since batchnorm folding
+        # NOTE: Bathcnorm quantizers should be enabled since batchnorm folding
         #       is not supported for transposed depthwise conv.
-        assert model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
         fold_all_batch_norms_to_scale(sim)
         # Folding BatchNorm to transposed depthwise convolution is not supported
-        assert isinstance(model.bn1, torch.nn.BatchNorm2d)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.BatchNorm2d)
 
         # Check quantizers are enabled/disabled properly
-        # NOTE: Batchnorm quantizers should be enabled since batchnorm folding
+        # NOTE: Bathcnorm quantizers should be enabled since batchnorm folding
         #       is not supported for transposed depthwise conv.
-        assert model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
     def test_fold_bn_after_conv_with_bias(self):
 
@@ -446,11 +451,11 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert not model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers or not model.bn1.param_quantizers['weight']
-        assert model.relu1.output_quantizers[0]
+        assert not model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
         baseline_output = model(random_input)
 
@@ -460,14 +465,16 @@ class TestTrainingExtensionBnFoldToScale:
 
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1.output_quantizers[0]
-        assert model.conv1.param_quantizers["weight"]
-        assert model.relu1.output_quantizers[0]
+        assert not model.conv1.output_quantizers[0].enabled
+        assert model.conv1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
+        assert model.relu1.output_quantizers[0].enabled
 
-        relu_output_encoding = sim.model.relu1.output_quantizers[0]
+        relu_output_encoding = sim.model.relu1.output_quantizers[0].encoding
         delta = float((relu_output_encoding.max - relu_output_encoding.min)/255)
         assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
 
@@ -494,10 +501,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert model.fc1.output_quantizers[0]
-        assert model.fc1.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
+        assert model.fc1.output_quantizers[0].enabled
+        assert model.fc1.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
 
         layer_list = [(model.bn1, model.fc1)]
 
@@ -527,10 +534,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert model.fc1.output_quantizers[0]
-        assert model.fc1.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
+        assert model.fc1.output_quantizers[0].enabled
+        assert model.fc1.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
 
         layer_list = [(model.bn1, model.fc1)]
 
@@ -561,11 +568,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.fc1.output_quantizers[0]
-        assert model.fc1.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        bn_output_quantizer = model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers["weight"]
+        assert not model.fc1.output_quantizers[0].enabled
+        assert model.fc1.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         baseline_output = model(random_input)
 
@@ -575,22 +581,28 @@ class TestTrainingExtensionBnFoldToScale:
 
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert model.fc1.output_quantizers[0]
-        assert model.fc1.param_quantizers["weight"]
-        assert  model.fc1.output_quantizers[0] == bn_output_quantizer
+        assert model.fc1.output_quantizers[0].enabled
+        assert model.fc1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         # Check batchnorm's output encoding is copied to conv's output encoding
-        fc_output_encoding = model.fc1.output_quantizers[0]
-        assert fc_output_encoding.min == bn_output_quantizer.min and fc_output_encoding.max == bn_output_quantizer.max
+        fc_output_encoding = model.fc1.output_quantizers[0].encoding
+        bn_output_encoding = model.bn1.output_quantizers[0]._compute_updated_encoding()
+        assert fc_output_encoding.max == bn_output_encoding.max and\
+                fc_output_encoding.min == bn_output_encoding.min and\
+                fc_output_encoding.delta == bn_output_encoding.delta and\
+                fc_output_encoding.offset == bn_output_encoding.offset and\
+                fc_output_encoding.bw == bn_output_encoding.bw
 
-        fc_output_encoding = model.fc1.output_quantizers[0]
+        fc_output_encoding = model.fc1.output_quantizers[0].encoding
         delta = float((fc_output_encoding.max - fc_output_encoding.min)/255)
         assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
 
-        fc1 = model.fc1
+        fc1 = model.fc1._module_to_wrap
         assert fc1.weight.requires_grad == fc1.bias.requires_grad
         assert fc1.weight.device == fc1.bias.device
         assert fc1.weight.dtype == fc1.bias.dtype
@@ -619,11 +631,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.fc1.output_quantizers[0]
-        assert model.fc1.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        bn_output_quantizer = model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers["weight"]
+        assert not model.fc1.output_quantizers[0].enabled
+        assert model.fc1.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         baseline_output = model(random_input)
 
@@ -633,29 +644,33 @@ class TestTrainingExtensionBnFoldToScale:
 
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert model.fc1.output_quantizers[0]
-        assert  model.fc1.output_quantizers[0] == bn_output_quantizer
-        assert model.fc1.param_quantizers["weight"]
+        assert model.fc1.output_quantizers[0].enabled
+        assert model.fc1.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         # Check batchnorm's output encoding is copied to conv's output encoding
-        fc_output_encoding = model.fc1.output_quantizers[0]
-        assert fc_output_encoding.max == bn_output_quantizer.max and\
-                fc_output_encoding.min == bn_output_quantizer.min 
+        fc_output_encoding = model.fc1.output_quantizers[0].encoding
+        bn_output_encoding = model.bn1.output_quantizers[0]._compute_updated_encoding()
+        assert fc_output_encoding.max == bn_output_encoding.max and\
+                fc_output_encoding.min == bn_output_encoding.min and\
+                fc_output_encoding.delta == bn_output_encoding.delta and\
+                fc_output_encoding.offset == bn_output_encoding.offset and\
+                fc_output_encoding.bw == bn_output_encoding.bw
 
-        fc_output_encoding = model.fc1.output_quantizers[0]
+        fc_output_encoding = model.fc1.output_quantizers[0].encoding
         delta = float((fc_output_encoding.max - fc_output_encoding.min)/255)
         assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
 
-    
     def test_bn_fold_auto_mode_transposed_conv2d(self):
         torch.manual_seed(10)
         model = TransposedConvModel().eval()
         _initialize_bn_params(model)
 
-        random_input = torch.rand((10, 10, 16, 16))
+        random_input = torch.rand((10, 10, 4, 4))
         sim = quantsim(model, random_input)
         model = sim.model
 
@@ -663,11 +678,11 @@ class TestTrainingExtensionBnFoldToScale:
         folded_pairs = fold_all_batch_norms_to_scale(sim)
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
-        conv2_output_encoding = model.conv2.output_quantizers[0]
-        delta = conv2_output_encoding.get_scale().item()
-        assert torch.allclose(baseline_output, output_after_fold, atol=delta) #Allow 1-tick difference
+        conv2_output_encoding = model.conv2.output_quantizers[0].encoding
+        delta = float((conv2_output_encoding.max - conv2_output_encoding.min) / 255)
+        assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
         assert len(folded_pairs) == 2
 
     def test_bn_fold_auto_mode(self):
@@ -703,11 +718,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1d.output_quantizers[0]
-        assert model.conv1d.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        bn_output_quantizer = model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers["weight"]
+        assert not model.conv1d.output_quantizers[0].enabled
+        assert model.conv1d.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         baseline_output = model(random_input)
         orig_bn = model.bn1
@@ -715,18 +729,24 @@ class TestTrainingExtensionBnFoldToScale:
         bn_pairs = fold_all_batch_norms_to_scale(sim)
         output_after_fold = model(random_input)
 
-        assert isinstance(model.bn1, torch.nn.Identity)
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert model.conv1d.output_quantizers[0]
-        assert model.conv1d.output_quantizers[0] == bn_output_quantizer
-        assert model.conv1d.param_quantizers["weight"]
+        assert model.conv1d.output_quantizers[0].enabled
+        assert model.conv1d.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         # Check batchnorm's output encoding is copied to conv's output encoding
-        conv_output_encoding = model.conv1d.output_quantizers[0]
-        assert conv_output_encoding.max == bn_output_quantizer.max and\
-                conv_output_encoding.min == bn_output_quantizer.min
-        conv_output_encoding = model.conv1d.output_quantizers[0]
+        conv_output_encoding = model.conv1d.output_quantizers[0].encoding
+        bn_output_encoding = model.bn1.output_quantizers[0]._compute_updated_encoding()
+        assert conv_output_encoding.max == bn_output_encoding.max and\
+                conv_output_encoding.min == bn_output_encoding.min and\
+                conv_output_encoding.delta == bn_output_encoding.delta and\
+                conv_output_encoding.offset == bn_output_encoding.offset and\
+                conv_output_encoding.bw == bn_output_encoding.bw
+
+        conv_output_encoding = model.conv1d.output_quantizers[0].encoding
         delta = float((conv_output_encoding.max - conv_output_encoding.min)/255)
         assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
 
@@ -755,30 +775,39 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert not model.conv1d.output_quantizers[0]
-        assert model.conv1d.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert not model.bn1.param_quantizers["weight"]
+        assert not model.conv1d.output_quantizers[0].enabled
+        assert model.conv1d.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
         baseline_output = model(random_input)
 
         layer_list = [(model.conv1d, model.bn1)]
-        bn_output_quantizer = model.bn1.output_quantizers[0]
-
         fold_given_batch_norms(model, layer_list)
         output_after_fold = model(random_input)
-        
-        assert isinstance(model.bn1, torch.nn.Identity)
+
+        assert isinstance(model.bn1._module_to_wrap, torch.nn.Identity)
 
         # Check quantizers are enabled/disabled properly
-        assert model.conv1d.output_quantizers[0]
-        assert model.conv1d.param_quantizers["weight"]
-        assert model.conv1d.output_quantizers[0] == bn_output_quantizer
+        assert model.conv1d.output_quantizers[0].enabled
+        assert model.conv1d.param_quantizers["weight"].enabled
+        assert not model.bn1.output_quantizers[0].enabled
+        assert not model.bn1.param_quantizers["weight"].enabled
 
-        conv_output_scale = model.conv1d.output_quantizers[0].get_scale()
-        assert torch.allclose(baseline_output, output_after_fold, atol=conv_output_scale.item()) # Allow 1-tick difference
+        # Check batchnorm's output encoding is copied to conv's output encoding
+        conv_output_encoding = model.conv1d.output_quantizers[0].encoding
+        bn_output_encoding = model.bn1.output_quantizers[0]._compute_updated_encoding()
+        assert conv_output_encoding.max == bn_output_encoding.max and\
+                conv_output_encoding.min == bn_output_encoding.min and\
+                conv_output_encoding.delta == bn_output_encoding.delta and\
+                conv_output_encoding.offset == bn_output_encoding.offset and\
+                conv_output_encoding.bw == bn_output_encoding.bw
 
-        conv1d = model.conv1d
+        conv_output_encoding = model.conv1d.output_quantizers[0].encoding
+        delta = float((conv_output_encoding.max - conv_output_encoding.min)/255)
+        assert torch.allclose(baseline_output, output_after_fold, atol=delta) # Allow 1-tick difference
+
+        conv1d = model.conv1d._module_to_wrap
         assert conv1d.weight.requires_grad == conv1d.bias.requires_grad
         assert conv1d.weight.device == conv1d.bias.device
         assert conv1d.weight.dtype == conv1d.bias.dtype
@@ -806,10 +835,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert model.conv1d.output_quantizers[0]
-        assert model.conv1d.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
+        assert model.conv1d.output_quantizers[0].enabled
+        assert model.conv1d.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
 
         with pytest.raises(RuntimeError):
             fold_all_batch_norms_to_scale(sim)
@@ -837,10 +866,10 @@ class TestTrainingExtensionBnFoldToScale:
         model = sim.model
 
         # Check quantizers are enabled/disabled properly
-        assert model.conv1d.output_quantizers[0]
-        assert model.conv1d.param_quantizers["weight"]
-        assert model.bn1.output_quantizers[0]
-        assert model.bn1.param_quantizers["weight"]
+        assert model.conv1d.output_quantizers[0].enabled
+        assert model.conv1d.param_quantizers["weight"].enabled
+        assert model.bn1.output_quantizers[0].enabled
+        assert model.bn1.param_quantizers["weight"].enabled
 
         layer_list = [(model.bn1, model.conv1d)]
 
