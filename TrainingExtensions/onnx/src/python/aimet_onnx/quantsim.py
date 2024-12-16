@@ -392,12 +392,24 @@ class QuantizationSimModel:
         self._insert_param_quantization_nodes()
         self._insert_activation_quantization_nodes()
 
+    def _replace_input_of_all_nodes(self, old_name, new_name):
+        if old_name not in self.connected_graph.get_all_products():
+            raise ValueError(f"Tensor name {old_name} was not found in graph tensors "
+                             f"{self.connected_graph.get_all_products().keys()}.")
+
+        product = self.connected_graph.get_all_products()[old_name]
+        for consumer in product.consumers:
+            node = consumer.get_module()
+            for idx, tensor in enumerate(node.input):
+                if tensor == old_name:
+                    node.input[idx] = new_name
+
     def _insert_param_quantization_nodes(self):
         """
         Insert quantization node for each param tensor
         """
         for name in self.param_names:
-            self.model.replace_input_of_all_nodes(name, name + '_qdq')
+            self._replace_input_of_all_nodes(name, name + '_qdq')
 
             quant_info, tensor_quantizer_params = self._create_quant_info_object_for_param(name)
             custom_node = helper.make_node(
@@ -464,7 +476,7 @@ class QuantizationSimModel:
         Insert quantization node for each activation tensor
         """
         for name in self.activation_names:
-            self.model.replace_input_of_all_nodes(name, name + '_updated')
+            self._replace_input_of_all_nodes(name, name + '_updated')
             quant_info = libquant_info.QcQuantizeInfo()
             custom_node = helper.make_node(
                 op_type='QcQuantizeOp',
