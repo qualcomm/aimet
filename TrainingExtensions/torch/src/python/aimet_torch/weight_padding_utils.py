@@ -35,7 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 
 """ Weight padding API"""
-# pylint: disable=protected-access
+# pylint: disable=protected-access, cyclic-import
 from typing import Dict
 
 import aimet_common.libpymo as libpymo
