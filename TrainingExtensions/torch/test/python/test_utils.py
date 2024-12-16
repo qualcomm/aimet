@@ -53,7 +53,8 @@ from aimet_common.utils import round_up_to_multiplicity, round_down_to_multiplic
 from aimet_torch import utils
 import aimet_torch._base.nn.modules.custom as aimet_modules
 
-from aimet_torch.v1.quantsim import QuantizationSimModel
+import aimet_torch.v1.quantsim as v1
+import aimet_torch.v2.quantsim as v2
 from models.test_models import TinyModel, MultiInput, ModelWithReusedNodes, SingleResidual, EmbeddingModel
 from safetensors.numpy import save_file as save_safetensor_file
 
@@ -393,11 +394,10 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
         for device in device_list:
             model = TinyModel().to(device=device)
             model_input = torch.randn(1, 3, 32, 32).to(device=device)
-            sim = QuantizationSimModel(model, dummy_input=torch.rand(1, 3, 32, 32))
 
             module_data = utils.ModuleData(model, model.fc)
             inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
-            fc_out = sim.model(model_input)
+            fc_out = model(model_input)
             self.assertFalse(np.array_equal(utils.to_numpy(out), utils.to_numpy(fc_out)))
 
             module_data = utils.ModuleData(model, model.conv1)
@@ -413,11 +413,10 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
         for device in device_list:
             model = TinyModel().to(device=device)
             model_input = torch.randn(1, 3, 32, 32).to(device=device)
-            sim = QuantizationSimModel(model, dummy_input=torch.rand(1, 3, 32, 32).to(device=device))
 
             module_data = utils.ModuleData(model, model.fc)
             inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
-            fc_out = sim.model(model_input)
+            fc_out = model(model_input)
             self.assertFalse(np.array_equal(utils.to_numpy(out), utils.to_numpy(fc_out)))
 
             module_data = utils.ModuleData(model, model.conv1)
@@ -799,7 +798,7 @@ class MiniModel(torch.nn.Module):
     def test_disable_all_quantizers(self):
         model = TinyModel().to(device="cpu")
         dummy_input = torch.rand(1, 3, 32, 32)
-        sim = QuantizationSimModel(model, dummy_input=dummy_input)
+        sim = v1.QuantizationSimModel(model, dummy_input=dummy_input)
 
         all_quantizers = sum(utils.get_all_quantizers(sim.model), start=[])
         active_quantizers = set(quantizer for quantizer in all_quantizers if quantizer.enabled)
@@ -817,6 +816,21 @@ class MiniModel(torch.nn.Module):
         utils.disable_all_quantizers(sim.model)
         for quantizer in all_quantizers:
             assert not quantizer.enabled
+
+        sim = v2.QuantizationSimModel(model, dummy_input=dummy_input)
+
+        all_quantizers = sum(utils.get_all_quantizers(sim.model), start=[])
+
+        # Disable all the quantizers within with-as block
+        with utils.disable_all_quantizers(sim.model):
+            assert not any(sum(utils.get_all_quantizers(sim.model), start=[]))
+
+        # Check the function disables quantizers temporarily
+        assert sum(utils.get_all_quantizers(sim.model), start=[]) == all_quantizers
+
+        # Disable all the quantizers without employing context manager
+        utils.disable_all_quantizers(sim.model)
+        assert not any(sum(utils.get_all_quantizers(sim.model), start=[]))
 
     def test_get_base_model_parameter(self):
         """
