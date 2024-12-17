@@ -259,7 +259,9 @@ class MpHandler:
                 error_str = (
                     f"For module {self.cg_traverser.get_module_name(m)}, input_candidates {request.input_candidates} and"
                     f" {request.param_candidate} are not valid combination supported by backend. Supported combinations: {m.supported_kernels}")
-                raise RuntimeError(error_str) if strict else logger.warn(error_str)
+                if strict:
+                    raise RuntimeError(error_str)
+                logger.warning(error_str)
         return mp_requests
 
     @staticmethod

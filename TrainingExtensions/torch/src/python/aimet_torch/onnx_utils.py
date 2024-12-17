@@ -1786,4 +1786,3 @@ def __getattr__(name: str):
     if name in __deleted_atttributes__:
         since = __deleted_atttributes__[name]
         raise AttributeError(f"Attribute '{name}' was deleted from aimet_torch.onnx_utils since {since}")
-
