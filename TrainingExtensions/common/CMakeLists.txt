@@ -60,7 +60,11 @@ add_custom_target(generate_deps
             "${CMAKE_CURRENT_SOURCE_DIR}/src/python/aimet_common/_gen.py"
             --output-dir ${CMAKE_BINARY_DIR}/artifacts/aimet_common
 )
-
+install(DIRECTORY ${CMAKE_BINARY_DIR}/artifacts/aimet_common/
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
+        FILES_MATCHING
+        PATTERN "_deps.py"
+      )
 
 add_dependencies(whl_prep_ln whl_prep_ln_common)
 whl_add_whl_action_target(common)
