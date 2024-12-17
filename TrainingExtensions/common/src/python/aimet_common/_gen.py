@@ -45,16 +45,6 @@ def main(output_dir):
     except ImportError:
         torch = None
 
-    try:
-        import tensorflow as tf
-    except ImportError:
-        tf = None
-
-    try:
-        import onnx
-    except ImportError:
-        onnx = None
-
     _template = os.path.join(os.path.dirname(__file__), "_deps.pyi")
 
     with open(_template) as f:
@@ -64,7 +54,7 @@ def main(output_dir):
         ]
 
     content = [
-        # f"platform = '{...}'",
+        f"python_abi = '{sysconfig.get_config_var('SOABI')}'",
         "torch = "      + (f"'{torch.__version__}'" if torch else "None"),
         # "tensorflow = " + (f"'{tf.__version__}'" if tf else "None"),
         # "onnx = "       + (f"'{onnx.__version__}'" if onnx else "None"),

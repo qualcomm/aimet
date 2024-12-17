@@ -80,4 +80,12 @@ glibc_min_ver=$(echo "${glibc_ver_list_sorted}" | awk '{print $1;}' | tr '.' '_'
 echo "glibc_min_ver = ${glibc_min_ver}"
 
 # Rename the package wheel files to conform to manylinux format for PyPi
-wheel tags --platform-tag="manylinux_${glibc_min_ver}_x86_64" --remove ${WHEEL_DIR}/*.whl
+whlfile_name=$(find ${WHEEL_DIR}/*.whl | head -n 1)
+if [[ $whlfile_name =~ aimet_torch.+ ]]; then
+    # aimet_torch supports all platform by default,
+    # and only optionally asserts certain platform when importing aimet_torch.v1
+    tags="--abi-tag=none --platform-tag=any"
+else
+    tags="--platform-tag=manylinux_${glibc_min_ver}_x86_64"
+fi
+wheel tags ${tags} --remove $whlfile_name

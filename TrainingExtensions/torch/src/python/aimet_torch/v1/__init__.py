@@ -41,6 +41,8 @@
 # see https://packaging.python.org/en/latest/guides/packaging-namespace-packages
 __path__ = __import__('pkgutil').extend_path(__path__, __name__)
 
+import sysconfig
+
 import torch as _torch
 from aimet_common import _deps
 
@@ -71,6 +73,18 @@ def _is_torch_compatible(current: str, required: str):
 def _check_requirements():
     reasons = []
 
+    # Check Python ABI.
+    # The format of python_abi depends on the current platform.
+    # In GNU Linux, it's "{python}-{version}-{arch}-{platform}", where
+    #   * python = cpython | ...
+    #   * version = 36 | 37 | 38 | 39 | 310 | ...
+    #   * arch = x86_64 | aarch64 | ...
+    #   * platform = linux-gnu
+    python_abi = sysconfig.get_config_var('SOABI')
+    if python_abi != _deps.python_abi:
+        reasons.append(f"  * Python: {_deps.python_abi} (currently you have {python_abi})")
+
+    # Check PyTorch ABI.
     if not _is_torch_compatible(_torch.__version__, _deps.torch):
         major, minor, patch = _deps.torch.split(".")
         _, cuda = patch.split("+")
