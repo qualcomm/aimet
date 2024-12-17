@@ -268,7 +268,7 @@ autoclass_content = 'both'
 nbsphinx_allow_errors = True
 nbsphinx_execute = 'never'
 
-autosummary_generate = True
+autosummary_generate = False
 
 # contains a list of modules to be mocked up which are not available during docs build time
 autodoc_mock_imports = []
