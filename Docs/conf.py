@@ -268,7 +268,7 @@ autoclass_content = 'both'
 nbsphinx_allow_errors = True
 nbsphinx_execute = 'never'
 
-autosummary_generate = False
+autosummary_generate = True
 
 # contains a list of modules to be mocked up which are not available during docs build time
 autodoc_mock_imports = []
@@ -283,7 +283,7 @@ autodoc_mock_imports.extend(["aimet_common.aimet_tensor_quantizer", "aimet_commo
 autodoc_mock_imports.append("aimet_common.libaimet_tf_ops")
 
 # aimet_onnx
-autodoc_mock_imports.extend(["aimet_common.libquant_info", "onnxruntime"])
+autodoc_mock_imports.extend(["aimet_common.libquant_info"])
 
 from pygments.lexers.diff import DiffLexer
 from sphinx.highlighting import lexers
