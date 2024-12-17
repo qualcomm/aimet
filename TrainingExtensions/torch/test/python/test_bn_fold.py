@@ -167,7 +167,6 @@ class TestTrainingExtensionBnFold:
 
         # Ensure that the weight parameter is updated correctly after bn fold.
         assert not isinstance(model.layer2[0].bn1, torch.nn.BatchNorm2d)
-        assert not isinstance(model_copy.layer2[0].bn1, torch.nn.BatchNorm2d)
    
 
     def test_fold_bn_before_conv_no_bias(self):

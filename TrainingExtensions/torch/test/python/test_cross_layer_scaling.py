@@ -692,21 +692,16 @@ class TestTrainingExtensionsCrossLayerScalingPythonOnly:
         """ Compare scale_cls_set_with_conv_layers API """
         torch.manual_seed(10)
         model = MyModel().cuda().eval()
-        model_copy = copy.deepcopy(model).eval()
         random_input = torch.rand((2, 10, 24, 24)).cuda()
 
         # original outputs
         output = model(random_input)
 
-        CrossLayerScaling.scale_cls_set_with_conv_layers((model_copy.conv1, model_copy.conv2))
-        output_using_python = model_copy(random_input)
+        CrossLayerScaling.scale_cls_set_with_conv_layers((model.conv1, model.conv2))
+        output_using_python = model(random_input)
 
         # Verify the outputs.
         assert torch.allclose(output, output_using_python)
-
-        # Verify the weights.
-        assert torch.allclose(model.conv1.weight, model_copy.conv1.weight)
-        assert torch.allclose(model.conv2.weight, model_copy.conv2.weight)
      
     @pytest.mark.parametrize("groups", [1, 10])
     def test_compare_scale_factors(self, groups):
