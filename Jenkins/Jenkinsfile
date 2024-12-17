@@ -86,7 +86,7 @@ pipeline {
                 axes {
                     axis {
                         name 'ML_FMWORK'
-                        values 'torch', 'tf', 'onnx'
+                        values 'torch', 'tf', 'onnx', 'tf-torch'
                     }
                     axis {
                         name 'PROC_TYPE'
@@ -97,7 +97,7 @@ pipeline {
                     exclude {
                         axis {
                             name 'ML_FMWORK'
-                            values 'extra'
+                            values 'tf-torch'
                         }
                         axis {
                             name 'PROC_TYPE'
@@ -107,8 +107,6 @@ pipeline {
                 }
 
                 agent { label "docker-build-aimet-pr-${PROC_TYPE}" } 
-
-
 
                 stages {
                     
