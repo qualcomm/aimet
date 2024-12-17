@@ -509,7 +509,9 @@ class QuantizationSimModel(_QuantizationSimModelBase):
         for name, module in starting_module.named_children():
             if module in list_of_modules_to_exclude:
                 if isinstance(module, BaseQuantizationMixin):
-                    setattr(starting_module, name, module.get_original_module())
+                    orig_module = module.get_original_module()
+                    setattr(starting_module, name, orig_module)
+                    module = orig_module
             # Recursively call children modules if present
             if not utils.is_leaf_module(module):
                 cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
