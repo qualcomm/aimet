@@ -671,6 +671,7 @@ class TestTrainingExtensionsCrossLayerScaling:
         assert torch.allclose(output_before_cle, output_after_cle, rtol=1.e-2)
 
 class TestTrainingExtensionsCrossLayerScalingPythonOnly:
+
     @pytest.mark.cuda
     def test_cle_using_python_impl(self):
         torch.manual_seed(10)
@@ -684,10 +685,56 @@ class TestTrainingExtensionsCrossLayerScalingPythonOnly:
         output_using_python = model_copy(random_input)
 
         assert torch.allclose(output, output_using_python)
+
+
+    @pytest.mark.cuda
+    def test_scale_cls_set_with_conv_layers_using_python_impl(self):
+        """ Compare scale_cls_set_with_conv_layers API """
+        torch.manual_seed(10)
+        model = MyModel().cuda().eval()
+        model_copy = copy.deepcopy(model).eval()
+        random_input = torch.rand((2, 10, 24, 24)).cuda()
+
+        # original outputs
+        output = model(random_input)
+
+        CrossLayerScaling.scale_cls_set_with_conv_layers((model_copy.conv1, model_copy.conv2))
+        output_using_python = model_copy(random_input)
+
+        # Verify the outputs.
+        assert torch.allclose(output, output_using_python)
+
+        # Verify the weights.
+        assert torch.allclose(model.conv1.weight, model_copy.conv1.weight)
+        assert torch.allclose(model.conv2.weight, model_copy.conv2.weight)
+     
+    @pytest.mark.parametrize("groups", [1, 10])
+    def test_compare_scale_factors(self, groups):
+        torch.manual_seed(10)
+        model = torch.nn.Sequential(
+            torch.nn.ConvTranspose2d(10, 10, 3, groups=groups),
+            torch.nn.Conv2d(10, 10, 3),
+        ).eval()
+
+        with torch.no_grad():
+            model[0].weight *= model[0].weight * 100
+
+        dummy_input = torch.rand((1, 10, 32, 32))
+        py_scale_factors = CrossLayerScaling.scale_model(model, dummy_input=dummy_input)
        
+        def _verify_ranges(module_0, module_1):
+            if isinstance(module_0, torch.nn.ConvTranspose2d) and module_0.groups == 1:
+                weight_0 = module_0.weight.detach().permute(1, 0, 2, 3)
+            else:
+                weight_0 = module_0.weight.detach()
+            range_conv1_after_scaling = np.max(np.abs(weight_0.cpu().numpy()), axis=(1, 2, 3))
+            range_conv2_after_scaling = np.max(np.abs(module_1.weight.detach().cpu().numpy()), axis=(0, 2, 3))
+            assert np.allclose(range_conv1_after_scaling, range_conv2_after_scaling)
+
+        # Verify that weights are scaled back to similar ranges
+        _verify_ranges(model[0], model[1])
 
     def test_divide_by_zero(self):
-        """ Ensure scale factors are computed using python implementation """
         torch.manual_seed(10)
         model = torch.nn.Sequential(
             torch.nn.ConvTranspose2d(10, 10, 3, groups=10),
@@ -698,3 +745,25 @@ class TestTrainingExtensionsCrossLayerScalingPythonOnly:
             model[0].weight[0, :, :, :] = 0
         CrossLayerScaling.scale_model(model, dummy_input=dummy_input)
         assert not torch.isnan(model[0].weight).any()
+
+    def test_divide_by_zero_with_depthwise(self):
+        torch.manual_seed(10)
+        model = torch.nn.Sequential(
+            torch.nn.Conv2d(10, 10, 3),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(10, 10, 3, groups=10),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(10, 10, 1),
+            torch.nn.ReLU(),
+        ).eval()
+        dummy_input = torch.randn(1, 10, 32, 32)
+        with torch.no_grad():
+            model[2].weight[0, :, :, :] = 0
+
+        model_copy = copy.deepcopy(model).eval()
+        CrossLayerScaling.scale_model(model, dummy_input=dummy_input)
+
+        assert not torch.isnan(model[0].weight).any()
+        assert not torch.isnan(model[2].weight).any()
+        assert not torch.isnan(model[4].weight).any()
+  
