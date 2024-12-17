@@ -63,6 +63,8 @@ set_target_properties(PyModelOptimizations
          LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts/aimet_common/"
       )
 
+add_dependencies(PyModelOptimizations generate_deps)
+
 install(TARGETS PyModelOptimizations
         LIBRARY
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common

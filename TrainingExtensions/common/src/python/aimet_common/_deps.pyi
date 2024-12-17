@@ -1,7 +1,8 @@
-#==============================================================================
+# -*- mode: python -*-
+# =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2018, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -32,35 +33,7 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 #
 #  @@-COPYRIGHT-END-@@
-#==============================================================================
+# =============================================================================
+from typing import Optional
 
-add_subdirectory(src/python)
-
-if (ENABLE_TESTS)
-    add_subdirectory(test)
-endif()
-
-add_custom_target(whl_prep_cp_common DEPENDS
-    whl_prep_cp_common_DlCompression
-    whl_prep_cp_common_DlEqualization
-    whl_prep_cp_common_DlQuantization
-    whl_prep_cp_common_PyModelOptimizations
-)
-add_dependencies(whl_prep_cp whl_prep_cp_common)
-
-add_custom_target(whl_prep_ln_common DEPENDS
-    whl_prep_ln_common_DlCompression
-    whl_prep_ln_common_DlEqualization
-    whl_prep_ln_common_DlQuantization
-    whl_prep_ln_common_PyModelOptimizations
-)
-
-add_custom_target(generate_deps
-    COMMAND python3
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/python/aimet_common/_gen.py"
-            --output-dir ${CMAKE_BINARY_DIR}/artifacts/aimet_common
-)
-
-
-add_dependencies(whl_prep_ln whl_prep_ln_common)
-whl_add_whl_action_target(common)
+torch: Optional[str]

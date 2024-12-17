@@ -1,7 +1,8 @@
-#==============================================================================
+# -*- mode: python -*-
+# =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2018, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -32,35 +33,49 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 #
 #  @@-COPYRIGHT-END-@@
-#==============================================================================
+# =============================================================================
+# pylint: disable=missing-docstring
 
-add_subdirectory(src/python)
+# Declare explicit namespace package.
+# For more information about explicit namespace packages,
+# see https://packaging.python.org/en/latest/guides/packaging-namespace-packages
+__path__ = __import__('pkgutil').extend_path(__path__, __name__)
 
-if (ENABLE_TESTS)
-    add_subdirectory(test)
-endif()
-
-add_custom_target(whl_prep_cp_common DEPENDS
-    whl_prep_cp_common_DlCompression
-    whl_prep_cp_common_DlEqualization
-    whl_prep_cp_common_DlQuantization
-    whl_prep_cp_common_PyModelOptimizations
-)
-add_dependencies(whl_prep_cp whl_prep_cp_common)
-
-add_custom_target(whl_prep_ln_common DEPENDS
-    whl_prep_ln_common_DlCompression
-    whl_prep_ln_common_DlEqualization
-    whl_prep_ln_common_DlQuantization
-    whl_prep_ln_common_PyModelOptimizations
-)
-
-add_custom_target(generate_deps
-    COMMAND python3
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/python/aimet_common/_gen.py"
-            --output-dir ${CMAKE_BINARY_DIR}/artifacts/aimet_common
-)
+import torch as _torch
+from aimet_common import _deps
 
 
-add_dependencies(whl_prep_ln whl_prep_ln_common)
-whl_add_whl_action_target(common)
+def _is_torch_compatible(current: str, required: str):
+    major, minor, patch = current.split(".") # eg. 2.1.2+cu121
+    major_, minor_, patch_ = required.split(".")
+
+    if (major, minor) != (major_, minor_):
+        return False
+
+    _, cuda = patch.split("+")
+    _, cuda_ = patch_.split("+")
+
+    if cuda != cuda_:
+        return False
+
+    return True
+
+
+def _check_requirements():
+    reasons = []
+
+    if not _is_torch_compatible(_torch.__version__, _deps.torch):
+        major, minor, patch = _deps.torch.split(".")
+        _, cuda = patch.split("+")
+        reasons.append(f"  * torch=={major}.{minor}.*+{cuda} "
+                       f"(currently you have torch=={_torch.__version__})")
+
+    if reasons:
+        msg = "\n".join([
+            "aimet_torch.v1 package requires following environment:",
+            *reasons,
+        ])
+        raise ImportError(msg)
+
+
+_check_requirements()
