@@ -50,7 +50,7 @@ from aimet_common.quant_analyzer import save_json, export_per_layer_sensitivity_
 from aimet_common.utils import AimetLogger, CallbackFunc
 from aimet_common.defs import QuantScheme
 from aimet_torch import utils
-from aimet_torch.v1.quantsim import QuantizationSimModel
+from aimet_torch._base.quantsim import _QuantizationSimModelInterface
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.QuantAnalyzer)
 
@@ -169,7 +169,7 @@ class QuantAnalyzerBase(ABC):
 
     def _create_quantsim_and_encodings(self, quant_scheme: QuantScheme, default_param_bw: int,
                                        default_output_bw: int, config_file: str) \
-            -> QuantizationSimModel:
+            -> _QuantizationSimModelInterface:
         """
         Create Quantsim and compute encodings.
 
@@ -199,7 +199,7 @@ class QuantAnalyzerBase(ABC):
         sim.compute_encodings(self._forward_pass_callback.func, self._forward_pass_callback.args)
         return sim
 
-    def _eval_weight_quantized_model(self, sim: QuantizationSimModel)-> float:
+    def _eval_weight_quantized_model(self, sim: _QuantizationSimModelInterface)-> float:
         """
         Evaluate weight quantized model performance.
         For weight quantized model performance, disable enabled activation quantizers, measure
@@ -212,7 +212,7 @@ class QuantAnalyzerBase(ABC):
             eval_score = self._eval_model(sim.model)
             return eval_score
 
-    def _eval_activation_quantized_model(self, sim: QuantizationSimModel)-> float:
+    def _eval_activation_quantized_model(self, sim: _QuantizationSimModelInterface)-> float:
         """
         Evaluate activation quantized model performance.
         For activation quantized model performance, disable enabled param quantizers, measure
@@ -235,7 +235,7 @@ class QuantAnalyzerBase(ABC):
         with utils.in_eval_mode(model), torch.no_grad():
             return self._eval_callback.func(model, self._eval_callback.args)
 
-    def _sort_quant_wrappers_based_on_occurrence(self, sim: QuantizationSimModel) -> Dict:
+    def _sort_quant_wrappers_based_on_occurrence(self, sim: _QuantizationSimModelInterface) -> Dict:
         """
         Sort quant wrappers based on occurrence for given quantsim model.
 
@@ -287,7 +287,7 @@ class QuantAnalyzerBase(ABC):
         return enabled_quant_wrappers
 
     @classmethod
-    def _get_enabled_param_quantizers(cls, sim: QuantizationSimModel) -> List:
+    def _get_enabled_param_quantizers(cls, sim: _QuantizationSimModelInterface) -> List:
         """
         For given quantsim model, get all enabled param quantizers.
         :param sim: Quantsim model.
@@ -302,7 +302,7 @@ class QuantAnalyzerBase(ABC):
         return enabled_param_quantizers
 
     @classmethod
-    def _get_enabled_activation_quantizers(cls, sim: QuantizationSimModel) -> List:
+    def _get_enabled_activation_quantizers(cls, sim: _QuantizationSimModelInterface) -> List:
         """
         For given quantsim model, get all enabled activation quantizers.
         :param sim: Quantsim model.
@@ -320,7 +320,7 @@ class QuantAnalyzerBase(ABC):
         return enabled_activation_quantizers
 
     def _perform_per_layer_analysis(self,
-                                    sim: QuantizationSimModel,
+                                    sim: _QuantizationSimModelInterface,
                                     disable_all_quantizers: bool,
                                     enabled_before: bool,
                                     enabled_after: bool,
@@ -385,7 +385,7 @@ class QuantAnalyzerBase(ABC):
         """
 
     def check_model_sensitivity_to_quantization(self,
-                                                sim: QuantizationSimModel,
+                                                sim: _QuantizationSimModelInterface,
                                                 ) -> Tuple[float, float, float]:
         """
         Perform the sensitivity analysis to weight and activation quantization
@@ -409,7 +409,7 @@ class QuantAnalyzerBase(ABC):
         return fp32_eval_score, weight_quantized_eval_score, act_quantized_eval_score
 
     def perform_per_layer_analysis_by_enabling_quant_wrappers(self,
-                                                              sim: QuantizationSimModel,
+                                                              sim: _QuantizationSimModelInterface,
                                                               results_dir: str,
                                                               ) -> Dict:
         """
@@ -445,7 +445,7 @@ class QuantAnalyzerBase(ABC):
         return layer_wise_eval_score_dict
 
     def perform_per_layer_analysis_by_disabling_quant_wrappers(self,
-                                                               sim: QuantizationSimModel,
+                                                               sim: _QuantizationSimModelInterface,
                                                                results_dir: str,
                                                                ) -> Dict:
         """
@@ -482,7 +482,7 @@ class QuantAnalyzerBase(ABC):
 
     # pylint: disable=no-self-use
     def export_per_layer_encoding_min_max_range(self,
-                                                sim: QuantizationSimModel,
+                                                sim: _QuantizationSimModelInterface,
                                                 results_dir: str,
                                                 ) -> Tuple[Dict, Dict]:
         """
@@ -548,7 +548,7 @@ class QuantAnalyzerBase(ABC):
         return min_max_range_for_weights_dict, min_max_range_for_activations_dict
 
     def export_per_layer_stats_histogram(self,
-                                         sim: QuantizationSimModel,
+                                         sim: _QuantizationSimModelInterface,
                                          results_dir: str,
                                          ):
         """
@@ -595,7 +595,7 @@ class QuantAnalyzerBase(ABC):
         _logger.info("Exported per layer stats histogram plot(s).")
 
     def export_per_layer_mse_loss(self,
-                                  sim: QuantizationSimModel,
+                                  sim: _QuantizationSimModelInterface,
                                   results_dir: str,
                                   ) -> Dict:
         """
@@ -629,7 +629,7 @@ class QuantAnalyzerBase(ABC):
         return mse_loss_dict
 
     def _compute_mse_loss(self, module: torch.nn.Module, quant_wrapper: torch.nn.Module,
-                          fp32_model: torch.nn.Module, sim: QuantizationSimModel) -> float:
+                          fp32_model: torch.nn.Module, sim: _QuantizationSimModelInterface) -> float:
         """
         Compute MSE loss between fp32 and quantized output activations for each batch, add for
         all the batches and return averaged mse loss.
@@ -665,7 +665,7 @@ class QuantAnalyzerBase(ABC):
         return average_loss
 
     @staticmethod
-    def _exclude_modules_from_quantization(model: torch.nn.Module, sim: QuantizationSimModel,
+    def _exclude_modules_from_quantization(model: torch.nn.Module, sim: _QuantizationSimModelInterface,
                                            modules_to_ignore: List[torch.nn.Module]):
         """
         For the modules in the modules_to_ignore, remove the corresponding quant wrappers.
@@ -698,7 +698,7 @@ class QuantAnalyzerBase(ABC):
 
     @staticmethod
     @abstractmethod
-    def _get_quantsim_cls() -> Type[QuantizationSimModel]:
+    def _get_quantsim_cls() -> Type[_QuantizationSimModelInterface]:
         ...
 
     @staticmethod
@@ -728,12 +728,12 @@ class QuantAnalyzerBase(ABC):
 
     @classmethod
     @abstractmethod
-    def _disable_param_quantizers(cls, sim: QuantizationSimModel):
+    def _disable_param_quantizers(cls, sim: _QuantizationSimModelInterface):
         ...
 
     @classmethod
     @abstractmethod
-    def _disable_activation_quantizers(cls, sim: QuantizationSimModel):
+    def _disable_activation_quantizers(cls, sim: _QuantizationSimModelInterface):
         ...
 
     @staticmethod
@@ -743,7 +743,7 @@ class QuantAnalyzerBase(ABC):
 
     @staticmethod
     @abstractmethod
-    def _get_quantized_modules(sim: QuantizationSimModel) -> Generator:
+    def _get_quantized_modules(sim: _QuantizationSimModelInterface) -> Generator:
         ...
 
     @staticmethod
