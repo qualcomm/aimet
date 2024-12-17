@@ -64,28 +64,10 @@ def evaluate(model, early_stopping_iterations, use_cuda):
     return model(random_input)
 
 
-@contextmanager
-def _use_python_impl(flag: bool):
-    orig_flag = bc.USE_PYTHON_IMPL
-    try:
-        bc.USE_PYTHON_IMPL = flag
-        yield
-    finally:
-        bc.USE_PYTHON_IMPL = orig_flag
-
-
-@pytest.fixture(params=[True, False])
-def use_python_impl(request):
-    param: bool = request.param
-
-    with _use_python_impl(param):
-        yield
-
-
 class TestBiasCorrection:
 
     @pytest.mark.cuda
-    def test_bias_correction_empirical(self, use_python_impl):
+    def test_bias_correction_empirical(self):
 
         torch.manual_seed(10)
         model = MobileNetV2().to(torch.device('cpu'))
@@ -115,7 +97,7 @@ class TestBiasCorrection:
         assert isinstance(model.features[11].conv[0], nn.Conv2d)
 
     @pytest.mark.cuda
-    def test_bias_correction_hybrid(self, use_python_impl):
+    def test_bias_correction_hybrid(self):
         torch.manual_seed(10)
 
         model = MobileNetV2().to(torch.device('cpu'))
