@@ -3,7 +3,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2020, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2020-2024, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -49,8 +49,9 @@
 #
 import os
 import sys
-# sys.path.insert(0, os.path.abspath('.'))
-
+sys.path.append(os.path.abspath('../../TrainingExtensions/torch/src/python'))
+sys.path.append(os.path.abspath('../../TrainingExtensions/onnx/src/python'))
+sys.path.append(os.path.abspath('../../TrainingExtensions/tensorflow/src/python'))
 
 # -- Project information -----------------------------------------------------
 
@@ -59,9 +60,9 @@ copyright = '2020, Qualcomm Innovation Center, Inc.'
 author = 'Qualcomm Innovation Center, Inc.'
 
 # The short X.Y version
-version = '1.36'
+version = ''
 # The full version, including alpha/beta/rc tags
-release = '1.36'
+release = ''
 if "SW_VERSION" in os.environ:
     version = os.environ['SW_VERSION']
 else:    
