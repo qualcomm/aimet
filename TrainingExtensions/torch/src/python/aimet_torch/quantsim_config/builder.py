@@ -91,6 +91,7 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC): # pylint: disable=too-many-inst
         # Create quantizer for each parameter and compute encodings
         self.param_quantizers = {}
 
+        # pylint: disable=import-outside-toplevel, cyclic-import
         from aimet_torch.v2.nn import BaseQuantizationMixin
         if isinstance(module_to_wrap, BaseQuantizationMixin):
             # NOTE: AIMET v2 qmodule always only quantizes the paramters that it directly owns

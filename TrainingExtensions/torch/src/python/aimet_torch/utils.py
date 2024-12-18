@@ -925,7 +925,6 @@ def get_all_quantizers(model: torch.nn.Module):
     :param model: Root module
     :returns: List of parameter, input, and output quantizers
     """
-    # pylint:disable = cyclic-import
     param_quantizers = []
     input_quantizers = []
     output_quantizers = []
@@ -959,8 +958,9 @@ def disable_all_quantizers(model: torch.nn.Module):
     :param model: Root module
     :returns: Handle that enable all quantizers in the model upon handle.remove().
     """
-    from aimet_torch.v2.nn.base import BaseQuantizationMixin # pylint: disable=import-outside-toplevel, cyclic-import
-    import aimet_torch.v2.utils as v2_utils # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel, cyclic-import
+    from aimet_torch.v2.nn.base import BaseQuantizationMixin
+    import aimet_torch.v2.utils as v2_utils
 
     if any(isinstance(m, BaseQuantizationMixin) for m in model.modules()):
         return v2_utils.remove_all_quantizers(model)

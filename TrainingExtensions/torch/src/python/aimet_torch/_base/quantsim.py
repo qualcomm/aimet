@@ -82,6 +82,7 @@ from aimet_torch.onnx_utils import (
 from aimet_torch.experimental.v2.quantsim.export_utils import _export_to_1_0_0
 
 if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
     from aimet_torch.v2.quantization.base.encoding import EncodingBase
 
 
@@ -522,7 +523,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to Embedding module
         """
-        # pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel, cyclic-import
         from aimet_torch.v2.nn import BaseQuantizationMixin
 
         for wrapper in self.qmodules():

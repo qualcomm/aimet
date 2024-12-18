@@ -112,7 +112,8 @@ def _get_activation_encodings(tensor_to_activation_encodings: Dict[str, List], t
 
 
 def _get_param_encodings(tensor_to_param_encodings: Dict[str, List], tensor_to_quantizer_map: Dict):
-    from aimet_torch.v2.quantization.affine import AffineQuantizerBase # pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel, cyclic-import
+    from aimet_torch.v2.quantization.affine import AffineQuantizerBase
 
     param_encodings = []
     for tensor, encodings in tensor_to_param_encodings.items():

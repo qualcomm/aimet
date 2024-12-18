@@ -134,6 +134,7 @@ class _V2LazyQuantizeWrapper(LazyQuantizeWrapper):
 
         :return: v2 quant wrapper with specified properties
         """
+        # pylint: disable=import-outside-toplevel, cyclic-import
         from aimet_torch.v2.nn import QuantizationMixin
         from aimet_torch.v2.nn.fake_quant import _legacy_impl
 

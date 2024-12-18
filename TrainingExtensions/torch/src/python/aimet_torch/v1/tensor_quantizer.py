@@ -54,6 +54,7 @@ from aimet_torch.v1.quantsim_straight_through_grad import IntermediateResult
 from aimet_torch.fp_quantization import fp8_quantizer, INIT_MAP
 from aimet_torch.v1.tensor_factory_utils import constant_like
 if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
     from aimet_torch.v2.quantization.base import EncodingBase
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
