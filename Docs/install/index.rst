@@ -104,7 +104,7 @@ The following pre-requisites apply to all variants. The GPU variants may need ad
 .. parsed-literal::
 
     # ONNX 1.16 GPU with CUDA 11.x
-    python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|\+cu117\ |whl_suffix| -f |torch_pkg_url|
+    python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|\+cu118\ |whl_suffix| -f |torch_pkg_url|
 
     # ONNX 1.16 CPU
     python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|\+cpu\ |whl_suffix| -f |torch_pkg_url|

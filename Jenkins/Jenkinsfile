@@ -1,3 +1,4 @@
+// Jenkinsfile to run pull-request status checks
 pipeline {
     parameters {
         string(name: 'PROJECT_NAME', defaultValue: 'aimet', description: 'project name')
@@ -45,8 +46,8 @@ pipeline {
         }
 
         stage("Check Commits") {
-            agent { label "${params.BUILD_LABEL_CPU}" }                            
-                 
+            agent { label "${params.BUILD_LABEL_CPU}" }
+
             steps {
                 //Set up a TF-CPU docker container to run commit checks script on
                 cleanWs()
@@ -76,12 +77,12 @@ pipeline {
                     }
                 }
                 sh "bash -l -c \"rm -rf commit_checks_repo\""
-            }                  
+            }
         }
 
 
         stage('Pipelines start') {
-        
+
             matrix {
                 axes {
                     axis {
@@ -106,12 +107,12 @@ pipeline {
                     }
                 }
 
-                agent { label "docker-build-aimet-pr-${PROC_TYPE}" } 
+                agent { label "docker-build-aimet-pr-${PROC_TYPE}" }
 
                 stages {
-                    
+
                     stage('Start') {
-                      
+
                         steps {
                             script {
                                 stage("${ML_FMWORK}-${PROC_TYPE}".toUpperCase()) {
@@ -121,7 +122,7 @@ pipeline {
                         }
 
                     }
-                         
+
                     stage('Setup') {
 
                         steps {
@@ -133,7 +134,7 @@ pipeline {
 
 
                     stage('Build') {
-  
+
                         steps {
                             echo 'Building code (and generating Docs and pip packages)...'
                             script {
@@ -143,21 +144,27 @@ pipeline {
                     }
 
                     stage('Code violations') {
-
+                        // Works with newer jenkins instances that support the warnings-ng plugin (https://plugins.jenkins.io/warnings-ng)
+                        when {
+                            expression {
+                                env.QCInternalValidation == "false"
+                            }
+                        }
                         steps {
                             echo 'Running code violations...'
                             script {
                                 runStage("${ML_FMWORK}-${PROC_TYPE}", "-v")
                             }
                         }
+                        // TODO: Following code needs to be updated to conform to this plugin: https://plugins.jenkins.io/warnings-ng
                         // post {
                         //     always {
                         //         step([
-                        //                 $class                      : 'WarningsPublisher',
+                        //                 $class                      : 'WarningsNgPublisher',
                         //                 parserConfigurations        : [[
                         //                                                 parserName: 'PYLint',
                         //                                                 pattern   : "**/**/**/*pylint_results.out"
-                        //                                               ]],
+                        //                                                 ]],
                         //                 failedTotalHigh             : THRESHOLD_OBJ.pylint_fail_thresholds.high_priority,
                         //                 failedTotalNormal           : THRESHOLD_OBJ.pylint_fail_thresholds.normal_priority,
                         //                 failedTotalLow              : THRESHOLD_OBJ.pylint_fail_thresholds.low_priority,
@@ -171,7 +178,45 @@ pipeline {
                         //             }
                         //         }
                         //     }
-                        // }
+                        // }                    
+                    }
+
+                    stage('Code violations Legacy') {
+                        // Works with older jenkins instances that support the warnings plugin (https://plugins.jenkins.io/warnings)
+                        when {
+                            expression {
+                                env.QCInternalValidation == "true"
+                            }
+                        }
+                        steps {
+                            echo 'Running code violations...'
+                            script {
+                                runStage("${ML_FMWORK}-${PROC_TYPE}", "-v")
+                            }
+                        }
+                        post {
+                            always {
+                                // NOTE: Works only with https://plugins.jenkins.io/warnings/ (deprecated)
+                                step([
+                                    $class                      : 'WarningsPublisher',
+                                    parserConfigurations        : [[
+                                                                    parserName: 'PYLint',
+                                                                    pattern: "**/**/**/*pylint_results.out"
+                                                                    ]],
+                                    failedTotalHigh             : THRESHOLD_OBJ.pylint_fail_thresholds.high_priority,
+                                    failedTotalNormal           : THRESHOLD_OBJ.pylint_fail_thresholds.normal_priority,
+                                    failedTotalLow              : THRESHOLD_OBJ.pylint_fail_thresholds.low_priority,
+                                    usePreviousBuildAsReference : true
+                                ])
+                                script {
+                                    if (currentBuild.currentResult.equals("FAILURE")) {
+                                        // the plugin won't fail the stage.  it only sets the build status, so we have to fail it
+                                        // manually
+                                        sh "exit 1"
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     stage('Unit tests') {
@@ -217,12 +262,11 @@ pipeline {
                                 runStage("${ML_FMWORK}-${PROC_TYPE}", "-s | true")
                             }
                         }
-                    }   
-                
-                }
-            }         
-        }
+                    }
 
+                }
+            }
+        }
 
 
         stage("AIMET extra ALL STAGES") {
@@ -235,8 +279,8 @@ pipeline {
                         callAimetExtra(env.CHANGE_TARGET)
                     }
                 }
-            }    
-            
+            }
+
         }
     }
     post {
@@ -291,7 +335,7 @@ def callAimetExtra(target_branch) {
             // setting USE LINARO value to EMPTY to rebuild docker image
             using_linaro=""
         }
-    
+
     if (target_branch.startsWith("release-aimet")) {
         echo "Running AIMET additional stages on ${CHANGE_TARGET} branch ..."
         build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'PROJECT_BRANCH', value: target_branch), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}"), string(name: 'AIMETPRO_BRANCH', value: target_branch)]
@@ -299,10 +343,9 @@ def callAimetExtra(target_branch) {
     else if (target_branch != "develop") {
         echo "Running AIMET additional stages on ${CHANGE_TARGET} branch ..."
         build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'PROJECT_BRANCH', value: target_branch), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}")]
-    }    
+    }
     else {
         echo "Running AIMET additional stages on develop branch ..."
         build job: "AIMET-Extra", parameters: [string(name: 'AIMET_GIT_COMMIT', value: "${CHANGE_BRANCH}"), string(name: 'USE_LINARO', value: "${using_linaro}"), string(name: 'PREBUILT_DOCKER_IMAGE_URL', value: "${params.PREBUILT_DOCKER_IMAGE_URL}")]
     }
 }
-
