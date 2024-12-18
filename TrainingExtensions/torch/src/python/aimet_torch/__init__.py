@@ -40,3 +40,6 @@
 # For more information about explicit namespace packages,
 # see https://packaging.python.org/en/latest/guides/packaging-namespace-packages
 __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+
+from .quantsim import QuantizationSimModel
+from . import nn
