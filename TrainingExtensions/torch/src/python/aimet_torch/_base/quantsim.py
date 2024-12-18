@@ -1735,6 +1735,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
 
 
+@deprecated("Use pickle.dump instead")
 def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: str):
     """
     This API provides a way for the user to save a checkpoint of the quantized model which can
@@ -1749,6 +1750,7 @@ def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: 
         pickle.dump(quant_sim_model, file)
 
 
+@deprecated("Use pickle.load instead")
 def load_checkpoint(file_path: str) -> _QuantizationSimModelInterface:
     """
     Load the quantized model

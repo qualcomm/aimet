@@ -532,7 +532,17 @@ class QuantizationSimModel(_QuantizationSimModelBase):
                 cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
 
 
-@deprecated("Use QuantizationSimModel.load_encodings instead.")
+@deprecated("""
+Use QuantizationSimModel.load_encodings with the following keyword arguments instead:
+```
+sim.load_encodings(encoding_path
+                   strict=True,
+                   partial=False,
+                   requires_grad=None,
+                   allow_overwrite=None)
+```
+"""
+)
 def load_encodings_to_sim(quant_sim_model: _QuantizationSimModelBase, pytorch_encoding_path: str):
     """
     Loads the saved encodings to quant sim model. The encoding filename to load should end in _torch.encodings,
@@ -549,6 +559,17 @@ def load_encodings_to_sim(quant_sim_model: _QuantizationSimModelBase, pytorch_en
                                    allow_overwrite=None)
 
 
+@deprecated(r"""
+Use aimet_torch.nn.compute_encodings contextmanager on each sim.model instead. For example:
+```
+with torch.no_grad(), \
+        aimet_torch.v2.nn.compute_encodings(sim_0.model), \
+        aimet_torch.v2.nn.compute_encodings(sim_1.model), \
+        aimet_torch.v2.nn.compute_encodings(sim_2.model):
+    # Run forward pass with calibration dataset
+```
+"""
+)
 def compute_encodings_for_sims(sim_list: Sequence[QuantizationSimModel], forward_pass_callback: Callable,
                                forward_pass_callback_args: Any):
     """
