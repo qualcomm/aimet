@@ -46,19 +46,26 @@ from aimet_common import _deps
 
 
 def _is_torch_compatible(current: str, required: str):
-    major, minor, patch = current.split(".") # eg. 2.1.2+cu121
-    major_, minor_, patch_ = required.split(".")
+    # PyTorch version tag examples:
+    #   * 2.1.2+cu121
+    #   * 2.1.2+cpu
+    #   * 2.1.2
+    major, minor, patch = current.split(".")
+    required_major, required_minor, required_patch = required.split(".")
 
-    if (major, minor) != (major_, minor_):
+    if (major, minor) != (required_major, required_minor):
         return False
 
-    _, cuda = patch.split("+")
-    _, cuda_ = patch_.split("+")
+    _, *cuda = patch.split("+")
+    _, *required_cuda = required_patch.split("+")
 
-    if cuda != cuda_:
-        return False
+    if not cuda:
+        return True
 
-    return True
+    cuda, = cuda
+    required_cuda, = required_cuda
+
+    return cuda == required_cuda or cuda == "cpu"
 
 
 def _check_requirements():
