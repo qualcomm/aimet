@@ -1307,7 +1307,7 @@ def _get_metadata_and_state_dict(safetensor_file_path: str) -> [dict, dict]:
 
 
 def _get_default_api() -> Union[Literal["v1"], Literal["v2"]]:
-    default_api = os.getenv("AIMET_DEFAULT_API", "v1").lower()
+    default_api = os.getenv("AIMET_DEFAULT_API", "v2").lower()
 
     if default_api not in ("v1", "v2"):
         raise RuntimeError("Invalid value specified for environment variable AIMET_DEFAULT_API. "
