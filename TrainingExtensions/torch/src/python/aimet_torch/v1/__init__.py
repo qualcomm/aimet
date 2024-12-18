@@ -67,7 +67,7 @@ def _is_torch_compatible(current: str, required: str):
     cuda, = cuda
     required_cuda, = required_cuda
 
-    return cuda == required_cuda or cuda == "cpu"
+    return cuda in (required_cuda, "cpu")
 
 
 def _check_requirements():
