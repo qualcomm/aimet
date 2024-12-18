@@ -1,4 +1,4 @@
-// Jenkinsfile to run pull-request status checks
+// Jenkinsfile to run pull-request status checks on older Jenkins versions
 pipeline {
     parameters {
         string(name: 'PROJECT_NAME', defaultValue: 'aimet', description: 'project name')
@@ -151,29 +151,30 @@ pipeline {
                                 runStage("${ML_FMWORK}-${PROC_TYPE}", "-v")
                             }
                         }
-                        // The following code needs to be updated to conform to this plugin: https://plugins.jenkins.io/warnings-ng/
-                        // post {
-                        //     always {
-                        //         step([
-                        //                 $class                      : 'WarningsPublisher',
-                        //                 parserConfigurations        : [[
-                        //                                                 parserName: 'PYLint',
-                        //                                                 pattern   : "**/**/**/*pylint_results.out"
-                        //                                               ]],
-                        //                 failedTotalHigh             : THRESHOLD_OBJ.pylint_fail_thresholds.high_priority,
-                        //                 failedTotalNormal           : THRESHOLD_OBJ.pylint_fail_thresholds.normal_priority,
-                        //                 failedTotalLow              : THRESHOLD_OBJ.pylint_fail_thresholds.low_priority,
-                        //                 usePreviousBuildAsReference : true
-                        //         ])
-                        //         script {
-                        //             if (currentBuild.currentResult.equals("FAILURE")) {
-                        //                 // the plugin won't fail the stage.  it only sets the build status, so we have to fail it
-                        //                 // manually
-                        //                 sh "exit 1"
-                        //             }
-                        //         }
-                        //     }
-                        // }
+                        post {                            
+                            always {
+                                // NOTE: This EoL plugin is NOT supported https://github.com/jenkinsci/warnings-plugin
+                                // This code is required to parse PyLint warnings on older Jenkins versions
+                                step([
+                                        $class                      : 'WarningsPublisher',
+                                        parserConfigurations        : [[
+                                                                        parserName: 'PYLint',
+                                                                        pattern   : "**/**/**/*pylint_results.out"
+                                                                      ]],
+                                        failedTotalHigh             : THRESHOLD_OBJ.pylint_fail_thresholds.high_priority,
+                                        failedTotalNormal           : THRESHOLD_OBJ.pylint_fail_thresholds.normal_priority,
+                                        failedTotalLow              : THRESHOLD_OBJ.pylint_fail_thresholds.low_priority,
+                                        usePreviousBuildAsReference : true
+                                ])
+                                script {
+                                    if (currentBuild.currentResult.equals("FAILURE")) {
+                                        // the plugin won't fail the stage.  it only sets the build status, so we have to fail it
+                                        // manually
+                                        sh "exit 1"
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     stage('Unit tests') {

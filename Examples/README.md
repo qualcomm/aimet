@@ -1,12 +1,12 @@
 ![Qualcomm Innovation Center, Inc.](../Docs/images/logo-quic-on@h68.png)
 
 # AIMET Examples
-AIMET Examples provide reference code (in the form of *scripts* and *Jupyter Notebooks*) to learn how to load models, apply AIMET quantization and compression features, fine tune and save your models. It is also a quick way to become familiar with AIMET usage and APIs. For more details on each of the features and APIs please reference the _[user guide](https://quic.github.io/aimet-pages/releases/1.19.1/user_guide/index.html#api-documentation-and-usage-examples)_.
+AIMET Examples provide reference code (in the form of *scripts* and *Jupyter Notebooks*) to learn how to load models, apply AIMET quantization and compression features, fine tune and save your models. It is also a quick way to become familiar with AIMET usage and APIs. For more details on each of the features and APIs please reference the _[user guide](https://quic.github.io/aimet-pages/releases/latest/user_guide/index.html)_.
 
 ## Table of Contents
 - [Installation](#installation-instructions)
 - [Code Layout](#code-layout)
-- [Supported Examples](#supported-examples)
+- [Overview](#overview)
 - [Running Examples via Jupyter Notebook](#running-examples-via-jupyter-notebook)
 - [Running Examples via Command Line](#running-examples-via-command-line)
 
