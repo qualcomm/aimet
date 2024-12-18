@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -34,17 +34,11 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=missing-module-docstring
+# pylint: disable=all
+from ..utils import _get_default_api
 
-# Declare explicit namespace package.
-# For more information about explicit namespace packages,
-# see https://packaging.python.org/en/latest/guides/packaging-namespace-packages
-__path__ = __import__('pkgutil').extend_path(__path__, __name__)
-
-from .quantsim import QuantizationSimModel
-from . import nn
-
-try:
-    from . import quantization
-except ImportError:
-    pass
+if _get_default_api() == "v1":
+    raise ImportError(f"{__name__} package cannot be imported if v1 is the default API. "
+                      "Import aimet_torch.v2.quantization instead")
+else:
+    from ..v2.quantization import *
