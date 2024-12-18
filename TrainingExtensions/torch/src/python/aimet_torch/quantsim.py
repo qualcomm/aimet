@@ -42,6 +42,11 @@ if _get_default_api() == "v1":
         QuantizationSimModel,
         QuantParams,
         ExportableQuantModule,
+        save_checkpoint,
+        load_checkpoint,
+        check_accumulator_overflow,
+        load_encodings_to_sim,
+        compute_encodings_for_sims,
     )
 
     from .utils import _warn_replaced_in_v2
@@ -56,6 +61,11 @@ else:
         QuantizationSimModel,
         QuantParams,
         ExportableQuantModule,
+        save_checkpoint,
+        load_checkpoint,
+        check_accumulator_overflow,
+        load_encodings_to_sim,
+        compute_encodings_for_sims,
     )
 
 
@@ -63,6 +73,11 @@ __all__ = [
     'QuantizationSimModel',
     'QuantParams',
     'ExportableQuantModule',
+    'save_checkpoint',
+    'load_checkpoint',
+    'check_accumulator_overflow',
+    'load_encodings_to_sim',
+    'compute_encodings_for_sims',
 ]
 
 undefined = set(__all__) - set(globals())

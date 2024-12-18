@@ -59,15 +59,15 @@ import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.model_preparer import prepare_model
 from ..models_.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
     ModelWithTwoInputs, SimpleConditional, RoiModel, InputOutputDictModel, Conv3dModel
-from ..models_.models_to_test import ModelWith5Output
+from ..models_.models_to_test import ModelWith5Output, QuantizationModuleWith5Output
 from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, StaticGridQuantWrapper
-from aimet_torch.v1.quantsim import check_accumulator_overflow, compute_encodings_for_sims
+from aimet_torch.v2.quantsim import check_accumulator_overflow, compute_encodings_for_sims
 import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.v2.nn.fake_quant._legacy_impl import _FakeQuantizedUnaryOpMixin
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 from aimet_torch.v2.quantization.float import FloatQuantizeDequantize
-from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_torch.v2.quantsim import QuantizationSimModel, load_encodings_to_sim
 
 from ..models_ import test_models
 from ..models_ import mnist_torch_model
@@ -724,7 +724,6 @@ class TestQuantizationSimStaticGrad:
         with tempfile.TemporaryDirectory() as tmp_dir:
             sim.export(tmp_dir, 'two_input_model', dummy_input)
 
-    @pytest.mark.skip("load_encodings_to_sim not implemented")
     def test_model_with_two_inputs_fp16(self):
         """Model with more than 1 input"""
 
@@ -1924,7 +1923,6 @@ class TestQuantizationSimStaticGrad:
                 # param encoding -- linear 1 & 2 weight & bias, prelu 1 & 2 weight
                 assert 4 == len(encodings['param_encodings'])
 
-    @pytest.mark.skip("load_encodings_to_sim not implemented")
     def test_export_prelu_encoding_and_check_load_encodings(self):
         """ Test that prelu weight is exported correctly """
         model = PreluModel()
@@ -1944,16 +1942,12 @@ class TestQuantizationSimStaticGrad:
             load_encodings_to_sim(sim, encoding_file_path_pytorch)
 
             layer = sim.model.prelu
-            if isinstance(layer, QcQuantizeWrapper):
-                for input_quantizer in layer.input_quantizers:
-                    if input_quantizer.enabled:
-                        assert input_quantizer.encoding is not None
-                for output_quantizer in layer.output_quantizers:
-                    if output_quantizer.enabled:
-                        assert output_quantizer.encoding is not None
-                for name in layer.param_quantizers:
-                    if layer.param_quantizers[name].enabled:
-                        assert layer.param_quantizers[name].encoding is not None
+            for input_quantizer in layer.input_quantizers:
+                assert input_quantizer.is_initialized()
+            for output_quantizer in layer.output_quantizers:
+                assert output_quantizer.is_initialized()
+            for param_quantizer in layer.param_quantizers.values():
+                assert param_quantizer.is_initialized()
 
             output1 = sim.model(copy.deepcopy(dummy_input))
             assert sum(output1.flatten() - output.flatten()) == 0.0
@@ -2266,7 +2260,6 @@ class TestQuantizationSimStaticGrad:
                 assert len(encodings['activation_encodings']) == 13
                 assert len(encodings['param_encodings']) == 5
 
-    @pytest.mark.skip('compute_encodings_for_sims not supported yet')
     def test_compute_encodings_for_multiple_sims(self):
         class SecondModel(torch.nn.Module):
             def __init__(self, const_inp_shape):
@@ -2305,9 +2298,9 @@ class TestQuantizationSimStaticGrad:
         # during compute encodings, and that it was placed back to training mode afterwards.
         assert sim2.model.training
         assert torch.equal(running_mean, sim2.model.batchnorm.running_mean)
-        assert sim1.model.conv1_a.output_quantizers[0].encoding is not None
-        assert sim2.model.add.input_quantizers[0].encoding is not None
-        assert sim2.model.add.input_quantizers[1].encoding is not None
+        assert sim1.model.conv1_a.output_quantizers[0].is_initialized()
+        assert sim2.model.add.input_quantizers[0].is_initialized()
+        assert sim2.model.add.input_quantizers[1].is_initialized()
 
     @pytest.mark.skip('load_and_freeze_encodings not supported yet')
     def test_load_and_freeze_encodings(self):
@@ -2887,7 +2880,6 @@ class TestQuantizationSimLearnedGrid:
 
         # self.assertAlmostEqual(100 * range_used, 0.263623, places=3)
 
-    @pytest.mark.skip("load_encodings_to_sim not implemented")
     def test_export_prelu_encoding_and_check_load_encodings(self):
         """ Test that prelu weight is exported correctly """
         model = PreluModel()
@@ -2910,21 +2902,16 @@ class TestQuantizationSimLearnedGrid:
             load_encodings_to_sim(sim, encoding_file_path_pytorch)
 
             layer = sim.model.prelu
-            if isinstance(layer, QcQuantizeWrapper):
-                for input_quantizer in layer.input_quantizers:
-                    if input_quantizer.enabled:
-                        assert input_quantizer.encoding is not None
-                for output_quantizer in layer.output_quantizers:
-                    if output_quantizer.enabled:
-                        assert output_quantizer.encoding is not None
-                for name in layer.param_quantizers:
-                    if layer.param_quantizers[name].enabled:
-                        assert layer.param_quantizers[name].encoding is not None
+            for input_quantizer in layer.input_quantizers:
+                assert input_quantizer.is_initialized()
+            for output_quantizer in layer.output_quantizers:
+                assert output_quantizer.is_initialized()
+            for param_quantizer in layer.param_quantizers.values():
+                assert param_quantizer.is_initialized()
 
             output1 = sim.model(copy.deepcopy(dummy_input))
             assert sum(output1.flatten() - output.flatten()) == 0.0
 
-    @pytest.mark.skip("load_encodings_to_sim not implemented")
     def test_load_encodings_multi_input_multi_output_model(self):
         net = ModelWith5Output()
         dummy_input = torch.randn(1, 3, 224, 224)
@@ -2949,16 +2936,12 @@ class TestQuantizationSimLearnedGrid:
             load_encodings_to_sim(sim, encoding_file_path_pytorch)
 
             layer = sim.model.cust
-            if isinstance(layer, QcQuantizeWrapper):
-                for input_quantizer in layer.input_quantizers:
-                    if input_quantizer.enabled:
-                        assert input_quantizer.encoding is not None
-                for output_quantizer in layer.output_quantizers:
-                    if output_quantizer.enabled:
-                        assert output_quantizer.encoding is not None
-                for name in layer.param_quantizers:
-                    if layer.param_quantizers[name].enabled:
-                        assert layer.param_quantizers[name].encoding is not None
+            for input_quantizer in layer.input_quantizers:
+                assert input_quantizer.is_initialized()
+            for output_quantizer in layer.output_quantizers:
+                assert output_quantizer.is_initialized()
+            for param_quantizer in layer.param_quantizers.values():
+                assert param_quantizer.is_initialized()
 
     def test_inplace_modification_with_relu(self):
         """

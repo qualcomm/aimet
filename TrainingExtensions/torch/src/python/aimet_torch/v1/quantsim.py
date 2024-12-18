@@ -40,13 +40,11 @@ import contextlib
 import os
 import io
 import copy
-import pickle
 from typing import Tuple, List, Union, Dict, Callable, Optional, Any
 import torch
 
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_common.quant_utils import get_conv_accum_bounds
 from aimet_common.utils import deprecated
 
 from aimet_torch.v1.qc_quantize_op import QcQuantizeStandAloneBase, QcQuantizeWrapper, QcQuantizeOpMode, \
@@ -65,12 +63,20 @@ from aimet_torch._base.quantsim import (
     unquantizable_modules,
     QuantParams,
     ExportableQuantModule,
+    save_checkpoint,
+    load_checkpoint,
+    check_accumulator_overflow,
 )
 
 __all__ = [
     'QuantizationSimModel',
     'QuantParams',
     'ExportableQuantModule',
+    'save_checkpoint',
+    'load_checkpoint',
+    'check_accumulator_overflow',
+    'load_encodings_to_sim',
+    'compute_encodings_for_sims',
 ]
 
 
@@ -650,69 +656,8 @@ class QuantizationSimModel(_QuantizationSimModelBase):
 
 
 
-def save_checkpoint(quant_sim_model: QuantizationSimModel, file_path: str):
-    """
-    This API provides a way for the user to save a checkpoint of the quantized model which can
-    be loaded at a later point to continue fine-tuning e.g.
-    See also load_checkpoint()
-
-    :param quant_sim_model: QuantizationSimModel to save checkpoint for
-    :param file_path: Path to the file where you want to save the checkpoint
-    :return: None
-    """
-    with open(file_path, 'wb') as file:
-        pickle.dump(quant_sim_model, file)
-
-
-def load_checkpoint(file_path: str) -> QuantizationSimModel:
-    """
-    Load the quantized model
-
-    :param file_path: Path to the file where you want to save the checkpoint
-    :return: A new instance of the QuantizationSimModel created after loading the checkpoint
-    """
-    with open(file_path, 'rb') as file:
-        sim = pickle.load(file)
-        return sim
-
-
-@deprecated("check_accumulator_overflow API will be removed in the future releases.")
-def check_accumulator_overflow(model: torch.nn.Module, quant_bw: int, accum_bw: int):
-    """
-    Checks for any potential for accumulator overflow across all the layers of the given model
-    :param model: Model
-    :param quant_bw: Bitwidth the layers are quantized at
-    :param accum_bw: Bitwidth of the accumulator
-    :return: Name of the layer with the most accumulator range used and range used
-    """
-
-    most_accum_range_used = 0
-    most_accum_range_used_layer = None
-
-    for layer_name, layer in model.named_modules():
-
-        if isinstance(layer, torch.nn.Conv2d):
-            was_accum_range_exceeded, accum_range_used = get_conv_accum_bounds(layer.weight.detach().numpy(),
-                                                                               quant_bw, accum_bw)
-            if accum_range_used > most_accum_range_used:
-                most_accum_range_used = accum_range_used
-                most_accum_range_used_layer = layer_name
-
-            if was_accum_range_exceeded:
-                logger.info('Possible accumulator overflow for layer: %s', layer_name)
-
-    if most_accum_range_used < 1:
-        logger.info('No overflow detected. Layer %s had the most accumulator range used: %f%%',
-                    most_accum_range_used_layer, most_accum_range_used * 100)
-    else:
-        logger.info('Overflow detected. Layer %s had the most accumulator range used: %f%%',
-                    most_accum_range_used_layer, most_accum_range_used * 100)
-
-    return most_accum_range_used_layer, most_accum_range_used
-
-
-@deprecated(f"Use {QuantizationSimModel.load_encodings.__qualname__} instead.")
-def load_encodings_to_sim(quant_sim_model: QuantizationSimModel, pytorch_encoding_path: str):
+@deprecated("Use QuantizationSimModel.load_encodings instead.")
+def load_encodings_to_sim(quant_sim_model: _QuantizationSimModelBase, pytorch_encoding_path: str):
     """
     Loads the saved encodings to quant sim model. The encoding filename to load should end in _torch.encodings,
     generated as part of quantsim export.

@@ -51,6 +51,9 @@ from aimet_torch._base.quantsim import (
     unquantizable_modules,
     QuantParams,
     ExportableQuantModule,
+    save_checkpoint,
+    load_checkpoint,
+    check_accumulator_overflow,
 )
 from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
@@ -68,6 +71,11 @@ __all__ = [
     'QuantizationSimModel',
     'QuantParams',
     'ExportableQuantModule',
+    'save_checkpoint',
+    'load_checkpoint',
+    'check_accumulator_overflow',
+    'load_encodings_to_sim',
+    'compute_encodings_for_sims',
 ]
 
 unquantizable_modules = (QuantizerBase, *unquantizable_modules)
@@ -522,3 +530,50 @@ class QuantizationSimModel(_QuantizationSimModelBase):
             # Recursively call children modules if present
             if not utils.is_leaf_module(module):
                 cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
+
+
+@deprecated("Use QuantizationSimModel.load_encodings instead.")
+def load_encodings_to_sim(quant_sim_model: _QuantizationSimModelBase, pytorch_encoding_path: str):
+    """
+    Loads the saved encodings to quant sim model. The encoding filename to load should end in _torch.encodings,
+    generated as part of quantsim export.
+
+    :param quant_sim_model: Quantized model to load encodings for. Note: The model configuration should be the same as
+        when encodings were exported.
+    :param pytorch_encoding_path: Path of the encodings file to load.
+    """
+    quant_sim_model.load_encodings(pytorch_encoding_path,
+                                   strict=True,
+                                   partial=False,
+                                   requires_grad=None,
+                                   allow_overwrite=None)
+
+
+def compute_encodings_for_sims(sim_list: Sequence[QuantizationSimModel], forward_pass_callback: Callable,
+                               forward_pass_callback_args: Any):
+    """
+    Compute encodings for a list of QuantSims.
+
+    :param sim_list: List of QuantSims to compute encodings for.
+    :param forward_pass_callback: A callback function that simply runs forward passes on the models. This callback
+        function should use representative data for the forward pass, so the calculated encodings work for all
+        data samples. This callback internally chooses the number of data samples it wants to use for calculating
+        encodings.
+        The callback expects exactly two inputs:
+            - List of models which are involved in the forward pass. The models are taken directly from calling
+            sim.model for each sim in sim_list, passed in the same order in which the sims appear in sim_list.
+            - Forward pass callback args
+    :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is. Up to
+        the user to determine the type of this parameter. E.g. could be simply an integer representing the number
+        of data samples to use. Or could be a tuple of parameters or an object representing something more complex.
+        If set to None, forward_pass_callback will be invoked with no parameters.
+    """
+    ctx_managers = [torch.no_grad()]
+    for sim in sim_list:
+        ctx_managers.append(utils.in_eval_mode(sim.model))
+        ctx_managers.append(aimet_nn.compute_encodings(sim.model))
+
+    with contextlib.ExitStack() as stack:
+        for mgr in ctx_managers:
+            stack.enter_context(mgr)
+        _ = forward_pass_callback([sim.model for sim in sim_list], forward_pass_callback_args)

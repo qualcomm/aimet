@@ -43,6 +43,7 @@ import copy
 from collections import OrderedDict, defaultdict
 import json
 import warnings
+import pickle
 from typing import (
     Callable,
     List,
@@ -66,6 +67,7 @@ from safetensors.numpy import save_file as save_safetensor_file
 from aimet_common.utils import AimetLogger, save_json_yaml, log_with_error_and_assert_if_false
 from aimet_common.defs import QuantScheme, QuantizationDataType, SupportedKernelsAction, QuantDtypeBwInfo
 from aimet_common.quantsim import validate_quantsim_inputs, extract_global_quantizer_args, VALID_ENCODING_VERSIONS
+from aimet_common.quant_utils import get_conv_accum_bounds
 from aimet_common.utils import deprecated, _red
 from aimet_common import quantsim
 
@@ -1610,7 +1612,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             self._set_activation_encodings(activation_encodings,
                                            strict, partial, requires_grad, allow_overwrite)
 
-    @deprecated(f"Use {load_encodings.__qualname__} instead.")
+    @deprecated("Use QuantizationSimModel.load_encodings instead.")
     def load_and_freeze_encodings(self, encoding_path: str, ignore_when_quantizer_disabled: bool = False):
         """
         Functionality to set encodings (both activation and parameter) as per the given encodings JSON file and
@@ -1690,7 +1692,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 raise RuntimeError(f"Encoding import failed for module: {module_name}.\n{str(e)}") from e
 
 
-    @deprecated(f"Use {load_encodings.__qualname__} instead.")
+    @deprecated("Use QuantizationSimModel.load_encodings instead.")
     def set_and_freeze_param_encodings(self, encoding_path: str):
         """
         Set and freeze parameter encodings from encodings JSON file.
@@ -1728,3 +1730,66 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 with utils.in_eval_mode(module), torch.no_grad():
                     marker_layer = torch.jit.trace(CustomMarker(module, name, True), dummy_input)
                     self._module_marker_map[name] = marker_layer
+
+
+
+
+def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: str):
+    """
+    This API provides a way for the user to save a checkpoint of the quantized model which can
+    be loaded at a later point to continue fine-tuning e.g.
+    See also load_checkpoint()
+
+    :param quant_sim_model: QuantizationSimModel to save checkpoint for
+    :param file_path: Path to the file where you want to save the checkpoint
+    :return: None
+    """
+    with open(file_path, 'wb') as file:
+        pickle.dump(quant_sim_model, file)
+
+
+def load_checkpoint(file_path: str) -> _QuantizationSimModelInterface:
+    """
+    Load the quantized model
+
+    :param file_path: Path to the file where you want to save the checkpoint
+    :return: A new instance of the QuantizationSimModel created after loading the checkpoint
+    """
+    with open(file_path, 'rb') as file:
+        sim = pickle.load(file)
+        return sim
+
+
+@deprecated("check_accumulator_overflow API will be removed in the future releases.")
+def check_accumulator_overflow(model: torch.nn.Module, quant_bw: int, accum_bw: int):
+    """
+    Checks for any potential for accumulator overflow across all the layers of the given model
+    :param model: Model
+    :param quant_bw: Bitwidth the layers are quantized at
+    :param accum_bw: Bitwidth of the accumulator
+    :return: Name of the layer with the most accumulator range used and range used
+    """
+
+    most_accum_range_used = 0
+    most_accum_range_used_layer = None
+
+    for layer_name, layer in model.named_modules():
+
+        if isinstance(layer, torch.nn.Conv2d):
+            was_accum_range_exceeded, accum_range_used = get_conv_accum_bounds(layer.weight.detach().numpy(),
+                                                                               quant_bw, accum_bw)
+            if accum_range_used > most_accum_range_used:
+                most_accum_range_used = accum_range_used
+                most_accum_range_used_layer = layer_name
+
+            if was_accum_range_exceeded:
+                logger.info('Possible accumulator overflow for layer: %s', layer_name)
+
+    if most_accum_range_used < 1:
+        logger.info('No overflow detected. Layer %s had the most accumulator range used: %f%%',
+                    most_accum_range_used_layer, most_accum_range_used * 100)
+    else:
+        logger.info('Overflow detected. Layer %s had the most accumulator range used: %f%%',
+                    most_accum_range_used_layer, most_accum_range_used * 100)
+
+    return most_accum_range_used_layer, most_accum_range_used
