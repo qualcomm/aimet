@@ -1,4 +1,4 @@
-// Jenkinsfile to run pull-request status checks on older Jenkins versions
+// Jenkinsfile to run pull-request status checks on older Jenkins versions (<= 2.346.1)
 pipeline {
     parameters {
         string(name: 'PROJECT_NAME', defaultValue: 'aimet', description: 'project name')
@@ -153,8 +153,8 @@ pipeline {
                         }
                         post {                            
                             always {
-                                // NOTE: This EoL plugin is NOT supported https://github.com/jenkinsci/warnings-plugin
-                                // This code is required to parse PyLint warnings on older Jenkins versions
+                                // NOTE: This EoL plugin is NO longer supported https://github.com/jenkinsci/warnings-plugin
+                                // This code will parse PyLint warnings ONLY on older Jenkins versions that still use the above plugin
                                 step([
                                         $class                      : 'WarningsPublisher',
                                         parserConfigurations        : [[
