@@ -48,7 +48,7 @@ from aimet_torch.batch_norm_fold import (
     _is_valid_bn_fold,
     _find_all_batch_norms_to_fold,
 )
-from models.test_models import TransposedConvModel, Conv3dModel, Conv3dModel1
+from .models.test_models import TransposedConvModel, Conv3dModel, Conv3dModel1
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
 import aimet_torch._base.batch_norm_fold as batch_norm_fold
 from torch.nn.modules.batchnorm import _BatchNorm

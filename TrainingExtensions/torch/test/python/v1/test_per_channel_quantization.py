@@ -44,7 +44,7 @@ import json
 import aimet_common.libpymo as libpymo
 from aimet_common.defs import MAP_ROUND_MODE_TO_PYMO, QuantizationDataType
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, LearnedGridQuantWrapper
-from models.test_models import ModelWithTwoInputs, ModelWithTransposeConv
+from ..models.test_models import ModelWithTwoInputs, ModelWithTransposeConv
 from aimet_torch.v1.qc_quantize_op import QuantScheme
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.quantsim_straight_through_grad import calculate_forward_pass

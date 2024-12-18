@@ -46,7 +46,7 @@ import torch.nn.functional as F
 import aimet_torch.utils
 from aimet_common.connected_graph.connectedgraph_utils import get_all_input_ops, get_all_output_ops,\
     get_all_ops_with_constant_inputs, CG_SPLIT
-from models import test_models
+from .models import test_models
 from aimet_common.connected_graph.product import Product
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op

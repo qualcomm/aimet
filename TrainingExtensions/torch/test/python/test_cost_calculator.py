@@ -57,7 +57,7 @@ from aimet_torch.utils import (
 )
 from aimet_torch import cost_calculator as pt_cost_calculator
 
-from models import mnist_torch_model, test_models
+from .models import mnist_torch_model, test_models
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 

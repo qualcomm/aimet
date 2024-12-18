@@ -50,7 +50,7 @@ from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch import onnx_utils
 from aimet_torch._base.nn.modules import custom
 from torchvision.models import mobilenet_v3_large as mobilenetv3
-from models import test_models
+from ..models import test_models
 
 
 class TestQuantizerGroups:

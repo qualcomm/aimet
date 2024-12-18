@@ -43,9 +43,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as functional
 
-import models.mnist_torch_model as mnist_model
-from models.mobilenet import MockMobileNetV11 as MockMobileNetV1
-from models.test_models import TransposedConvModel
+from .models import mnist_torch_model as mnist_model
+from .models.mobilenet import MockMobileNetV11 as MockMobileNetV1
+from .models.test_models import TransposedConvModel
 
 from aimet_common.defs import QuantScheme
 

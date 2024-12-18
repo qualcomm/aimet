@@ -48,7 +48,7 @@ from aimet_torch.v2.batch_norm_fold import (
     fold_given_batch_norms,
     fold_all_batch_norms_to_scale,
 )
-from models.test_models import TransposedConvModel
+from ..models.test_models import TransposedConvModel
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.model_preparer import prepare_model
 from aimet_common.defs import QuantScheme

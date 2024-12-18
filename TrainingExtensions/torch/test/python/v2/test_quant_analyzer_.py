@@ -45,7 +45,7 @@ from torch.utils.data import Dataset, DataLoader
 from aimet_common.defs import QuantScheme
 from aimet_common.utils import CallbackFunc
 from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms
-from models.test_models import TinyModel
+from ..models.test_models import TinyModel
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel

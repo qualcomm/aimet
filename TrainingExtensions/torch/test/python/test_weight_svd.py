@@ -46,7 +46,7 @@ from contextlib import contextmanager
 import aimet_common.defs
 from aimet_common.defs import LayerCompRatioPair
 from aimet_common.utils import AimetLogger
-from models import mnist_torch_model as mnist_model
+from .models import mnist_torch_model as mnist_model
 import aimet_torch.compression_factory as cf_svd
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
 from aimet_torch.layer_database import LayerDatabase, Layer

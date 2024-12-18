@@ -51,7 +51,7 @@ from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.tensor_quantizer import StaticGridPerTensorQuantizer, StaticGridPerChannelQuantizer
 from aimet_torch.weight_padding_utils import recompute_scale, recompute_encodings, weight_pad, WeightPaddingParams
 
-from models.test_models import TinyModel
+from ..models.test_models import TinyModel
 
 
 def evaluate(model: torch.nn.Module, dummy_input: torch.Tensor):

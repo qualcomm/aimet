@@ -57,7 +57,7 @@ from aimet_torch.onnx_utils import (
 )
 from torchvision import models
 
-from models.test_models import (
+from .models.test_models import (
     InputOutputDictModel,
     ModelWithModuleList,
     ModelWithReusedInitializers,

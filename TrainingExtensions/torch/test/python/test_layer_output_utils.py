@@ -51,7 +51,7 @@ from aimet_torch.v2.quantsim import QuantizationSimModel as QuantizationSimModel
 from aimet_torch.layer_output_utils import NamingScheme, LayerOutputUtil, LayerOutput
 from aimet_torch.utils import is_leaf_module
 from aimet_torch.onnx_utils import OnnxExportApiArgs
-from models import test_models
+from .models import test_models
 
 
 def dummy_forward_pass(model: torch.nn.Module, input_batch: torch.Tensor):

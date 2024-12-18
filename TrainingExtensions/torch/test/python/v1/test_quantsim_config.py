@@ -44,7 +44,7 @@ import torch
 import numpy as np
 from aimet_common.connected_graph.connectedgraph_utils import CG_SPLIT
 from aimet_common.defs import QuantScheme, QuantizationDataType, QuantDtypeBwInfo, SupportedKernelsAction
-from models.test_models import SingleResidual, QuantSimTinyModel, MultiInput, SingleResidualWithModuleAdd, \
+from ..models.test_models import SingleResidual, QuantSimTinyModel, MultiInput, SingleResidualWithModuleAdd, \
     SingleResidualWithAvgPool
 from aimet_torch.v1.quantsim import QuantizationSimModel
 import aimet_torch._base.quantsim
@@ -55,7 +55,7 @@ from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.v1.tensor_quantizer import StaticGridPerTensorQuantizer, StaticGridPerChannelQuantizer
 from aimet_torch._base.nn.modules.custom import Add
-from models import test_models
+from ..models import test_models
 
 class ModelWithBertCustomLayerNormGelu(torch.nn.Module):
     """ Model with PyTorch LayerNorm and gelu """

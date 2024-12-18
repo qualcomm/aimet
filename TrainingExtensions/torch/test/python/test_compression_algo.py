@@ -48,7 +48,7 @@ from aimet_common.cost_calculator import SpatialSvdCostCalculator
 from aimet_common.compression_algo import CompressionAlgo
 
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
-from models import mnist_torch_model
+from .models import mnist_torch_model
 from aimet_torch.layer_database import LayerDatabase
 from aimet_torch.svd.svd_pruner import SpatialSvdPruner
 from aimet_torch.layer_selector import ConvNoDepthwiseLayerSelector

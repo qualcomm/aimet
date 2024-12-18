@@ -56,13 +56,13 @@ import torchvision
 from torchvision import models
 from aimet_common.utils import AimetLogger
 from aimet_common.winnow.winnow_utils import OpConnectivity, ConnectivityType
-from models.test_models import ModuleListModel, SingleResidual
+from .models.test_models import ModuleListModel, SingleResidual
 from aimet_torch.winnow.winnow import winnow_model
 from aimet_torch.winnow.mask_propagation_winnower import MaskPropagationWinnower
 from aimet_torch.winnow.winnow_utils import zero_out_input_channels, search_for_zero_planes, DownsampleLayer
 from aimet_torch.utils import get_layer_name
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from models.mobilenet import MobileNetV2, MobileNetV1
+from .models.mobilenet import MobileNetV2, MobileNetV1
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 

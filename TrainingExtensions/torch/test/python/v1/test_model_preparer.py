@@ -56,7 +56,7 @@ from torch.utils.data import DataLoader
 
 from aimet_common.defs import QuantScheme
 import aimet_torch._base.nn.modules.custom as aimet_modules
-from models.test_models import (
+from ..models.test_models import (
     ModelWithFunctionalReLU,
     SingleResidual,
     ModelWithDuplicateReLU,

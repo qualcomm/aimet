@@ -46,7 +46,7 @@ from torchvision import datasets, transforms
 
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
 from aimet_torch.winnow.winnow_utils import to_numpy
-from models import mnist_torch_model
+from .models import mnist_torch_model
 from aimet_torch.svd.svd_splitter import SpatialSvdModuleSplitter
 from aimet_torch.svd.svd_pruner import SpatialSvdPruner
 from aimet_torch.layer_database import LayerDatabase

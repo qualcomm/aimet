@@ -44,7 +44,7 @@ from aimet_common.utils import AimetLogger
 import aimet_torch.v1.quantsim as v1
 import aimet_torch.v2.quantsim as v2
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
-from models.test_models import TinyModel
+from .models.test_models import TinyModel
 from aimet_torch.utils import create_fake_data_loader
 from aimet_torch._base.adaround.activation_sampler import ActivationSampler
 from aimet_torch.v2.nn.base import BaseQuantizationMixin

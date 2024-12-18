@@ -55,7 +55,7 @@ from aimet_common.input_match_search import InputMatchSearch
 from aimet_torch.data_subsampler import DataSubSampler
 from aimet_torch.channel_pruning.weight_reconstruction import WeightReconstructor
 from aimet_torch.channel_pruning.channel_pruner import InputChannelPruner
-from models.mnist_torch_model import Net as mnist_model
+from .models.mnist_torch_model import Net as mnist_model
 from aimet_torch.utils import to_numpy, create_fake_data_loader, get_layer_name, get_layer_by_name,\
     create_rand_tensors_given_shapes, get_device
 from aimet_torch.layer_database import Layer, LayerDatabase

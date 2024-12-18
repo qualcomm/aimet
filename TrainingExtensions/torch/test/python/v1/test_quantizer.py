@@ -63,7 +63,7 @@ from aimet_torch import utils
 from aimet_torch.v1.utils import create_encoding_dict
 import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.model_preparer import prepare_model
-from models.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
+from ..models.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
     ModelWithTwoInputs, SimpleConditional, RoiModel, InputOutputDictModel, Conv3dModel, SmallLinearModel
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.onnx_utils import OnnxExportApiArgs
@@ -75,7 +75,7 @@ from aimet_torch.v1.quantsim import QuantizationSimModel, check_accumulator_over
 from aimet_torch.v1.quantsim_straight_through_grad import compute_dloss_by_dx
 from aimet_torch._base.nn.modules.custom import DynamicConv2d
 
-from models import test_models
+from ..models import test_models
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 

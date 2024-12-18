@@ -55,7 +55,7 @@ import aimet_torch._base.nn.modules.custom as aimet_modules
 
 import aimet_torch.v1.quantsim as v1
 import aimet_torch.v2.quantsim as v2
-from models.test_models import TinyModel, MultiInput, ModelWithReusedNodes, SingleResidual, EmbeddingModel
+from .models.test_models import TinyModel, MultiInput, ModelWithReusedNodes, SingleResidual, EmbeddingModel
 from safetensors.numpy import save_file as save_safetensor_file
 
 

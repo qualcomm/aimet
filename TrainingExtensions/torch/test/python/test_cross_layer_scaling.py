@@ -51,8 +51,8 @@ from aimet_torch.cross_layer_equalization import CrossLayerScaling, HighBiasFold
     ClsSetInfo, GraphSearchUtils
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
 from aimet_torch.utils import get_layer_name
-from models.mobilenet import MockMobileNetV2, MockMobileNetV1
-from models.test_models import Float32AndInt64InputModel
+from .models.mobilenet import MockMobileNetV2, MockMobileNetV1
+from .models.test_models import Float32AndInt64InputModel
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 

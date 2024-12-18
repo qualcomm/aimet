@@ -56,7 +56,7 @@ from aimet_common.bokeh_plots import ProgressBar
 from aimet_common.utils import start_bokeh_server_session
 
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
-from models import mnist_torch_model
+from .models import mnist_torch_model
 from aimet_torch.layer_database import Layer, LayerDatabase
 from aimet_torch.svd.svd_pruner import SpatialSvdPruner
 from aimet_torch import pymo_utils

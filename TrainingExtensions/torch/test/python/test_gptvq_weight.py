@@ -53,7 +53,7 @@ from aimet_torch.utils import is_vector_encoding
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.affine import VectorEncoding
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from models import test_models
+from .models import test_models
 
 QUANTSIM_CONFIG = {
     "defaults": {
