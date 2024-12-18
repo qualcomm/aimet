@@ -31,5 +31,5 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../../apiref/torch/v2/interactive_visualization.rst
+        .. include:: ../../apiref/torch/interactive_visualization.rst
             :start-after: # start-after

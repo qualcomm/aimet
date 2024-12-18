@@ -231,8 +231,8 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../../apiref/torch/amp.rst
-            :start-after: # start-after
+        .. include:: ../../apiref/torch/mp.rst
+            :start-after: # start-after amp
 
     .. tab-item:: TensorFlow
         :sync: tf

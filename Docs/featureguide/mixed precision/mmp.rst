@@ -23,5 +23,6 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../../apiref/torch/v2/mmp.rst
-            :start-after: # start-after
+        .. include:: ../../apiref/torch/mp.rst
+            :start-after: # start-after mmp
+            :end-before: # end-before mmp

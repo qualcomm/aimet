@@ -26,8 +26,8 @@ aimet_torch API
     aimet_torch.peft <peft_lora>
     aimet_torch.compress <compress>
 
-aimet_torch 2
-=============
+aimet_torch
+===========
 
 .. important::
    :mod:`aimet_torch` package is upgraded to :mod:`aimet_torch.v2` with more
@@ -45,8 +45,7 @@ aimet_torch 2
 - :ref:`aimet_torch.batch_norm_fold <apiref-torch-bnf>`
 - :ref:`aimet_torch.cross_layer_equalization <apiref-torch-cle>`
 - :ref:`aimet_torch.model_preparer <apiref-torch-model-preparer>`
-- :ref:`aimet_torch.manual_mixed_precision <api-torch-mmp>`
-- :ref:`aimet_torch.auto_mixed_precision <api-torch-amp>`
+- :ref:`aimet_torch.mixed_precision <api-torch-mp>`
 - :ref:`aimet_torch.quant_analyzer <apiref-torch-quant-analyzer>`
 - :ref:`aimet_torch.autoquant <apiref-torch-autoquant>`
 - :ref:`aimet_torch.bn_reestimation <apiref-torch-bn>`
@@ -55,8 +54,8 @@ aimet_torch 2
 - :ref:`aimet_torch.peft <apiref-torch-peft-lora>`
 - :ref:`aimet_torch.compress <apiref-torch-compress>`
 
-aimet_torch 1.x
-===============
+aimet_torch.v1
+==============
 
 If you still prefer to use aimet_torch 1.x, your imports should originate from the :mod:`aimet_torch.v1`
 namespace.
