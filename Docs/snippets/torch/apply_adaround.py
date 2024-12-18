@@ -35,7 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-docstring
-[setup]
+# [setup]
 import torch
 from torchvision.models import mobilenet_v2
 from torch.utils.data import DataLoader
@@ -58,15 +58,15 @@ def forward_pass(model: torch.nn.Module):
 path = './'
 filename = 'mobilenet'
 
-[step_1]
-from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.adaround.adaround_weight import Adaround, AdaroundParameters
+# [step_1]
+from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch.adaround.adaround_weight import Adaround, AdaroundParameters
 
 params = AdaroundParameters(data_loader=data_loader, num_batches=num_batches)
 
 # Returns model with AdaRound-ed weights and their corresponding encodings
 adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path=path, filename_prefix=filename)
-[step_2]
+# [step_2]
 sim = QuantizationSimModel(adarounded_model, dummy_input)
 
 # AdaRound optimizes the rounding of weight quantizers only. These values are preserved through load_encodings()
@@ -74,8 +74,8 @@ sim.load_encodings(encodings=path + filename, allow_overwrite=False)
 
 # The activation quantizers remain uninitialized and derived through compute_encodings()
 sim.compute_encodings(forward_pass)
-[step_3]
+# [step_3]
 evaluator = evaluator("image-classification")
 accuracy = evaluator.compute(model_or_pipeline=model, data=data, metric="accuracy")
-[step_4]
+# [step_4]
 sim.export(path=path, filename_prefix="quantized_" + filename, dummy_input=dummy_input.cpu())

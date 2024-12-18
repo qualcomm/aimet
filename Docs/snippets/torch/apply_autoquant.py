@@ -149,7 +149,7 @@ auto_quant = AutoQuantWithAutoMixedPrecision(
 # End of step 4
 
 # Step 5. (Optional) Set AdaRound params
-from aimet_onnx.adaround.adaround_weight import AdaroundParameters
+from aimet_torch.adaround.adaround_weight import AdaroundParameters
 
 ADAROUND_DATASET_SIZE = 128
 adaround_data_loader = DataLoader(

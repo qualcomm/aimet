@@ -7,10 +7,6 @@ aimet_torch.quantsim
 ..
   # start-after
 
-.. note::
-
-    This module is also available in the experimental :mod:`aimet_torch.v2` namespace with the same top-level API.
-
 .. autoclass:: aimet_torch.quantsim.QuantizationSimModel
 
 **The following API can be used to Compute encodings for calibration:**
@@ -26,9 +22,6 @@ aimet_torch.quantsim
 **The following API can be used to export the quantized model to target:**
 
 .. automethod:: aimet_torch.quantsim.QuantizationSimModel.export
-
-Enum Definition
-===============
 
 **Quant Scheme Enum**
 

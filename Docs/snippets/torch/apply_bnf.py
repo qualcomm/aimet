@@ -57,7 +57,7 @@ print(model.features[0][0])
 print("\nmodel.features[0][1]:")
 print(model.features[0][1])
 
-from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms
+from aimet_torch.batch_norm_fold import fold_all_batch_norms
 fold_all_batch_norms(model, dummy_input.shape, dummy_input=dummy_input)
 
 print("*** After batch norm folding ***")

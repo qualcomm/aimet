@@ -9,104 +9,71 @@ aimet_torch API
 
     aimet_torch.quantsim <quantsim>
     aimet_torch.adaround <adaround>
+    aimet_torch.nn <nn>
+    aimet_torch.quantization <quantization>
     aimet_torch.seq_mse <seq_mse>
+    aimet_torch.quantsim.config_utils <lpbq>
+    aimet_torch.manual_mixed_precision <mmp>
     aimet_torch.batch_norm_fold <bnf>
     aimet_torch.cross_layer_equalization <cle>
     aimet_torch.model_preparer <model_preparer>
-    aimet_torch.mixed_precision <amp>
+    aimet_torch.auto_mixed_precision <amp>
     aimet_torch.quant_analyzer <quant_analyzer>
     aimet_torch.autoquant <autoquant>
     aimet_torch.bn_reestimation <bn>
+    aimet_torch.visualization_tools <interactive_visualization>
     aimet_torch.layer_output_utils <layer_output_generation>
     aimet_torch.peft <peft_lora>
     aimet_torch.compress <compress>
 
-aimet_torch
-===========
+aimet_torch 2
+=============
 
 .. important::
+   :mod:`aimet_torch` package is upgraded to :mod:`aimet_torch.v2` with more
+   flexible, extensible, and PyTorch-friendly user interface!
 
-   :mod:`aimet_torch` package is planned to be upgraded to :mod:`aimet_torch.v2` with more flexible, extensible, and PyTorch-friendly user interface! In a future release, the core APIs of :mod:`aimet_torch` will be fully replaced with the equivalents in :mod:`aimet_torch.v2`.
-
-AIMET quantization for PyTorch models provides the following functionality.
+   aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x.,
+   please see :doc:`Migrate to aimet_torch 2 <../../quantsim/torch/migration_guide>`.
 
 - :ref:`aimet_torch.quantsim <apiref-torch-quantsim>`
+- :ref:`aimet_torch.nn <apiref-torch-nn>`
+- :ref:`aimet_torch.quantization <apiref-torch-quantization>`
 - :ref:`aimet_torch.adaround <apiref-torch-adaround>`
 - :ref:`aimet_torch.seq_mse <apiref-torch-seq-mse>`
+- :ref:`aimet_torch.quantsim.config_utils <apiref-torch-lpbq>`
 - :ref:`aimet_torch.batch_norm_fold <apiref-torch-bnf>`
 - :ref:`aimet_torch.cross_layer_equalization <apiref-torch-cle>`
 - :ref:`aimet_torch.model_preparer <apiref-torch-model-preparer>`
-- :ref:`aimet_torch.mixed_precision <api-torch-amp>`
+- :ref:`aimet_torch.manual_mixed_precision <api-torch-mmp>`
+- :ref:`aimet_torch.auto_mixed_precision <api-torch-amp>`
 - :ref:`aimet_torch.quant_analyzer <apiref-torch-quant-analyzer>`
 - :ref:`aimet_torch.autoquant <apiref-torch-autoquant>`
 - :ref:`aimet_torch.bn_reestimation <apiref-torch-bn>`
+- :ref:`aimet_torch.visualization_tools <api-torch-interactive-visualization>`
 - :ref:`aimet_torch.layer_output_utils <apiref-torch-layer-output-generation>`
 - :ref:`aimet_torch.peft <apiref-torch-peft-lora>`
 - :ref:`aimet_torch.compress <apiref-torch-compress>`
 
-aimet_torch.v2
-==============
+aimet_torch 1.x
+===============
 
-Introducing :mod:`aimet_torch.v2`, a future version of :mod:`aimet_torch` with more powerful
-quantization features and PyTorch-friendly user interface!
-
-What's New
-----------
-
-These are some of the powerful new features and interfaces supported in :mod:`aimet_torch.v2`
-
-- Blockwise quantization (BQ)
-- Low power blockwise quantization (LPBQ)
-- Dispatching custom quantized kernels
-
-Backwards Compatibility
------------------------
-
-Good news! :mod:`aimet_torch.v2` is carefully designed to be fully backwards-compatible with all
-previous public APIs of :mod:`aimet_torch`. All you need is drop-in replacement of import statements
-from :mod:`aimet_torch` to :mod:`aimet_torch.v2` as below!
-
-.. code-block:: diff
-
-   -from aimet_torch.quantsim import QuantizationSimModel
-   +from aimet_torch.v2.quantsim import QuantizationSimModel
-
-   -from aimet_torch.adaround.adaround_weight import Adaround, AdaroundParameters
-   +from aimet_torch.v2.adaround import Adaround, AdaroundParameters
-
-   -from aimet_torch.seq_mse import apply_seq_mse
-   +from aimet_torch.v2.seq_mse import apply_seq_mse
-
-   -from aimet_torch.quant_analyzer import QuantAnalyzer
-   +from aimet_torch.v2.quant_analyzer import QuantAnalyzer
-
-All the other APIs that didn't changed in or are orthogonal with :mod:`aimet_torch.v2` will be
-still accessible via :mod:`aimet_torch` namespace as before.
+If you still prefer to use aimet_torch 1.x, your imports should originate from the :mod:`aimet_torch.v1`
+namespace.
 
 .. toctree::
     :hidden:
 
-    aimet_torch.v2 migration guide <v2/migration_guide>
-    aimet_torch.v2.nn <v2/nn>
-    aimet_torch.v2.quantization <v2/quantization>
-    aimet_torch.v2.adaround <v2/adaround>
-    aimet_torch.v2.seq_mse <v2/seq_mse>
-    aimet_torch.v2.quantsim.config_utils <v2/lpbq>
-    aimet_torch.v2.mixed_precision <v2/mmp>
-    aimet_torch.v2.quant_analyzer <v2/quant_analyzer>
-    aimet_torch.v2.visualization_tools <v2/interactive_visualization>
+    aimet_torch.v1.quantsim <v1/quantsim>
+    aimet_torch.v1.adaround <v1/adaround>
+    aimet_torch.v1.seq_mse <v1/seq_mse>
+    aimet_torch.v1.quant_analyzer <v1/quant_analyzer>
+    aimet_torch.v1.autoquant <v1/autoquant>
+    aimet_torch.v1.amp <v1/amp>
 
-For more detailed information about how to migrate to :mod:`aimet_torch.v2`,
-see :ref:`aimet_torch.v2 migration guide <torch-migration-guide>`
-
-AIMET core APIs for PyTorch framework.
-
-- :ref:`aimet_torch.v2.quantsim <apiref-torch-v2-quantsim>`
-- :ref:`aimet_torch.v2.nn <apiref-torch-nn>`
-- :ref:`aimet_torch.v2.quantization <apiref-torch-quantization>`
-- :ref:`aimet_torch.v2.adaround <apiref-torch-v2-adaround>`
-- :ref:`aimet_torch.v2.seq_mse <apiref-torch-v2-seq-mse>`
-- :ref:`aimet_torch.v2.quantsim.config_utils <apiref-torch-v2-lpbq>`
-- :ref:`aimet_torch.v2.mixed_precision <api-torch-v2-mmp>`
-- :ref:`aimet_torch.v2.quant_analyzer <apiref-torch-v2-quant-analyzer>`
-- :ref:`aimet_torch.v2.visualization_tools <api-torch-v2-interactive-visualization>`
+- :ref:`aimet_torch.v1.quantsim <apiref-torch-v1-quantsim>`
+- :ref:`aimet_torch.v1.adaround <apiref-torch-v1-adaround>`
+- :ref:`aimet_torch.v1.seq_mse <apiref-torch-v1-seq-mse>`
+- :ref:`aimet_torch.v1.quant_analyzer <apiref-torch-v1-quant-analyzer>`
+- :ref:`aimet_torch.v1.autoquant <apiref-torch-v1-autoquant>`
+- :ref:`aimet_torch.v1.amp <apiref-torch-v1-amp>`

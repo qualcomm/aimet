@@ -1,8 +1,8 @@
-.. _api-torch-v2-mmp:
+.. _api-torch-mmp:
 
-==============================
-aimet_torch.v2.mixed_precision
-==============================
+===========================
+aimet_torch.mixed_precision
+===========================
 
 ..
   # start-after

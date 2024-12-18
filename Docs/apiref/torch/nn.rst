@@ -1,8 +1,8 @@
 .. _apiref-torch-nn:
 
-#################
-aimet_torch.v2.nn
-#################
+##############
+aimet_torch.nn
+##############
 
 .. currentmodule:: aimet_torch.v2.nn
 

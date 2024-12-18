@@ -78,7 +78,8 @@ def evaluate(model, data_loader):
     return accuracy
 
 # step_1
-from aimet_torch.v2.quantsim import QuantizationSimModel, QuantScheme
+from aimet_common.defs import QuantScheme
+from aimet_torch.quantsim import QuantizationSimModel
 sim = QuantizationSimModel(model, dummy_input, quant_scheme=QuantScheme.training_range_learning_with_tf_init)
 
 calibration_batches = 10

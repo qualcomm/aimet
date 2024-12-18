@@ -35,7 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=all
-[setup]
+# [setup]
 import torch
 from torchvision.models import mobilenet_v2
 from torch.utils.data import DataLoader
@@ -49,14 +49,12 @@ data = load_dataset('imagenet-1k', streaming=True, split="train")
 data_loader = DataLoader(data, batch_size=num_batches, num_workers = 4)
 dummy_input = torch.randn(1, 3, 224, 224).to(device)
 
-path = './'
-filename = 'mobilenet'
-[step_1]
-from aimet_torch.v2.quantsim import QuantizationSimModel
+# [step_1]
+from aimet_torch.quantsim import QuantizationSimModel
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 
-sim = QuantizationSimModel(model=model, dummy_input=dummy_input, config_file = get_path_for_per_channel_config())
-[step_2]
+sim = QuantizationSimModel(model=model, dummy_input=dummy_input, config_file=get_path_for_per_channel_config())
+# [step_2]
 num_epochs = 20
 optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=1e-5)
 loss_fn = torch.nn.CrossEntropyLoss()
@@ -69,11 +67,15 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
-[step_3]
+
+# [step_3]
 from aimet_torch.bn_reestimation import reestimate_bn_stats
-from aimet_torch.v2.batch_norm_fold import fold_all_batch_norms_to_scale
+from aimet_torch.batch_norm_fold import fold_all_batch_norms_to_scale
 
 reestimate_bn_stats(sim.model, data_loader)
 fold_all_batch_norms_to_scale(sim)
-[step_4]
+
+# [step_4]
+path = './'
+filename = 'mobilenet'
 sim.export(path=path, filename_prefix=filename, dummy_input=dummy_input.cpu())

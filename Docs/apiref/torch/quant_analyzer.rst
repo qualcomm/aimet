@@ -31,7 +31,7 @@ QuantAnalyzer utility of your interest and pass the same object to it.
 
 .. automethod:: aimet_torch.quant_analyzer.QuantAnalyzer.export_per_layer_stats_histogram
 
-.. automethod:: aimet_torch.v1.quant_analyzer.QuantAnalyzer.export_per_layer_mse_loss
+.. automethod:: aimet_torch.quant_analyzer.QuantAnalyzer.export_per_layer_mse_loss
 
 ..
   # end-before

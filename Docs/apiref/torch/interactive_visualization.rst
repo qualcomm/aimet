@@ -1,12 +1,11 @@
-.. _api-torch-v2-interactive-visualization:
+.. _api-torch-interactive-visualization:
 
-##################################
-aimet_torch.v2.visualization_tools
-##################################
+###############################
+aimet_torch.visualization_tools
+###############################
 
 ..
   # start-after
-
 
 .. warning::
     This feature is under heavy development and API changes may occur without notice in future versions.

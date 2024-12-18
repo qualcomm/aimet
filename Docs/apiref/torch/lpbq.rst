@@ -1,8 +1,8 @@
-.. _apiref-torch-v2-lpbq:
+.. _apiref-torch-lpbq:
 
-####################################
-aimet_torch.v2.quantsim.config_utils
-####################################
+#################################
+aimet_torch.quantsim.config_utils
+#################################
 
 ..
   # start-after

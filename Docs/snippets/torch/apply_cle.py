@@ -35,7 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-docstring
-[setup]
+# [setup]
 import torch
 from torchvision.models import mobilenet_v2
 
@@ -43,7 +43,7 @@ from torchvision.models import mobilenet_v2
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model = mobilenet_v2(pretrained=True).eval().to(device)
 input_shape = (1, 3, 224, 224)
-[step_1]
+# [step_1]
 from aimet_torch.cross_layer_equalization import equalize_model
 
 # Performs BatchNorm folding, cross layer scaling and high bias folding

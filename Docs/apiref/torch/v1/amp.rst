@@ -1,15 +1,19 @@
-.. _api-torch-amp:
+.. _apiref-torch-v1-amp:
 
-===========================
-aimet_torch.mixed_precision
-===========================
+==============================
+aimet_torch.v1.mixed_precision
+==============================
 
 ..
   # start-after
 
+.. note::
+    This module is also available in the default :mod:`aimet_torch` namespace with
+    the same top-level API.
+
 **Top-level API**
 
-.. autofunction:: aimet_torch.mixed_precision.choose_mixed_precision
+.. autofunction:: aimet_torch.v1.mixed_precision.choose_mixed_precision
 
 .. note::
 

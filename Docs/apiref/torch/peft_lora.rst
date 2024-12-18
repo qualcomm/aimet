@@ -6,7 +6,7 @@ aimet_torch.peft
 
 This document provides steps for integrating LoRA adapters with AIMET Quantization flow. LoRA adapters
 are used to enhance the efficiency of fine-tuning large models with reduced memory usage. We will use
-:ref:`PEFT <https://huggingface.co/docs/peft/main/en/package_reference/peft_model>` library
+`PEFT <https://huggingface.co/docs/peft/main/en/package_reference/peft_model>`_ library
 from HuggingFace to instantiate our model and add adapters to it.
 
 By integrating adapters with AIMET quantization, we can perform similar functionalities as present in PEFT,
