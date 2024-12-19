@@ -80,18 +80,18 @@ class MixedPrecisionConfigurator:
 
     @overload
     def set_precision(self, module: torch.nn.Module,
-                      activation: Union[List[SupportedDType], SupportedDType, None] = None,
+                      activation: Union[List[SupportedDType], SupportedDType],
                       param: Optional[Dict[str, SupportedDType]] = None):
         ...
 
     @overload
     def set_precision(self, module_type: Type[torch.nn.Module],
-                      activation: Union[List[SupportedDType], SupportedDType, None] = None,
+                      activation: Union[List[SupportedDType], SupportedDType],
                       param: Optional[Dict[str, SupportedDType]] = None):
         ...
 
     def set_precision(self, arg: Union[torch.nn.Module, Type[torch.nn.Module]],
-                      activation: Union[List[SupportedDType], SupportedDType, None] = None,
+                      activation: Union[List[SupportedDType], SupportedDType],
                       param: Optional[Dict[str, SupportedDType]] = None):
         """
         :param arg: Module can be of type torch.nn.Module or the type of the module.
@@ -133,31 +133,31 @@ class MixedPrecisionConfigurator:
         else:
             raise TypeError("arg is neither a torch.nn.Module nor of Type[torch.nn.Module]")
 
-    def set_model_input_precision(self, activations: Union[List[SupportedDType], Tuple[SupportedDType], SupportedDType, None]):
+    def set_model_input_precision(self, activation: Union[List[Optional[SupportedDType]], Tuple[Optional[SupportedDType]], SupportedDType]):
         """
         Activation precision which needs to be set to the model inputs
-        :param activations: Activation dtypes for inputs of the model
+        :param activation: Activation dtypes for inputs of the model
         """
-        broadcasted_activations = broadcast_tuples(activations, self.mp_handler.cg_traverser.model_inputs)
-        for activation, model_input in zip(flatten_list(broadcasted_activations),
+        broadcasted_activations = broadcast_tuples(activation, self.mp_handler.cg_traverser.model_inputs)
+        for act, model_input in zip(flatten_list(broadcasted_activations),
                                            flatten_list(self.mp_handler.cg_traverser.model_inputs)):
-            if activation is not None:
-                if activation not in get_args(SupportedDType):
+            if act:
+                if act not in get_args(SupportedDType):
                     raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
-                self._store_user_request(RequestType.set_model_input_precision, model_input, activation)
+                self._store_user_request(RequestType.set_model_input_precision, model_input, act)
 
-    def set_model_output_precision(self, activations: Union[List[SupportedDType], Tuple[SupportedDType], SupportedDType, None]):
+    def set_model_output_precision(self, activation: Union[List[Optional[SupportedDType]], Tuple[Optional[SupportedDType]], SupportedDType]):
         """
         Activation precision which needs to be set to the model outputs
-        :param activations: Activation dtypes for outputs of the model
+        :param activation: Activation dtypes for outputs of the model
         """
-        broadcasted_activations = broadcast_tuples(activations, self.mp_handler.cg_traverser.model_outputs)
-        for activation, model_output in zip(flatten_list(broadcasted_activations),
+        broadcasted_activations = broadcast_tuples(activation, self.mp_handler.cg_traverser.model_outputs)
+        for act, model_output in zip(flatten_list(broadcasted_activations),
                                             flatten_list(self.mp_handler.cg_traverser.model_outputs)):
-            if activation is not None:
-                if activation not in get_args(SupportedDType):
+            if act:
+                if act not in get_args(SupportedDType):
                     raise ValueError("Supported inputs for activation are ", get_args(SupportedDType))
-                self._store_user_request(RequestType.set_model_output_precision, model_output, activation)
+                self._store_user_request(RequestType.set_model_output_precision, model_output, act)
 
     @overload
     def apply(self, log_file: str = './mmp_log.txt', strict: bool = True):
