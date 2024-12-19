@@ -1395,5 +1395,3 @@ def spy_auto_quant(auto_quant: AutoQuantBase):
         yield spy
     finally:
         setattr(auto_quant, "_optimize_main", _optimize_main)
-
-
