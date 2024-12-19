@@ -187,6 +187,13 @@ class TestCLS:
         output_after_cle = session.run(None, {'input': test_data})
         assert np.allclose(output_after_cle, output_before_cle, rtol=1e-2, atol=1e-5)
 
+    def test_cls_squeezenet(self, tmp_path):
+        model = models_for_tests.squeezenet1_0(tmp_path)
+        cls = CrossLayerScaling(model)
+        cls_set_infos = cls.scale_model()
+        # Squeezenet1_0 doesn't have any scalable sets
+        assert not cls_set_infos
+
 
 class TestHighBiasFold:
     """ Test methods for HighBiasFold"""

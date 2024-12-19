@@ -2698,3 +2698,14 @@ def conv_with_weight_identity_input():
     )
     onnx.checker.check_model(model, True)
     return model
+
+
+def squeezenet1_0(tmpdir):
+    import torchvision
+    filepath = os.path.join(os.path.join(tmpdir, "squeezenet1_0.onnx"))
+    model = torchvision.models.squeezenet1_0()
+    torch.onnx.export(model.eval(), torch.randn(1, 3, 224, 224), filepath,
+                      training=torch.onnx.TrainingMode.EVAL, do_constant_folding=False,
+                      input_names=["input"], output_names=["output"])
+    model = onnx.load(filepath)
+    return ONNXModel(model)

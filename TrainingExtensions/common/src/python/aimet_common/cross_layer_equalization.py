@@ -252,7 +252,8 @@ class GraphSearchUtils:
             current_group.append(op)
 
         # Terminating condition for current group
-        if not op.get_module() or not op.type in self._cls_supported_layer_types + self._cls_supported_activation_types:
+        if not op.get_module() or not op.type in self._cls_supported_layer_types + self._cls_supported_activation_types \
+                or len(op.output_ops) > 1:
             if (len(current_group) > 1) and (current_group not in layer_groups):
                 layer_groups.append(current_group)
             current_group = []
