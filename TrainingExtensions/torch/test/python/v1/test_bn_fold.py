@@ -43,7 +43,7 @@ from pathlib import Path
 import torch
 from torchvision import models
 
-from aimet_torch.batch_norm_fold import fold_given_batch_norms
+from aimet_torch.v1.batch_norm_fold import fold_given_batch_norms
 from ..models.test_models import TransposedConvModel
 from aimet_torch.model_preparer import prepare_model
 from aimet_common.defs import QuantScheme
