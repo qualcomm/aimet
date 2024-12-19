@@ -105,7 +105,7 @@ RUN update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION}
 # Upgrade Python3 pip and install some more packages
 RUN python3 -m pip --no-cache-dir install --upgrade \
         pip \
-        setuptools==49.4.0 \
+        setuptools \
         wheel
 
 # Ubuntu packages for pytorch aimet
