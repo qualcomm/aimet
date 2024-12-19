@@ -322,8 +322,10 @@ class SequentialMse(SequentialMseBase):
             x_blocks = torch.split(x, block_size, dim=-1)
             xq_blocks = torch.split(xq, block_size, dim=-1)
         else:
-            x_blocks = torch.split(x, block_size, dim=-3)
-            xq_blocks = torch.split(xq, block_size, dim=-3)
+            assert isinstance(quant_module, torch.nn.Conv2d)
+            groups = quant_module.groups
+            x_blocks = torch.split(x, block_size * groups, dim=-3)
+            xq_blocks = torch.split(xq, block_size * groups, dim=-3)
 
         block_losses = []
         for idx, x_block in enumerate(x_blocks):

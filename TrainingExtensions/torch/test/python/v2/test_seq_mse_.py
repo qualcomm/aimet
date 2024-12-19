@@ -334,3 +334,35 @@ class TestSeqMse:
 
         assert torch.equal(out, out_3)
         assert not torch.equal(out, out_2)
+
+    @pytest.mark.parametrize('kwargs', [
+        dict(in_channels=16, out_channels=16, kernel_size=(3, 3), stride=2),
+        dict(in_channels=16, out_channels=16, kernel_size=(3, 3), padding=1),
+        dict(in_channels=16, out_channels=16, kernel_size=(3, 3), dilation=2),
+        dict(in_channels=16, out_channels=16, kernel_size=(3, 3), groups=16),
+        dict(in_channels=16, out_channels=16, kernel_size=(3, 3), groups=4),
+    ])
+    def test_non_default_conv(self, kwargs):
+        """
+        When: Run sequential MSE with conv2d with non-default arguments
+              (stride, padding, dilation, groups, ...)
+        Then: Shouldn't raise runtime error
+        """
+        model = torch.nn.Sequential(
+            torch.nn.Conv2d(**kwargs),
+        )
+        dummy_input = torch.randn(1, 16, 100, 100)
+        data_loader = (dummy_input,) * 2
+        sim = QuantizationSimModel(model, dummy_input, default_param_bw=4,
+                                   quant_scheme=QuantScheme.post_training_tf)
+        qconv = sim.model[0]
+        qconv.param_quantizers['weight'].min.copy_(-1)
+        qconv.param_quantizers['weight'].max.copy_(1)
+        sim.compute_encodings(lambda m: m(dummy_input))
+
+        params = SeqMseParams(num_batches=2, inp_symmetry='asym', loss_fn='mse')
+        apply_seq_mse(model, sim, data_loader, params)
+
+        # sanity check
+        assert qconv.param_quantizers['weight'].min != -1
+        assert qconv.param_quantizers['weight'].max != 1
