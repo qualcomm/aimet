@@ -39,6 +39,7 @@
 """ Implementation of AIMET AutoQuantBase """
 import abc
 import copy
+import contextlib
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 import functools
@@ -1346,3 +1347,53 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
 
         raise RuntimeError("None of batchnorm folding, CLE, or Adaround "
                            "has been finished successfully.")
+
+
+@contextlib.contextmanager
+def spy_auto_quant(auto_quant: AutoQuantBase):
+    """
+    Install a spy that collects the handles to the ptq result of
+    each stage of AutoQuant.
+
+    Typical usage::
+        >>> auto_quant = AutoQuant(...)
+        ... with auto_quant_spy(auto_quant) as spy:
+        ...     _ = auto_quant.apply(...)
+        ...
+        ... for result in spy.get_all_ptq_results():
+        ...     print(result.applied_techniques)
+        ...     print(result.accuracy)
+        ...     print(result.encoding_path)
+        ...     model = result.load_model()
+        ...     ...
+    """
+    # pylint: disable=protected-access
+    class Spy:
+        """
+        Spy that collects the handles to the ptq result of
+        each stage of AutoQuant.
+        """
+        def __init__(self, eval_manager):
+            self._eval_manager = eval_manager
+
+        def get_all_ptq_results(self) -> List[PtqResult]:
+            """Return handles to the results of AutoQuant"""
+            if self._eval_manager is None:
+                return []
+            return [sess.ptq_result for sess in self._eval_manager._all_sessions.values()
+                    if sess.ptq_result is not None]
+
+    spy = Spy(auto_quant.eval_manager)
+
+    _optimize_main = auto_quant._optimize_main
+
+    def _optimize_main_wrapper(fp32_model, target_acc):
+        return _optimize_main(fp32_model, target_acc)
+
+    try:
+        setattr(auto_quant, "_optimize_main", _optimize_main_wrapper)
+        yield spy
+    finally:
+        setattr(auto_quant, "_optimize_main", _optimize_main)
+
+
