@@ -49,5 +49,7 @@ else()
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         PATTERN "__pycache*" EXCLUDE
         PATTERN "CMakeLists.txt" EXCLUDE
+        PATTERN "_deps.pyi" EXCLUDE
+        PATTERN "_gen.py" EXCLUDE
         )
 endif()
