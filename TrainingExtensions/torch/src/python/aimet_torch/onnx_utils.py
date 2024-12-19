@@ -1783,6 +1783,12 @@ __deleted_atttributes__ = {
 }
 
 def __getattr__(name: str):
-    if name in __deleted_atttributes__:
-        since = __deleted_atttributes__[name]
-        raise AttributeError(f"Attribute '{name}' was deleted from aimet_torch.onnx_utils since {since}")
+    try:
+        return globals()[name]
+    except KeyError as e:
+        if name in __deleted_atttributes__:
+            since = __deleted_atttributes__[name]
+            msg = f"Attribute '{name}' was deleted from aimet_torch.onnx_utils since {since}"
+        else:
+            msg = f"module '{__name__}' has no attribute '{name}'"
+        raise AttributeError(msg) from e

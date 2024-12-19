@@ -1329,5 +1329,11 @@ __migrated__ = {
 
 
 def __getattr__(name: str):
-    if _get_default_api() == "v2" and name in __migrated__:
-        raise ImportError(f'"{name}" has been moved to aimet_torch.v1.utils since aimet-torch==2.0.0')
+    try:
+        return globals()[name]
+    except KeyError as e:
+        if _get_default_api() == "v2" and name in __migrated__:
+            msg = f'"{name}" has been moved to aimet_torch.v1.utils since aimet-torch==2.0.0'
+        else:
+            msg = f"module '{__name__}' has no attribute '{name}'"
+        raise AttributeError(msg) from e
