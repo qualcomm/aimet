@@ -41,7 +41,7 @@ import os
 
 import pytest
 import torch
-from torch import nn, candidate
+from torch import nn
 
 from aimet_common.defs import QuantizationDataType
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase

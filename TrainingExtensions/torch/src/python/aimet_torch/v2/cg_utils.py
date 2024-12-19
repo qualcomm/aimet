@@ -37,7 +37,7 @@
 # =============================================================================
 """Utilities to traverse model graph"""
 
-from typing import Dict, Optional, Generator
+from typing import Dict, Optional, Generator, Tuple
 from dataclasses import dataclass
 import functools
 
@@ -61,7 +61,7 @@ class ConnectedGraphTraverser:
     def __init__(self, sim: QuantizationSimModel):
         self._sim = sim
 
-    def get_leaf_modules(self, torch_module: torch.nn.Module) -> Generator[tuple[str, torch.nn.Module], None, None]:
+    def get_leaf_modules(self, torch_module: torch.nn.Module) -> Generator[Tuple[str, torch.nn.Module], None, None]:
         """ Get all the leaf modules in the given module """
         for name, module in torch_module.named_modules():
             if module not in self._sim.model.modules():
