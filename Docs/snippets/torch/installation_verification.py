@@ -42,6 +42,7 @@ from torchvision.models import mobilenet_v2
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model = mobilenet_v2(weights='DEFAULT').eval().to(device)
 dummy_input = torch.randn((10, 3, 224, 224), device=device)
+# End of [step_1]
 
 # [step_2]
 from aimet_common.defs import QuantScheme
@@ -49,12 +50,13 @@ from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_torch.quantsim import QuantizationSimModel
 
 sim = QuantizationSimModel(model, 
-    dummy_input, 
-    quant_scheme=QuantScheme.training_range_learning_with_tf_init, 
-    config_file=get_path_for_per_channel_config(), 
-    default_param_bw=8, 
+    dummy_input,
+    quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+    config_file=get_path_for_per_channel_config(),
+    default_param_bw=8,
     default_output_bw=16)
 print(sim)
+# End of [step_2]
 
 # [step_3]
 def forward_pass(model):
@@ -62,7 +64,9 @@ def forward_pass(model):
         model(torch.randn((10, 3, 224, 224), device=device))
 
 sim.compute_encodings(forward_pass)
+# End of [step_3]
 
 # [step_4]
 output = sim.model(dummy_input)
 print(output)
+# End of [step_4]

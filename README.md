@@ -30,15 +30,7 @@ We also host the [AIMET Model Zoo](https://github.com/quic/aimet-model-zoo) - a 
 
 ## Quick Installation
 
-The AIMET PyTorch GPU PyPI packages are available for environments that meet the following requirements:
-
-* 64-bit Intel x86-compatible processor
-* Linux Ubuntu 22.04 LTS [Python 3.10] or Linux Ubuntu 20.04 LTS [Python 3.8]
-* Torch 2.1.2+cu121
-
-### Installation
 ```
-apt-get install liblapacke
 python3 -m pip install aimet-torch
 ```
 
