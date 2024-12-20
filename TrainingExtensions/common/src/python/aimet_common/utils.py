@@ -58,6 +58,7 @@ import multiprocessing
 from tqdm import tqdm
 from bokeh.server.server import Server
 from bokeh.application import Application
+from aimet_common import defs
 
 
 try:
@@ -97,17 +98,7 @@ class ModelApi(Enum):
     onnx = 3
 
 
-class CallbackFunc:
-    """
-    Class encapsulating callback function, and it's argument(s)
-    """
-    def __init__(self, func: Callable, func_callback_args=None):
-        """
-        :param func: Callable Function
-        :param func_callback_args: Arguments passed to the callable function as-is.
-        """
-        self.func = func
-        self.args = func_callback_args
+CallbackFunc = defs.CallbackFunc
 
 
 class SingletonType(type):
