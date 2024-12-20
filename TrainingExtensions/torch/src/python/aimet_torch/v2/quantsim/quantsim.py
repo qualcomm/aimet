@@ -196,12 +196,12 @@ class QuantizationSimModel(_QuantizationSimModelBase):
         if not quant_scheme:
             old_default = QuantScheme.post_training_tf_enhanced
             new_default = QuantScheme.training_range_learning_with_tf_init
-            msg = _red(f"The default value of 'quant_scheme' will change from '{old_default}' "
-                       f"to '{new_default}' in the later versions. "
-                       "If you wish to maintain the legacy behavior in the future, "
+            msg = _red(f"The default value of 'quant_scheme' has changed from '{old_default}' "
+                       f"to '{new_default}' since aimet-torch==2.0.0. "
+                       "If you wish to maintain the legacy default behavior, "
                        f"please explicitly pass 'quant_scheme={old_default}'")
             warnings.warn(msg, DeprecationWarning, stacklevel=2)
-            quant_scheme = old_default
+            quant_scheme = new_default
 
         if rounding_mode:
             if rounding_mode == 'nearest':
