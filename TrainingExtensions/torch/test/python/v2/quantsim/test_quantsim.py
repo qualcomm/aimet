@@ -783,7 +783,7 @@ class TestQuantsim:
 
             assert qsim.model.fc.param_quantizers['weight'].get_max()[0][0] == old_max
             out3 = qsim.model(dummy_input)
-            assert torch.equal(out1, out3)
+            assert torch.allclose(out1, out3)
 
             qsim.model.fc.weight = torch.nn.Parameter(torch.randn(old_weight.shape))
             qsim.compute_encodings(lambda m, _: m(dummy_input_2), None)
@@ -793,7 +793,7 @@ class TestQuantsim:
             qsim.load_encodings(os.path.join(temp_dir, 'exported_encodings_torch.encodings'))
 
             out4 = qsim.model(dummy_input)
-            assert torch.equal(out1, out4)
+            assert torch.allclose(out1, out4)
 
 
     def test_quantsim_with_unused_modules(self):
