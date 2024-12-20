@@ -8,6 +8,18 @@ This page describes how to quickly install the latest version of AIMET for PyTor
 
 For all the framework variants and compute platform, see :ref:`Installation <install-index>`.
 
+Prerequisites
+=============
+
+The AIMET for PyTorch package has been tested using the following recommended host platform configuration:
+
+* 64-bit Intel x86-compatible processor
+* Python 3.8–3.12
+* Ubuntu 22.04
+* For GPU variants:
+    * Nvidia GPU card (Compute capability 5.2 or later)
+    * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
+
 Installation
 ============
 
