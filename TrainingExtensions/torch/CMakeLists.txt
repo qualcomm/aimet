@@ -76,7 +76,6 @@ add_custom_target(TorchCppOps ALL
       DEPENDS ${OUTPUT}
       SOURCES
       src/AimetTensorQuantizer.cpp
-      src/AimetEncodingRescaler.cpp
       )
 
 set(FILE_PATH "${CMAKE_BINARY_DIR}/artifacts/aimet_tensor_quantizer*.egg/AimetTensorQuantizer*.so")

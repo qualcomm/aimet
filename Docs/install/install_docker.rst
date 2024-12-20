@@ -166,9 +166,6 @@ Install the selected AIMET package as specified below:
 
 .. code-block:: bash
 
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
-
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}
 

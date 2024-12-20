@@ -73,9 +73,6 @@ The following pre-requisites apply to all variants. The GPU variants may need ad
     # Install pre-requisite packages
     apt-get install liblapacke libpython3-dev
 
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
-
 
 **PyTorch**
 
