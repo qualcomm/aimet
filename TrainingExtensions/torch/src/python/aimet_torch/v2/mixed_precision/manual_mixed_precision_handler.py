@@ -397,7 +397,7 @@ class MpHandler:
                 if module.input_quantizers[in_idx] is not None:
                     continue
 
-                parent_module = self.cg_traverser.get_parent_module_at_input_idx(module, in_idx)
+                parent_module = self.cg_traverser.get_valid_parent_module_at_input_idx(module, in_idx)
                 if parent_module is None:
                     logger.warning(f"Warning: unable to propagate request at {module} upward. "
                                     "Parent module could not be found.")
@@ -567,7 +567,7 @@ class MpHandler:
         if mp_request.input_candidates:
             # resolve contention at the inputs using input candidates
             for in_idx, input_candidate in enumerate(mp_request.input_candidates):
-                parent_module = self.cg_traverser.get_parent_module_at_input_idx(current_module, in_idx)
+                parent_module = self.cg_traverser.get_valid_parent_module_at_input_idx(current_module, in_idx)
 
                 # if input candidate is not present in the request (say, the request is from set_model_output_precision) or
                 # if input quantizer is present for the layer(along with input candidate) then no need to resolve any contention

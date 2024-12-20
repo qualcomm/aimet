@@ -37,12 +37,14 @@
 # =============================================================================
 """Utilities to traverse model graph"""
 
-from typing import Dict, Optional, Generator, Tuple
+from typing import Dict, Optional, Generator, Tuple, Union
 from dataclasses import dataclass
 import functools
 
 import torch
 
+from aimet_common.connected_graph.connectedgraph_utils import CG_SPLIT
+from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op as CG_Op
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -156,9 +158,10 @@ class ConnectedGraphTraverser:
         """ Helper functions to lookup CG_Op corresponding to the given module """
         return self.module_to_cg_op_mapping[module]
 
-    def get_parent_module_at_input_idx(self, module, input_idx) -> torch.nn.Module:
+    def get_valid_parent_module_at_input_idx(self, module, input_idx) -> Union[torch.nn.Module, None]:
         """
-        Traverses upstream to determine the parent module provided input idx
+        Traverses upstream to determine the parent module provided input idx.
+        This method errors out if a functional is encountered which is not a data movement op.
 
         :param module: torch.nn.Module contained within the QuantSim object
         :param input_idx: input idx to determine the parent module
@@ -166,13 +169,19 @@ class ConnectedGraphTraverser:
         """
         cg_op = self.get_cg_op_from_module(module)
         parent_cg_op = cg_op.inputs[input_idx].producer
-        parent_module = self.get_module_from_cg_op(parent_cg_op)
 
-        while parent_module is None and parent_cg_op is not None:
-            parent_cg_op = parent_cg_op.inputs[0].producer
-            parent_module = self.get_module_from_cg_op(parent_cg_op)
+        while parent_cg_op:
+            if parent_cg_op.get_module():
+                return parent_cg_op.get_module()
 
-        return parent_module
+            if parent_cg_op.type in ConnectedGraph.math_invariant_types or parent_cg_op.type == CG_SPLIT:
+                # Split op or "functional data movement" op is encountered. Query its parent.
+                parent_cg_op = parent_cg_op.inputs[0].producer
+            else:
+                raise RuntimeError(f"Parent of {cg_op.dotted_name} is a functional which is not a data movement op"
+                                   f"CG name of the op:{parent_cg_op.dotted_name}. Considering removing this functional "
+                                   f"to process")
+        return None
 
     def get_child_module_at_output(self, module):
         """

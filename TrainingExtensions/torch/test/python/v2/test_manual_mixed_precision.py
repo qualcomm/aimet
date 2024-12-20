@@ -200,12 +200,104 @@ class ModelWithSwappedInputs(nn.Module):
         return self.matmul(y, x)
 
 
+class SingleResidualPrepared(nn.Module):
+    """ A model with a single residual connection.
+        Use this model for unit testing purposes. """
+
+    def __init__(self, num_classes=10):
+        super(SingleResidualPrepared, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=2, stride=2, padding=2, bias=False)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2, padding=1)
+        # All layers above are same as ResNet
+        # The output of the MaxPool2d is used as a residual.
+
+        # The following layers are considered as single block.
+        self.conv2 = nn.Conv2d(32, 16, kernel_size=2, stride=2, padding=2, bias=False)
+        self.bn2 = nn.BatchNorm2d(16)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.conv3 = nn.Conv2d(16, 8, kernel_size=2, stride=2, padding=2, bias=False)
+        self.add = aimet_elementwise.Add()
+
+        # The output of Conv2d layer above(conv3) is added with the the residual from
+        # MaxPool2d and then fed to the relu layer below.
+        self.relu3 = nn.ReLU(inplace=True)
+
+        self.avgpool = nn.AvgPool2d(3, stride=1)
+        self.conv4 = nn.Conv2d(32, 8, kernel_size=2, stride=2, padding=2, bias=True)
+        self.ada = nn.AdaptiveAvgPool2d(5)
+        self.fc = nn.Linear(72, num_classes)
+
+    def forward(self, *inputs):
+        x = self.conv1(inputs[0])
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.maxpool(x)
+
+        # Save the output of MaxPool as residual.
+        residual = x
+
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.conv3(x)
+
+        # Add the residual
+        # AdaptiveAvgPool2d is used to get the desired dimension before adding.
+        residual = self.conv4(residual)
+        residual = self.ada(residual)
+        x = self.add(x, residual)
+        x = self.relu3(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+
+class ModelWithTwoInputsPrepared(nn.Module):
+
+    def __init__(self):
+        super(ModelWithTwoInputsPrepared, self).__init__()
+        self.conv1_a = nn.Conv2d(1, 10, kernel_size=5)
+        self.maxpool1_a = nn.MaxPool2d(2)
+        self.relu1_a = nn.ReLU()
+
+        self.conv1_b = nn.Conv2d(1, 10, kernel_size=5)
+        self.maxpool1_b = nn.MaxPool2d(2)
+        self.relu1_b = nn.ReLU()
+
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.maxpool2 = nn.MaxPool2d(2)
+        self.relu2 = nn.LeakyReLU()
+        self.flatten = nn.Flatten()
+
+        self.fc1 = nn.Linear(320, 50)
+        self.relu3 = nn.ReLU()
+        self.dropout = nn.Dropout()
+        self.fc2 = nn.Linear(50, 10)
+
+        self.softmax = nn.LogSoftmax(dim=1)
+        self.add = aimet_elementwise.Add()
+
+    def forward(self, x1, x2):
+        x1 = self.relu1_a(self.maxpool1_a(self.conv1_a(x1)))
+        x2 = self.relu1_b(self.maxpool1_b(self.conv1_b(x2)))
+        x = self.add(x1, x2)
+        x = self.relu2(self.maxpool2(self.conv2(x)))
+        x = self.flatten(x)
+        x = self.relu3(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return self.softmax(x)
+
 class TestManualMixedPrecisionConfigurator:
 
     def test_mp_1(self):
         """MMP Workflow """
 
-        model = SingleResidual()
+        model = SingleResidualPrepared()
         input_shape = (1, 3, 32, 32)
 
         torch.manual_seed(0)
@@ -277,7 +369,7 @@ class TestManualMixedPrecisionConfigurator:
         Test over-writing old requests with new requests
         - test over-writing all modules with fp16/fp16, after setting few of them to different configurations
         """
-        model = SingleResidual()
+        model = SingleResidualPrepared()
 
         torch.manual_seed(0)
         input_tensor = torch.randn((1, 3, 32, 32))
@@ -294,7 +386,7 @@ class TestManualMixedPrecisionConfigurator:
                 mp_requests = mp_configurator.mp_handler._process_user_requests(mp_configurator.user_requests, f, True)
                 mp_requests = mp_configurator.mp_handler._resolve_contentions(mp_requests, False, f)
 
-        assert len(mp_requests) == 13
+        assert len(mp_requests) == 14
         for m, request in mp_requests.items():
             assert all(input_candidate ==
                        Precision(QuantizationDataType.float, 16) for input_candidate in request.input_candidates)
@@ -426,7 +518,7 @@ class TestManualMixedPrecisionConfigurator:
         """
         Test to make sure that requests at module inputs that have input quantizers do not propagate upwards
         """
-        model = ModelWithTwoInputs()
+        model = ModelWithTwoInputsPrepared()
         input_shape = (1, 1, 28, 28)
 
         torch.manual_seed(0)
@@ -441,8 +533,8 @@ class TestManualMixedPrecisionConfigurator:
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
-                if module in [sim.model.conv2.input_quantizers[0],
-                              sim.model.conv2.param_quantizers['weight']]:
+                if module in [sim.model.conv2.param_quantizers['weight'],
+                              sim.model.add.output_quantizers[0]]:
                     assert module.bitwidth == 16
                 else:
                     assert module.bitwidth == 8
@@ -747,7 +839,7 @@ class TestManualMixedPrecisionConfigurator:
         """
         Tests that contending requests do not produce an error in non-strict mode
         """
-        model = SingleResidual()
+        model = SingleResidualPrepared()
         input_shape = (1, 3, 32, 32)
 
         torch.manual_seed(0)
@@ -766,14 +858,13 @@ class TestManualMixedPrecisionConfigurator:
 
         for module in sim.model.modules():
             if isinstance(module, QuantizerBase):
-                if module in [sim.model.conv3.input_quantizers[0],
-                              sim.model.conv3.param_quantizers['weight'],
+                if module in [sim.model.conv3.param_quantizers['weight'],
                               sim.model.relu2.output_quantizers[0]]:
                     assert module.bitwidth == 16
                 elif module in [sim.model.conv3.output_quantizers[0],
                                 sim.model.relu3.output_quantizers[0],
-                                sim.model.relu3.input_quantizers[0]]:
-                    assert module.bitwidth == 4
+                                sim.model.ada.output_quantizers[0]]:
+                        assert module.bitwidth == 4
                 else:
                     assert module.bitwidth == 8
 
@@ -1469,3 +1560,34 @@ class TestManualMixedPrecisionConfigurator:
                 for q in module.input_quantizers + module.output_quantizers + module.param_quantizers.values():
                     if q:
                         assert q.bitwidth == 16
+
+    def test_mp_45(self):
+        """
+        validate functionals are handled correctly
+        """
+
+        class TestModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = nn.Linear(10, 10)
+                self.fc2 = nn.Linear(10, 10)
+                self.fc3 = nn.Linear(10, 10)
+
+            def forward(self, *inputs):
+                x = self.fc1(inputs[0])
+                x = torch.nn.functional.softmax(x)
+                x = self.fc2(x)
+                x = x + 5
+                return self.fc3(x)
+
+        model = TestModel()
+        input_shape = (5, 10)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_precision(torch.nn.Linear, 'int16', param={'weight': 'int16'})
+        with pytest.raises(RuntimeError):
+            mp_configurator.apply()
