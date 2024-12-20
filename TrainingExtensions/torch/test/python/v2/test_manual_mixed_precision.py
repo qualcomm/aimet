@@ -44,6 +44,7 @@ import torch
 from torch import nn
 
 from aimet_common.defs import QuantizationDataType
+from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.mixed_precision import MixedPrecisionConfigurator, SupportedDType, Precision
@@ -1428,3 +1429,43 @@ class TestManualMixedPrecisionConfigurator:
                 with pytest.raises(RuntimeError):
                     with open(os.path.join(tmp_dir, './mmp_log.txt'), 'w') as f:
                         mp_configurator.apply(f, strict=True)
+
+
+    def test_mp_44(self):
+        """
+        For concat op, there is always a single input quantizer added irrespective of the number of inputs. This test
+        validates this scenario is handled correctly
+        """
+        class TestModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = nn.Linear(10, 10)
+                self.fc2 = nn.Linear(10, 10)
+                self.concat = aimet_elementwise.Concat()
+                self.fc3 = nn.Linear(10, 10)
+
+            def forward(self, *inputs):
+                x1 = self.fc1(inputs[0])
+                x2 = self.fc2(inputs[0])
+                x = self.concat(x1, x2)
+                return self.fc3(x)
+
+        model = TestModel()
+        input_shape = (5, 10)
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn(*input_shape)
+
+        sim = QuantizationSimModel(model, input_tensor)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_precision(sim.model.fc1, activation='int16', param={'weight': 'int16'})
+        mp_configurator.set_precision(sim.model.fc2, activation='int16', param={'weight': 'int16'})
+        mp_configurator.set_precision(sim.model.concat, activation='int16')
+        mp_configurator.set_precision(sim.model.fc3, activation='int16', param={'weight': 'int16'})
+        mp_configurator.apply()
+
+        for module in sim.model.modules():
+            if isinstance(module, BaseQuantizationMixin):
+                for q in module.input_quantizers + module.output_quantizers + module.param_quantizers.values():
+                    if q:
+                        assert q.bitwidth == 16

@@ -41,8 +41,11 @@
 import copy
 from typing import Dict, List, Tuple, Optional, Union, IO
 
+import torch.nn
+
 from aimet_common.defs import QuantizationDataType, QuantScheme
 from aimet_common.utils import AimetLogger
+from aimet_torch.v2.nn.modules.custom import QuantizedConcat
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
@@ -429,6 +432,23 @@ class MpHandler:
             _propagate_request_upstream_helper(module)
         return mp_requests
 
+    def _get_child_module_and_idx(self, module: torch.nn.Module):
+        """
+        Helper to get the child module and their input idxes consistent with QuantSim interpretation
+
+        :param module: module to return the child modules and their idxes
+        """
+        child_module_idxs = self.cg_traverser.get_child_module_at_output(module)
+        # Even if concat op has more than one input, in QuantSim there is only one quantizer added.
+        # This check always returns idx=0 for those modules
+        updated_child_module_idxs = []
+        for child_module, input_idx in child_module_idxs:
+            if isinstance(child_module, QuantizedConcat):
+                input_idx = 0
+            updated_child_module_idxs.append((child_module, input_idx))
+        return updated_child_module_idxs
+
+
     def _resolve_request_outputs(self, mp_requests, log_file: IO):
         """
         Determine if output candidates from request at the provided module should be applied or discarded
@@ -442,7 +462,7 @@ class MpHandler:
                 return
 
             # If the output request at this module came from a downstream consumer, return without changing candidate
-            child_modules_and_idxs = self.cg_traverser.get_child_module_at_output(module)
+            child_modules_and_idxs = self._get_child_module_and_idx(module)
             for child_module, input_idx in child_modules_and_idxs:
                 child_request = mp_requests.get(child_module)
                 if child_request and child_request.input_candidates and \
@@ -516,9 +536,9 @@ class MpHandler:
                 # module does not have a request. Create a new one based on the request input
                 self._update_request_at_module(mp_requests,
                                                module,
-                                               request.input_candidates[0] if request.output_candidates else None,
+                                               request.input_candidates[0] if request.output_candidates and len(request.output_candidates) > 0 else None,
                                                copy.deepcopy(request.param_candidate) if len(module.param_quantizers.keys()) else None,
-                                               request.output_candidates[0] if request.output_candidates else None,
+                                               request.output_candidates[0] if request.output_candidates and len(request.output_candidates) > 0 else None,
                                                strict=strict)
                 mp_requests[module].id = request.id
 
@@ -556,7 +576,7 @@ class MpHandler:
 
                 # if parent has output quantizer, propagate this request to all other children
                 if any(parent_module.output_quantizers):
-                    child_modules_and_idxs = self.cg_traverser.get_child_module_at_output(parent_module)
+                    child_modules_and_idxs = self._get_child_module_and_idx(parent_module)
                     for child_module, _ in child_modules_and_idxs:
                         new_request = MpRequest(id=mp_request.id,
                                                 input_candidates=[input_candidate] * len(child_module.input_quantizers),
@@ -576,7 +596,7 @@ class MpHandler:
         if mp_request.output_candidates:
             # resolve at output using output candidate, if the module has output quantizer, then no need to resolve at output
             if not any(current_module.output_quantizers):
-                child_modules_and_idxs = self.cg_traverser.get_child_module_at_output(current_module)
+                child_modules_and_idxs = self._get_child_module_and_idx(current_module)
                 for child_module, _ in child_modules_and_idxs:
                     new_request = MpRequest(id=mp_request.id,
                                             input_candidates=mp_request.output_candidates * len(child_module.input_quantizers),
