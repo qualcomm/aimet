@@ -40,10 +40,10 @@ import json
 import os
 import torch
 import tempfile
-from aimet_torch.examples.test_models import SingleResidualWithAvgPool
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantization.affine.backends.torch_builtins import quantize
 from aimet_torch.v2.experimental import clip_weights_to_7f7f
+from ....models.test_models import SingleResidualWithAvgPool
 
 def test_clip_weights_to_7f7f():
     torch.manual_seed(0)

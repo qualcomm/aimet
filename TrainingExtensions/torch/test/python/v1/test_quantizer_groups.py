@@ -41,7 +41,6 @@ import torch
 from aimet_common.defs import QuantizationDataType
 from aimet_common.amp.quantizer_groups import reformat_supported_kernels
 from aimet_torch.batch_norm_fold import fold_all_batch_norms
-from aimet_torch.examples.test_models import SingleResidual, ConcatModel
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.amp.quantizer_groups import find_quantizer_group, find_op_groups, find_supported_candidates, \
     QuantizerGroup
@@ -82,7 +81,7 @@ class TestQuantizerGroups:
         assert len(op_groups['ModelWithOneSplit.conv1']) == 2
 
     def test_single_residual_network(self):
-        model = SingleResidual()
+        model = test_models.SingleResidual()
         input_shapes = (1, 3, 32, 32)
         device = utils.get_device(model)
         inp_tensor_list = utils.create_rand_tensors_given_shapes(input_shapes, device)
@@ -100,7 +99,7 @@ class TestQuantizerGroups:
         assert op_groups['SingleResidual.conv4'] == ['SingleResidual.ada']
 
     def test_concat_model(self):
-        model = ConcatModel()
+        model = test_models.ConcatModel()
         inp_shape_1 = (1, 3, 8, 8)
         inp_shape_2 = (1, 3, 8, 8)
         inp_shape_3 = (1, 3, 8, 8)

@@ -38,7 +38,6 @@
 
 import pytest
 import torch
-from aimet_torch.examples.test_models import SingleResidualWithAvgPool, TransposedConvModel
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantsim.config_utils import set_activation_quantizers_to_float, \
     set_blockwise_quantization_for_weights, set_grouped_blockwise_quantization_for_weights
@@ -47,6 +46,8 @@ from aimet_torch.v2.quantization.affine import QuantizeDequantize, GroupedBlockQ
 from aimet_torch.v2.quantization.float import FloatQuantizeDequantize
 import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.utils import get_device
+from ...models.test_models import SingleResidualWithAvgPool, TransposedConvModel
+
 
 devices = ['cpu']
 if torch.cuda.is_available():
