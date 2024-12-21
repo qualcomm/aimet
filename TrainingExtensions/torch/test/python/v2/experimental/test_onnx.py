@@ -39,13 +39,15 @@ import onnxruntime as ort
 import pytest
 import numpy as np
 import torch
+from torch import nn
 import onnx
-from onnx.onnx_ml_pb2 import AttributeProto
 import tempfile
 import aimet_torch.v2 as aimet
 import aimet_torch.v2.quantization as Q
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from torchvision.models import resnet18
+from aimet_torch.v2.experimental.onnx._export import export as _export
+
 
 
 @pytest.fixture(autouse=True, params=range(1))
@@ -209,3 +211,17 @@ def test_resnet18():
         # Allow off-by-3 error
         atol = 3 * model.fc.output_quantizers[0].get_scale().item()
         assert torch.allclose(torch.from_numpy(out), y, atol=atol)
+
+
+def test_export(tmpdir):
+    model = nn.Sequential(
+        nn.Conv2d(3, 3, 3),
+        nn.ReLU(),
+        nn.Softmax(),
+    )
+    args = (torch.randn(1, 3, 224, 224),)
+    sim = QuantizationSimModel(model, args)
+    sim.compute_encodings(lambda model: model(*args))
+
+    with open(os.path.join(tmpdir, 'out.onnx'), 'wb') as f:
+        _export(sim.model, args, f)

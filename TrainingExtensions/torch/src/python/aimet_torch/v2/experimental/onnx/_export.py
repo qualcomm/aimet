@@ -36,6 +36,7 @@
 # =============================================================================
 """Utility APIs for onnx export"""
 
+from contextlib import contextmanager, ExitStack
 import functools
 from typing import Sequence
 
@@ -43,6 +44,8 @@ import onnxscript
 from onnxscript import opset15 as ops
 import torch
 from torch.onnx import is_in_onnx_export, symbolic_helper
+
+from aimet_torch.v2.utils import patch_attr
 
 
 aimet_opset = onnxscript.values.Opset(domain="aimet", version=1)
@@ -198,3 +201,27 @@ def register_symbolic(symbolic_fn):
         return wrapper
 
     return decorator
+
+
+def export(model: torch.nn.Module, *args, **kwargs):
+    if not isinstance(model, torch.nn.Module):
+        raise NotImplementedError
+
+    with _precompute_encodings(model):
+        # Precompute scale/offset before entering torch.onnx.export so that
+        # scale/offset are always represented as a leaf inputs in the onnx graphs
+        return torch.onnx.export(model, *args, **kwargs)
+
+
+@contextmanager
+def _precompute_encodings(model: torch.nn.Module):
+    from aimet_torch.quantization.base import QuantizerBase
+
+    with ExitStack() as stack:
+        for q in model.modules():
+            if isinstance(q, QuantizerBase):
+                ctx = patch_attr(q, 'get_encodings', functools.lru_cache(q.get_encodings))
+                stack.enter_context(ctx)
+                with torch.no_grad():
+                    q.get_encodings()
+        yield
