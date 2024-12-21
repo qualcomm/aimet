@@ -136,6 +136,7 @@ class MixedPrecisionConfigurator:
     def set_model_input_precision(self, activation: Union[List[Optional[SupportedDType]], Tuple[Optional[SupportedDType]], SupportedDType]):
         """
         Activation precision which needs to be set to the model inputs
+
         :param activation: Activation dtypes for inputs of the model
         """
         broadcasted_activations = broadcast_tuples(activation, self.mp_handler.cg_traverser.model_inputs)
@@ -149,6 +150,7 @@ class MixedPrecisionConfigurator:
     def set_model_output_precision(self, activation: Union[List[Optional[SupportedDType]], Tuple[Optional[SupportedDType]], SupportedDType]):
         """
         Activation precision which needs to be set to the model outputs
+
         :param activation: Activation dtypes for outputs of the model
         """
         broadcasted_activations = broadcast_tuples(activation, self.mp_handler.cg_traverser.model_outputs)
@@ -172,10 +174,11 @@ class MixedPrecisionConfigurator:
         """
         Apply the mp settings specified through the set_precision/set_model_input_precision/set_model_output_precision
         calls to the QuantSim object
+
         :param log_file: log_file to store the logs. log_file can either be a string representing the path or the IO
                         object to write the logs into.
         :param strict: Boolean flag to indicate whether to fail (strict=True) on incorrect/conflicting inputs made by
-        the user or (strict=False) take a best-effort approach to realize the MP settings
+                       the user or (strict=False) take a best-effort approach to realize the MP settings
         """
         if isinstance(log_file, str):
             with open(log_file, 'w') as f:
