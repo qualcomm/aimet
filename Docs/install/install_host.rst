@@ -129,9 +129,6 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
 
 .. code-block:: bash
 
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
-
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}
 
@@ -214,9 +211,6 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
 
 .. code-block:: bash
 
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
-
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name}
 
@@ -292,9 +286,6 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     Python dependencies are automatically installed.
 
 .. code-block:: bash
-
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
 
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name}

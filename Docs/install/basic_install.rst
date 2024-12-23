@@ -28,12 +28,6 @@ to all frameworks variants.
 
     apt-get install liblapacke
 
-Install a compatible version of pip. The latest version is *not* compatible with our wheel packages.
-
-.. code-block:: bash
-
-    python3 -m pip install pip==24.0
-
 Choose and install a package
 ============================
 
