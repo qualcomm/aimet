@@ -17,7 +17,8 @@ aimet_torch API
     aimet_torch.batch_norm_fold <bnf>
     aimet_torch.cross_layer_equalization <cle>
     aimet_torch.model_preparer <model_preparer>
-    aimet_torch.auto_mixed_precision <amp>
+    aimet_torch.model_validator <model_validator>
+    aimet_torch.mixed_precision <mp>
     aimet_torch.quant_analyzer <quant_analyzer>
     aimet_torch.autoquant <autoquant>
     aimet_torch.bn_reestimation <bn>
@@ -45,6 +46,7 @@ aimet_torch
 - :ref:`aimet_torch.batch_norm_fold <apiref-torch-bnf>`
 - :ref:`aimet_torch.cross_layer_equalization <apiref-torch-cle>`
 - :ref:`aimet_torch.model_preparer <apiref-torch-model-preparer>`
+- :ref:`aimet_torch.model_validator <apiref-torch-model-validator>`
 - :ref:`aimet_torch.mixed_precision <api-torch-mp>`
 - :ref:`aimet_torch.quant_analyzer <apiref-torch-quant-analyzer>`
 - :ref:`aimet_torch.autoquant <apiref-torch-autoquant>`
