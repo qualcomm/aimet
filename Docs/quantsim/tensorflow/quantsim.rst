@@ -33,20 +33,6 @@ QuantSim creation
     :start-after: # Load the model
     :end-before: # End of loading model
 
-BatchNorm fold
-~~~~~~~~~~~~~~
-
-When models are executed in a quantized runtime, BatchNorm layers are typically folded into the weight
-and bias of an adjacent convolution layer whenever possible in order to remove unnecessary computations.
-To accurately simulate inference in these runtimes, it is generally a good idea to perform this BatchNorm
-folding on the floating-point (FP32) model before applying quantization. AIMET provides the
-:mod:`batch_norm_fold` API to do this.
-
-.. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
-    :language: python
-    :start-after: # Fold batch norm
-    :end-before: # End of folding batch norm
-
 Now we use AIMET to create a :class:`QuantizationSimModel`. This basically means that AIMET will insert
 fake quantization operations in the model graph and will configure them. A few of the parameters are
 explained here.
@@ -62,22 +48,27 @@ Calibration
 Even though AIMET has added 'quantizer' operations to the model graph, the QuantSim is not ready to be used
 yet. Before we can use the QuantSim for inference or training, we need to find appropriate scale/offset
 quantization parameters for each 'quantizer' node. For activation quantization nodes, we need to pass
-unlabeled data samples through the model to collect range statistics which will then let AIMET calculate
+small, representative data samples through the model to collect range statistics which will then let AIMET calculate
 appropriate scale/offset quantization parameters.
 
 Calibration callback
 ~~~~~~~~~~~~~~~~~~~~
 
-So we create a routine to pass unlabeled representative data samples through the model. This should be
+So we create a routine to pass small, representative data samples through the model. This should be
 fairly simple - use the existing train or validation data loader to extract some samples and pass them
 to the model.
 
-In practice, we need a very small percentage of the overall data samples for computing encodings.
-For computing encodings we only need 500 or 1000 representative data samples.
+In practice, for computing encodings we only need 500-1000 representative data samples.
 
 .. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
     :language: python
-    :pyobject: pass_calibration_data
+    :start-after: # Set up dataset
+    :end-before: # End of dataset
+
+.. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
+    :language: python
+    :start-after: # Calibration callback
+    :end-before: # End of calibration callback
 
 Compute encodings
 ~~~~~~~~~~~~~~~~~
@@ -88,31 +79,35 @@ quantization parameters.
 
 .. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
     :language: python
-    :start-after: # Set up dataset
-    :end-before: # End of dataset
-
-.. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
-    :language: python
     :start-after: # Compute quantization encodings
     :end-before: # End of computing quantization encodings
 
-Export
-------
+Evaluation
+----------
 
-Lastly, evaluate the :class:`QuantizationSimModel` to get quantized accuracy and export a version
-of the model with quantization operations removed and create an encodings JSON file with quantization
-scale and offset parameters for the model's activation and weight tensors.
+Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
 
 .. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
     :language: python
-    :start-after: # Export the model
-    :end-before: # End of exporting the model
+    :start-after: # Evaluation
+    :end-before: # End of evaluation
 
 .. rst-class:: script-output
 
   .. code-block:: none
 
     Quantized accuracy (W8A16): 0.7013
+
+Export
+------
+
+Lastly, export a version of the model with quantization operations removed and an encodings JSON
+file with quantization scale and offset parameters for the model's activation and weight tensors.
+
+.. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
+    :language: python
+    :start-after: # Export the model
+    :end-before: # End of exporting the model
 
 .. _tensorflow-qat:
 
@@ -157,7 +152,7 @@ Hyper-parameters
 .. literalinclude:: ../../snippets/tensorflow/apply_quantsim.py
     :language: python
     :start-after: # Perform QAT
-    :end-before: # End of QAT
+    :end-before: # End of export
 
 .. rst-class:: script-output
 

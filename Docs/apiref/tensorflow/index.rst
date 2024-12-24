@@ -15,6 +15,7 @@ aimet_tensorflow API
     aimet_tensorflow.quant_analyzer <quant_analyzer>
     aimet_tensorflow.auto_quant_v2 <autoquant>
     aimet_tensorflow.layer_output_utils <layer_output_generation>
+    aimet_tensorflow.model_preparer <model_preparer>
     aimet_tensorflow.compress <compress>
 
 AIMET quantization for TensorFlow models provides the following functionality.
@@ -27,3 +28,6 @@ AIMET quantization for TensorFlow models provides the following functionality.
 - :ref:`aimet_tensorflow.quant_analyzer <apiref-tensorflow-quant-analyzer>`
 - :ref:`aimet_tensorflow.auto_quant_v2 <apiref-tensorflow-autoquant>`
 - :ref:`aimet_tensorflow.layer_output_utils <apiref-tensorflow-layer-output-generation>`
+- :ref:`aimet_tensorflow.model_preparer <apiref-tensorflow-model-preparer>`
+- :ref:`aimet_tensorflow.compress <apiref-tensorflow-compress>`
+

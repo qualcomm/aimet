@@ -9,7 +9,6 @@ Quantsim PyTorch
 
     Migration guide <migration_guide>
     Model guidelines <model_guidelines>
-    Multi-GPU support <multi_gpu>
     Per-block quantization <block_quantization>
     Quantizers <quantizers>
 
@@ -19,11 +18,10 @@ Quantsim PyTorch
     using low-level components of :class:`QuantizationSimModel`, please see :doc:`Migrate to aimet_torch 2 <migration_guide>`.
 
 
-* :ref:`Migrate from aimet_torch 1.x to aimet_torch 2 <torch-migration-guide>`
 * :ref:`PyTorch model guidelines <torch-model-guidelines>`
 * :ref:`Workflow <torch-workflow>`
 
-* Advanced
+Advanced
     * :ref:`Quantized modules <torch-nn>`
     * :ref:`Quantizers <torch-quantizers>`
     * :ref:`Per-block quantization <torch-per-block-quantization>`
@@ -50,42 +48,8 @@ QuantSim creation
    :start-after: # Load the model
    :end-before:  # End of load the model
 
-Model preparation
-~~~~~~~~~~~~~~~~~
-
-AIMET quantization simulation requires the user's model definition to follow certain guidelines. For
-example, :func:`torch.nn.functional` defined in forward pass should be changed to equivalent
-:class:`torch.nn.Module`.
-
-For more details on model definition guidelines and how :func:`prepare_model` API automates model
-definition changes required to comply with the guidelines, please refer: :ref:`PyTorch model guidelines <torch-model-guidelines>`.
-
-.. note::
-
-    :func:`prepare_model` function uses :mod:`torch.fx` under the hood, which means it inherits all the limitations of :mod:`torch.fx`. Therefore, if :func:`prepare_model` cannot automatically prepare the model, you will need to manually adjust the model definition to comply with the model definition guidelines.
-
-.. literalinclude:: ../../snippets/torch/apply_quantsim.py
-   :language: python
-   :start-after: # Prepare the model
-   :end-before:  # End of prepare_model
-
-BatchNorm fold
-~~~~~~~~~~~~~~
-
-When models are executed in a quantized runtime, BatchNorm layers are typically folded into the weight
-and bias of an adjacent convolution layer whenever possible in order to remove unnecessary computations.
-To accurately simulate inference in these runtimes, it is generally a good idea to perform this BatchNorm
-folding on the floating-point (FP32) model before applying quantization. AIMET provides the
-:mod:`batch_norm_fold` API to do this.
-
-.. literalinclude:: ../../snippets/torch/apply_quantsim.py
-   :language: python
-   :start-after: # Fold the batchnorm
-   :end-before:  # End of fold_all_batch_norms
-
 Now we use AIMET to create a :class:`QuantizationSimModel`. This basically means that AIMET will insert
-fake quantization operations in the model graph and will configure them. A few of the parameters are
-explained here.
+fake quantization operations in the model graph and will configure them.
 
 .. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
@@ -98,49 +62,60 @@ Calibration
 Even though AIMET has added 'quantizer' operations to the model graph, the QuantSim is not ready to be used
 yet. Before we can use the QuantSim for inference or training, we need to find appropriate scale/offset
 quantization parameters for each 'quantizer' node. For activation quantization nodes, we need to pass
-unlabeled data samples through the model to collect range statistics which will then let AIMET calculate
+small, representative data samples through the model to collect range statistics which will then let AIMET calculate
 appropriate scale/offset quantization parameters.
 
 Calibration callback
 ~~~~~~~~~~~~~~~~~~~~
 
-So we create a routine to pass unlabeled representative data samples through the model. This should be
+So we create a routine to pass small, representative data samples data samples through the model. This should be
 fairly simple - use the existing train or validation data loader to extract some samples and pass them
 to the model.
 
-In practice, we need a very small percentage of the overall data samples for computing encodings.
-For computing encodings we only need 500 or 1000 representative data samples.
+In practice, for computing encodings we only need 500-1000 representative data samples.
 
 .. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
-   :pyobject: pass_calibration_data
+   :start-after: # Dataloaders
+   :end-before:  # End of dataloaders
+
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
+   :language: python
+   :start-after: # Calibration callback
+   :end-before:  # End of calibration callback
 
 Compute encodings
 ~~~~~~~~~~~~~~~~~
 
-Now we call :func:`QuantizationSimModel.compute_encodings` to use the above callback to pass data through
-the model and then subsequently compute the quantization encodings. Encodings here refer to scale/offset
-quantization parameters.
-
-.. literalinclude:: ../../snippets/torch/apply_quantsim.py
-   :language: python
-   :pyobject: get_calibration_and_eval_data_loaders
+Now we call :func:`QuantizationSimModel.compute_encodings` to use the above callback to pass small, representative
+data through the quantized model. By doing so, the quantizers in the quantized model will observe the inputs
+and initialize their quantization encodings according to the observed input statistics. Encodings here
+refer to scale/offset quantization parameters.
 
 .. literalinclude:: ../../snippets/torch/apply_quantsim.py
    :language: python
    :start-after: # Compute the Quantization Encodings
    :end-before:  # End of compute_encodings
 
+Evaluation
+----------
+
+Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
+
+.. literalinclude:: ../../snippets/torch/apply_quantsim.py
+   :language: python
+   :start-after: # Evaluation
+   :end-before:  # End of evaluation
+
 Export
 ------
 
-Lastly, evaluate the :class:`QuantizationSimModel` to get quantized accuracy and export a version
-of the model with quantization operations removed and create an encodings JSON file with quantization
-scale and offset parameters for the model's activation and weight tensors.
+Lastly, export a version of the model with quantization operations removed and an encodings JSON
+file with quantization scale and offset parameters for the model's activation and weight tensors.
 
 .. literalinclude:: ../../snippets/torch/apply_quantsim.py
     :language: python
-    :start-after: # Export the model for on-target inference.
+    :start-after: # Export
     :end-before: # End of export
 
 .. _torch-qat:
