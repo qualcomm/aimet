@@ -1691,6 +1691,37 @@ class TestBatchNormFoldToScale:
             # Only two cast ops should be present as the original model has two cast ops
             assert sum(num_cast_ops) == 2
 
+    def test_split_op_model(self):
+        inp = tf.keras.layers.Input(shape=(3, 224, 224))
+        conv = tf.keras.layers.Conv2D(filters=1, kernel_size=3, strides=1, padding="valid")(inp)
+        bn = tf.keras.layers.BatchNormalization()(conv)
+        split, split2 = tf.split(bn, num_or_size_splits=2, axis=2)
+        split_3, split4 = tf.split(bn, num_or_size_splits=2, axis=2)
+        concat = tf.concat([split2, split_3], axis=1)
+        concat_2 = tf.concat([split, split4, split_3], axis=1)
+        model = tf.keras.models.Model(inputs=inp, outputs=[concat_2, concat])
+
+        dummy_inp = np.random.randn(1, 3, 224, 224)
+
+        fp32_outs = model(dummy_inp)
+
+        folded_pairs, bn_folded_model = fold_all_batch_norms(model)
+
+        bn_folded_outs = bn_folded_model(dummy_inp)
+
+        for idx, fp32_out in enumerate(fp32_outs):
+            assert np.allclose(fp32_out, bn_folded_outs[idx], atol=1e-04)
+
+        split_0_output_tensor_names = [x.name for x in bn_folded_model.layers[2].output]
+        split_1_output_tensor_names = [x.name for x in bn_folded_model.layers[3].output]
+
+        assert bn_folded_model.layers[4].input[0].name == split_0_output_tensor_names[0]
+        assert bn_folded_model.layers[4].input[1].name == split_1_output_tensor_names[1]
+        assert bn_folded_model.layers[4].input[2].name == split_1_output_tensor_names[0]
+
+        assert bn_folded_model.layers[5].input[0].name == split_0_output_tensor_names[1]
+        assert bn_folded_model.layers[5].input[1].name == split_1_output_tensor_names[0]
+
     @pytest.mark.skip("Possible Batch norms to fold is returning None?")
     def test_fold_auto_mode_with_bn_after_Conv1d_layer(self):
         input_shape = (2, 10, 32)

@@ -49,6 +49,7 @@ class ModelLayerConnectionsProperties(Enum):
     OUTPUT_TENSORS = 'output_tensors'
     CALL_ARGS = 'call_args'
     CALL_KWARGS = 'call_kwargs'
+    LAYER_OUTPUT_TENSOR_MAP = 'layer_output_tensor_map'
     TYPE = typing.Dict[typing.Dict[str, typing.List[str]],
                        typing.Dict[str, typing.Union[KerasTensor, typing.List[KerasTensor]]]]
 
@@ -72,8 +73,19 @@ class ModelLayerConnections:
         model_layer_connections[ModelLayerConnectionsProperties.OUTPUT_TENSORS] = OrderedDict()
         model_layer_connections[ModelLayerConnectionsProperties.CALL_ARGS] = OrderedDict()
         model_layer_connections[ModelLayerConnectionsProperties.CALL_KWARGS] = OrderedDict()
+        model_layer_connections[ModelLayerConnectionsProperties.LAYER_OUTPUT_TENSOR_MAP] = OrderedDict()
 
         for current_layer in model.layers:
+            # Handling the case where there's multiple outbound nodes with same outbound layer
+            output_tensors = current_layer.output
+            input_tensors = current_layer.input
+            if not isinstance(output_tensors, typing.List):
+                output_tensors = [output_tensors]
+            if not isinstance(input_tensors, typing.List):
+                input_tensors = [input_tensors]
+            model_layer_connections[ModelLayerConnectionsProperties.LAYER_OUTPUT_TENSOR_MAP][current_layer.name] = \
+                [tensor.name for tensor in output_tensors if hasattr(tensor, "name")]
+
             for outbound_node in current_layer.outbound_nodes:
                 outbound_layers_name = outbound_node.outbound_layer.name
 
