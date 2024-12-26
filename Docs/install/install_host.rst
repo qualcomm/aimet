@@ -1,3 +1,5 @@
+:orphan:
+
 .. _install-host:
 
 ###################################
@@ -344,10 +346,3 @@ Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can
 **Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`.
 
 .. _man-install-next:
-
-Next steps
-==========
-
-See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
-
-See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.

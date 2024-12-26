@@ -1,3 +1,5 @@
+:orphan:
+
 .. _install-docker:
 
 ############################
@@ -265,10 +267,3 @@ Environment setup
     source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
 .. _docker-install-next:
-
-Next steps
-==========
-
-See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
-
-See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.
