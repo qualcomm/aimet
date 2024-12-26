@@ -25,7 +25,8 @@ Workflow
 ========
 
 Setup
-~~~~~~
+-----
+
 .. tab-set::
     :sync-group: platform
 
@@ -38,16 +39,18 @@ Setup
             :end-before: [set_precision_leaf]
 
 MMP API options
-~~~~~~
+---------------
+
 MMP provides the following APIs to change the precision. The APIs can be called in any order. But, in case of conflicts, latest request will triumph the older request.
 
-Note: The requests are processed using the leaf layers in the model
+.. note::
+    The requests are processed using the leaf layers in the model
 
 * If one of the below APIs is called multiple times for the same layer but with a different precision in each of those calls, only the latest one would be serviced
 * This rule holds good even if the requests are from two different APIs ie if user calls a non-leaf layer (L1) with precision (P1) and a leaf layer inside L1 (L2) with precision (P2). This would be serviced by setting all the layers in L1 at P1 precision, except layer L2 which would be set at P2 precision.
 
 Set precision of a leaf layer
-~~~~~~
+-----------------------------
 
 .. tab-set::
     :sync-group: platform
@@ -62,7 +65,8 @@ Set precision of a leaf layer
 
 
 Set precision of a non-leaf layer
-~~~~~~
+---------------------------------
+
 .. tab-set::
     :sync-group: platform
 
@@ -76,7 +80,8 @@ Set precision of a non-leaf layer
 
 
 Set precision based on layer type
-~~~~~~
+---------------------------------
+
 .. tab-set::
     :sync-group: platform
 
@@ -89,7 +94,8 @@ Set precision based on layer type
             :end-before: [set_precision_model_input]
 
 Set model input precision
-~~~~~~
+-------------------------
+
 .. tab-set::
     :sync-group: platform
 
@@ -104,7 +110,8 @@ Set model input precision
 * Do note that if a model has more than one input tensor (say the structure is [In1, In2]), but only one of them (say In2) needs to be configured to a new precision (say P1), user can achieve it by setting ``activation=[None, P1]`` in the above API
 
 Set model output precision
-~~~~~~
+--------------------------
+
 .. tab-set::
     :sync-group: platform
 
@@ -119,7 +126,8 @@ Set model output precision
 * Do note that if a model has more than one output tensor (say the structure is [Out1, Out2, Out3]), but only one of them (say Out2) needs to be configured to a new precision (say P1), user can achieve it by setting ``activation=[None, P1, None]`` in the above API
 
 Apply the profile
-~~~~~~
+-----------------
+
 All the above `set precision` family of calls would be processed at once when the below ``apply(...)`` API is called
 
 .. tab-set::
@@ -132,7 +140,8 @@ All the above `set precision` family of calls would be processed at once when th
             :language: python
             :start-after: [apply]
 
-Note: the above call would generate a report detailing how a user's request was inferred, propagated to other layers and realized eventually
+.. note::
+    The above call would generate a report detailing how a user's request was inferred, propagated to other layers and realized eventually
 
 API
 ===
