@@ -201,12 +201,12 @@ class SequentialMse:
         Value info for QcQuantizeOp is not present in _sim_extractor
         """
 
+        self._update_value_info_for_graph_output()
+
         for node in self.sim.model.nodes():
             if node.op_type == "QcQuantizeOp":
                 self._update_value_info_for_output(node)
                 self._update_value_info_for_input(node)
-
-        self._update_value_info_for_graph_output()
 
     def _fill_static_tensor_name_to_proto(self):
         """

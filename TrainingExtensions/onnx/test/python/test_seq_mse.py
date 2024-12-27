@@ -63,6 +63,8 @@ from models.test_models import single_linear_layer_model
 from models.test_models import single_conv_layer_model
 from models.test_models import model_with_split
 from models.test_models import single_residual_model
+from models.test_models_onnx import model_with_multiple_inputs
+from models.test_models_onnx import model_with_multiple_outputs
 
 
 torch.manual_seed(42)
@@ -73,29 +75,32 @@ def unlabeled_data_loader(dummy_input):
             self.data = data
 
         def __getitem__(self, index):
-            return self.data[index]
+            return tuple(d[index] for d in self.data)
 
         def __len__(self):
-            return len(self.data)
-
-    dataset = MyDataset([[dummy_input]])
+            return len(self.data[0])
+    dataset = MyDataset(dummy_input)
     return DataLoader(dataset)
 
 
 def dummy_input_for_linear_layer():
-    return torch.randn((100, 100))
+    return [torch.randn((1, 100, 100))]
 
 
 def dummy_input_for_conv_layer():
-    return torch.randn((5, 5, 5))
+    return [torch.randn((1, 5, 5, 5))]
 
 
 def dummy_input_for_dependency_graph():
-    return torch.randn((1, 10, 10))
+    return [torch.randn((1, 1, 10, 10))]
 
 
 def dummy_input_for_residual_model():
-    return torch.randn((3, 32, 32))
+    return [torch.randn((1, 3, 32, 32))]
+
+
+def dummy_input_for_model_with_multiple_input():
+    return [torch.randn((1, 3, 32, 32)), torch.randn((1, 3, 32, 32))]
 
 
 def get_single_linear_layer_model():
@@ -109,6 +114,13 @@ def get_single_conv_layer_model():
 def get_model_with_split():
     return model_with_split()
 
+
+def get_model_with_multiple_inputs():
+    return model_with_multiple_inputs()
+
+
+def get_model_with_multiple_outputs():
+    return model_with_multiple_outputs()
 
 @staticmethod
 def _get_config_file(is_symmetric: bool, strict_symmetric: bool, unsigned_symmetric:bool, pcq: bool) -> str:
@@ -432,4 +444,38 @@ def test_apply_seq_mse_for_residual_model(inp_symmetry, param_bw, loss_fn, enabl
     assert weight_quantizer_fc.is_encoding_frozen() == False
 
 
+def test_model_with_multiple_inputs_dependency_graph_utils():
 
+    model = get_model_with_multiple_inputs()
+    sim = QuantizationSimModel(model=copy.deepcopy(model),
+                               quant_scheme=QuantScheme.post_training_tf,
+                               default_activation_bw=8,
+                               default_param_bw=4,
+                               use_cuda=False,
+                               config_file=_get_config_file(is_symmetric=True, strict_symmetric=False,
+                                                            unsigned_symmetric=False, pcq=True))
+    seq_params = SeqMseParams()
+    dataloader = unlabeled_data_loader(dummy_input_for_model_with_multiple_input())
+    seq_mse = SequentialMse(model, sim, seq_params, dataloader)
+
+    starting_ops_names = [op.name_op for op in seq_mse.dependency_graph_utils.starting_ops]
+
+    assert starting_ops_names == ["Conv1"]
+    assert seq_mse.dependency_graph_utils.indegree == {"Conv1": 0, "ADD_0": 1, "ADD_1": 1, "Conv2": 1}
+    assert seq_mse.dependency_graph_utils.input_ops_name == ["Conv1", "ADD_0", "ADD_1"]
+
+def test_model_with_multiple_outputs_value_info():
+
+    model = get_model_with_multiple_outputs()
+    sim = QuantizationSimModel(model=copy.deepcopy(model),
+                               quant_scheme=QuantScheme.post_training_tf,
+                               default_activation_bw=8,
+                               default_param_bw=4,
+                               use_cuda=False,
+                               config_file=_get_config_file(is_symmetric=True, strict_symmetric=False,
+                                                            unsigned_symmetric=False, pcq=True))
+    seq_params = SeqMseParams()
+    dataloader = unlabeled_data_loader(dummy_input_for_model_with_multiple_input())
+    seq_mse = SequentialMse(model, sim, seq_params, dataloader)
+
+    assert 'Conv1_Y' in seq_mse._sim_extractor.vimap

@@ -74,9 +74,27 @@ class DependencyGraphUtils:
         self.static_tensor_name_to_proto = static_tensor_name_to_proto
         self.starting_ops = list()
         self.graph_outputs = [output.name for output in self.connected_graph.model.graph.output]
+        self.input_ops_name = list()
 
         self._fill_indegree()
+        self._fill_input_ops_name()
         self._init_name_to_dependent_on_supported_module()
+
+    def _fill_input_ops_name(self):
+        """
+        Fill the input op names dict with ops having at least one graph input
+        """
+
+        graph_inputs = list()
+
+        for input_tensor in self.connected_graph.model.graph.input:
+            graph_inputs.append(input_tensor.name)
+
+        for node_name, input_names in self.node_name_to_input_names.items():
+            for input_name in input_names:
+                if input_name in graph_inputs:
+                    self.input_ops_name.append(node_name)
+                    break
 
     def _fill_indegree(self):
         """
@@ -158,7 +176,7 @@ class DependencyGraphUtils:
 
         if src_op.model_module is not None:
             module = src_op.model_module.get_module()
-            if self.is_dependency_module(module) or src_op in self.connected_graph.starting_ops:
+            if self.is_dependency_module(module) or src_op.name in self.input_ops_name:
                 is_module_supported = True
                 op_name = src_op.name_op
                 op_type = src_op.type
