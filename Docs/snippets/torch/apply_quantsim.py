@@ -83,14 +83,8 @@ def pass_calibration_data(model: torch.nn.Module, forward_pass_args: Optional[An
     """
     The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
     """
-    # User action required
-    # The following line of code is an example of how to use the ImageNet data's validation data loader.
-    # Replace the following line with your own dataset's validation data loader.
     data_loader = forward_pass_args
 
-    # User action required
-    # For computing the activation encodings, around 1000 unlabelled data samples are required.
-    # Edit the num_batches based on your batch size.
     # batch_size (64) * num_batches (16) should be 1024
     num_batches = 16
 

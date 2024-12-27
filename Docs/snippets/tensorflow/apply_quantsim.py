@@ -79,6 +79,9 @@ sim = QuantizationSimModel(model,
 
 # Calibration callback
 def pass_calibration_data(model, _):
+    """
+    The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
+    """
     for inputs, _ in calibration_dataset:
         _ = model(inputs)
 # End of calibration callback

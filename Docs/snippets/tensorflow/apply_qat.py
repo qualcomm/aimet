@@ -60,15 +60,16 @@ imagenet_dataset = imagenet_dataset.map(
 NUM_CALIBRATION_SAMPLES = 2048
 calibration_dataset = imagenet_dataset.take(NUM_CALIBRATION_SAMPLES // BATCH_SIZE)
 eval_dataset = imagenet_dataset.skip(NUM_CALIBRATION_SAMPLES // BATCH_SIZE)
-# End of dataset
 
-
-# Step 1
 def pass_calibration_data(model, _):
+    """
+    The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
+    """
     for inputs, _ in calibration_dataset:
         model(inputs)
+# End of dataset
 
-
+# Step 1
 PARAM_BITWIDTH = 8
 ACTIVATION_BITWIDTH = 8
 QUANT_SCHEME = QuantScheme.training_range_learning_with_tf_init
@@ -85,7 +86,7 @@ sim.model.compile(
     metrics=[metrics.CategoricalAccuracy()],
 )
 _, accuracy = sim.model.evaluate(eval_dataset)
-print(f'PTQ model accuracy: {accuracy:.4f}')
+print(f'Quantized accuracy (W8A8): {accuracy:.4f}')
 # End of step 1
 
 # Step 2

@@ -9,9 +9,9 @@ Quantization simulation guide
 .. toctree::
     :hidden:
 
-    PyTorch <torch/quantsim>
-    TensorFlow <tensorflow/quantsim>
-    ONNX <onnx/quantsim>
+    Calibration <calibration>
+    QAT <qat>
+    Advanced <advanced>
 
 Overview
 ========
@@ -202,25 +202,3 @@ Following is a typical workflow for using AIMET QuantSim to simulate on-target q
 #. Call :func:`QuantizationSimModel.export` on the QuantSim object to save a copy of the model with
    quantization operations removed, along with an encodings file containing quantization scale and offset
    parameters for each activation and weight tensor in the model.
-
-Select a framework below.
-
-.. grid:: 3
-
-    .. grid-item-card::
-
-        .. card:: PyTorch
-           :link: quantsim-torch
-           :link-type: ref
-
-    .. grid-item-card::
-
-        .. card:: TensorFlow
-           :link: quantsim-tensorflow
-           :link-type: ref
-
-    .. grid-item-card::
-
-        .. card:: ONNX
-           :link: quantsim-onnx
-           :link-type: ref

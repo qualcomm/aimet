@@ -1,6 +1,10 @@
-.. include:: ../../abbreviation.txt
+.. include:: ../abbreviation.txt
 
-.. _torch-per-block-quantization:
+.. _quantsim-advanced:
+
+########
+Advanced
+########
 
 Per-block quantization
 ======================
@@ -45,66 +49,78 @@ The following rules must apply:
 
 Below are examples of valid and invalid combinations of tensor shape, QuantizeDequantize shape, and block_size:
 
-.. code-block:: Python
+.. tab-set::
+    :sync-group: platform
 
-    # Invalid combination: block_size is not the same length as QuantizeDequantize shape
-    tensor shape: (1, 4, 10)
-    QuantizeDequantize shape: (1,)
-    block_size: (1, 4, 10)
+    .. tab-item:: PyTorch
+        :sync: torch
 
-    # Invalid combination: block_size * QuantizeDequantize shape != tensor shape:
-    tensor shape: (1, 4, 10)
-    QuantizeDequantize shape: (1, 2, 10)
-    block_size: (1, 2, 5)
+        .. code-block:: Python
 
-    # Valid combination:
-    tensor shape: (16, 64, 3, 3)
-    QuantizeDequantize shape: (16, 4, 1, 1)
-    block_size: (1, 16, 3, 3)
+            # Invalid combination: block_size is not the same length as QuantizeDequantize shape
+            tensor shape: (1, 4, 10)
+            QuantizeDequantize shape: (1,)
+            block_size: (1, 4, 10)
 
-    # Valid combination (note that though tensor shape is 3d, only the final 2 dimensions correspond to block_size
-    # and QuantizeDequantize shape):
-    tensor shape: (2, 4, 10)
-    QuantizeDequantize shape: (2, 2)
-    block_size: (2, 5)
+            # Invalid combination: block_size * QuantizeDequantize shape != tensor shape:
+            tensor shape: (1, 4, 10)
+            QuantizeDequantize shape: (1, 2, 10)
+            block_size: (1, 2, 5)
 
-    # Valid combination:
-    tensor shape: (2, 4, 10)
-    QuantizeDequantize shape: (2, 2)
-    block_size: (-1, -1)    # block_size will be inferred to be (2, 5)
+            # Valid combination:
+            tensor shape: (16, 64, 3, 3)
+            QuantizeDequantize shape: (16, 4, 1, 1)
+            block_size: (1, 16, 3, 3)
 
-.. note::
-    While the QuantizeDequantize object supports arbitrary block sizes for experimental purposes, Qualcomm runtime restricts
-    Blockwise quantization to take place with the following constraints:
+            # Valid combination (note that though tensor shape is 3d, only the final 2 dimensions correspond to block_size
+            # and QuantizeDequantize shape):
+            tensor shape: (2, 4, 10)
+            QuantizeDequantize shape: (2, 2)
+            block_size: (2, 5)
 
-    * Blockwise quantization must run on weight quantizers only.
+            # Valid combination:
+            tensor shape: (2, 4, 10)
+            QuantizeDequantize shape: (2, 2)
+            block_size: (-1, -1)    # block_size will be inferred to be (2, 5)
 
-    * Block sizes must be set to 1 for the output channel dimension, may take arbitrary values for the input channel
-      dimension (it must still be divisible by the input channel tensor shape), and must have block sizes equal to the
-      tensor sizes for all other dimensions.
+        .. note::
+            While the QuantizeDequantize object supports arbitrary block sizes for experimental purposes, Qualcomm runtime restricts
+            Blockwise quantization to take place with the following constraints:
 
-    * Layers with weights running with Blockwise quantization must themselves be running with floating-point quantized
-      activations.
+            * Blockwise quantization must run on weight quantizers only.
+
+            * Block sizes must be set to 1 for the output channel dimension, may take arbitrary values for the input channel
+              dimension (it must still be divisible by the input channel tensor shape), and must have block sizes equal to the
+              tensor sizes for all other dimensions.
+
+            * Layers with weights running with Blockwise quantization must themselves be running with floating-point quantized
+              activations.
 
 The below code examples show how to configure Convolution and Linear layers to Blockwise quantization:
 
-.. code-block:: Python
+.. tab-set::
+    :sync-group: platform
 
-    from aimet_torch.v2.quantization.affine import QuantizeDequantize
+    .. tab-item:: PyTorch
+        :sync: torch
 
-    # Assume sim.model.conv_1 refers to a QuantizedConv2d layer with weight param shape of (16, 64, 2, 2)
-    # Below settings equate to a block size of 16 in the input channels dimension.
-    sim.model.conv_1.param_quantizers['weight'] = QuantizeDequantize(shape=(16, 4, 1, 1),
-                                                                     bitwidth=4,
-                                                                     symmetric=True,
-                                                                     block_size=(1, 16, 2, 2))  # (-1, -1, -1, -1) works too
+        .. code-block:: Python
 
-    # Assume sim.model.linear_1 refers to a QuantizedLinear layer with weight param shape of (12, 16)
-    # Below settings equate to a block size of 4 in the input channels dimension.
-    sim.model.conv_1.param_quantizers['weight'] = QuantizeDequantize(shape=(12, 4),
-                                                                     bitwidth=4,
-                                                                     symmetric=True,
-                                                                     block_size=(1, 4))  # (-1, -1) works too
+            from aimet_torch.quantization.affine import QuantizeDequantize
+
+            # Assume sim.model.conv_1 refers to a QuantizedConv2d layer with weight param shape of (16, 64, 2, 2)
+            # Below settings equate to a block size of 16 in the input channels dimension.
+            sim.model.conv_1.param_quantizers['weight'] = QuantizeDequantize(shape=(16, 4, 1, 1),
+                                                                             bitwidth=4,
+                                                                             symmetric=True,
+                                                                             block_size=(1, 16, 2, 2))  # (-1, -1, -1, -1) works too
+
+            # Assume sim.model.linear_1 refers to a QuantizedLinear layer with weight param shape of (12, 16)
+            # Below settings equate to a block size of 4 in the input channels dimension.
+            sim.model.conv_1.param_quantizers['weight'] = QuantizeDequantize(shape=(12, 4),
+                                                                             bitwidth=4,
+                                                                             symmetric=True,
+                                                                             block_size=(1, 4))  # (-1, -1) works too
 
 
 Low power blockwise quantization
@@ -118,7 +134,7 @@ to leverage existing per channel kernels in order to run the model. An additiona
 storage space than Blockwise quantization encodings, due to the fact that floating point encoding scales are stored per
 channel, and only low bitwidth integer scale expansion factors need to be stored in a per block fashion.
 
-LPBQ quantization is supported as part of the :class:`aimet_torch.v2.quantization.affine.GroupedBlockQuantizeDequantize` class.
+LPBQ quantization is supported as part of the :class:`aimet_torch.quantization.affine.GroupedBlockQuantizeDequantize` class.
 
 In addition to the block_size argument described in the Blockwise Quantization section, LPBQ introduces two new arguments:
 
@@ -145,18 +161,24 @@ that dimension.
     * Block groupings must be set to '1' for all dimensions, except for the input channels dimension, which should be
       set to the number of blocks for that dimension.
 
-.. code-block:: Python
+.. tab-set::
+    :sync-group: platform
 
-    from aimet_torch.v2.quantization.affine import GroupedBlockQuantizeDequantize
+    .. tab-item:: PyTorch
+        :sync: torch
 
-    # Assume sim.model.conv_1 refers to a QuantizedConv2d layer with weight param shape of (16, 64, 2, 2)
-    # Below settings equate to a block size of 16 in the input channels dimension.
-    sim.model.conv_1.param_quantizers['weight'] = GroupedBlockQuantizeDequantize(shape=(16, 4, 1, 1),
-                                                                                 bitwidth=4,
-                                                                                 symmetric=True,
-                                                                                 block_size=(1, 16, 2, 2),
-                                                                                 decompressed_bw: 8,
-                                                                                 block_grouping(1, 4, 1, 1))   # (1, -1, 1, 1) works too
+        .. code-block:: Python
+
+            from aimet_torch.quantization.affine import GroupedBlockQuantizeDequantize
+
+            # Assume sim.model.conv_1 refers to a QuantizedConv2d layer with weight param shape of (16, 64, 2, 2)
+            # Below settings equate to a block size of 16 in the input channels dimension.
+            sim.model.conv_1.param_quantizers['weight'] = GroupedBlockQuantizeDequantize(shape=(16, 4, 1, 1),
+                                                                                         bitwidth=4,
+                                                                                         symmetric=True,
+                                                                                         block_size=(1, 16, 2, 2),
+                                                                                         decompressed_bw: 8,
+                                                                                         block_grouping(1, 4, 1, 1))   # (1, -1, 1, 1) works too
 
 Export
 ======
@@ -167,15 +189,21 @@ encodings file size as well as reduce the time needed to write exported encoding
 
 The following code snippet shows how to export encodings in the new 1.0.0 format:
 
-.. code-block:: Python
+.. tab-set::
+    :sync-group: platform
 
-    from aimet_common import quantsim
+    .. tab-item:: PyTorch
+        :sync: torch
 
-    # Assume 'sim' is a QuantizationSimModel object imported from aimet_torch.v2.quantsim
+        .. code-block:: Python
 
-    # Set encoding_version to 1.0.0
-    quantsim.encoding_version = '1.0.0'
-    sim.export('./data', 'exported_model', dummy_input)
+            from aimet_common import quantsim
+
+            # Assume 'sim' is a QuantizationSimModel object imported from aimet_torch.quantsim
+
+            # Set encoding_version to 1.0.0
+            quantsim.encoding_version = '1.0.0'
+            sim.export('./data', 'exported_model', dummy_input)
 
 The 1.0.0 encodings format is supported by Qualcomm runtime and can be used to export Per-Tensor, Per-Channel, Blockwise,
 and LPBQ quantizer encodings.
@@ -197,8 +225,10 @@ quantization. As a result, the following utility function is provided to assist 
 to float quantization:
 
 .. autofunction:: aimet_torch.v2.quantsim.config_utils.set_activation_quantizers_to_float
+    :noindex:
 
 .. autofunction:: aimet_torch.v2.quantsim.config_utils.set_blockwise_quantization_for_weights
+    :noindex:
 
 This utility allows users to configure certain quantized layers in a model to use blockwise quantization with a specified
 block_size.
@@ -218,6 +248,7 @@ called multiple times for each set of layers with different weight dimensions.
 **Top-level API to configure LPBQ quantization**
 
 .. autofunction:: aimet_torch.v2.quantsim.config_utils.set_grouped_blockwise_quantization_for_weights
+    :noindex:
 
 This utility allows users to configure certain quantized layers in a model to use grouped blockwise quantization with a
 specified decompressed_bw, block_size, and block_grouping. Similar to :func:`set_blockwise_quantization_for_weights`,

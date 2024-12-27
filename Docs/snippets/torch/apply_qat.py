@@ -57,7 +57,10 @@ dummy_input = torch.randn(1, 3, 224, 224).to(device)
 fold_all_batch_norms(model, dummy_input.shape)
 
 # Callback function to pass calibration data through the model
-def forward_pass(model: torch.nn.Module, batches):
+def pass_calibration_data(model: torch.nn.Module, batches):
+    """
+    The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
+    """
     with torch.no_grad():
         for batch, (images, _) in enumerate(data_loader):
             images = images.to(device)
@@ -83,10 +86,10 @@ from aimet_torch.quantsim import QuantizationSimModel
 sim = QuantizationSimModel(model, dummy_input, quant_scheme=QuantScheme.training_range_learning_with_tf_init)
 
 calibration_batches = 10
-sim.compute_encodings(forward_pass, calibration_batches)
+sim.compute_encodings(pass_calibration_data, calibration_batches)
 
 accuracy = evaluate(sim.model, data_loader)
-print(f"PTQ model accuracy: {accuracy}")
+print(f"Quantized accuracy (W8A8): {accuracy}")
 # step_2
 # Training loop can be replaced with any custom training loop
 def train(model, data_loader, optimizer, loss_fn):

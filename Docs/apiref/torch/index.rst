@@ -7,6 +7,7 @@ aimet_torch API
 .. toctree::
     :hidden:
 
+    Migrate to aimet_torch 2 <migration_guide>
     aimet_torch.quantsim <quantsim>
     aimet_torch.adaround <adaround>
     aimet_torch.nn <nn>
@@ -35,7 +36,7 @@ aimet_torch
    flexible, extensible, and PyTorch-friendly user interface!
 
    aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x.,
-   please see :doc:`Migrate to aimet_torch 2 <../../quantsim/torch/migration_guide>`.
+   please see :doc:`Migrate to aimet_torch 2 <migration_guide>`.
 
 - :ref:`aimet_torch.quantsim <apiref-torch-quantsim>`
 - :ref:`aimet_torch.nn <apiref-torch-nn>`
