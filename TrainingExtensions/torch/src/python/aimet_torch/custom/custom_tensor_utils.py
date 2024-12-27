@@ -45,7 +45,7 @@ except ImportError as e:
 
     def to_custom_tensor(original, torch_tensors):
         """ placeholder in case spconv doesn't exist """
-        return original
+        return torch_tensors
 else:
     from typing import List, Union, Tuple
     import torch
