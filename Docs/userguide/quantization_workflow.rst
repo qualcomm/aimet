@@ -7,18 +7,18 @@ Quantization workflow
 #####################
 
 This document outlines a clear approach and methodology to onboard, quantize and deploy any
-machine-learning models on Qualcomm\ |reg| devices using the :term:`AI Model Efficiency Toolkit` (AIMET).
+machine-learning models on Qualcomm\ |reg| devices using the AI Model Efficiency Toolkit (AIMET).
 
 Quantization features
 =====================
 
-AIMET toolkit offers following :term:`quantization` features.
+AIMET toolkit offers following quantization features.
 
 1. Quantization simulation
 --------------------------
 
-:term:`Quantization simulation` (QuantSim) simulates quantized behavior using floating-point hardware. QuantSim efficiently enables
-various quantization options and helps you estimate the off-target quantized :term:`accuracy` metric
+Quantization simulation (QuantSim) simulates quantized behavior using floating-point hardware. QuantSim efficiently enables
+various quantization options and helps you estimate the off-target quantized accuracy metric
 using quantization simulation (sequence of quantize and dequantize operations, known as QDQ)
 without requiring actual quantized hardware.
 
@@ -26,10 +26,10 @@ A quantization simulation workflow is illustrated here:
 
 .. image:: ../images/quant_use_case_1.PNG
 
-1. Post-training quantization
+2. Post-training quantization
 -----------------------------
 
-:term:`Post-training quantization` (PTQ) techniques make a model more quantization-friendly without requiring model retraining
+Post-training quantization (PTQ) techniques make a model more quantization-friendly without requiring model retraining
 or fine-tuning. PTQ is recommended as a go-to tool in a quantization workflow because:
 
 - PTQ does not require the training pipeline
@@ -39,10 +39,10 @@ The PTQ workflow is illustrated here:
 
 .. image:: ../images/quant_use_case_3.PNG
 
-1. Quantization-aware training
+3. Quantization-aware training
 ------------------------------
 
-:term:`Quatization-aware training` (QAT) enables you to fine-tune a model with quantization operations (QDQ) inserted in the
+Quatization-aware training (QAT) enables you to fine-tune a model with quantization operations (QDQ) inserted in the
 model graph. In effect, it makes the model parameters robust to quantization noise.
 
 Compared to PTQ:
@@ -61,8 +61,8 @@ Supported precisions for on-target inference
 ============================================
 
 Before applying quantization techniques, you need to identify the supported precisions
-to run inference on desired :term:`target runtime`s. For :term:`weights` and :term:`activation`s, supported
-precisions can be :term:`FP32`, FP16, INT16, :term:`INT8` and INT4.
+to run inference on desired target runtimes. For weights` and activations, supported
+precisions can be FP32, FP16, INT16, INT8 and INT4.
 
 Some of the recent runtimes also support heterogeneous bit-width or mixed-precision, enabling
 sensitive operations to run at a higher precision within your model.
@@ -106,7 +106,7 @@ If any of the above on-target metrics are not met for your use case, you should 
 lowering the precision.
 
 The figure below illustrates the recommended quantization workflow and the steps required
-to deploy the quantized model on the target :term:`device`.
+to deploy the quantized model on the target device.
 
 .. figure:: ../images/overall_quantization_workflow.png
 

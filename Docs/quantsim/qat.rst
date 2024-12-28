@@ -43,7 +43,7 @@ Workflow
 ========
 
 Setup
-~~~~~
+-----
 
 .. tab-set::
     :sync-group: platform
@@ -67,7 +67,7 @@ Setup
             :end-before: # End of dataset
 
 Compute the initial quantization parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------------------
 
 .. tab-set::
     :sync-group: platform
@@ -101,7 +101,7 @@ Compute the initial quantization parameters
                 Quantized accuracy (W8A8): 0.6583
 
 Fine-tune quantized model
-~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------
 
 .. tab-set::
     :sync-group: platform
@@ -123,7 +123,7 @@ Fine-tune quantized model
             :end-before: # End of step 2
 
 Evaluation
-~~~~~~~~~~
+----------
 
 Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
 
