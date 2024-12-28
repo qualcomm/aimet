@@ -45,13 +45,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         .. parsed-literal::
 
-           python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cu121\ |whl_suffix| -f |torch_pkg_url|
+           python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|+cu121\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
+            python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|+cpu\ |whl_suffix| -f |torch_pkg_url|
 
 
     .. tab-item:: TensorFlow
@@ -63,13 +63,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|.cu118\ |whl_suffix| -f |torch_pkg_url|
+            python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|+cu118\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
+            python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|+cpu\ |whl_suffix| -f |torch_pkg_url|
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -80,13 +80,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|.cu117\ |whl_suffix| -f |torch_pkg_url|
+            python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|+cu117\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
+            python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|+cpu\ |whl_suffix| -f |torch_pkg_url|
 
 .. |whl_suffix| replace:: -cp310-cp310-manylinux_2_34_x86_64.whl
 .. |download_url| replace:: \https://github.com/quic/aimet/releases/download/

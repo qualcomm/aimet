@@ -274,7 +274,7 @@ https://github.com/quic/aimet/releases
     export download_url="https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_tensorflow-1.34.0.cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_torch-1.35.1+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
     # NOTE: Do the following only for the PyTorch and ONNX variant packages!

@@ -114,7 +114,7 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_torch-|version|.cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_torch-|version|+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
     # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
@@ -200,7 +200,7 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_tensorflow-|version|.cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_tensorflow-|version|+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
 **2.3 Install the selected AIMET package.**
@@ -276,7 +276,7 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_onnx-|version|.cu117-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_onnx-|version|+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
 **3.3 Install the selected AIMET package.**
