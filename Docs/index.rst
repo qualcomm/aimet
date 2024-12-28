@@ -30,7 +30,7 @@ AIMET supports models from PyTorch, TensorFlow/Keras, and ONNX frameworks.
 Quick Start
 ===========
 
-To install and get started as quickly as possibly using AIMET with PyTorch, see the :doc:`Quick start guide <../install/quick-start>`.
+To quickly install and begin using AIMET with PyTorch, see the :doc:`Quick start guide <../install/quick-start>`.
 
 Installation
 ============

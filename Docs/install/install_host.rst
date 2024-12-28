@@ -342,7 +342,3 @@ Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can
 .. code-block:: bash
 
     source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
-
-**Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`.
-
-.. _man-install-next:
