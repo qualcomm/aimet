@@ -194,7 +194,7 @@ html_sidebars = {
 # Parameters for use in templates
 
 html_context = {
-  'current_version' : "2.0",
+  'current_version' : version,
   'versions_page' : '<a href="https://quic.github.io/aimet-pages/releases/latest/versions.html">Other versions</a>'
 }
 
