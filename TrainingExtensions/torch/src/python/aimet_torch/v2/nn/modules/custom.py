@@ -36,6 +36,7 @@
 # =============================================================================
 """ Quantized definitions for custom modules of AIMET """
 
+import copy
 from typing import Optional
 import torch
 from torch import Tensor
@@ -141,7 +142,8 @@ class QuantizedConcat(_DispatchMixin, QuantizationMixin, Concat):
         Extends super().export to repeat input quantizer's encodings :attr:`self._num_inputs` times
         """
         input_encodings = super().export_input_encodings(encoding_version)
-        return input_encodings * self._num_inputs
+        # Create separate encoding objects to avoid overriding of attributes added/updated later while exporting encodings
+        return [copy.deepcopy(encoding) for encoding in input_encodings * self._num_inputs]
 
     def import_input_encodings(self,
                                encodings,
