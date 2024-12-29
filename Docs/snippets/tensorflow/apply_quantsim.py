@@ -35,23 +35,15 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: skip-file
-from tensorflow.keras import losses, metrics, optimizers, preprocessing
-# End of imports
 
 # Load the model
 from tensorflow.keras import applications
-
 model = applications.MobileNetV2()
 # End of loading model
 
-# Fold batch norm
-from aimet_tensorflow.keras.batch_norm_fold import fold_all_batch_norms
-
-_, model = fold_all_batch_norms(model)
-# End of folding batch norm
-
 # Set up dataset
 from tensorflow.keras.applications import mobilenet_v2
+from tensorflow.keras import losses, metrics, optimizers, preprocessing
 
 BATCH_SIZE = 32
 imagenet_dataset = preprocessing.image_dataset_from_directory(
@@ -78,35 +70,42 @@ from aimet_tensorflow.keras.quantsim import QuantizationSimModel
 
 PARAM_BITWIDTH = 8
 ACTIVATION_BITWIDTH = 16
-sim = QuantizationSimModel(
-    model,
-    quant_scheme=QuantScheme.training_range_learning_with_tf_init,
-    default_param_bw=PARAM_BITWIDTH,
-    default_output_bw=ACTIVATION_BITWIDTH,
-    config_file=get_path_for_per_channel_config(),
-)
+sim = QuantizationSimModel(model,
+                           quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+                           default_param_bw=PARAM_BITWIDTH,
+                           default_output_bw=ACTIVATION_BITWIDTH,
+                           config_file=get_path_for_per_channel_config())
 # End of creating QuantSim object
 
-
+# Calibration callback
 def pass_calibration_data(model, _):
+    """
+    The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
+    """
     for inputs, _ in calibration_dataset:
         _ = model(inputs)
-
+# End of calibration callback
 
 # Compute quantization encodings
-sim.compute_encodings(pass_calibration_data, None)
+sim.compute_encodings(pass_calibration_data, forward_pass_callback_args=None)
+# End of computing quantization encodings
 
+# Evaluation
+# Determine simulated quantized accuracy
 sim.model.compile(
     optimizer=optimizers.SGD(1e-6),
     loss=[losses.CategoricalCrossentropy()],
     metrics=[metrics.CategoricalAccuracy()],
 )
-# End of computing quantization encodings
 
-# Export the model
 _, accuracy = sim.model.evaluate(eval_dataset)
 print(f'Quantized accuracy (W{PARAM_BITWIDTH}A{ACTIVATION_BITWIDTH}): {accuracy:.4f}')
+# End of evaluation
 
+# Export the model
+# Export the model for on-target inference.
+# Export the model which saves TensorFlow model without any simulation nodes and saves encodings file for both
+# activations and parameters in JSON format at provided path.
 sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2')
 # End of exporting the model
 
@@ -115,4 +114,9 @@ sim.model.fit(calibration_dataset, epochs=10)
 
 _, accuracy = sim.model.evaluate(eval_dataset)
 print(f'Model accuracy after QAT: {accuracy:.4f}')
-# End of QAT
+
+# Export the model which saves TensorFlow model without any simulation nodes and saves encodings file for both
+# activations and parameters in JSON format
+sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2')
+# End of export
+# End of example

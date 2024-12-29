@@ -42,10 +42,12 @@
 # PyTorch imports
 import torch
 import torch.cuda
-from torch.utils.data import DataLoader, random_split
-from torchvision import datasets, transforms
 from tqdm import tqdm
 # End of PyTorch imports
+
+# Dataloaders
+from torch.utils.data import DataLoader, random_split
+from torchvision import datasets, transforms
 
 def get_calibration_and_eval_data_loaders(path: str):
     transform = transforms.Compose(
@@ -70,20 +72,19 @@ def get_calibration_and_eval_data_loaders(path: str):
     eval_data_loader = DataLoader(eval_dataset, batch_size=batch_size)
     return calibration_data_loader, eval_data_loader
 
+PATH_TO_IMAGENET = '<your_imagenet_validation_data_path>'
+calibration_data_loader, eval_data_loader = get_calibration_and_eval_data_loaders(PATH_TO_IMAGENET)
+# End of dataloaders
 
-def pass_calibration_data(model: torch.nn.Module, forward_pass_args=None):
+# Calibration callback
+from typing import Any, Optional
+
+def pass_calibration_data(model: torch.nn.Module, forward_pass_args: Optional[Any]=None):
     """
-    The User of the QuantizationSimModel API is expected to write this callback based on their data set.
-    This is not a working function and is provided only as a guideline.
+    The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
     """
-    # User action required
-    # The following line of code is an example of how to use the ImageNet data's validation data loader.
-    # Replace the following line with your own dataset's validation data loader.
     data_loader = forward_pass_args
 
-    # User action required
-    # For computing the activation encodings, around 1000 unlabelled data samples are required.
-    # Edit the num_batches based on your batch size.
     # batch_size (64) * num_batches (16) should be 1024
     num_batches = 16
 
@@ -94,76 +95,68 @@ def pass_calibration_data(model: torch.nn.Module, forward_pass_args=None):
             model(inputs_batch)
             if batch >= num_batches:
                 break
+# End of calibration callback
 
 # Load the model
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT).cuda()
 # End of load the model
 
-# Prepare the model
-from aimet_torch.model_preparer import prepare_model
-prepared_model = prepare_model(model)
-# End of prepare_model
-
-# Fold the batchnorm
-from aimet_torch.batch_norm_fold import fold_all_batch_norms
-input_shape = (1, 3, 224, 224)
-dummy_input = torch.randn(input_shape).cuda()
-fold_all_batch_norms(prepared_model, dummy_input.shape, dummy_input=dummy_input)
-# End of fold_all_batch_norms
-
 # Create Quantization Simulation Model
 from aimet_common.defs import QuantScheme
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_torch.quantsim import QuantizationSimModel
 
-quant_sim = QuantizationSimModel(prepared_model,
-                                 dummy_input=dummy_input,
-                                 quant_scheme=QuantScheme.training_range_learning_with_tf_init,
-                                 default_param_bw=8,
-                                 default_output_bw=16,
-                                 config_file=get_path_for_per_channel_config())
+input_shape = (1, 3, 224, 224)
+dummy_input = torch.randn(input_shape).cuda()
+sim = QuantizationSimModel(model,
+                           dummy_input=dummy_input,
+                           quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+                           default_param_bw=8,
+                           default_output_bw=16,
+                           config_file=get_path_for_per_channel_config())
 # End of QuantizationSimModel
 
 # Compute the Quantization Encodings
-PATH_TO_IMAGENET = '<your_imagenet_validation_data_path>'
-calibration_data_loader, eval_data_loader = get_calibration_and_eval_data_loaders(PATH_TO_IMAGENET)
-quant_sim.compute_encodings(pass_calibration_data, forward_pass_callback_args=calibration_data_loader)
+sim.compute_encodings(pass_calibration_data, forward_pass_callback_args=calibration_data_loader)
 # End of compute_encodings
 
-# Export the model for on-target inference.
+# Evaluation
 # Determine simulated quantized accuracy
-quant_sim.model.eval()
+sim.model.eval()
 correct = 0
 total = 0
 with torch.no_grad():
     for inputs, labels in tqdm(eval_data_loader):
         inputs, labels = inputs.to('cuda'), labels.to('cuda')
-        outputs = model(inputs)
+        outputs = sim.model(inputs)
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
 
     print(f'Accuracy: {correct / total:.4f}')
+# End of evaluation
 
+# Export
+# Export the model for on-target inference.
 # Export the model which saves pytorch model without any simulation nodes and saves encodings file for both
-# activations and parameters in JSON format
-quant_sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
+# activations and parameters in JSON format at provided path.
+sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
 # End of export
 
 # Finetune the model
 # User action required
 # The following line of code illustrates that the model is getting fine-tuned.
 # Replace the following lines to fit your pipeline.
-quant_sim.model.train()
+sim.model.train()
 num_epochs = 1
 loss_fn = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(quant_sim.model.parameters(), lr=1e-5)
+optimizer = torch.optim.SGD(sim.model.parameters(), lr=1e-5)
 
 for _ in range(num_epochs):
     for inputs, labels in tqdm(calibration_data_loader):
         inputs, labels = inputs.to('cuda'), labels.to('cuda')
-        logits = quant_sim.model(inputs)
+        logits = sim.model(inputs)
         loss = loss_fn(logits, labels)
         loss.backward()
         optimizer.step()
@@ -171,6 +164,6 @@ for _ in range(num_epochs):
 
 # Export the model which saves pytorch model without any simulation nodes and saves encodings file for both
 # activations and parameters in JSON format
-quant_sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
+sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
 # End of export
 # End of example

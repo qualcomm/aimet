@@ -28,7 +28,7 @@ Configuration file structure
 
 The configuration file contains six main sections, ordered from less- to more specific:
 
-.. image:: ../../images/quantsim_config_file.png
+.. image:: ../images/quantsim_config_file.png
 
 Rules defined in a more general section are overridden by subsequent rules defined in a more specific case.
 For example, you can specify in "defaults" that no layers be quantized, but then turn on quantization for specific layers in the "op_type" section.
@@ -41,7 +41,7 @@ Configure individual sections as described here.
 1. defaults
 -----------
 
-.. literalinclude:: ../../torch_code_examples/quantsim_config_example.py
+.. literalinclude:: ../legacy/torch_code_examples/quantsim_config_example.py
    :language: python
    :start-after: # defaults start
    :end-before:  # defaults end
@@ -113,7 +113,7 @@ Outside the ``ops`` and ``params`` dictionaries, the following additional quanti
 2. params
 ---------
 
-.. literalinclude:: ../../torch_code_examples/quantsim_config_example.py
+.. literalinclude:: ../legacy/torch_code_examples/quantsim_config_example.py
    :language: python
    :start-after: # params start
    :end-before:  # params end
@@ -148,7 +148,7 @@ Omitting the setting causes the parameter to use the setting specified by the de
 
 #. **op_type**:
 
-.. literalinclude:: ../../torch_code_examples/quantsim_config_example.py
+.. literalinclude:: ../legacy/torch_code_examples/quantsim_config_example.py
    :language: python
    :start-after: # op_type start
    :end-before:  # op_type end
@@ -205,7 +205,7 @@ section, but only affect parameters for this op type.
 3. supergroups
 --------------
 
-.. literalinclude:: ../../torch_code_examples/quantsim_config_example.py
+.. literalinclude:: ../legacy/torch_code_examples/quantsim_config_example.py
    :language: python
    :start-after: # supergroups start
    :end-before:  # supergroups end
@@ -226,7 +226,7 @@ type depending on which framework is used.
 4. model_input
 --------------
 
-.. literalinclude:: ../../torch_code_examples/quantsim_config_example.py
+.. literalinclude:: ../legacy/torch_code_examples/quantsim_config_example.py
    :language: python
    :start-after: # model_input start
    :end-before:  # model_input end
@@ -244,7 +244,7 @@ The following setting is available:
 5. model_output
 ---------------
 
-.. literalinclude:: ../../torch_code_examples/quantsim_config_example.py
+.. literalinclude:: ../legacy/torch_code_examples/quantsim_config_example.py
    :language: python
    :start-after: # model_output start
    :end-before:  # model_output end

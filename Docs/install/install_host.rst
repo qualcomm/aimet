@@ -1,3 +1,5 @@
+:orphan:
+
 .. _install-host:
 
 ###################################
@@ -114,7 +116,7 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_torch-|version|.cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_torch-|version|\+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
     # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
@@ -128,9 +130,6 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     Python dependencies are automatically installed.
 
 .. code-block:: bash
-
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
 
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}
@@ -203,7 +202,7 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_tensorflow-|version|.cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_tensorflow-|version|\+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
 **2.3 Install the selected AIMET package.**
@@ -213,9 +212,6 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     Python dependencies are automatically installed.
 
 .. code-block:: bash
-
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
 
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name}
@@ -282,8 +278,11 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_onnx-|version|.cu117-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_onnx-|version|\+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
+
+    # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
+    export find_pkg_url_str="-f https://download.pytorch.org/whl/torch_stable.html"
 
 **3.3 Install the selected AIMET package.**
 
@@ -293,11 +292,8 @@ For example, "|version|". Releases are listed at: https://github.com/quic/aimet/
 
 .. code-block:: bash
 
-    # Install an compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
-
     # Install the wheel package
-    python3 -m pip install ${download_url}/${wheel_file_name}
+    python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}|
 
 **3.4 Install the common Debian packages.**
 
@@ -349,14 +345,3 @@ Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can
 .. code-block:: bash
 
     source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
-
-**Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`.
-
-.. _man-install-next:
-
-Next steps
-==========
-
-See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
-
-See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.

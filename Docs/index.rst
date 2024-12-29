@@ -2,9 +2,9 @@
 
 .. _top-index:
 
-#########################################
-AI Model Efficiency Toolkit Documentation
-#########################################
+###################
+AIMET Documentation
+###################
 
 .. toctree::
    :hidden:
@@ -15,61 +15,62 @@ AI Model Efficiency Toolkit Documentation
    User Guide <userguide/index>
    Quantization Simulation Guide <quantsim/index>
    Feature Guide <featureguide/index>
-   Examples <examples/index>
+   Example Notebooks <examples/index>
    API Reference <apiref/index>
    Release Notes <release_notes>
 
-AI Model Efficiency Toolkit (AIMET) is a software toolkit for quantizing and compressing models.
+The AI Model Efficiency Toolkit (AIMET) is a software toolkit designed for quantizing and compressing trained models.
 
-The goal of optimizing a model is to enable its use on an edge device such as a mobile phone or laptop. 
+The primary objective of model optimization is to facilitate its deployment on edge devices like mobile phones or laptops.
 
-AIMET uses post-training and fine tuning techniques to optimize trained models in ways that minimize accuracy loss incurred during quantization or compression.
+AIMET employs post-training and fine-tuning techniques to optimize trained models, aiming to minimize accuracy loss during quantization or compression.
 
-AIMET supports PyTorch, TensorFlow, and Keras models, and ONNX models with limited functionality.
+AIMET supports models from PyTorch, TensorFlow/Keras, and ONNX frameworks.
 
 Quick Start
 ===========
 
-To install and get started as quickly as possibly using AIMET with PyTorch, see the :doc:`Quick start guide <../install/quick-start>`.
+To quickly install and begin using AIMET with PyTorch, see the :doc:`Quick start guide <../install/quick-start>`.
 
 Installation
-=============
+============
 
 For other install options, including for TensorFlow and ONNX platforms or to run AIMET in a Docker container, see :doc:`Installation <../install/index>`.
 
 User Guide
 ==========
 
-For a high-level explanation of how to use AIMET to optimize a model, see the :doc:`Optimization user guide <../userguide/index>`.
+For a high-level explanation of how to use AIMET to optimize a model, see the :doc:`Quantization user guide <../userguide/index>`.
 
 Quantization Simulation Guide
 =============================
 
-Quantization simulation (QuantSim) provides an approximation of a quantized model by inserting
-quantization operations in a trained model. QuantSim enables application of optimization
-techniques to a model and testing of the resulting model before the model is exported.
-See the doc :doc:`Quantization simulation guide <../quantsim/index>`
+For a guide to quantization simulation and its related techniques, see the doc :doc:`Quantization simulation guide <../quantsim/index>`.
 
 Feature Guide
 =============
 
 For instructions on applying individual AIMET features, see the :doc:`Feature guide <../featureguide/index>`.
 
-Examples
-========
+Example Notebooks
+=================
 
-To view end-to-end examples of model quantization and compression, and to download the examples in Jupyter notebook format, see :doc:`Examples <../examples/index>`.
+To view end-to-end examples of model quantization and compression, and to download the examples in Jupyter notebook format, see :doc:`Example notebooks <../examples/index>`.
 
 API Reference
 =============
 
-For a detailed look at the AIMET API, see the :doc:`API reference <../apiref/index>`.
+For a detailed look at the AIMET API documentation, see the :doc:`API reference <../apiref/index>`.
 
 Release Notes
 =============
 
 For information specific to this release, see :doc:`Release notes <release_notes>`.
 
+|
+|
+|
 
-| |project| is a product of |author|
-| Qualcomm\ |reg| Neural Processing SDK is a product of Qualcomm Technologies, Inc. and/or its subsidiaries.
+|project| is a product of |author|
+
+|qnn| SDK is a product of Qualcomm Technologies, Inc. and/or its subsidiaries.

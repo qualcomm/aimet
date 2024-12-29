@@ -35,38 +35,73 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-docstring
-# [step_1]
+# [setup]
 import torch
-from torchvision.models import mobilenet_v2
+from torch.utils.data import DataLoader
+from datasets import load_dataset
+from evaluate import evaluator
 
+# Load the model
+# General setup that can be changed as needed
+from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
-model = mobilenet_v2(weights='DEFAULT').eval().to(device)
-dummy_input = torch.randn((10, 3, 224, 224), device=device)
-# End of [step_1]
+model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT).eval().to(device)
+# End of load the model
 
-# [step_2]
+# Prepare the dataloader
+num_batches = 32
+data = load_dataset('imagenet-1k', streaming=True, split="train")
+data_loader = DataLoader(data, batch_size=num_batches, num_workers=4)
+# End of dataloader
+
+# Create Quantization Simulation Model
 from aimet_common.defs import QuantScheme
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_torch.quantsim import QuantizationSimModel
 
-sim = QuantizationSimModel(model, 
-                           dummy_input,
+dummy_input = torch.randn(1, 3, 224, 224).to(device)
+sim = QuantizationSimModel(model,
+                           dummy_input=dummy_input,
                            quant_scheme=QuantScheme.training_range_learning_with_tf_init,
-                           config_file=get_path_for_per_channel_config(),
-                           default_param_bw=8,
-                           default_output_bw=16)
-print(sim)
-# End of [step_2]
+                           default_param_bw=4,
+                           default_output_bw=8,
+                           config_file=get_path_for_per_channel_config())
+# End of QuantizationSimModel
 
-# [step_3]
-def forward_pass(model):
+# Apply Seq MSE
+# Find and freeze optimal encodings candidate for parameters of supported layer(s)/operations(s).
+from aimet_torch.seq_mse import  apply_seq_mse, SeqMseParams
+params = SeqMseParams(num_batches=num_batches,
+                      num_candidates=20,
+                      inp_symmetry='symqt',
+                      loss_fn='mse')
+
+apply_seq_mse(model=model, sim=sim, data_loader=data_loader, params=params)
+# End of Seq MSE
+
+# Calibration callback
+def forward_pass(model: torch.nn.Module):
     with torch.no_grad():
-        model(torch.randn((10, 3, 224, 224), device=device))
+        for images, _ in data_loader:
+            model(images)
+# End of calibration callback
 
+# Compute the Quantization Encodings
+# compute encodings for all activations and parameters of uninitialized layer(s)/operations(s).
 sim.compute_encodings(forward_pass)
-# End of [step_3]
+# End of compute_encodings
 
-# [step_4]
-output = sim.model(dummy_input)
-print(output)
-# End of [step_4]
+# Evaluation
+# Determine simulated quantized accuracy
+evaluator = evaluator("image-classification")
+accuracy = evaluator.compute(model_or_pipeline=model, data=data, metric="accuracy")
+# End of evaluation
+
+# Export
+# Export the model for on-target inference.
+# Export the model which saves pytorch model without any simulation nodes and saves encodings file for both
+# activations and parameters in JSON format at provided path.
+path = './'
+filename = 'mobilenet'
+sim.export(path=path, filename_prefix="quantized_" + filename, dummy_input=dummy_input.cpu())
+# End of export

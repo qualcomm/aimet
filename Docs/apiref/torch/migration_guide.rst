@@ -26,7 +26,7 @@ Before migrating, it is important to understand the behavior and API differences
 and aimet_torch 2. Under the hood, aimet_torch 2 has a different set of building blocks and properties than
 aimet_torch 1.x, as shown below:
 
-.. image:: ../../../images/quantsim2.0.png
+.. image:: ../../images/quantsim2.0.png
   :width: 800
 
 Migration Process
@@ -63,7 +63,7 @@ wrapped modules can be accessed as follows:
 In contrast, aimet_torch 2 enables quantization through quantized :mod:`nn.Modules` - modules are no longer
 wrapped but replaced with a quantized version. For example, a :mod:`nn.Linear` would be replaced with
 :mod:`QuantizedLinear`, :mod:`nn.Conv2d` would be replace by :mod:`QuantizedConv2d`, and so on.
-The quantized module definitions can be found under :mod:`aimet_torch.v2.nn`.
+The quantized module definitions can be found under :mod:`aimet_torch.nn`.
 
 These quantized modules can be accessed as follows:
 
@@ -288,7 +288,7 @@ Code Examples
     wrap_linear.param_quantizers['weight'].enabled = True
 
     # aimet_torch 2
-    import aimet_torch.v2.quantization as Q
+    import aimet_torch.quantization as Q
     qlinear.param_quantizers['weight'] = Q.affine.QuantizeDequantize(...)
 
 *Temporarily disabling Quantization*

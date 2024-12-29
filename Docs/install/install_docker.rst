@@ -1,3 +1,5 @@
+:orphan:
+
 .. _install-docker:
 
 ############################
@@ -236,7 +238,7 @@ Releases are listed at: https://github.com/quic/aimet/releases
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_tensorflow-|version|.cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_torch-|version|\+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
     # NOTE: Do the following only for the PyTorch and ONNX variant packages!
@@ -249,9 +251,6 @@ Releases are listed at: https://github.com/quic/aimet/releases
     Python dependencies are automatically installed.
 
 .. code-block:: bash
-
-    # Install a compatible version of pip (since the latest version is NOT compatible with our wheel packages)
-    python3 -m pip install pip==24.0
 
     # Install the wheel package
     python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}
@@ -268,10 +267,3 @@ Environment setup
     source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
 .. _docker-install-next:
-
-Next steps
-==========
-
-See the :ref:`User guide <opt-guide-index>` to read about the model optimization workflow.
-
-See the :ref:`Examples <examples-index>` to try AIMET quantization techniques on your pre-trained models.

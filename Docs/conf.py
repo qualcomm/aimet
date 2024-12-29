@@ -135,7 +135,7 @@ autosectionlabel_prefix_document = True
 # a list of builtin themes.
 #
 html_theme = 'furo'
-html_title = 'AI Model Efficiency Toolkit'
+html_title = 'AIMET'
 # html_short_title = 'AIMET Docs v. ' + version
 # html_logo = 'images/brain_logo.png'
 # html_favicon = 'images/brain_logo16.png'
@@ -194,8 +194,8 @@ html_sidebars = {
 # Parameters for use in templates
 
 html_context = {
-  'current_version' : "2.0",
-  'versions_page' : '<a href="versions.html">Other versions</a>'
+  'current_version' : version,
+  'versions_page' : '<a href="https://quic.github.io/aimet-pages/releases/latest/versions.html">Other versions</a>'
 }
 
 # -- Options for HTMLHelp output ---------------------------------------------
