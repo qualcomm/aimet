@@ -127,14 +127,14 @@ Set the package details as follows:
 
 .. code-block:: bash
 
-    # Set the release tag ex. "1.34.0"
+    # Set the release tag ex. "1.35.1"
     export release_tag="<version release tag>"
 
     # Construct the download root URL
     export download_url="https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension
-    # ex. "aimet_torch-1.33.0.cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # ex. "aimet_torch-1.35.1+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
     export wheel_file_name="<wheel file name>"
 
     # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!

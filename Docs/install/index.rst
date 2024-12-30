@@ -79,13 +79,13 @@ The following pre-requisites apply to all variants. The GPU variants may need ad
 .. parsed-literal::
 
     # Pytorch 2.1 with CUDA 12.x
-    python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cu121\ |whl_suffix| -f |torch_pkg_url|
+    python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|\+cu121\ |whl_suffix| -f |torch_pkg_url|
 
     # Pytorch 2.1 CPU only
-    python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
+    python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|\+cpu\ |whl_suffix| -f |torch_pkg_url|
 
     # Pytorch 1.13 with CUDA 11.x
-    python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|.cu117\ |whl_suffix| -f |torch_pkg_url|
+    python3 -m pip install |download_url|\ |version|/aimet_torch-\ |version|\+cu117\ |whl_suffix| -f |torch_pkg_url|
 
 
 **TensorFlow**
@@ -93,10 +93,10 @@ The following pre-requisites apply to all variants. The GPU variants may need ad
 .. parsed-literal::
 
     # Tensorflow 2.10 GPU with CUDA 11.x
-    python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|.cu118\ |whl_suffix|
+    python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|\+cu118\ |whl_suffix|
 
     # Tensorflow 2.10 CPU only
-    python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|.cpu\ |whl_suffix|
+    python3 -m pip install |download_url|\ |version|/aimet_tensorflow-\ |version|\+cpu\ |whl_suffix|
 
 
 **ONNX**
@@ -104,15 +104,15 @@ The following pre-requisites apply to all variants. The GPU variants may need ad
 .. parsed-literal::
 
     # ONNX 1.16 GPU with CUDA 11.x
-    python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|.cu117\ |whl_suffix| -f |torch_pkg_url|
+    python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|\+cu117\ |whl_suffix| -f |torch_pkg_url|
 
     # ONNX 1.16 CPU
-    python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|.cpu\ |whl_suffix| -f |torch_pkg_url|
+    python3 -m pip install |download_url|\ |version|/aimet_onnx-\ |version|\+cpu\ |whl_suffix| -f |torch_pkg_url|
 
 
 For older versions, please browse the releases at https://github.com/quic/aimet/releases and follow the documentation corresponding to that release to select and install the appropriate package.
 
-.. |whl_suffix| replace:: -cp310-cp310-manylinux_2_34_x86_64.whl
+.. |whl_suffix| replace:: \-cp310-cp310-manylinux_2_34_x86_64.whl
 .. |download_url| replace:: \https://github.com/quic/aimet/releases/download/
 .. |torch_pkg_url| replace:: \https://download.pytorch.org/whl/torch_stable.html
 
