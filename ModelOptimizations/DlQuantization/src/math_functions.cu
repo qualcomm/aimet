@@ -42,6 +42,7 @@
 #include <thrust/extrema.h>
 #include <thrust/functional.h>
 #include <thrust/reduce.h>
+#include <cub/cub.cuh>
 
 #include "cuda_util.hpp"
 #include "math_functions.hpp"
@@ -61,6 +62,40 @@ DTYPE GetMin_gpu(const DTYPE* data, int cnt)
 {
     const thrust::device_ptr<const DTYPE> ptr = thrust::device_pointer_cast(data);
     return thrust::reduce(ptr, ptr + cnt, std::numeric_limits<DTYPE>::max(), thrust::minimum<DTYPE>());
+}
+
+
+template <typename DTYPE>
+std::tuple<DTYPE, DTYPE> GetMinMax_gpu(const DTYPE* data, int cnt)
+{
+    DTYPE minMaxOut[2];
+    DTYPE *dMinMaxOut;
+    void *dTempStorage = nullptr;
+    size_t tempStorageBytesMin = 0;
+    size_t tempStorageBytesMax = 0;
+    cudaMalloc(&dMinMaxOut, sizeof(DTYPE) * 2);
+
+    // When dTempStorage is nullptr, this does not do any device computation, but sets tempStorageBytes to the size of
+    // temporary storage necessary for computation.
+    // Use the maximum storage needed for min and max calculations (these will likely be identical, this is just to be safe)
+    cub::DeviceReduce::Min(dTempStorage, tempStorageBytesMin, data, dMinMaxOut, cnt);
+    cub::DeviceReduce::Max(dTempStorage, tempStorageBytesMax, data, dMinMaxOut + 1, cnt);
+    size_t tempStorageBytes = std::max(tempStorageBytesMin, tempStorageBytesMax);
+
+    // Allocate the temporary device storage
+    cudaMalloc(&dTempStorage, tempStorageBytes);
+
+    // Perform the actual min/max reductions
+    cub::DeviceReduce::Min(dTempStorage, tempStorageBytes, data, dMinMaxOut, cnt);
+    cub::DeviceReduce::Max(dTempStorage, tempStorageBytes, data, dMinMaxOut + 1, cnt);
+
+    // Transfer reduce min/max to CPU
+    cudaMemcpy(minMaxOut, dMinMaxOut, 2 * sizeof(DTYPE), cudaMemcpyDeviceToHost);
+
+    // Free allocated device memory
+    cudaFree(dTempStorage);
+    cudaFree(dMinMaxOut);
+    return std::make_tuple(minMaxOut[0], minMaxOut[1]);
 }
 
 __global__ void ElementwiseMult_kernel(const float* in, size_t cnt, float factor, float* out)
@@ -121,6 +156,9 @@ template double GetMin_gpu(const double* data, int cnt);
 
 template float GetMin_gpu(const float* data, int cnt);
 
+template std::tuple<float, float> GetMinMax_gpu(const float* data, int cnt);
+
+template std::tuple<double, double> GetMinMax_gpu(const double* data, int cnt);
 
 template <typename DTYPE>
 __global__ static void histogramCountKernel(const DTYPE* data,

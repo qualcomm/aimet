@@ -62,8 +62,9 @@ void TfEncodingAnalyzer<DTYPE>::updateStats(const DTYPE* tensor, const size_t te
 {
     this->_statsUpdated = true;
     // Compute stats for the tensor being passed in
-    auto currentMin = (double) GetMin(tensor, tensorSize, tensorCpuGpuMode);
-    auto currentMax = (double) GetMax(tensor, tensorSize, tensorCpuGpuMode);
+    auto minmax = GetMinMax(tensor, tensorSize, tensorCpuGpuMode);
+    double currentMin = std::get<0>(minmax);
+    double currentMax = std::get<1>(minmax);
 
     // Update accumulated stats
     _accumulatedStats.min = std::min(_accumulatedStats.min, currentMin);
