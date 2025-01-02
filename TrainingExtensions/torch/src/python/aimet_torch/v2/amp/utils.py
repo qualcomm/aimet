@@ -108,6 +108,15 @@ class _V1QuantizerMixin:
 
         return super().forward(x)
 
+    @contextmanager
+    def compute_encodings(self):
+        if not self.enabled:
+            yield
+            return
+
+        with super().compute_encodings():
+            yield
+
     @classmethod
     def from_v2_quantizer(cls, qtzr: Optional[QuantizeDequantize]) -> Union['_V1DisabledQuantizer',
                                                                             '_V1QuantizeDequantize']:
