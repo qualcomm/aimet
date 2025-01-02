@@ -560,7 +560,7 @@ def neg_sqnr(pred: torch.Tensor, target: torch.Tensor, eps=1e-10, reduction="non
     :param pred: X^Q^ quantized-dequantized values
     :param target: XW FP32 values
     :param eps: epsilon
-    :param reduction: unused arg
+    :param reduction: unused arg added only to have the same signature as that of functional losses of pytorch library
     :return: Negative SQNR
     """
     # pylint: disable=unused-argument
