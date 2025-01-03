@@ -137,7 +137,7 @@ _QUANT_SCHEME_CANDIDATES = (
 
 def _validate_inputs(model: tf.keras.Model, # pylint: disable=too-many-arguments
                      dataset: tf.data.Dataset,
-                     eval_callback: Callable[[tf.keras.Model], float],
+                     eval_callback: Callable[[tf.keras.Model, Optional[int]], float],
                      results_dir: str,
                      strict_validation: bool,
                      quant_scheme: QuantScheme,
@@ -199,7 +199,7 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
     # pylint: disable=too-many-arguments
     def __init__(self, # pylint: disable=too-many-arguments, too-many-locals
                  model: tf.keras.Model,
-                 eval_callback: Callable[[tf.keras.Model], float],
+                 eval_callback: Callable[[tf.keras.Model, Optional[int]], float],
                  dataset: tf.data.Dataset,
                  param_bw: int = 8,
                  output_bw: int = 8,
@@ -1236,7 +1236,7 @@ class AutoQuantWithAutoMixedPrecision:
     # pylint: disable=too-many-arguments
     def __init__(self,
                  model: tf.keras.Model,
-                 eval_callback: Callable[[tf.keras.Model], float],
+                 eval_callback: Callable[[tf.keras.Model, Optional[int]], float],
                  dataset: tf.data.Dataset,
                  param_bw: int = 8,
                  output_bw: int = 8,
