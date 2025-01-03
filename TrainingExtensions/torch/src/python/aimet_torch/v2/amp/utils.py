@@ -175,6 +175,9 @@ class _V1DisabledQuantizer(_V1QuantizerMixin, QuantizeDequantize):
         if val:
             raise RuntimeError
 
+    def __bool__(self):
+        return False
+
 
 class _V1QuantizeDequantize(_V1QuantizerMixin, QuantizeDequantize):
     ...
