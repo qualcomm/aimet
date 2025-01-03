@@ -176,6 +176,8 @@ class AdaroundOptimizer:
             else:
                 model_inputs = cached_dataset[np.random.randint(len(cached_dataset))]
                 inp_data, orig_out_data = act_sampler.sample_acts(create_input_dict(orig_model.model, model_inputs))
+                inp_data, orig_out_data = torch.from_numpy(inp_data[0]).to(torch_device), torch.from_numpy(out_data[0]).to(torch_device)
+                # This assumes there's only 1 input and 1 output in the list output by sample_acts
 
 
             # Clear alpha's gradients before optimization step
