@@ -38,3 +38,4 @@ from typing import Optional
 
 python_abi: str
 torch: Optional[str]
+min_glibc: Optional[str]

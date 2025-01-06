@@ -36,10 +36,30 @@
 # =============================================================================
 # pylint: disable=all
 import os
+import sys
+import glob
+import subprocess
 import sysconfig
 
 
-def main(output_dir):
+def _get_min_glibc_version(build_dir):
+    so_file_list = glob.glob(os.path.join(build_dir, "**/*.so"), recursive=True)
+    so_file_list = [file for file in so_file_list if "artifacts" in file]
+    glibc_ver_list = []
+    try:
+        for so_file in so_file_list:
+            command = f"objdump -T {so_file} | grep GLIBC | sed 's/.*GLIBC_\\([.0-9]*\\).*/\\1/g' | sort -Vu | tail -1"
+            glibc_ver = subprocess.check_output(command, shell=True).decode('utf-8').strip()
+            glibc_ver_list.append(glibc_ver)
+    except subprocess.CalledProcessError:
+        return None
+
+    if not glibc_ver_list:
+        return None
+
+    return sorted(glibc_ver_list, key=lambda x: list(map(int, x.split('.'))), reverse=True)[0]
+
+def main(output_dir, build_dir):
     try:
         import torch
     except ImportError:
@@ -56,6 +76,7 @@ def main(output_dir):
     content = [
         f"python_abi = '{sysconfig.get_config_var('SOABI')}'",
         "torch = "      + (f"'{torch.__version__}'" if torch else "None"),
+        "min_glibc = "  + (f"'{_get_min_glibc_version(build_dir)}'" if sys.platform == "linux" else "None"),
         # "tensorflow = " + (f"'{tf.__version__}'" if tf else "None"),
         # "onnx = "       + (f"'{onnx.__version__}'" if onnx else "None"),
         ""
@@ -69,5 +90,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=str)
+    parser.add_argument("--build-dir", type=str)
     args = parser.parse_args()
-    main(args.output_dir)
+    main(args.output_dir, args.build_dir)
