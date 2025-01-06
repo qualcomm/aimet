@@ -1592,23 +1592,24 @@ def test_quantizable_lstm_export_encodings():
     rng = np.random.default_rng(seed=42)
     rn_input = rng.random([batch_size, timesteps, features])
 
-    # STAGE 3 MODEL - Quantized model created through QuantSim functional original
-    stage_3_model = QuantizationSimModel(stage_1_model)   
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # STAGE 3 MODEL - Quantized model created through QuantSim functional original
+        stage_3_model = QuantizationSimModel(stage_1_model)
 
-    stage_3_model.compute_encodings(lambda m, _: m(rn_input), None)
-    stage_3_model.export('./data', 'lstm_functional')
+        stage_3_model.compute_encodings(lambda m, _: m(rn_input), None)
+        stage_3_model.export(tmp_dir, 'lstm_functional')
 
-    # STAGE 4 MODEL - Quantized model created through QuantSim sequential original
-    stage_4_model = QuantizationSimModel(stage_2_model)
+        # STAGE 4 MODEL - Quantized model created through QuantSim sequential original
+        stage_4_model = QuantizationSimModel(stage_2_model)
+
+        stage_4_model.compute_encodings(lambda m, _: m(rn_input), None)
+        stage_4_model.export(tmp_dir, 'lstm_sequential')
    
-    stage_4_model.compute_encodings(lambda m, _: m(rn_input), None)
-    stage_4_model.export('./data', 'lstm_sequential')
-   
-    #Check QuantizationSimModel model created through originals
-    with open("./data/lstm_functional.encodings", "r") as encodings_file_functional, \
-        open("./data/lstm_sequential.encodings", "r") as encodings_file_sequential:
-        encodings_functional = json.load(encodings_file_functional)
-        encodings_sequential = json.load(encodings_file_sequential)
+        #Check QuantizationSimModel model created through originals
+        with open(Path(tmp_dir, "lstm_functional.encodings"), "r") as encodings_file_functional, \
+                open(Path(tmp_dir, "lstm_sequential.encodings"), "r") as encodings_file_sequential:
+            encodings_functional = json.load(encodings_file_functional)
+            encodings_sequential = json.load(encodings_file_sequential)
 
     for (model_layer, encodings) in (stage_3_model.model.layers[1], encodings_functional), (stage_4_model.model.layers[0], encodings_sequential):
         for wrapper in model_layer._wrapped_layers:
