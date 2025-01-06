@@ -1572,16 +1572,20 @@ def test_quantizable_lstm_export_encodings():
     timesteps = 10
     features = 16
     units = 32
+    kernel_1 = {'class_name': 'glorot_uniform', 'config': {'seed': 42}}
+    kernel_2 = {'class_name': 'glorot_uniform', 'config': {'seed': 43}}
+    recurrent_1 = {'class_name': 'orthogonal', 'config': {'seed': 44}}
+    recurrent_2 = {'class_name': 'orthogonal', 'config': {'seed': 45}}
 
     # STAGE 1 MODEL - Functional model created with layers.lstm
     stage_1_inputs = keras.Input(shape=(timesteps, features))
-    stage_1_output = keras.layers.LSTM(units, unroll=True)(stage_1_inputs)
+    stage_1_output = keras.layers.LSTM(units, unroll=True, kernel_initializer=kernel_1, recurrent_initializer=recurrent_1)(stage_1_inputs)
     stage_1_model = keras.Model(inputs=stage_1_inputs, outputs=stage_1_output)
     
     # STAGE 2 MODEL - Sequential model created with layers.lstm
     stage_2_model = keras.models.Sequential(
         [
-            keras.layers.LSTM(units, input_shape=(timesteps, features), unroll=True),
+            keras.layers.LSTM(units, input_shape=(timesteps, features), unroll=True, kernel_initializer=kernel_2, recurrent_initializer=recurrent_2),
         ]
     )
 
