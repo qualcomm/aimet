@@ -238,7 +238,7 @@ def test_per_channel_qc_quantizer_conv2d():
 
     kernel_init_constant = np.array(
         [[[[-1.4, -0.61],
-           [1.59, 0.68]]]], dtype=np.float
+           [1.59, 0.68]]]], dtype=np.float64
     )
 
     conv2d = tf.keras.layers.Conv2D(
@@ -565,7 +565,7 @@ def test_per_channel_qc_quantizer_Dense():
     inp = tf.keras.layers.Input(shape=input_shape[1:])
     test_inp = np.random.random(input_shape)
     kernel_init_constant = np.array(
-        [[-1.4, -0.61],[1.59, 0.68]],dtype=np.float
+        [[-1.4, -0.61],[1.59, 0.68]],dtype=np.float64
     )  
     dense = tf.keras.layers.Dense(2, kernel_initializer=tf.initializers.Constant(kernel_init_constant))
     # run forward pass on conv2d to generate weights
