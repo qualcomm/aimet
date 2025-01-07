@@ -947,3 +947,14 @@ class RmsNorm(torch.nn.Module):
         rms = torch.sqrt(squared_mean + self.epsilon)
         res = (torch.div(x, rms) * self.weight + self.bias).to(dtype=input_dtype)
         return res
+
+
+class NullRequant(Reshape):
+    """Custom module for nullrequant"""
+    # pylint:disable=arguments-differ
+    def forward(self, input: torch.Tensor, shape: List) -> torch.Tensor:
+        if torch.jit.is_tracing():
+            # Avoid graph optimization in `torch.onnx.utils._optimize_graph` 
+            # for multiple Reshape ops when sim.export()
+            return super().forward(input, shape)
+        return super().forward(input, input.shape)
