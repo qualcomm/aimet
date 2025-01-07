@@ -47,12 +47,13 @@ def get_aimet_variant() -> str:
 
 def get_aimet_dependencies() -> list[str]:
     """Read dependencies form the corresponded files and return them as a list (!) of strings"""
-    deps_path = pathlib.Path("packaging", "dependencies", get_aimet_variant())
-    deps_files = [deps_path.parent / "reqs_pip_common.txt", *deps_path.glob("reqs_pip_*.txt")]
+    aimet_variant = get_aimet_variant()
+    deps_path = pathlib.Path("packaging", "dependencies", "fast-release" if aimet_variant in ("torch-gpu",) else "", aimet_variant)
+    deps_files = [*deps_path.glob("reqs_pip_*.txt")]
     print(f"CMAKE_ARGS='{os.environ.get('CMAKE_ARGS', '')}'")
     print(f"Read dependencies for variant '{get_aimet_variant()}' from the following files: {deps_files}")
     deps = {d for d in itertools.chain.from_iterable(line.replace(" -f ", "\n-f ").split("\n") for f in deps_files for line in f.read_text(encoding="utf8").splitlines()) if not d.startswith(("#", "-f"))}
-    return list(deps)
+    return list(sorted(deps))
 
 
 def get_version() -> str:

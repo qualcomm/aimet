@@ -25,7 +25,6 @@ jobs:
       - name: Torch variants
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":""       },
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":"12.1.1" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -181,7 +180,7 @@ jobs:
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find wheelhouse -name '*.whl')[test]" --extra-index-url="https://download.pytorch.org/whl/$(echo ${{ matrix.VER_CUDA}} | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find wheelhouse -name '*.whl')[test]"
       - run: |
           TEST_DIR=""
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
