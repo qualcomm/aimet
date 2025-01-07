@@ -10,7 +10,7 @@ the **.whl** files hosted at https://github.com/quic/aimet/releases.
 Prerequisites
 =============
 
-The AIMET package requires the following host platform setup. Following prerequisites apply
+The AIMET package requires the following host platform setup. The following prerequisites apply
 to all frameworks variants.
 
 * 64-bit Intel x86-compatible processor
@@ -21,8 +21,8 @@ to all frameworks variants.
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
 
 .. note::
-    Starting with the AIMET 2 release, there is no longer a dependency on ``liblapacke``. Therefore,
-    you should only install the following debian package if you are still using AIMET 1.x.
+    Starting with the AIMET 2 release, there is no longer a dependency on ``liblapacke``. 
+    Install the following Debian package if (and only if) you are still using AIMET 1.x.
 
 .. code-block:: bash
 
@@ -44,12 +44,14 @@ Use one of the following commands to install AIMET based on your choice of frame
         With CUDA 12.x:
 
         .. parsed-literal::
+           :class: highlight
 
            python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cu121\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
         .. parsed-literal::
+           :class: highlight
 
             python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cpu\ |whl_suffix| -f |torch_pkg_url|
 
@@ -62,12 +64,14 @@ Use one of the following commands to install AIMET based on your choice of frame
         With CUDA 11.x:
 
         .. parsed-literal::
+           :class: highlight
 
             python3 -m pip install |download_url|\ |version|/aimet_tensorflow-|version|\+cu118\ |whl_suffix|
 
         With CPU only:
 
         .. parsed-literal::
+           :class: highlight
 
             python3 -m pip install |download_url|\ |version|/aimet_tensorflow-|version|\+cpu\ |whl_suffix|
 
@@ -79,12 +83,14 @@ Use one of the following commands to install AIMET based on your choice of frame
         With CUDA 11.x:
 
         .. parsed-literal::
+           :class: highlight
 
             python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\+cu118\ |whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
         .. parsed-literal::
+           :class: highlight
 
             python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\+cpu\ |whl_suffix| -f |torch_pkg_url|
 
@@ -95,16 +101,16 @@ Use one of the following commands to install AIMET based on your choice of frame
 Advanced installation instructions (optional)
 =============================================
 
-Following are two ways to setup, including prerequisites and dependencies.
+Following are two ways to set up, including prerequisites and dependencies.
 
 * :ref:`On your host machine <install-host>`
-* :ref:`Using our pre-built or locally built Docker images <install-docker>`
+* :ref:`Using our pre-built or a locally built Docker image <install-docker>`
 
 Installing an older version
 ===========================
 
-View the release notes for older versions at https://github.com/quic/aimet/releases. Follow the
-documentation corresponding to that release to select and install the appropriate AIMET package.
+View the release notes for older versions at https://github.com/quic/aimet/releases. Follow instructions in the
+documentation for your selected release to install the AIMET package for that release.
 
 Building from source
 ====================

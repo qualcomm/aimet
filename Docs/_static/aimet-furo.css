@@ -1,19 +1,39 @@
+/* AIMET branded color preferences.
+ * Use these instead of CSS color constants
+ */
+:root {
+     --aimet-blue: #3253dc;
+     --aimet-dark-blue: #0000ff;
+     --aimet-white: #ffffff;
+     --aimet-border-grey: #e0e0e0;
+     --aimet-menu-hover: #e3efff;
+     --aimet-menu-font-active: #0058ff;
+     --aimet-code-grey: #fafafa;
+     --aimet-light-blue: #e7f2fa;
+   }
 
- aside.toc-drawer ul ul ul ul {
-   display: none;
-}
-
-.toctree-l3 {
-    display: none;
-}
-
-[for^="toctree-checkbox-"], [id^="toctree-checkbox-"] {
-    visibility: hidden;
+/*
+* Highlight color for code segments
+*/
+.highlight, .literal-block
+{
+    background: var(--aimet-code-grey);
 }
 
 /*
- * Configure the appearance of code output box.
- * Values are based on sphinx-gallery configuration
+* Table options
+*/
+
+/* Use root font size for generated table */
+td>p, th>p {
+    border: 0 solid var(--aimet-border-grey);
+    line-height: 1.5rem;
+    font-size: 1rem;
+}
+
+/*
+* Configure the appearance of code output box.
+* Values are based on sphinx-gallery configuration
 */
 .script-output {
     color: black;
@@ -28,11 +48,15 @@
 }
 
 .script-output .highlight {
-    background: transparent;
+    background: var(--aimet-code-grey);
     flex-grow: 1;
     overflow: auto;
     /* Allow output block to take up maximum 25 lines */
     max-height: 25em;
+}
+
+pre.highlight {
+    background: var(--aimet-code-grey);
 }
 
 /*
