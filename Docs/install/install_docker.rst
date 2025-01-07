@@ -31,10 +31,10 @@ Follow the instructions below to install AIMET within a Docker container. Depend
 installation choices, you will skip various sections on this page.
 
 
-1. Choose your AIMET variant
-----------------------------
+Choose your AIMET variant
+-------------------------
 
-**1.1 Choose a variant.**
+**Step 1:** Choose a variant.
 
 Choose a variant (a combination of framework and runtime environment) from the following table.
 Copy the **<variant_string>**.
@@ -65,7 +65,7 @@ Copy the **<variant_string>**.
      - CPU
      - `onnx-cpu`
 
-**1.2 Set the AIMET_VARIANT environment variable.**
+**Step 2:** Set the AIMET_VARIANT environment variable.
 
 Set the ``AIMET_VARIANT`` shell variable to your chosen variant string.
 
@@ -74,21 +74,24 @@ Set the ``AIMET_VARIANT`` shell variable to your chosen variant string.
     export AIMET_VARIANT=<variant_string>
 
 
-2. Choose to download or build an image
----------------------------------------
+Choose to download or build an image
+------------------------------------
 
-Choose one of the following options. We recommend using a prebuilt Docker image unless your
+**Step 3:** Choose one of the following options. We recommend using a prebuilt Docker image unless your
 installation requires custom dependencies.
 
-- :ref:`Download a prebuilt Docker image <docker-install-download>`
-- :ref:`Build a Docker image <docker-install-build>`
+Continue to :ref:`Download a prebuilt Docker image (step 4)<docker-install-download>`
+
+or
+
+Skip to :ref:`Build a Docker image (step 5)<docker-install-build>`.
 
 .. _docker-install-download:
 
-3. Download a prebuilt Docker image
------------------------------------
+Download a prebuilt Docker image
+--------------------------------
 
-**3.1 Set environment variables.**
+**Step 4:** Set environment variables.
 
 Set the following shell variables to define the Docker image installation.
 
@@ -109,15 +112,15 @@ where:
 
 When you start the Docker container, it will be downloaded from the image library located at **docker_image_name**.
 
-**3.2 Skip to** :ref:`Start the Docker container <docker-install-start>`.
+Skip to :ref:`Start the Docker container (step 7)<docker-install-start>`.
 
 
 .. _docker-install-build:
 
-4. Build a Docker image
------------------------
+Build a Docker image
+--------------------
 
-**4.1 Set environment variables.**
+**Step 5:**  Set environment variables.
 
 Set the following shell variables to define the Docker image installation.
 
@@ -138,7 +141,7 @@ where:
     is whatever name you want to assign the AIMET Docker container.
 
 
-**4.2 Build the Docker image from code in the the AIMET repo.**
+**Step 6:**  Build the Docker image from code in the the AIMET repo.
 
 .. code-block:: bash
 
@@ -146,16 +149,16 @@ where:
 
 .. _docker-install-start:
 
-5. Start the docker container
------------------------------
+Start the docker container
+--------------------------
 
-**5.1 Check that a Docker container named $docker_container_name is not already running. Remove the container if it is.**
+**Step 7:**  Check that a Docker container named $docker_container_name is not already running. Remove the container if it is.
 
 .. code-block:: bash
 
     docker ps -a | grep ${docker_container_name} && docker kill ${docker_container_name}
 
-**5.2 Specify a port to use for port forwarding if you plan to run the Visualization APIs (optional).**
+**Step 8:** (optional) Specify a port to use for port forwarding if you plan to run the Visualization APIs.
 
 .. code-block:: bash
 
@@ -163,7 +166,7 @@ where:
 
 where **<port-number>** is any unused port on the host.
 
-**5.3 Run the Docker container.**
+**Step 9:**  Run the Docker container.
 
 .. code-block:: bash
 
@@ -204,33 +207,36 @@ As a convenience, the following block contains the *first line* of the Docker ru
     # CPU only, without port forwarding:
     docker run --rm -it -u $(id -u ${USER}):$(id -g ${USER})
 
-6. Install AIMET packages
--------------------------
+Install AIMET packages
+----------------------
 
 **Choose an option to install the AIMET package on the Docker container.**
 
 1.  From PyPI (PyTorch only)
 2.  Any framework variant (hosted **.whl** files)
 
-**6.1 To install the most recent PyTorch AIMET package with GPU support (the most common option) from PyPI, type the following commands in the Docker container.**
+**Step 10:**  To install the most recent PyTorch AIMET package with GPU support (the most common option) from PyPI, type the following commands in the Docker container.
 
 .. code-block:: bash
 
     python3 -m pip install aimet-torch
 
-**6.2 To install the latest version of any AIMET variant from the.whl files.**
+Skip to :ref:`Environment setup (step 12) <docker-install-setup>`.
 
-6.2.1 Select the release tag for the version you want to install, for example, "|version|".
+**Step 11:**  To install the latest version of any AIMET variant from the.whl files, follow the substeps below.
+
+**Step 11.1:** Select the release tag for the version you want to install, for example, "|version|".
 
 Releases are listed at: https://github.com/quic/aimet/releases
 
 - Identify the .whl file corresponding to the package variant that you want to install
 - Continue with the instructions below to install AIMET from the .whl file
 
-6.2.2 Set the package details.
+**Step 11.2:** Set the package details.
 
 .. parsed-literal::
-
+    :class: highlight
+    
     # Set the release tag, for example "|version|"
     export release_tag="<version release tag>"
 
@@ -244,7 +250,7 @@ Releases are listed at: https://github.com/quic/aimet/releases
     # NOTE: Do the following only for the PyTorch and ONNX variant packages!
     export find_pkg_url_str="-f https://download.pytorch.org/whl/torch_stable.html"
 
-6.2.3 Install the selected AIMET package.
+**Step 11.3:** Install the selected AIMET package.
 
 .. note::
 
@@ -258,9 +264,9 @@ Releases are listed at: https://github.com/quic/aimet/releases
 .. _docker-install-setup:
 
 Environment setup
-=================
+-----------------
 
-**Run the environment setup script to set common environment variables.**
+**Step 12:** Run the environment setup script to set common environment variables.
 
 .. code-block:: bash
 
