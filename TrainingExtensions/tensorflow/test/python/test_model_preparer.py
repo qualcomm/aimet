@@ -233,7 +233,7 @@ class MultiMathOperations(tf.keras.layers.Layer):
 
 
 # Layer with multiple inputs
-class TestMultiInput(tf.keras.layers.Layer):
+class MultiInputLayer(tf.keras.layers.Layer):
     def __init__(self, **kwargs) -> None:
         super().__init__(name="test_multi_input")
 
@@ -244,7 +244,7 @@ class TestMultiInput(tf.keras.layers.Layer):
 
 
 # Layer with multiple outputs
-class TestMultiOut(tf.keras.layers.Layer):
+class MultiOutLayer(tf.keras.layers.Layer):
     def __init__(self, **kwargs) -> None:
         super().__init__(name="test_multi_out")
 
@@ -335,7 +335,7 @@ class TestModelPreparer:
         input2 = tf.keras.Input(shape=(28, 28, 1), name="input_2")
         x = tf.keras.layers.Conv2D(16, 3, activation="relu")(input1)
         y = tf.keras.layers.Conv2D(16, 3, activation="relu")(input2)
-        outputs = TestMultiInput()([x, y])
+        outputs = MultiInputLayer()([x, y])
 
         return tf.keras.Model(inputs=[input1, input2], outputs=outputs, name="multi_input")
 
@@ -348,7 +348,7 @@ class TestModelPreparer:
             x1a = x1 * 2.0
             outputs = tf.concat([x0, x1a], 3)
         else:
-            outputs = TestMultiOut()(x)
+            outputs = MultiOutLayer()(x)
 
         return tf.keras.Model(inputs=inputs, outputs=outputs, name=f"multi_output_with_lambda_{use_lambdas}")
 
