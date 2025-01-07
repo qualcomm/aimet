@@ -235,7 +235,7 @@ class MultiMathOperations(tf.keras.layers.Layer):
 # Layer with multiple inputs
 class MultiInputLayer(tf.keras.layers.Layer):
     def __init__(self, **kwargs) -> None:
-        super().__init__(name="test_multi_input")
+        super().__init__(name="multi_input_layer")
 
     def call(self, inputs, **kwargs):
         input1 = inputs[0]
@@ -246,7 +246,7 @@ class MultiInputLayer(tf.keras.layers.Layer):
 # Layer with multiple outputs
 class MultiOutLayer(tf.keras.layers.Layer):
     def __init__(self, **kwargs) -> None:
-        super().__init__(name="test_multi_out")
+        super().__init__(name="multi_out_layer")
 
     def call(self, inputs, **kwargs):
         out1 = inputs * 2.0
