@@ -437,7 +437,10 @@ class MinMaxQuantizer(AffineQuantizerBase): # pylint: disable=abstract-method
         dtype = dtype or torch.float32
 
         if self.symmetric:
-            offset = torch.zeros_like(self.min, requires_grad=False, dtype=dtype)
+            offset = torch.full_like(self.min,
+                                     fill_value=-round((self.qmin + self.qmax) / 2),
+                                     requires_grad=False,
+                                     dtype=dtype)
         else:
             offset = ste_round(self.min.to(dtype) / self.get_scale(dtype)) - self.qmin
 
