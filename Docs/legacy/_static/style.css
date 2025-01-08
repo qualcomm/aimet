@@ -1,0 +1,283 @@
+.rst-content .hideitem {
+ display: none;
+}
+
+nav .hideitem {
+  display: unset;
+  font-size: 13px;
+}
+
+.hideitem {
+  font-size: 14px;
+}
+
+.rst-content .code-block-caption .headerlink, .rst-content .eqno .headerlink, .rst-content .toctree-wrapper > p.caption .headerlink, .rst-content dl dt .headerlink, .rst-content h1 .headerlink, .rst-content h2 .headerlink, .rst-content h3 .headerlink, .rst-content h4 .headerlink, .rst-content h5 .headerlink, .rst-content h6 .headerlink, .rst-content p.caption .headerlink, .rst-content p .headerlink, .rst-content table > caption .headerlink {
+  opacity: 0;
+  font-size: 14px;
+  font-family: FontAwesome;
+  margin-left: -8.5em;
+  position: absolute;
+  margin-top: -55px;
+}
+
+
+:root {
+  --aimet-blue: #3253dc;
+  --aimet-dark-blue: #0000ff;
+  --aimet-white: #ffffff;
+  --aimet-border-grey: #e0e0e0;
+  --aimet-menu-hover: #e3efff;
+  --aimet-menu-font-active: #0058ff;
+  --aimet-code-grey: #fafafa;
+  --aimet-light-blue: #e7f2fa;
+}
+
+/* In main body this sets the background used in the text boxes*/
+div.document { 
+    background-color: var(--aimet-white); 
+}
+
+.wy-side-nav-search > div.version {
+margin-top: -.4045em;
+margin-bottom: .809em;
+font-weight: 400;
+color: var(--aimet-dark-blue);
+}
+
+/* In body this sets the background used on the left and right side of the main content box*/
+.wy-body-for-nav {
+    background: var(--aimet-white);
+      background-color: var(--aimet-white);
+      background-position-x: 0%;
+      background-position-y: 0%;
+      background-repeat: repeat;
+      background-attachment: scroll;
+      background-image: none;
+      background-size: auto;
+      background-origin: padding-box;
+      background-clip: border-box;
+}
+
+/* position of main body */
+.wy-grid-for-nav {
+    position: absolute;
+    width: 95%;
+    height: 100%;
+    display: grid;
+    justify-content: left;
+}
+
+/* boarder around main content */
+.wy-nav-content-wrap {
+  margin-left: 300px;
+  background: var(--aimet-white);
+  min-height: auto;
+  border-left-width: 2px;
+  border-left-style: solid;
+  border-left-color: var(--aimet-border-grey);
+  border-right-width: 2px;
+  border-right-style: solid;
+  border-right-color: var(--aimet-border-grey);
+ /* position: fixed; */
+}
+
+/* Left Menu  */
+.wy-nav-side {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    padding-bottom: 2em;
+    width: 300px;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    min-height: 100%;
+    color: var(--aimet-white);
+    background: var(--aimet-white);
+    z-index: 200;
+}
+.wy-side-nav-search {
+    display: block;
+    width: 300px;
+    padding: .809em;
+    margin-bottom: .809em;
+    z-index: 200;
+    background-color: var(--aimet-white);
+    text-align: center;
+    color: var(--aimet-blue);
+}
+
+.wy-nav-content {
+    padding: 1.618em 3.236em;
+    height: 100%;
+    max-width: 1400px;
+    margin: auto;
+    background: #ffffff;
+}
+
+.wy-side-nav-search .wy-dropdown > a, .wy-side-nav-search > a {
+  color: blue;
+  font-size: 100%;
+  font-weight: 700;
+  display: inline-block;
+  padding: 4px 6px;
+  margin-bottom: .809em;
+  max-width: 100%;
+}
+
+.wy-menu-vertical a:hover button.toctree-expand {
+  color: black; /* the button color when hover over */
+}
+
+.wy-menu-vertical a:hover {
+  cursor: pointer;
+  background: var(--aimet-menu-hover); /* color of toctree menu when hovered over */ 
+}
+
+/*.wy-menu-vertical ul:hover {
+  color: #3253dc;
+}*/
+
+/* set the color behind all toc tree menus */
+.wy-menu-vertical li {
+  background: var(--aimet-white);
+    background-color: rgb(255, 255, 255);
+    background-position-x: 0%;
+    background-position-y: 0%;
+    background-repeat: repeat;
+    background-attachment: scroll;
+    background-image: none;
+    background-size: auto;
+    background-origin: padding-box;
+    background-clip: border-box;
+}
+
+/*
+.wy-menu-vertical li.current {
+  background: var(--aimet-menu-hover);
+}
+*/
+.wy-menu-vertical a {
+  line-height: 18px;
+  padding: .4045em 1.618em;
+  display: block;
+  position: relative;
+  font-size: 90%;
+  /*color: #e8f3f7; /* toctree color
+  color: #3253dc */
+  color: var(--aimet-blue);
+
+}
+.wy-menu-vertical li.current {
+  background: var(--aimet-white); /* highlist color behind toctree header when current */
+}
+
+.wy-menu-vertical li.current > a {
+    color: var(--aimet-menu-font-active); /* font color when current*/
+    font-weight: 700;
+    position: relative;
+    background: var(--aimet-menu-hover); /* back ground of the toctree header when current*/
+    border: none;
+    border-top-color: currentcolor;
+    border-top-style: none;
+    border-top-width: medium;
+    border-bottom-color: currentcolor;
+    border-bottom-style: none;
+    border-bottom-width: medium;
+padding: .4045em 1.618em;
+}  
+
+/* menu item color 
+.wy-menu-vertical li.current a:hover {
+  background: var(--aimet-menu-hover);
+}
+*/
+
+.wy-menu-vertical li.toctree-l1.current > a, .wy-menu-vertical li.toctree-l1.current li.toctree-l2 > a {
+  background: var(--aimet-white);
+}
+
+.wy-menu-vertical li.toctree-l1.current > a, .wy-menu-vertical li.toctree-l1.current li.toctree-l2 > a:hover {
+  background: var(--aimet-menu-hover);
+}
+ 
+.wy-menu-vertical li.toctree-l2.current > a, .wy-menu-vertical li.toctree-l2.current li.toctree-l3 > a {
+  background: var(--aimet-white);
+}
+
+.wy-menu-vertical li.toctree-l2.current > a, .wy-menu-vertical li.toctree-l2.current li.toctree-l3 > a:hover {
+  background: var(--aimet-menu-hover);
+}
+
+.wy-menu-vertical li.toctree-l3.current > a, .wy-menu-vertical li.toctree-l3.current li.toctree-l4 > a {
+  background: var(--aimet-white);
+}
+
+.wy-menu-vertical li.toctree-l3.current > a, .wy-menu-vertical li.toctree-l3.current li.toctree-l4 > a:hover {
+  background: var(--aimet-menu-hover);
+}
+
+.wy-menu-vertical li.toctree-l3, .wy-menu-vertical li.toctree-l4 {
+  font-size: 14px;
+}
+
+/*
+ * Highlight color for code segments
+ */
+.highlight, .literal-block
+{
+    background: var(--aimet-code-grey);
+}
+
+/*
+ * Table options
+*/
+
+/* Use root font size for generated table */
+html.writer-html5 .rst-content table.docutils td>p, html.writer-html5 .rst-content table.docutils th>p {
+    border: 0 solid var(--aimet-border-grey);
+    line-height: 1.5rem;
+    font-size: 1rem;
+}
+
+/* Remove internal bottom borders */
+.rst-content table.docutils td, .wy-table-bordered-all td {
+    border-left-width: 1px;
+    border-bottom-width: 0;
+}
+
+/* Keep outside borders */
+.rst-content table.docutils, .wy-table-bordered-all {
+    border: 1px solid var(--aimet-border-grey);
+}
+
+/* Set text color of side navigation TOC section headers */
+.wy-menu-vertical header, .wy-menu-vertical p.caption {
+    color: var(--aimet-dark-blue);
+}
+
+
+/*
+ * Configure the appearance of code output box.
+ * Values are based on sphinx-gallery configuration
+*/
+.script-output {
+    color: black;
+    display: flex;
+    gap: 0.5em;
+}
+
+.script-output::before {
+    content: "Out:";
+    line-height: 1.4;
+    padding-top: 10px;
+}
+
+.script-output .highlight {
+    background: transparent;
+    flex-grow: 1;
+    overflow: auto;
+    /* Allow output block to take up maximum 25 lines */
+    max-height: 25em;
+}
+

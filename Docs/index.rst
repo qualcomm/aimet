@@ -25,9 +25,6 @@ AIMET employs post-training and fine-tuning techniques to minimize accuracy loss
 
 AIMET supports models from the PyTorch, TensorFlow/Keras, and ONNX frameworks.
 
-.. note:: 
-   See the :doc:`glossary <../glossary>` for explanations of terms and acronyms used on this website.
-
 Quick Start
 ===========
 
@@ -67,6 +64,11 @@ Release Notes
 =============
 
 For information about new features in this release, see the :doc:`Release Notes <release_notes>`.
+
+Glossary
+========
+
+See the :doc:`glossary <../glossary>` for explanations of terms and acronyms used on this website.
 
 |
 |

@@ -205,7 +205,7 @@ As a convenience, the following block contains the *first line* of the Docker ru
     nvidia-docker run --rm -it -u $(id -u ${USER}):$(id -g ${USER}) \
 
     # CPU only, without port forwarding:
-    docker run --rm -it -u $(id -u ${USER}):$(id -g ${USER})
+    docker run --rm -it -u $(id -u ${USER}):$(id -g ${USER}) \
 
 Install AIMET packages
 ----------------------
@@ -223,7 +223,7 @@ Install AIMET packages
 
 Skip to :ref:`Environment setup (step 12) <docker-install-setup>`.
 
-**Step 11:**  To install the latest version of any AIMET variant from the.whl files, follow the substeps below.
+**Step 11:**  To install the latest version of any AIMET variant from the .whl files, follow the substeps below.
 
 **Step 11.1:** Select the release tag for the version you want to install, for example, "|version|".
 

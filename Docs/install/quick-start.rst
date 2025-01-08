@@ -8,20 +8,24 @@ This page describes how to quickly install the latest version of AIMET for the P
 
 For all the framework variants and compute platforms, see :ref:`Installation <install-index>`.
 
-Prerequisites
-=============
+.. _install-quick-start-platform:
 
-The AIMET PyTorch package has been tested using the following recommended host platform configuration:
+Tested Platform
+===============
+
+AIMET PyTorch 2.0 has been extensively tested using the following configuration:
 
 * 64-bit Intel x86-compatible processor
-* Python 3.8–3.12
+* Python 3.8 – 3.12
 * Ubuntu 22.04
 * For GPU variants:
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
 
-Installating AIMET
-==================
+Installing AIMET
+================
+
+AIMET PyTorch 2.0 should run on any platform that supports PyTorch using Python 3.8 or later. See :ref:`above <install-quick-start-platform>` for information about tested platforms.
 
 Type the following command to install AIMET for the PyTorch framework using the pip package manager.
 
