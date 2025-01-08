@@ -499,7 +499,7 @@ class QuantizationSimModel:
         if op.type in ['Gemm', 'MatMul'] and op.transposed_params:
             return 0, 1
         if op.type in ['Gemm', 'MatMul']:
-            return 1, 0
+            return -1, -2
         return None, None
 
     def _insert_activation_quantization_nodes(self):

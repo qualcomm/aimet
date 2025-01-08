@@ -331,6 +331,11 @@ class SequentialMse:
         connected_op = self.connected_graph.get_op_from_module_name(dependency_node.op_name)
         # pylint: disable=protected-access
         channel_axis = QuantizationSimModel._get_quantization_axes(connected_op)[0]
+
+        # Handle negative indexing
+        if channel_axis  < 0:
+            channel_axis +=  len(weight_data.shape)
+
         axis = tuple(i for i in range(len(weight_data.shape)) if i != channel_axis)
 
         per_channel_max = np.max(abs(weight_data), axis=axis)
