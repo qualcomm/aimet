@@ -44,7 +44,6 @@ __path__ = __import__('pkgutil').extend_path(__path__, __name__)
 import sys
 import sysconfig
 import platform
-from packaging import version
 
 import torch as _torch
 from aimet_common import _deps
@@ -82,7 +81,7 @@ def _is_torch_compatible(current: str, required: str):
 
 
 def _is_glibc_compatible(current: str, required: str):
-    return version.parse(required) <= version.parse(current)
+    return list(map(int, required.split('.'))) <= list(map(int, current.split('.')))
 
 
 def _check_requirements():
