@@ -108,7 +108,7 @@ lowering the precision.
 The figure below illustrates the recommended quantization workflow and the steps required
 to deploy the quantized model on the target device.
 
-.. figure:: images/quantization_workflow_4.PNG
+.. figure:: ../images/quantization_workflow_4.png
 
    Recommended quantization workflow
 
@@ -144,7 +144,7 @@ If the off-target quantized accuracy metric is not meeting expectations, you can
 techniques to improve the quantized accuracy for the desired precision. The decision between
 PTQ and QAT should be based on the quantized accuracy and runtime needs.
 
-.. image:: ../images/quantization_workflow.png
+.. image:: ../images/quantization_workflow_5.png
 
 Once the off-target quantized accuracy metric is satisfactory, proceed to :ref:`evaluate the
 on-target metrics<opt-guide-on-target-inference>` at this precision. If the on-target metrics
