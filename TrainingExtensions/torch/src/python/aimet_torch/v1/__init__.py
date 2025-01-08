@@ -106,7 +106,7 @@ def _check_requirements():
                        f"(currently you have torch=={_torch.__version__})")
 
     # Check glibc version
-    if sys.platform == "linux":
+    if _deps.min_glibc and sys.platform == "linux":
         libc, libc_version = platform.libc_ver()
         if libc != "glibc":
             reasons.append(f"  * libc==glibc (currently you have {libc})")
