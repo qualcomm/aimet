@@ -1,4 +1,17 @@
-
+/*
+ * AIMET color palette
+ */
+:root {
+    --aimet-blue: #3253dc;
+    --aimet-dark-blue: #0000ff;
+    --aimet-white: #ffffff;
+    --aimet-border-grey: #e0e0e0;
+    --aimet-menu-hover: #e3efff;
+    --aimet-menu-font-active: #0058ff;
+    --aimet-code-grey: #fafafa;
+    --aimet-light-blue: #e7f2fa;
+  }
+  
  aside.toc-drawer ul ul ul ul {
    display: none;
 }
@@ -33,6 +46,10 @@
     overflow: auto;
     /* Allow output block to take up maximum 25 lines */
     max-height: 25em;
+}
+
+*.highlight pre, pre.literal-block {
+    background-color: var(--aimet-code-grey);
 }
 
 /*
