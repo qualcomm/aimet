@@ -174,8 +174,8 @@ __global__ static void histogramCountKernel(const DTYPE* data,
     {
         // Map a floating point number to the appropriate bucket.
         int index = is_signed ?
-                    round(data[i] / bucket_size - histogram_offset) :
-                    round(abs(data[i]) / bucket_size - histogram_offset);
+                    floor(data[i] / bucket_size - histogram_offset) :
+                    floor(abs(data[i]) / bucket_size - histogram_offset);
 
         // Add to histogram, if inside the histogram range.
         if (index >= 0 && index < PDF_SIZE)

@@ -391,7 +391,7 @@ void GetHistogram_cpu(const DTYPE* data, int cnt, uint32_t histogram[PDF_SIZE], 
     {
         // Map a floating point number to the appropriate bucket.
         int index =
-            is_signed ? round(data[i] / bucket_size - pdf_offset) : round(std::abs(data[i]) / bucket_size - pdf_offset);
+            is_signed ? floor(data[i] / bucket_size - pdf_offset) : floor(std::abs(data[i]) / bucket_size - pdf_offset);
 
         // Add to histogram, if inside the histogram range.
         if (index >= 0 && index < PDF_SIZE)
