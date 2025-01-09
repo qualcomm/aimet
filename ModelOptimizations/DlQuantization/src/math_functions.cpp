@@ -249,7 +249,7 @@ void InitializePdf(PDF& pdf, DTYPE min_val, DTYPE max_val, bool signed_vals)
     for (int i = 0; i < PDF_SIZE; ++i)
     {
         if (signed_vals)
-            pdf.xLeft[i] = min_val + i * bucket_size;
+            pdf.xLeft[i] = floor(min_val / bucket_size + i) * bucket_size;
         else
             pdf.xLeft[i] = i * bucket_size;
     }
