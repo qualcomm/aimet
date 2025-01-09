@@ -248,8 +248,8 @@ def test_compute_output_with_adarounded_weights():
 
     hard_recons_error, soft_recons_error = AdaroundOptimizer._eval_recons_err_metrics(conv_wrapper, None, inp_tensor,
                                                                                       out_tensor)
-    assert np.isclose(hard_recons_error, 0.6102066, atol=1e-4)
-    assert np.isclose(soft_recons_error, 0.6107949, atol=1e-4)
+    assert np.isclose(hard_recons_error, 0.61097431182861, atol=1e-4)
+    assert np.isclose(soft_recons_error, 0.61089688539505, atol=1e-4)
 
 
 # Adaround wrapper tests

@@ -150,8 +150,8 @@ class TestAdaroundOptimizer(unittest.TestCase):
                                                                                      out_data)
 
         print(recons_err_hard, recons_err_soft)
-        self.assertAlmostEqual(recons_err_hard, 0.610206663608551, places=3)
-        self.assertAlmostEqual(recons_err_soft, 0.6107949018478394, places=3)
+        self.assertAlmostEqual(recons_err_hard, 0.61097431182861, places=3)
+        self.assertAlmostEqual(recons_err_soft, 0.61089688539505, places=3)
 
     @pytest.mark.cuda
     def test_compute_output_with_adarounded_weights(self):

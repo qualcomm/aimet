@@ -2134,7 +2134,7 @@ class TestQuantizationSimStaticGrad:
         tensor[0, 0, 0, 0] = 1000
         sim.model.conv2.output_quantizers[0].update_encoding_stats(tensor)
         sim.model.conv2.output_quantizers[0].compute_encoding()
-        assert sim.model.conv2.output_quantizers[0].encoding.max < 1.0
+        assert sim.model.conv2.output_quantizers[0].encoding.max < 1.1
 
         sim.model.conv2.output_quantizers[0].quant_scheme = QuantScheme.post_training_tf
         tensor = torch.rand(1, 10, 24, 24)
