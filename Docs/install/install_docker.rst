@@ -235,7 +235,6 @@ Releases are listed at: https://github.com/quic/aimet/releases
 **Step 11.2:** Set the package details.
 
 .. parsed-literal::
-    :class: highlight
     
     # Set the release tag, for example "|version|"
     export release_tag="<version release tag>"

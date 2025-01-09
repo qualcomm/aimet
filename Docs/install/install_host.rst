@@ -105,7 +105,6 @@ Based on your machine learning framework, choose one of the install procedures b
         **Step 2:** Set the package details.
 
         .. parsed-literal::
-            :class: highlight
 
             # Set the release tag, for example "|version|"
             export release_tag="<version release tag>"
@@ -114,7 +113,7 @@ Based on your machine learning framework, choose one of the install procedures b
             export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
             # Set the wheel file name with extension,
-            # for example "aimet_torch-|version|\+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
+            # for example "aimet_torch-|version|\+cu121\ |torch_whl_suffix|"
             export wheel_file_name="<wheel file name>"
 
             # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
@@ -192,7 +191,6 @@ Based on your machine learning framework, choose one of the install procedures b
         **Step 2:** Set the package details.
 
         .. parsed-literal::
-            :class: highlight
 
             # Set the release tag, for example "|version|"
             export release_tag="<version release tag>"
@@ -269,7 +267,6 @@ Based on your machine learning framework, choose one of the install procedures b
         **Step 2:** Set the package details.
 
         .. parsed-literal::
-            :class: highlight
 
             # Set the release tag, for example "|version|"
             export release_tag="<version release tag>"
@@ -345,3 +342,7 @@ Based on your machine learning framework, choose one of the install procedures b
         .. code-block:: bash
 
             source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
+
+
+
+.. |torch_whl_suffix| replace:: \-cp310-none-any.whl

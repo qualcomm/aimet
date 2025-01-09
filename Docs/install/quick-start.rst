@@ -10,13 +10,13 @@ For all the framework variants and compute platforms, see :ref:`Installation <in
 
 .. _install-quick-start-platform:
 
-Tested Platform
+Tested platform
 ===============
 
-AIMET PyTorch 2.0 has been extensively tested using the following configuration:
+AIMET PyTorch 2.0 has been tested using the following recommended host platform configuration:
 
 * 64-bit Intel x86-compatible processor
-* Python 3.8 – 3.12
+* Python 3.8 – 3.10
 * Ubuntu 22.04
 * For GPU variants:
     * Nvidia GPU card (Compute capability 5.2 or later)
@@ -139,10 +139,10 @@ The output generated should be of type :class:`DequantizedTensor` and similar to
     .. code-block:: none
 
         DequantizedTensor([[-1.7466,  0.8405,  1.8606,  ..., -0.9714,  0.8366, 2.2363],
-                          [-1.6091,  1.0449,  1.7788,  ..., -0.9904,  1.0861, 2.2431],
-                          [-1.5307,  0.8442,  1.5157,  ..., -0.7793,  0.6327, 2.3861],
-                          ...,
-                          [-1.3610,  1.4499,  2.2068,  ..., -0.8188,  1.1155, 2.5962],
-                          [-1.1619,  1.2217,  2.1050,  ..., -0.5301,  0.9150, 2.1458],
-                          [-1.6340,  0.9826,  2.2459,  ..., -1.0769,  0.9054, 2.2315]],
-                          device='cuda:0', grad_fn=<AliasBackward0>)
+                           [-1.6091,  1.0449,  1.7788,  ..., -0.9904,  1.0861, 2.2431],
+                           [-1.5307,  0.8442,  1.5157,  ..., -0.7793,  0.6327, 2.3861],
+                           ...,
+                           [-1.3610,  1.4499,  2.2068,  ..., -0.8188,  1.1155, 2.5962],
+                           [-1.1619,  1.2217,  2.1050,  ..., -0.5301,  0.9150, 2.1458],
+                           [-1.6340,  0.9826,  2.2459,  ..., -1.0769,  0.9054, 2.2315]],
+                           device='cuda:0', grad_fn=<AliasBackward0>)
