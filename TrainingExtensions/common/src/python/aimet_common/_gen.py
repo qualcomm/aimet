@@ -43,6 +43,9 @@ import sysconfig
 
 
 def _get_min_glibc_version(build_dir):
+    if sys.platform != "linux":
+        return None
+
     so_file_list = glob.glob(os.path.join(build_dir, "**/*.so"), recursive=True)
     so_file_list = [file for file in so_file_list if "artifacts" in file]
     glibc_ver_list = []
@@ -65,6 +68,8 @@ def main(output_dir, build_dir):
     except ImportError:
         torch = None
 
+    min_glibc_version = _get_min_glibc_version(build_dir)
+
     _template = os.path.join(os.path.dirname(__file__), "_deps.pyi")
 
     with open(_template) as f:
@@ -76,7 +81,7 @@ def main(output_dir, build_dir):
     content = [
         f"python_abi = '{sysconfig.get_config_var('SOABI')}'",
         "torch = "      + (f"'{torch.__version__}'" if torch else "None"),
-        "min_glibc = "  + (f"'{_get_min_glibc_version(build_dir)}'" if sys.platform == "linux" else "None"),
+        "min_glibc = "  + (f"'{min_glibc_version}'" if min_glibc_version else "None"),
         # "tensorflow = " + (f"'{tf.__version__}'" if tf else "None"),
         # "onnx = "       + (f"'{onnx.__version__}'" if onnx else "None"),
         ""
