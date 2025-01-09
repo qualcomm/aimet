@@ -238,7 +238,7 @@ Releases are listed at: https://github.com/quic/aimet/releases
     export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
     # Set the wheel file name with extension,
-    # for example "aimet_torch-|version|\+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
+    # for example "aimet_torch-|version|\+cu121\ |torch_whl_suffix|"
     export wheel_file_name="<wheel file name>"
 
     # NOTE: Do the following only for the PyTorch and ONNX variant packages!
@@ -266,4 +266,5 @@ Environment setup
 
     source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
-.. _docker-install-next:
+
+.. |torch_whl_suffix| replace:: \-cp310-none-any.whl

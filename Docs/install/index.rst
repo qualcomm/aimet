@@ -45,13 +45,13 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         .. parsed-literal::
 
-           python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cu121\ |whl_suffix| -f |torch_pkg_url|
+           python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cu121\ |torch_whl_suffix| -f |torch_pkg_url|
 
         With CPU only:
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cpu\ |whl_suffix| -f |torch_pkg_url|
+            python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cpu\ |torch_whl_suffix| -f |torch_pkg_url|
 
 
     .. tab-item:: TensorFlow
@@ -88,6 +88,7 @@ Use one of the following commands to install AIMET based on your choice of frame
 
             python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\+cpu\ |whl_suffix| -f |torch_pkg_url|
 
+.. |torch_whl_suffix| replace:: \-cp310-none-any.whl
 .. |whl_suffix| replace:: \-cp310-cp310-manylinux_2_34_x86_64.whl
 .. |download_url| replace:: \https://github.com/quic/aimet/releases/download/
 .. |torch_pkg_url| replace:: \https://download.pytorch.org/whl/torch_stable.html
