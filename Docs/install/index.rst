@@ -20,33 +20,16 @@ PyPI
 ====
 
 To install the latest version of AIMET for the PyTorch framework, which supports the new **aimet_torch 2**
-interface, run the following command to install the package from the Python Package Index (PyPI).
-
-.. important::
-    aimet_torch 2 should run on any platform that supports PyTorch using Python 3.8 or later.
-
-    See :ref:`tested platform <install-quick-start-platform>` for information about tested host platform configuration.
-
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. code-block:: bash
-
-            python3 -m pip install aimet-torch
-
-Now, verify your installation using :ref:`these instructions <torch-verification>`, and you'll be all set!
+interface, use the :ref:`Quick start <install-quick-start>` instructions.
 
 .. _alternative-packages:
 
 Alternative packages
 ====================
 
-To install the latest version of AIMET for supported framework variants and compute platforms including
-TensorFlow, ONNX and PyTorch that supports the legacy `aimet_torch.v1` interface from the .whl files hosted
-at https://github.com/quic/aimet/releases.
+Install the latest version of AIMET for supported framework variants and compute platforms including
+TensorFlow, ONNX and PyTorch (legacy `aimet_torch.v1` interface) from the .whl files hosted at
+https://github.com/quic/aimet/releases.
 
 Prerequisites
 -------------
@@ -135,9 +118,9 @@ Use one of the following commands to install AIMET based on your choice of frame
 Verifying the installation
 --------------------------
 
-Now, verify your installation using below instructions and you'll be all set!
+Verify your installation using the following instructions.
 
-**Step 1:** Verify AIMET by instantiating an 8-bit symmetric quantizer.
+**Step 1:** Handle imports and other setup.
 
 .. code-block:: python
 
@@ -145,9 +128,7 @@ Now, verify your installation using below instructions and you'll be all set!
     from aimet_common import libpymo
 
     x = np.random.rand(100)
-    print(x)
 
-    # Instantiate 8-bit unsigned symmetric quantizer
     quant_scheme = libpymo.QuantizationMode.QUANTIZATION_TF
     analyzer = libpymo.EncodingAnalyzerForPython(quant_scheme)
 
@@ -162,7 +143,7 @@ Now, verify your installation using below instructions and you'll be all set!
     encoding, is_valid = analyzer.computeEncoding(bitwidth, is_symmetric, strict_symmetric, unsigned_symmetric)
     print(f'Min: {encoding.min}, Max: {encoding.max}, Scale(delta): {encoding.delta}, Offset: {encoding.offset}')
 
-The encodings values should be something similar to the one shown below.
+The encodings values should be similar to the one shown below.
 
 .. rst-class:: script-output
 
@@ -170,7 +151,7 @@ The encodings values should be something similar to the one shown below.
 
         Min: -3.3734087606114667, Max: 3.3470540046691895, Scale(delta): 0.026354755942277083, Offset: -128.0
 
-**Step 2:** Perform quantize-dequantize.
+**Step 3:** Perform quantize-dequantize.
 
 .. code-block:: python
 
@@ -182,7 +163,7 @@ The encodings values should be something similar to the one shown below.
                                        use_cuda)
     print(out)
 
-The quantized-dequantized output should be something similar to the one shown below.
+The quantized-dequantized output should be similar to the one shown below.
 
 .. rst-class:: script-output
 
@@ -206,7 +187,6 @@ The quantized-dequantized output should be something similar to the one shown be
           0.21083805  2.4246376  -0.15812853  0.52709514 -0.02635476 -0.13177378
          -1.8711877   0.4216761  -0.55344987 -0.76428795]
 
-
 Old versions
 ------------
 
@@ -215,8 +195,8 @@ Follow the documentation corresponding to that release to select and install the
 
 .. _host-install-from-scratch:
 
-Host install from scratch (optional)
-====================================
+Host install from scratch
+=========================
 
 The :ref:`Host install from scratch <install-host>` page contains the procedure to prepare the environment
 and manually install and setup AIMET (including prerequisites and dependencies for all framework and
@@ -225,8 +205,8 @@ using AIMET via any of the previous installation procedures.
 
 .. _docker-install:
 
-Docker install (optional)
-=========================
+Docker install
+==============
 
 The :ref:`Docker install <install-docker>` page describes how to install AIMET in a Docker
 container using pre-built or locally built Docker images.
@@ -236,8 +216,8 @@ container using pre-built or locally built Docker images.
 Building from source
 ====================
 
-For most users, installing the pre-built AIMET package via the pip package manager will offer the best
-experience. However, if you want to use the latest code or contribute to AIMET, you will need to build it
+For most users, installing the pre-built AIMET package via the pip package manager offers the best
+experience. However, if you want to use the latest code or contribute to AIMET, you need to build it
 from source. To build the latest AIMET code from the source, see `build AIMET from source <https://github.com/quic/aimet/blob/develop/packaging/docker_install.md>`_.
 
 .. |torch_whl_suffix| replace:: \-cp310-none-any.whl

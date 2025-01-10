@@ -11,7 +11,7 @@ For all the framework variants and compute platforms, see :ref:`Installation <in
 Installing AIMET
 ================
 
-.. important::
+.. note::
     aimet_torch 2 should run on any platform that supports PyTorch using Python 3.8 or later.
 
     See :ref:`tested platform <install-quick-start-platform>` for information about tested host platform configuration.
@@ -61,7 +61,7 @@ To confirm that AIMET PyTorch is installed correctly, do the following.
     out = Q.affine.quantize(x, scale, offset, qmin=-128, qmax=127)
     print(out)
 
-The quantized output should be something similar to the one shown below.
+The quantized output should be similar to the one shown below.
 
 .. rst-class:: script-output
 
