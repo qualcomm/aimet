@@ -9,6 +9,7 @@ AIMET Documentation
 .. toctree::
    :hidden:
    :includehidden:
+   :maxdepth: 2
 
    Quick Start <install/quick-start>
    Installation <install/index>

@@ -16,11 +16,13 @@
    display: none;
 }
 
+/* Hide level 3 entries */
 .toctree-l3 {
     display: none;
 }
 
-[for^="toctree-checkbox-"], [id^="toctree-checkbox-"] {
+/* Hide collapse arrow on level 2 entries */
+li.toctree-l2 [for^="toctree-checkbox-"] {
     visibility: hidden;
 }
 
