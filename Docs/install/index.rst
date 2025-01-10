@@ -127,7 +127,7 @@ Verify your installation using the following instructions.
     import numpy as np
     from aimet_common import libpymo
 
-    x = np.random.rand(100)
+    x = np.random.randn(100)
 
     quant_scheme = libpymo.QuantizationMode.QUANTIZATION_TF
     analyzer = libpymo.EncodingAnalyzerForPython(quant_scheme)
@@ -140,7 +140,8 @@ Verify your installation using the following instructions.
     is_symmetric, strict_symmetric, unsigned_symmetric = True, False, True
     use_cuda = False
     analyzer.updateStats(x, use_cuda)
-    encoding, is_valid = analyzer.computeEncoding(bitwidth, is_symmetric, strict_symmetric, unsigned_symmetric)
+    encoding, _ = analyzer.computeEncoding(bitwidth, is_symmetric, strict_symmetric, unsigned_symmetric)
+
     print(f'Min: {encoding.min}, Max: {encoding.max}, Scale(delta): {encoding.delta}, Offset: {encoding.offset}')
 
 The encodings values should be similar to the one shown below.
