@@ -1,37 +1,42 @@
 .. _install-quick-start:
 
-###########
-Quick Start
-###########
+#####################
+Quick Start (PyTorch)
+#####################
 
 This page describes how to quickly install the latest version of AIMET for the PyTorch framework.
 
 For all the framework variants and compute platforms, see :ref:`Installation <install-index>`.
 
-.. _install-quick-start-platform:
-
-Tested platform
-===============
-
-AIMET PyTorch 2.0 has been tested using the following recommended host platform configuration:
-
-* 64-bit Intel x86-compatible processor
-* Python 3.8 – 3.10
-* Ubuntu 22.04
-* For GPU variants:
-    * Nvidia GPU card (Compute capability 5.2 or later)
-    * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
-
 Installing AIMET
 ================
 
-AIMET PyTorch 2.0 should run on any platform that supports PyTorch using Python 3.8 or later. See :ref:`above <install-quick-start-platform>` for information about tested platforms.
+.. important::
+    aimet_torch 2 should run on any platform that supports PyTorch using Python 3.8 or later.
+
+    See :ref:`tested platform <install-quick-start-platform>` for information about tested host platform configuration.
 
 Type the following command to install AIMET for the PyTorch framework using the pip package manager.
 
 .. code-block:: bash
 
     python3 -m pip install aimet-torch
+
+.. _install-quick-start-platform:
+
+Tested platform
+---------------
+
+aimet_torch 2 has been tested using the following host platform configuration:
+
+* 64-bit Intel x86-compatible processor
+* Python 3.10
+* Ubuntu 22.04
+* For GPU variants:
+    * Nvidia GPU card (Compute capability 5.2 or later)
+    * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)
+
+.. _torch-verification:
 
 Verifying the installation
 ==========================
@@ -46,7 +51,7 @@ To confirm that AIMET PyTorch is installed correctly, do the following.
     x = torch.randn(100)
 
 
-**Step 2:** Verify AIMET PyTorch by instantiating an 8-bit symmetric affine quantizer.
+**Step 2:** Verify AIMET PyTorch by instantiating an 8-bit symmetric quantizer.
 
 .. code-block:: python
 
