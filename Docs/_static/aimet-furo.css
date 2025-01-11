@@ -1,4 +1,17 @@
-
+/*
+ * AIMET color palette
+ */
+:root {
+    --aimet-blue: #3253dc;
+    --aimet-dark-blue: #0000ff;
+    --aimet-white: #ffffff;
+    --aimet-border-grey: #e0e0e0;
+    --aimet-menu-hover: #e3efff;
+    --aimet-menu-font-active: #0058ff;
+    --aimet-code-grey: #fafafa;
+    --aimet-light-blue: #e7f2fa;
+  }
+  
  aside.toc-drawer ul ul ul ul {
    display: none;
 }
@@ -35,9 +48,51 @@
     max-height: 25em;
 }
 
+*.highlight pre, pre.literal-block {
+    background-color: var(--aimet-code-grey);
+}
+
 /*
  * Glossary formatting
 */
 [id^="term-"] {
     font-weight: bold;
 }
+
+/*
+ * Heading formatting
+ */
+
+h1 {
+    font-size:2.5em;
+    margin-top:1.75rem;
+    margin-bottom:1rem;
+}
+
+h2 {
+    font-size:2em;
+    margin-top:1.75rem;
+    margin-bottom:1.25rem;
+    font-weight: normal;
+}
+    
+h3 {
+    font-size:1.5em;
+    margin-top:1.25rem;
+    margin-bottom:1.25rem;
+    font-weight: normal;
+}
+    
+h4 {
+    font-size:1.25em;
+    margin-top:1.25rem;
+    margin-bottom:1.25rem;
+    font-weight: normal;
+}
+
+h5 {
+    font-size:1.125em;
+    margin-top:1.25rem;
+    margin-bottom:1.25rem;
+    font-weight: normal;
+} 

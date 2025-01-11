@@ -23,14 +23,14 @@ Prerequisites
 
 Ensure that you have the following prerequisites installed:
 
-1. Python and pip.
-2. The CUDA toolkit, if using GPUs.
+- Python and pip.
+- The CUDA toolkit, if using GPUs.
 
 Instructions follow.
 
-**1. Install Python and pip.**
+**Step 1:** Install Python and pip.
 
-1.1 Install the latest build of Python 3.10.
+Step 1.1: Install the latest build of Python 3.10.
 
 .. code-block:: bash
 
@@ -40,7 +40,7 @@ Instructions follow.
     apt-get install --assume-yes wget gnupg2
 
 
-1.2 If you have multiple Python versions installed, set the default version.
+Step 1.2: If you have multiple Python versions installed, set the default version.
 
 .. code-block:: bash
 
@@ -48,7 +48,7 @@ Instructions follow.
     update-alternatives --set python3 /usr/bin/python3.10
 
 
-**2. Install the CUDA toolkit (optional).**
+**Step 2:** Install the CUDA toolkit (optional).
 
 .. note::
 
@@ -60,7 +60,7 @@ The released AIMET GPU packages have been tested with the following CUDA toolkit
 - TensorFlow GPU variant: `CUDA Toolkit 11.8.0 <https://developer.nvidia.com/cuda-11-8-0-download-archive>`_
 - ONNX GPU variant: `CUDA Toolkit 11.8.0 <https://developer.nvidia.com/cuda-11-8-0-download-archive>`_
 
-2.1 Visit the CUDA Toolkit link above for the version corresponding to your AIMET GPU package and download the tested version of the CUDA toolkit for your environment.
+Step 2.1: Visit the CUDA Toolkit link above for the version corresponding to your AIMET GPU package and download the tested version of the CUDA toolkit for your environment.
 
 All versions of the CUDA toolkit are also listed at https://developer.nvidia.com/cuda-toolkit-archive.
 
@@ -68,9 +68,9 @@ All versions of the CUDA toolkit are also listed at https://developer.nvidia.com
 
     In the next step, do not execute the final command, **sudo apt-get install cuda**, in the install instructions.
 
-2.2 Follow the command-line instructions on the developer.nvidia.com download page to install the CUDA toolkit, but do *not* execute the final command, **sudo apt-get install cuda**.
+Step 2.2: Follow the command-line instructions on the developer.nvidia.com download page to install the CUDA toolkit, but do *not* execute the final command, **sudo apt-get install cuda**.
 
-2.3 Execute the following to update the CUDA repository key.
+Step 2.3: Execute the following to update the CUDA repository key.
 
 .. code-block:: bash
 
@@ -85,263 +85,264 @@ Installing AIMET
 
 **Choose your AIMET variant.**
 
-Based on your machine learning framework and GPU preference, choose one of the install procedures below.
+Based on your machine learning framework, choose one of the install procedures below.
 
-:ref:`1. Installing AIMET for PyTorch <man-install-torch>`
+.. tab-set::
+    :sync-group: platform
 
-:ref:`2. Installing AIMET for TensorFlow <man-install-tf>`
+    .. tab-item:: PyTorch
+        :sync: torch
 
-:ref:`3. Installing AIMET for ONNX <man-install-onnx>`
+        **Installing AIMET for PyTorch**
 
-.. _man-install-torch:
+        **Step 1:** Select the release tag for the version you want to install.
 
-1. Installing AIMET for PyTorch
--------------------------------
+        For example, "|version|". Releases are listed at: https://github.com/quic/aimet/releases
 
-**1.1 Select the release tag for the version you want to install.**
+        - Identify the .whl file corresponding to the package variant that you want to install.
+        - Continue with the instructions below to install AIMET from the .whl file.
 
-For example, "|version|". Releases are listed at: https://github.com/quic/aimet/releases
+        **Step 2:** Set the package details.
 
-- Identify the .whl file corresponding to the package variant that you want to install.
-- Continue with the instructions below to install AIMET from the .whl file.
+        .. parsed-literal::
 
-**1.2 Set the package details.**
+            # Set the release tag, for example "|version|"
+            export release_tag="<version release tag>"
 
-.. parsed-literal::
+            # Construct the download root URL
+            export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
-    # Set the release tag, for example "|version|"
-    export release_tag="<version release tag>"
+            # Set the wheel file name with extension,
+            # for example "aimet_torch-|version|\+cu121\ |torch_whl_suffix|"
+            export wheel_file_name="<wheel file name>"
 
-    # Construct the download root URL
-    export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
+            # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
+            export find_pkg_url_str="-f https://download.pytorch.org/whl/torch_stable.html"
 
-    # Set the wheel file name with extension,
-    # for example "aimet_torch-|version|\+cu121-cp310-cp310-manylinux_2_34_x86_64.whl"
-    export wheel_file_name="<wheel file name>"
 
-    # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
-    export find_pkg_url_str="-f https://download.pytorch.org/whl/torch_stable.html"
+        **Step 3:** Install the selected AIMET package.
 
+        .. note::
 
-**1.3 Install the selected AIMET package.**
+            Python dependencies are automatically installed.
 
-.. note::
+        .. code-block:: bash
 
-    Python dependencies are automatically installed.
+            # Install the wheel package
+            python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}
 
-.. code-block:: bash
+        **Step 4:** Install the common Debian packages.
 
-    # Install the wheel package
-    python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}
+        .. code-block:: bash
 
-**1.4 Install the common Debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_common/bin/reqs_deb_common.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 1.5:** Install the Torch Debian packages.
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_common/bin/reqs_deb_common.txt | xargs apt-get --assume-yes install
+        .. code-block:: bash
 
-**1.5 Install the Torch Debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_onnx/bin/reqs_deb_torch_common.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 6:** Install the Torch GPU Debian packages.
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_onnx/bin/reqs_deb_torch_common.txt | xargs apt-get --assume-yes install
+        .. code-block:: bash
 
-**1.6 Install the Torch GPU Debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_torch/bin/reqs_deb_torch_gpu.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 7:** Replace Pillow with Pillow-SIMD (optional).
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_torch/bin/reqs_deb_torch_gpu.txt | xargs apt-get --assume-yes install
+        Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can improve image processing performance on x86 architecture machines.
 
-**1.7 Replace Pillow with Pillow-SIMD (optional).**
+        .. code-block:: bash
 
-Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can improve image processing performance on x86 architecture machines.
+            python3 -m pip uninstall -y pillow
+            python3 -m pip install --no-cache-dir Pillow-SIMD==9.0.0.post1
 
-.. code-block:: bash
+        **Step 8:** Link to executable paths.
 
-    python3 -m pip uninstall -y pillow
-    python3 -m pip install --no-cache-dir Pillow-SIMD==9.0.0.post1
+        .. code-block:: bash
 
-**1.8 Link to executable paths.**
+            ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
+            ln -s /usr/local/cuda-<cuda-version> /usr/local/cuda
 
-.. code-block:: bash
+        where **<cuda-version>** is the version of CUDA that you installed in the :ref:`Prerequisite section <_installation-prereq>`, for example **12.1.0**.
 
-    ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
-    ln -s /usr/local/cuda-<cuda-version> /usr/local/cuda
+        **Step 9:** Run the environment setup script to set common environment variables.
 
-where **<cuda-version>** is the version of CUDA that you installed in the :ref:`Prerequisite section <_installation-prereq>`, for example **12.1.0**.
+        .. code-block:: bash
 
-**1.9 Run the environment setup script to set common environment variables.**
+            source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
-.. code-block:: bash
+        **Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`.
 
-    source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
-**Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`.
+    .. tab-item:: TensorFlow
+        :sync: tf
 
+        **Installing AIMET for TensorFlow**
 
-.. _man-install-tf:
+        **Step 1:** Select the release tag for the version you want to install.
 
-2. Installing AIMET for TensorFlow
-----------------------------------
+        For example, "|version|". Releases are listed at: https://github.com/quic/aimet/releases
 
-**2.1 Select the release tag for the version you want to install.**
+        - Identify the .whl file corresponding to the package variant that you want to install
+        - Continue with the instructions below to install AIMET from the .whl file
 
-For example, "|version|". Releases are listed at: https://github.com/quic/aimet/releases
+        **Step 2:** Set the package details.
 
-- Identify the .whl file corresponding to the package variant that you want to install
-- Continue with the instructions below to install AIMET from the .whl file
+        .. parsed-literal::
 
-**2.2 Set the package details.**
+            # Set the release tag, for example "|version|"
+            export release_tag="<version release tag>"
 
-.. parsed-literal::
+            # Construct the download root URL
+            export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
-    # Set the release tag, for example "|version|"
-    export release_tag="<version release tag>"
+            # Set the wheel file name with extension,
+            # for example "aimet_tensorflow-|version|\+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
+            export wheel_file_name="<wheel file name>"
 
-    # Construct the download root URL
-    export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
+        **Step 3:** Install the selected AIMET package.
 
-    # Set the wheel file name with extension,
-    # for example "aimet_tensorflow-|version|\+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
-    export wheel_file_name="<wheel file name>"
+        .. note::
 
-**2.3 Install the selected AIMET package.**
+            Python dependencies are automatically installed.
 
-.. note::
+        .. code-block:: bash
 
-    Python dependencies are automatically installed.
+            # Install the wheel package
+            python3 -m pip install ${download_url}/${wheel_file_name}
 
-.. code-block:: bash
 
-    # Install the wheel package
-    python3 -m pip install ${download_url}/${wheel_file_name}
+        **Step 4:** Install the common Debian packages.
 
+        .. code-block:: bash
 
-**2.4 Install the common Debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_common/bin/reqs_deb_common.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 5:** Install the tensorflow GPU debian packages.
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_common/bin/reqs_deb_common.txt | xargs apt-get --assume-yes install
+        .. code-block:: bash
 
-**2.5 Install the tensorflow GPU debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_tensorflow/bin/reqs_deb_tf_gpu.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 6:** Replace Pillow with Pillow-SIMD (optional).
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_tensorflow/bin/reqs_deb_tf_gpu.txt | xargs apt-get --assume-yes install
+        Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can improve image processing performance on x86 architecture machines.
 
-**2.6 Replace Pillow with Pillow-SIMD (optional).**
+        .. code-block:: bash
 
-Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can improve image processing performance on x86 architecture machines.
+            python3 -m pip uninstall -y pillow
+            python3 -m pip install --no-cache-dir Pillow-SIMD==9.0.0.post1
 
-.. code-block:: bash
+        **Step 7:** Link to executable paths.
 
-    python3 -m pip uninstall -y pillow
-    python3 -m pip install --no-cache-dir Pillow-SIMD==9.0.0.post1
+        .. code-block:: bash
 
-**2.7 Link to executable paths.**
+            ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
+            ln -s /usr/local/cuda-<cuda-version> /usr/local/cuda
 
-.. code-block:: bash
+        where **<cuda-version>** is the version of CUDA that you installed in the :ref:`Prerequisite section <_installation-prereq>`, for example **11.8.0**.
 
-    ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
-    ln -s /usr/local/cuda-<cuda-version> /usr/local/cuda
+        **Step 8:** Run the environment setup script to set common environment variables.
 
-where **<cuda-version>** is the version of CUDA that you installed in the :ref:`Prerequisite section <_installation-prereq>`, for example **11.8.0**.
+        .. code-block:: bash
 
-**2.8 Run the environment setup script to set common environment variables.**
+            source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
-.. code-block:: bash
+        **Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`from PyPI.
 
-    source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
+    .. tab-item:: ONNX
+        :sync: onnx
 
-**Installation is complete.** Proceed to :ref:`Next steps <man-install-next>`from PyPI.
+        **Installing AIMET for ONNX**
 
-.. _man-install-onnx:
+        **Step 1:** Select the release tag for the version you want to install.
 
-3. Installing AIMET for ONNX
-----------------------------
+        For example, "|version|". Releases are listed at: https://github.com/quic/aimet/releases
 
-**3.1 Select the release tag for the version you want to install.**
+        - Identify the .whl file corresponding to the package variant that you want to install
+        - Continue with the instructions below to install AIMET from the .whl file
 
-For example, "|version|". Releases are listed at: https://github.com/quic/aimet/releases
+        **Step 2:** Set the package details.
 
-- Identify the .whl file corresponding to the package variant that you want to install
-- Continue with the instructions below to install AIMET from the .whl file
+        .. parsed-literal::
 
-**3.2 Set the package details.**
+            # Set the release tag, for example "|version|"
+            export release_tag="<version release tag>"
 
-.. parsed-literal::
+            # Construct the download root URL
+            export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
 
-    # Set the release tag, for example "|version|"
-    export release_tag="<version release tag>"
+            # Set the wheel file name with extension,
+            # for example "aimet_onnx-|version|\+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
+            export wheel_file_name="<wheel file name>"
 
-    # Construct the download root URL
-    export download_url="\https://github.com/quic/aimet/releases/download/${release_tag}"
+            # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
+            export find_pkg_url_str="-f https://download.pytorch.org/whl/torch_stable.html"
 
-    # Set the wheel file name with extension,
-    # for example "aimet_onnx-|version|\+cu118-cp310-cp310-manylinux_2_34_x86_64.whl"
-    export wheel_file_name="<wheel file name>"
+        **Step 3:** Install the selected AIMET package.
 
-    # NOTE: Do the following ONLY for the PyTorch and ONNX variant packages!
-    export find_pkg_url_str="-f https://download.pytorch.org/whl/torch_stable.html"
+        .. note::
 
-**3.3 Install the selected AIMET package.**
+            Python dependencies are automatically installed.
 
-.. note::
+        .. code-block:: bash
 
-    Python dependencies are automatically installed.
+            # Install the wheel package
+            python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}|
 
-.. code-block:: bash
+        **Step 4:** Install the common Debian packages.
 
-    # Install the wheel package
-    python3 -m pip install ${download_url}/${wheel_file_name} ${find_pkg_url_str}|
+        .. code-block:: bash
 
-**3.4 Install the common Debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_common/bin/reqs_deb_common.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 5:** Install the ONNX Debian packages.
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_common/bin/reqs_deb_common.txt | xargs apt-get --assume-yes install
+        .. code-block:: bash
 
-**3.5 Install the ONNX Debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_onnx/bin/reqs_deb_onnx_common.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
+        **Step 6:** Install the ONNX GPU debian packages.
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_onnx/bin/reqs_deb_onnx_common.txt | xargs apt-get --assume-yes install
+        .. code-block:: bash
 
-**3.6 Install the ONNX GPU debian packages.**
+            cat /usr/local/lib/python3.10/dist-packages/aimet_onnx/bin/reqs_deb_onnx_gpu.txt | xargs apt-get --assume-yes install
 
-.. code-block:: bash
 
-    cat /usr/local/lib/python3.10/dist-packages/aimet_onnx/bin/reqs_deb_onnx_gpu.txt | xargs apt-get --assume-yes install
+        **Step 7:** Replace Pillow with Pillow-SIMD (optional).
 
+        Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can improve image processing performance on x86 architecture machines.
 
-**3.7 Replace Pillow with Pillow-SIMD (optional).**
+        .. code-block:: bash
 
-Pillow-SIMD is an optimized version of the Pillow Python Imaging Library. It can improve image processing performance on x86 architecture machines.
+            python3 -m pip uninstall -y pillow
+            python3 -m pip install --no-cache-dir Pillow-SIMD==9.0.0.post1
 
-.. code-block:: bash
 
-    python3 -m pip uninstall -y pillow
-    python3 -m pip install --no-cache-dir Pillow-SIMD==9.0.0.post1
+        **Step 8:** Replace onnxruntime with onnxruntime-gpu.
 
+        .. code-block:: bash
 
-**3.8 Replace onnxruntime with onnxruntime-gpu.**
+            export ONNXRUNTIME_VER=$(python3 -c 'import onnxruntime; print(onnxruntime.__version__)')
+            python3 -m pip uninstall -y onnxruntime
+            python3 -m pip install --no-cache-dir onnxruntime-gpu==$ONNXRUNTIME_VER
 
-.. code-block:: bash
 
-    export ONNXRUNTIME_VER=$(python3 -c 'import onnxruntime; print(onnxruntime.__version__)')
-    python3 -m pip uninstall -y onnxruntime
-    python3 -m pip install --no-cache-dir onnxruntime-gpu==$ONNXRUNTIME_VER
+        **Step 9:** Link to executable paths.
 
+        .. code-block:: bash
 
-**3.9 Link to executable paths.**
+            ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
 
-.. code-block:: bash
 
-    ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so /usr/lib
+        **Step 10:** Run the environment setup script to set common environment variables.
 
+        .. code-block:: bash
 
-**3.10 Run the environment setup script to set common environment variables.**
+            source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
-.. code-block:: bash
 
-    source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
+
+.. |torch_whl_suffix| replace:: \-cp310-none-any.whl

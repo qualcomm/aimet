@@ -1,8 +1,40 @@
+.. include:: abbreviation.txt
+
 .. _rn-index:
 
 #############
 Release notes
 #############
+
+2.0.0
+=====
+
+* New Features
+    * Common
+        * Reorganized the documentation to more clearly explain AIMET procedures
+        * Redesigned the documentation using the `Furo theme <https://sphinx-themes.readthedocs.io/en/latest/sample-sites/furo/>`_
+        * Added post-AIMET procedures on how to take AIMET quantized model to |qnn| and |qai_hub|
+    * PyTorch
+        * BREAKING CHANGE: :mod:`aimet_torch.v2` has become the default API. All the legacy APIs are migrated to :mod:`aimet_torch.v1` subpackage, for example from :mod:`aimet_torch.qc_quantize_op` to :mod:`aimet_torch.v1.qc_quantize_op`
+        * Added Manual Mixed Precision Configurator (Beta) to make it easy to configure a model in Mixed Precision.
+    * ONNX
+        * Optimized :func:`QuantizationSimModel.__init__` latency
+        * Align :mod:`ConnectedGraph` representation with onnx graph
+
+* Bug Fixes
+    * ONNX
+        * Bug fixes for Adaround
+        * Bug fixes for BN fold
+
+* Upgrading
+    * PyTorch
+        * aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x. If you are using low-level components of :class:`QuantizationSimModel`, please see :doc:`Migrate to aimet_torch 2 </apiref/torch/migration_guide>`.
+
+1.35.1
+======
+
+* PyTorch
+    * Fixed package versioning for compatibility with latest pip version
 
 1.35.0
 ======
