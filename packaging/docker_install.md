@@ -201,3 +201,37 @@ cd aimet
 # OR
 ./buildntest.sh -e AIMET_VARIANT -i -n -m "sample_dir_1 sample_dir2" [-l]
 ```
+
+# AIMET 2.0
+## Get the code
+To obtain the code, first define a workspace and follow these instructions:
+
+```bash
+git clone https://github.com/quic/aimet.git
+cd aimet
+```
+## Setup the environment
+In order to build and run AIMET code, several dependencies are required. The [docker file](../Jenkins/fast-release/Dockerfile.ci) provides a docker image with all installed dependencies. To buil a docker image the regular `docker build` commnad should be used. Depends on the desired variant extda arguments should be provided to `docker build` command to specify version of python, cuda, torch, onnx, tensorflow. For example:
+```bash
+docker build --tag aimet --build-arg VER_PYTHON=3.10 --build-arg VER_CUDA=12.1.1 --build-arg VER_TORCH=2.1.2 --file  Jenkins/fast-release/Dockerfile.ci .
+```
+To build AIMET:
+```bash
+docker run --rm --gpus all -v $PWD:$PWD -w $PWD aimet bash -c '. /etc/profile.d/conda.sh ; CMAKE_ARGS='-DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_ONNX=OFF -DENABLE_TENSORFLOW=OFF' python3 -m build --no-isolation .'
+```
+To install AIMET:
+```bash
+docker run --rm --gpus all -v $PWD:$PWD -w $PWD aimet bash -c '. /etc/profile.d/conda.sh ; CMAKE_ARGS='-DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_ONNX=OFF -DENABLE_TENSORFLOW=OFF' python3 -m pip install --no-build-isolation -e .'
+```
+You can also build and/or install AIMET in your own environment. You should have installed cuda and C++ compiler, libeigen3, ninja and pip-tool (to install all dependencies required to build selected AIMET variant):
+```bash
+docker run --rm --gpus all nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 bash -c '\
+    export CMAKE_ARGS="-DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_ONNX=OFF -DENABLE_TENSORFLOW=OFF" ; \
+    apt update -qq && apt install -y git g++ libeigen3-dev ninja-build python3-pip &>/dev/null && \
+    python3 -m pip install pip-tools && \
+    git clone https://github.com/quic/aimet.git && \
+    python3 -m piptools compile --resolver=backtracking --extra=.,dev,test  --output-file=- aimet/pyproject.toml | python3 -m pip install -r /dev/stdin && \
+    python3 -m pip install --no-build-isolation -e ./aimet
+    python3 -m pytest ./aimet/TrainingExtensions/{common,torch}/test/python
+'
+```

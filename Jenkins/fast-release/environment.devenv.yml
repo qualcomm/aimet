@@ -20,6 +20,7 @@ dependencies:
   - python={{ VER_PYTHON }}
   - python-build
   - pip
+  - pip-tools
 {% if CU != 'cpu' %}
   - cuda-toolkit
   - cudnn
