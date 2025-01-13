@@ -39,6 +39,7 @@
 
 #include "trim_functions.hpp"
 #include "DlQuantization/Quantization.hpp"
+#include "tensor_utils.hpp"
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -631,67 +632,32 @@ void quantizeDequantizePerChannel(const DTYPE* in, int numChannel, int numElemen
 
 
 template <typename DTYPE>
-void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, int64_t numElement, int64_t numDims,
-                                    const int64_t* inputStrides, const int64_t* encodingStrides,
-                                    const DTYPE* encodingMin, const DTYPE* encodingMax, const DTYPE* encodingDelta,
-                                    const DTYPE* encodingOffset)
+void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const std::vector<TfEncoding*>& encodings,
+                                    int64_t numElement, const TensorDims& inputStrides,
+                                    const TensorDims& encodingStrides)
 {
     for (size_t i = 0; i < numElement; i++)
     {
         int encodingIdx = 0;
         int remainder   = i;
-        for (auto dim = 0; dim < numDims; dim++)
+        for (auto dim = 0; dim < inputStrides.size(); dim++)
         {
             int dimIdx = remainder / inputStrides[dim];
-            remainder = remainder - dimIdx * inputStrides[dim];
+            remainder  = remainder - dimIdx * inputStrides[dim];
             // encodingStrides will be 0 along broadcast dimensions
             encodingIdx += encodingStrides[dim] * dimIdx;
         }
 
-        auto delta  = *(encodingDelta + encodingIdx);
-        auto offset = *(encodingOffset + encodingIdx);
-        auto min    = *(encodingMin + encodingIdx);
-        auto max    = *(encodingMax + encodingIdx);
+        auto delta  = encodings[encodingIdx]->delta;
+        auto offset = encodings[encodingIdx]->offset;
+        auto min    = encodings[encodingIdx]->min;
+        auto max    = encodings[encodingIdx]->max;
 
         quantizeValueCpu<DTYPE>(in + i, out + i, min, max, delta, offset, ROUND_NEAREST);
 
         dequantizeValueCpu<DTYPE>(out + i, delta, offset);
     }
 }
-
-
-template <typename DTYPE>
-void quantizeDequantizeBroadcast(const DTYPE* in, DTYPE* out, int64_t numElement, int64_t numDims,
-                                 const int64_t* inputStrides, const int64_t* encodingStrides, const DTYPE* encodingMin,
-                                 const DTYPE* encodingMax, const DTYPE* encodingDelta, const DTYPE* encodingOffset,
-                                 ComputationMode modeCpuGpu, void* stream)
-{
-    switch (modeCpuGpu)
-    {
-    case COMP_MODE_CPU:
-        quantizeDequantizeBroadcastCpu(in, out, numElement, numDims, inputStrides, encodingStrides, encodingMin,
-                                       encodingMax, encodingDelta, encodingOffset);
-        break;
-    case COMP_MODE_GPU:
-#ifdef GPU_QUANTIZATION_ENABLED
-        quantizeDequantizeBroadcastGpu(in, out, numElement, numDims, inputStrides, encodingStrides, encodingMin,
-                                       encodingMax, encodingDelta, encodingOffset, stream);
-#else
-        throw std::runtime_error("Not compiled for GPU mode.");
-#endif
-        break;
-    default:
-        throw std::runtime_error("Unknown computation mode.");
-        break;
-    }
-}
-
-
-template void quantizeDequantizeBroadcast(const float* in, float* out, int64_t numElement, int64_t numDims,
-                                          const int64_t* inputStrides, const int64_t* encodingStrides,
-                                          const float* encodingMin, const float* encodingMax,
-                                          const float* encodingDelta, const float* encodingOffset,
-                                          ComputationMode modeCpuGpu, void* stream);
 
 
 template <typename DTYPE>
@@ -705,6 +671,46 @@ void quantizeDequantizePerChannelCpu(const DTYPE* in, int numChannel, int numEle
         quantizeValueCpu<DTYPE>(&in[i], &out[i], encodingMin[channelIdx], encodingMax[channelIdx],
                                 encodingDelta[channelIdx], encodingOffset[channelIdx], roundingMode);
         dequantizeValueCpu<DTYPE>(&out[i], encodingDelta[channelIdx], encodingOffset[channelIdx]);
+    }
+}
+
+template <typename T>
+void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const std::vector<TfEncoding*>& encodings,
+                                 const TensorDims& inputShape, const TensorDims& encodingShape, ComputationMode mode,
+                                 void* stream)
+{
+    auto numElements = getNumel(inputShape);
+
+    auto bcShapes        = getBroadcastableShapes(inputShape, encodingShape);
+    auto bcTensorShape   = std::get<0>(bcShapes);
+    auto bcEncShape      = std::get<1>(bcShapes);
+    auto inputStrides    = shapeToStrides(bcTensorShape);
+    auto encodingStrides = shapeToStrides(bcEncShape);
+
+    // For broadcasting, encodingStrides = 0 over broadcast dimensions
+    for (size_t idx = 0; idx < inputStrides.size(); idx++)
+    {
+        if (bcEncShape[idx] == 1 and bcTensorShape[idx] != 1)
+        {
+            encodingStrides[idx] = 0;
+        }
+    }
+
+    switch (mode)
+    {
+    case COMP_MODE_GPU:
+#ifdef GPU_QUANTIZATION_ENABLED
+        quantizeDequantizeBroadcastGpu(inTensor, outTensor, encodings, numElements, inputStrides, encodingStrides,
+                                       stream);
+#else
+        throw std::runtime_error("Not compiled for GPU mode.");
+#endif
+        break;
+    case COMP_MODE_CPU:
+        quantizeDequantizeBroadcastCpu(inTensor, outTensor, encodings, numElements, inputStrides, encodingStrides);
+        break;
+    default:
+        throw std::runtime_error("Unknown computation mode.");
     }
 }
 
@@ -740,9 +746,12 @@ template void quantizeDequantizePerChannel(const double* in, int numChannel, int
                                            double* encodingOffset, ComputationMode modeCpuGpu,
                                            RoundingMode roundingMode, void* stream);
 
-template void quantizeDequantizeBroadcastCpu(const float* in, float* out, int64_t numElement, int64_t numDims,
-                                             const int64_t* inputStrides, const int64_t* encodingStrides,
-                                             const float* encodingMin, const float* encodingMax,
-                                             const float* encodingDelta, const float* encodingOffset);
+template void quantizeDequantizeBroadcast(const float* inTensor, float* outTensor,
+                                          const std::vector<TfEncoding*>& encodings, const TensorDims& inputShape,
+                                          const TensorDims& encodingShape, ComputationMode mode, void* stream);
+
+template void quantizeDequantizeBroadcastCpu(const float* in, float* out, const std::vector<TfEncoding*>& encodings,
+                                             int64_t numElement, const TensorDims& inputStrides,
+                                             const TensorDims& encodingStrides);
 
 }   // End of namespace DlQuantization

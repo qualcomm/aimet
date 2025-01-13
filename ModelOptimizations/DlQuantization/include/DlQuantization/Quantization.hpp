@@ -148,78 +148,30 @@ enum RoundingMode
     ROUND_STOCHASTIC
 };
 
+using TensorDim = int64_t;
+using TensorDims = std::vector<TensorDim>;
+
 /**
  * @brief Performs quantize-dequantize using numpy-style broadcasting between input and encodings
  *
- * This function takes in input and encoding data along with padded stride information to indicate how the encodings
- * should be applied to the input. The following assumptions must be true about the strides and shapes of the input
- * and encodings:
- *
- *  1) The size of the input and output tensors must be equal to numElement
- *  2) The length of inputStrides and encodingStrides must both be equal to numDims
- *  3) The input data must be viewable as a tensor with rank numDims and strides inputStrides
- *  4) The encoding data must be viewable as a tensor with rank numDims which is broadcastable to
- *     the input tensor under numpy-style broadcasting
- *  5) The encodingStrides must indicate the strides with respect to the output tensor index.
- *     I.e., encodingStrides[i] = 0 for all broadcast dimensions i (examples below)
- *
- * Calculate encodingStride relative to the output tenosr:
- * 1) Pad the encoding shape with leading 1s such that len(encodingShape) == len(outputShape):
- *      outputShape = [x, y, z, w]
- *      encodingShape = [y, z, 1] --> [1, y, z, 1]
- * 2) Calculate the stride based on the padded shape:
- *      encodingStride = [yz, z, 1, 1]
- * 3) Set encodingStride[i] = 0 for all encodingShape[i] = 1 and outputShape[i] != 1:
- *      encodingStride = [0, z, 1, 0]
- *
- * Examples:
- *
- * Given: input tensor shape [x, y, z, w] and encoding shape [x, 1, z, 1]
- *  - Correct:
- *      inputStrides    = [yzw, zw, w, 1]
- *      encodingStrides = [z, 0, 1, 0] <- encodingStrides[i] = 0 where encoding is broadcast to input
- *  - Incorrect
- *      inputStrides    = [yzw, zw, w, 1]
- *      encodingStrides = [z, z, 1, 1] <- encodingStrides are w/r/t the encoding, not output
- *
- * Given: input tensor shape [x, y, z, w] and encoding shape [y, z, 1]
- *  - Correct:
- *      inputStrides = [yzw, zw, w, 1]
- *      encodingStrides = [0, z, 1, 0] <- len(encodingStrides) = numDims
- *  - Incorrect
- *      inputStrides = [yzw, zw, w, 1]
- *      encodingStrides = [z, 1, 0] <- len(encodingStrides) != numDims
- *
- *
- * @tparam DTYPE Floating point data type of input/output/encodings
- * @param in Pointer to input data
- * @param out Pointer to output data, must be on same device as input
- * @param numElement Number of elements in tensor
- * @param numDims Number of tensor dimensions
- * @param inputStrides Pointer to input stride data, must be on same device as input and length numDims
- * @param encodingStrides Pointer to padded encoding stride data, must be on same device as input and length numDims.
- * Should be 0 along broadcast dimensions
- * @param encodingMin Pointer to min encoding data (on same device as input)
- * @param encodingMax Pointer to max encoding data (on same device as input)
- * @param encodingDelta Pointer to delta encoding data (on same device as input)
- * @param encodingOffset Pointer to offset encoding data (on same device as input)
- * @param modeCpuGpu Indicates whether tensors exist on CPU or GPU
- * @param stream Cuda stream on which to launch kernel in GPU mode
+ * @tparam T Floating point data type of input/output/encodings
+ * @param inTensor Pointer to input data
+ * @param outTensor Pointer to output data, must be on same device as input
+ * @param encodings Vector of TfEncoding pointers
+ * @param inputShape Shape of input tensor data
+ * @param encodingShape Shape of encoding vector
+ * @param mode CPU/GPU computation mode
+ * @param stream Pointer cuda stream to use for computation
  */
-template <typename DTYPE>
-void quantizeDequantizeBroadcast(
-    const DTYPE* in,
-    DTYPE* out,
-    int64_t numElement,
-    int64_t numDims,
-    const int64_t* inputStrides,
-    const int64_t* encodingStrides,
-    const DTYPE* encodingMin,
-    const DTYPE* encodingMax,
-    const DTYPE* encodingDelta,
-    const DTYPE* encodingOffset,
-    ComputationMode modeCpuGpu,
-    void* stream);
+template <typename T>
+void quantizeDequantizeBroadcast(const T* inTensor,
+                                 T* outTensor,
+                                 const std::vector<TfEncoding*>& encodings,
+                                 const TensorDims& inputShape,
+                                 const TensorDims& encodingShape,
+                                 ComputationMode mode,
+                                 void* stream = nullptr);
+
 
 }   // End of namespace DlQuantization.
 

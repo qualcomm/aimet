@@ -193,7 +193,8 @@ void modeSpecificActionBroadcastInt(const T* inTensor, T* outTensor, const Broad
     }
     case DlQuantization::TensorQuantizerOpMode::quantizeDequantize:
     {
-        quantizeDequantizeBroadcast(inTensor, outTensor, shapeInfo, encodings, useCuda, allocator, stream);
+        auto mode = useCuda ? DlQuantization::COMP_MODE_GPU : DlQuantization::COMP_MODE_CPU;
+        DlQuantization::quantizeDequantizeBroadcast(inTensor, outTensor, encodings, shapeInfo.tensorShape, shapeInfo.encodingShape, mode, stream);
         break;
     }
     case DlQuantization::TensorQuantizerOpMode::updateStats:

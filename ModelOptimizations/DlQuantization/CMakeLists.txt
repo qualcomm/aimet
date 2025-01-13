@@ -52,6 +52,8 @@ add_library(MoDlQuantization STATIC
       src/TfQuantizer.hpp
       src/trim_functions.cpp
       src/trim_functions.hpp
+      src/tensor_utils.cpp
+      src/tensor_utils.hpp
 
       src/EntropyEncodingAnalyzer.cpp
       src/EntropyEncodingAnalyzer.h
@@ -117,6 +119,7 @@ if (ENABLE_CUDA)
       src/cuda_util.hpp
       src/trim_functions.cuh
       src/math_functions.cu
+      src/tensor_utils.cu
       )
 
     target_compile_options(MoDlQuantizationCuda

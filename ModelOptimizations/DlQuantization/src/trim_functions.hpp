@@ -100,10 +100,9 @@ void quantizeDequantizePerChannel(const DTYPE* in, int numChannel, int numElemen
 
 
 template <typename DTYPE>
-void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, int64_t numElement, int64_t numDims,
-                                    const int64_t* inputStrides, const int64_t* encodingStrides,
-                                    const DTYPE* encodingMin, const DTYPE* encodingMax, const DTYPE* encodingDelta,
-                                    const DTYPE* encodingOffset);
+void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const std::vector<TfEncoding*>& encodings,
+                                    int64_t numElement, const TensorDims& inputStrides,
+                                    const TensorDims& encodingStrides);
 
 
 // GPU implementations ...
@@ -123,10 +122,9 @@ void quantizeDequantizePerChannelGpu(const DTYPE* in, int numChannel, int numEle
                                      DTYPE* encodingOffset, RoundingMode roundingMode, void* stream);
 
 template <typename DTYPE>
-void quantizeDequantizeBroadcastGpu(const DTYPE* in, DTYPE* out, int64_t numElement, int64_t numDims,
-                                    const int64_t* inputStrides, const int64_t* encodingStrides,
-                                    const DTYPE* encodingMin, const DTYPE* encodingMax, const DTYPE* encodingDelta,
-                                    const DTYPE* encodingOffset, void* stream);
+void quantizeDequantizeBroadcastGpu(const DTYPE* in, DTYPE* out, const std::vector<TfEncoding*>& encodings,
+                                    int64_t numElements, const TensorDims& inputStrides,
+                                    const TensorDims& encodingStrides, void* stream);
 
 #endif   // GPU_QUANTIZATION_ENABLED
 

@@ -2,7 +2,7 @@
 //
 //  @@-COPYRIGHT-START-@@
 //
-//  Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+//  Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are met:
@@ -36,51 +36,36 @@
 //
 //==============================================================================
 
-#ifndef AIMET_QUANTIZEDEQUANTIZEUTILS_HPP
-#define AIMET_QUANTIZEDEQUANTIZEUTILS_HPP
+#ifndef DL_QUANTIZATION_TENSOR_UTILS_H
+#define DL_QUANTIZATION_TENSOR_UTILS_H
 
-#include "DlQuantization/TensorQuantizer.h"
-#include "OnnxOpUtils.h"
-#include <cstdint>
-#include <stdexcept>
-#include <vector>
+#include <DlQuantization/Quantization.hpp>
 
-#ifdef ONNX_CUDA
-#include <cuda_runtime_api.h>
-#endif
-
-
-template <typename T>
-void permuteTensorGPU(const T* inTensor, T* outTensor, int64_t numel, int64_t numDims, const int64_t* inputStrides,
-                      const int64_t* outputStrides);
-
-template <typename T>
-void permuteTensorCPU(const T* inTensor, T* outTensor, int64_t numel, int64_t numDims, const int64_t* inputStrides,
-                      const int64_t* outputStrides);
-
-std::vector<int64_t> shapeToStrides(const std::vector<int64_t>& shape);
-
-int64_t getNumElements(const std::vector<int64_t>& shape);
-
-
-struct BroadcastShapeInfo
+namespace DlQuantization
 {
-    BroadcastShapeInfo(const std::vector<int64_t>& inputShape, int channelAxis, int blockAxis, uint blockSize);
 
-    bool hasContiguousBlocks() const;
 
-    std::vector<int64_t> tensorShape;
-    std::vector<int64_t> encodingShape;
-    std::vector<int64_t> tensorStrides;
-    std::vector<int64_t> encodingStrides;
-    int64_t numElements;
-    int64_t numEncodings;
-    int64_t numDims;
-};
+std::tuple<TensorDims, TensorDims> getBroadcastableShapes(const TensorDims& tensorShape,
+                                                          const TensorDims& encodingShape);
 
-// Permutes the input data so each entire encoding block is contiguous in memory
+size_t getNumel(const TensorDims& shape);
+
+TensorDims shapeToStrides(const TensorDims& shape);
+
+bool hasContiguousBlocks(const TensorDims& tensorShape, const TensorDims& encodingShape);
+
 template <typename T>
-void copyToContiguousBlockLayout(const T* inTensor, T* outTensor, const BroadcastShapeInfo& shapeInfo, bool useCuda);
+void permute(const T* input, T* output, const TensorDims& inputShape, std::vector<size_t> order, ComputationMode mode,
+             void* stream = nullptr);
 
+template <typename T>
+void permuteKernelCPU(const T* inTensor, T* outTensor, size_t numel, const TensorDims& inputStrides,
+                      const TensorDims& outputStrides);
 
-#endif   // AIMET_QUANTIZEDEQUANTIZEUTILS_HPP
+template <typename T>
+void permuteKernelGPU(const T* inTensor, T* outTensor, size_t numel, const TensorDims& inputStrides,
+                      const TensorDims& outputStrides, void* stream);
+
+}   // namespace DlQuantization
+
+#endif   // DL_QUANTIZATION_TENSOR_UTILS_H
