@@ -28,23 +28,13 @@ We also host the [AIMET Model Zoo](https://github.com/quic/aimet-model-zoo) - a 
 - [Team](#team)
 - [License](#license)
 
-## Quick Installation
+## Installation
 
-The AIMET PyTorch GPU PyPI packages are available for environments that meet the following requirements:
+To install the latest version of AIMET for supported frameworks and compute platforms, see [Install and run AIMET](https://quic.github.io/aimet-pages/releases/latest/install)
 
-* 64-bit Intel x86-compatible processor
-* Linux Ubuntu 22.04 LTS [Python 3.10] or Linux Ubuntu 20.04 LTS [Python 3.8]
-* Torch 2.1.2+cu121
+### Building from source
 
-### Installation
-```
-apt-get install liblapacke
-python3 -m pip install aimet-torch
-```
-
-To install other AIMET variants and versions, please follow one of the links below for instructions:
-- [Install and run AIMET in *Ubuntu* environment](https://quic.github.io/aimet-pages/releases/latest/install)
-- [Build, install and run AIMET from source in *Docker* environment](./packaging/docker_install.md)
+To build the latest AIMET code from the source, see [Build, install and run AIMET from source in *Docker* environment](./packaging/docker_install.md)
 
 
 ## Why AIMET?
@@ -203,8 +193,8 @@ The DFQ method applied to several popular networks, such as MobileNet-v2 and Res
 <br>
 
 ## Resources
-* [User Guide](https://quic.github.io/aimet-pages/releases/latest/user_guide/index.html)
-* [API Docs](https://quic.github.io/aimet-pages/releases/latest/api_docs/index.html)
+* [Documentation Main Page](https://quic.github.io/aimet-pages/releases/latest/index.html)
+* [API Reference](https://quic.github.io/aimet-pages/releases/latest/apiref/index.html)
 * [Discussion Forums](https://github.com/quic/aimet/discussions)
 * [Tutorial Videos](https://quic.github.io/aimet-pages/index.html#video)
 * [Example Code](Examples/README.md)
