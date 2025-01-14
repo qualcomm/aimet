@@ -39,15 +39,15 @@ import onnxruntime as ort
 import pytest
 import numpy as np
 import torch
-from torch import nn
 import onnx
 import tempfile
 import aimet_torch.v2 as aimet
 import aimet_torch.v2.quantization as Q
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from torchvision.models import resnet18
+from torchvision.models import resnet18, mobilenet_v3_small
 from aimet_torch.v2.experimental.onnx._export import export as _export
-
+from aimet_torch.utils import get_all_quantizers
+from aimet_torch.model_preparer import prepare_model
 
 
 @pytest.fixture(autouse=True, params=range(1))
@@ -82,7 +82,7 @@ def test_quantize_torch_ort_equal(qtzr_cls, input_shape, scale_shape, block_size
         full_path = os.path.join(dirname, "qtzr.onnx")
 
         with open(full_path, "wb") as f:
-            torch.onnx.export(qtzr, x, f, input_names=['input'], output_names=['output'])
+            _export(qtzr, x, f, input_names=['input'], output_names=['output'])
 
         with torch.no_grad():
             y = qtzr(x)
@@ -108,6 +108,21 @@ def test_quantize_torch_ort_equal(qtzr_cls, input_shape, scale_shape, block_size
         assert node.attribute[1].i == (127 if symmetric else 255)
         assert node.attribute[2].name == 'qmin'
         assert node.attribute[2].i == (-128 if symmetric else 0)
+
+        """
+        Then: The saved onnx model should contain exactly one graph node in "aimet" domain
+              with proper scale and offset values
+        """
+        const_map = {node.output[0]: node for node in model.graph.node if node.op_type == "Constant"}
+        assert node.input[1] in const_map
+        assert node.input[2] in const_map
+        onnx_scale = torch.tensor(onnx.numpy_helper.to_array(const_map[node.input[1]].attribute[0].t))
+        onnx_offset = torch.tensor(onnx.numpy_helper.to_array(const_map[node.input[2]].attribute[0].t))
+        if scale_shape == []:
+            onnx_scale.squeeze_(0)
+            onnx_offset.squeeze_(0)
+        assert torch.equal(onnx_scale, qtzr.get_scale())
+        assert torch.equal(onnx_offset, qtzr.get_offset())
 
         """
         Then: The saved onnx model should produce the same output with the original quantizer
@@ -148,7 +163,7 @@ def test_dequantize_torch_ort_equal(input_shape, scale_shape, block_size, symmet
         full_path = os.path.join(dirname, "qtzr.onnx")
 
         with open(full_path, "wb") as f:
-            torch.onnx.export(Dequantize(), x, f, input_names=['input'], output_names=['output'])
+            _export(Dequantize(), x, f, input_names=['input'], output_names=['output'])
 
         with torch.no_grad():
             y = x.dequantize()
@@ -182,13 +197,16 @@ def test_dequantize_torch_ort_equal(input_shape, scale_shape, block_size, symmet
 
 
 @torch.no_grad()
-def test_resnet18():
+@pytest.mark.parametrize("model_factory, input_shape", [(resnet18, (1, 3, 224, 224)),
+                                                        (mobilenet_v3_small, (1, 3, 224, 224)),
+                                                        ])
+def test_export_torchvision_models(model_factory, input_shape):
     """
-    When: Export quantized resnet18 and run it on onnx runtime
-    Then: The onnx model should produce output close enough to the original pytorch model
+    When: Export quantized torchvision model
     """
-    x = torch.randn(1, 3, 224, 224)
-    model = resnet18(pretrained=False).eval()
+    x = torch.randn(input_shape)
+    model = model_factory().eval()
+    model = prepare_model(model)
     model = QuantizationSimModel(model, x).model
 
     with aimet.nn.compute_encodings(model):
@@ -197,31 +215,36 @@ def test_resnet18():
     y = model(x)
 
     with tempfile.TemporaryDirectory() as dirname:
-        full_path = os.path.join(dirname, "resnet18.onnx")
+        full_path = os.path.join(dirname, "torchvision_model.onnx")
 
         with open(full_path, "wb") as f:
-            torch.onnx.export(model, x, f, input_names=['input'], output_names=['output'])
+            _export(model, x, f, input_names=['input'], output_names=['output'])
 
         onnx_model = onnx.load_model(full_path)
         onnx.checker.check_model(onnx_model)
 
+        """
+        Then: The onnx model should have the same number of quant nodes
+              as the number of quantizers in the original pytorch model
+        """
+        nodes = [node for node in onnx_model.graph.node if node.domain == 'aimet']
+        quantizers_in_model = [qtzr for qtzr_group in get_all_quantizers(model) for qtzr in qtzr_group if qtzr]
+        assert len(nodes) == len(quantizers_in_model)
+
+        """
+        Then: The quant nodes in the onnx model should have constant scale and offset values
+        """
+        const_map = {node.output[0]: node for node in onnx_model.graph.node if node.op_type == "Constant"}
+        for node in nodes:
+            assert node.input[1] in const_map
+            assert node.input[2] in const_map
+
+        """
+        Then: The onnx model should produce output close enough to the original pytorch model
+        """
         sess = ort.InferenceSession(full_path, providers=['CPUExecutionProvider'])
         out, = sess.run(None, {'input': x.numpy()})
 
         # Allow off-by-3 error
-        atol = 3 * model.fc.output_quantizers[0].get_scale().item()
+        atol = 3 * y.encoding.scale.item()
         assert torch.allclose(torch.from_numpy(out), y, atol=atol)
-
-
-def test_export(tmpdir):
-    model = nn.Sequential(
-        nn.Conv2d(3, 3, 3),
-        nn.ReLU(),
-        nn.Softmax(),
-    )
-    args = (torch.randn(1, 3, 224, 224),)
-    sim = QuantizationSimModel(model, args)
-    sim.compute_encodings(lambda model: model(*args))
-
-    with open(os.path.join(tmpdir, 'out.onnx'), 'wb') as f:
-        _export(sim.model, args, f)
