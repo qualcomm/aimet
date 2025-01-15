@@ -46,7 +46,6 @@ import torch
 from torch.onnx import is_in_onnx_export, symbolic_helper
 
 from aimet_torch.v2.utils import patch_attr
-from aimet_torch.quantization.base import QuantizerBase
 
 
 aimet_opset = onnxscript.values.Opset(domain="aimet", version=1)
@@ -219,6 +218,8 @@ def export(model: torch.nn.Module, *args, **kwargs):
 
 @contextmanager
 def _precompute_encodings(model: torch.nn.Module):
+    # pylint: disable=import-outside-toplevel
+    from aimet_torch.quantization.base import QuantizerBase
     with ExitStack() as stack:
         for q in model.modules():
             if isinstance(q, QuantizerBase):
