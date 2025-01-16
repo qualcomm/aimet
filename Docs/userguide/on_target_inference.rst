@@ -6,13 +6,13 @@
 On-target inference
 ###################
 
-In order to run AIMET quantized model on a target device, you need following two things:
+Running an AIMET quantized model on a target device requires two things:
 
-- an exported model,
-- an encodings JSON file containing quantization parameters (like **encoding min/max/scale/offset**) associated with each quantizers.
+- An exported model
+- An encodings JSON file containing quantization parameters (encoding, min, max, scale, offset) for each quantizer
 
-AIMET :class:`QuantizationSimModel` provides :func:`QuantizationSimModel.export` functionality
-to generate both the items. The exported model type will differ based on the framework used:
+AIMET :class:`QuantizationSimModel` uses the :func:`QuantizationSimModel.export` function
+to generate both these artifacts. The exported model format differs based on the model's framework:
 
 .. list-table::
    :widths: 8 8
@@ -27,140 +27,145 @@ to generate both the items. The exported model type will differ based on the fra
    * - TensorFlow
      - .h5 or .pb
 
+You can use Qualcomm\ |reg| AI hub to compile a model and submit an inference job, or use the Qualcomm\ |reg| AI Engine Direct SDK to quantize, compile, and run your model.
 
 Qualcomm\ |reg| AI hub
 ======================
 
-|qai_hub|_ simplifies the AI model deployment on a device with runtimes like |qnn|_, |tflite|_ and |ort|_.
+|qai_hub|_ is an online platform for developers that simplifies AI model deployment on devices with runtimes like |qnn|_ (QAIRT), |tflite|_ and |ort|_.
 
-Once the AIMET exported model and an encodings JSON file have been obtained, the artifacts can be passed to the |qai_hub| for compilation,
-profiling and inference.
+Once you have obtained an AIMET exported model and a JSON encodings file, you can pass them to the |qai_hub| for compilation, profiling, and inference.
 
-Follow these instructions to `compile AIMET quantized model <https://app.aihub.qualcomm.com/docs/hub/compile_examples.html#compiling-models-quantized-with-aimet-to-tflite-or-qnn>`_ and then submit an inference job using selected device.
+Follow the `instructions <https://app.aihub.qualcomm.com/docs/hub/compile_examples.html#compiling-models-quantized-with-aimet-to-tflite-or-qnn>`_ at the Qualcomm\ |reg| AI hub to compile a model and submit an inference job using the selected device.
 
 
 Qualcomm\ |reg| AI Engine Direct SDK
 ====================================
 
-|qnn|_ also enables to run AI model inference on a device.
+|qnn|_ enables you to run AI model inference on a device.
 
-Once the AIMET exported model and an encodings JSON file have been obtained, the artifacts can be passed to the |qnn| tools for conversion,
-quantization, compilation and execution.
+Once you have obtained an AIMET exported model and an encodings JSON file, you can pass them to the |qnn| tools for conversion, quantization, compilation, and execution.
 
+Follow the instructions below to use the Qualcomm\ |reg| AI Engine Direct SDK.
 
-Conversion
-~~~~~~~~~~
+1. Converting the model
+-----------------------
 
-|qnn| SDK ``qairt-converter`` tool converts a model from PyTorch/ONNX/TensorFlow framework to a equivalent DLC (``*.dlc``) graph format representation.
-The encoding files generated from the AIMET workflow are provided as an input to this step via the ``–-quantization_overrides`` option.
+The |qnn| SDK ``qairt-converter`` tool converts a model from the PyTorch, ONNX, or TensorFlow framework to a equivalent DLC (``*.dlc``) graph format representation. You provide the encoding files generated from the AIMET workflow as input to this step via 
+the ``–-quantization_overrides`` option.
+
+To convert the model, use the following command line instruction:
 
 .. code-block:: shell
-
-     Basic command line usage looks like:
 
      qairt-converter --input_network <AIMET_exported_model_path> --quantization_overrides <AIMET_exported_model.encodings>
                      --output_path <non-quantized_dlc>
 
-     arguments:
-     --input_network <AIMET_exported_model_path>
-       Path to the AIMET exported (PyTorch/ONNX/TensorFlow) model
+where:
 
-     --quantization_overrides <AIMET_exported_model.encodings>
-       Path to the AIMET exported encodings JSON file containing quantization parameters
+--input_network <AIMET_exported_model_path>
+  Is the path to the AIMET exported (PyTorch, ONNX, or TensorFlow) model
 
-     --output_path <non-quantized_dlc>
-       Path where the converted non-quantized DLC (*.dlc) should be saved.
+--quantization_overrides <AIMET_exported_model.encodings>
+  Is the path to the AIMET exported encodings JSON file containing the quantization parameters
 
-This step generates a DLC (``*.dlc``) file that represents the model as a series of QAIRT API calls.
+--output_path <non-quantized_dlc>
+  Is the path where the converted non-quantized DLC should be saved
 
-Please refer the |qnn_docs|_ for more details.
+This step generates a DLC file that represents the model as a series of QAIRT API calls.
 
-
-Quantization
-~~~~~~~~~~~~
-
-|qnn| SDK ``qairt-quantizer`` tool converts a non-quantized DLC (``*.dlc``) model into quantized (``*.dlc``) model.
-
-.. code-block:: shell
-
-     Basic command line usage looks like:
-
-     qairt-quantizer --input_dlc <non-quantized_dlc> --output_dlc <quantized_dlc>
-                     --float_fallback
-
-     arguments:
-     --input_dlc <non-quantized_dlc>
-        Path to the non-quantized DLC (*.dlc) container containing the model
-
-     --output_dlc <quantized_dlc>
-        Path at which the quantized DLC (*.dlc) container will be saved.
-
-     --float_fallback
-        Enables fallback option to FP32 for ops whose quantization parameters are missing in the provided encodings JSON file.
-
-Please refer the |qnn_docs|_ for more details.
+See the |qnn_docs|_ for more details.
 
 
-Compilation
-~~~~~~~~~~~
+2. Quantizating the model
+-------------------------
 
-|qnn| SDK ``qnn-context-binary-generator`` tool compiles the quantized DLC (``*.dlc``) from the previous step into QNN
-serialized context binary applicable to the |qnn| HTP backend.
+The |qnn| SDK ``qairt-quantizer`` tool converts a non-quantized DLC (``*.dlc``) model into a quantized DLC model.
+
+To quantize the model, use the following command line instruction:
 
 .. code-block:: shell
 
-     Basic command line usage looks like:
+    qairt-quantizer --input_dlc <non-quantized_dlc> --output_dlc <quantized_dlc>
+                    --float_fallback
+
+where:
+
+--input_dlc <non-quantized_dlc>
+  Is the path to the non-quantized DLC containing the model
+
+--output_dlc <quantized_dlc>
+  Is the path at which to save the quantized DLC container
+
+--float_fallback
+  Enables a fallback option to retain FP32 quantization for ops whose quantization parameters are missing in the encodings JSON file
+
+See the |qnn_docs|_ for more details.
+
+
+3. Compiling the model
+----------------------
+
+The |qnn| SDK ``qnn-context-binary-generator`` tool compiles the quantized DLC (``*.dlc``) from the previous step into a QNN serialized context binary compatible with the |qnn| Hexagon tensor processor (HTP) back end.
+
+To compile the model, use the following command line instruction:
+
+.. code-block:: shell
 
      qnn-context-binary-generator --model <libQnnModelDlc.so> --backend <libQnnHtp.so>
                                   --dlc_path <quantized_dlc>
                                   --output_dir <output_dir_path>
                                   --binary_file <binary_file_name>
 
-    arguments:
-    --model <libQnnModelDlc.so>
-      Path to QNN <libQnnModelDlc.so> file.
+where:
 
-    --backend <libQnnHtp.so>
-      Path to a QNN backend <libQnnHtp.so> library to create the context binary.
+--model <libQnnModelDlc.so>
+  Is the path to the QNN <libQnnModelDlc.so> file
 
-    --dlc_path <quantized_dlc>
-      Path to quantized (*.dlc) from which to load the model.
+--backend <libQnnHtp.so>
+  Is the path to a QNN back-end <libQnnHtp.so> library used to create the context binary
 
-    --output_dir <output_dir_path>
-      The directory to save output to.
+--dlc_path <quantized_dlc>
+  Is the path to the quantized DLC from which to load the model
 
-    --binary_file <binary_file_name>
-      Name of the binary file to save the serialized context binary to with ``.bin`` file extension.
+--output_dir <output_dir_path>
+  Is the directory to save the output to
 
-Upon completion of this step, QNN context binaries for the model is available in ``/output_dir_path/binary_file_name.bin``.
-
-Please refer the |qnn_docs|_ for additional |qnn| HTP backend specific optional arguments.
+--binary_file <binary_file_name>
+  Is the name of the binary file to save the serialized context binary to, with the ``.bin`` file extension
 
 
-Execution
-~~~~~~~~~
+Upon completion of this step, the QNN context binary for the model is available 
+in ``/output_dir_path/binary_file_name.bin``.
 
-|qnn| SDK ``qnn-net-run`` tool executes the model (represented as serialized context binary) on the desired target.
+See the |qnn_docs|_ for optional |qnn| HTP back-end-specific arguments.
+
+
+4. Executing the model
+----------------------
+
+The |qnn| SDK ``qnn-net-run`` tool executes the model (represented as serialized context binary) on the specified target.
+
+To execute the model, use the following command line instruction:
 
 .. code-block:: shell
-
-      Basic command line usage looks like:
 
       qnn-net-run --backend <libQnnHtp.so> --retrieve_context <binary_file_name>
                   --input_list <input_list>.txt --output_dir <output_path>
 
-      arguments:
-      --backend <libQnnHtp.so>
-        Path to a QNN backend <libQnnHtp.so> library to execute the model.
 
-      --retrieve_context <binary_file_name>
-        Path to serialized context binary from which to load a saved context from.
+where:
 
-      --input_list <input_list.txt>
-        Path to a file containing the inputs for the model.
+--backend <libQnnHtp.so>
+  Is the path to a QNN backend library to execute the model
 
-      --output_dir <output_dir_path>
-        The directory to save output to.
+--retrieve_context <binary_file_name>
+  Is the path to serialized context binary from which to load a saved context
 
-Please refer the |qnn_docs|_ for additional |qnn| HTP backend specific optional arguments.
+--input_list <input_list.txt>
+  Is the path to a file containing the inputs for the model
 
+--output_dir <output_dir_path>
+  Is the directory to save output to 
+
+See the |qnn_docs|_ for optional |qnn| HTP back-end-specific arguments.

@@ -33,11 +33,14 @@ Glossary
    Batch Normalization
       A technique for normalizing a layer's input to accelerate the convergence of deep network models.
 
-   BN
-     :term: `Batch Normalization`.
-
    Batch Normalization Folding (BN Folding)
       A model optimization technique that merges :term:`Batch Normalization` layers to eliminate the need to compute :term:`Batch Normalization` during :term:`inference`. 
+
+   BERT
+      Bidirectional Encoder Representations from Transformers. A language representation model introduced at Google.
+   
+   BN
+     :term: `Batch Normalization`.
 
    CNN
       :term:`Convolutional neural network`.
@@ -54,8 +57,11 @@ Glossary
    Device
       A portable computation platform such as a mobile phone or a laptop. 
 
+   DLC
+      Deep learning container.
+
    DLF
-      Dynamic Layer Fusion.
+      Dynamic layer fusion.
 
    Dynamic Layer Fusion
       A method for merging adjacent layers to decrease computational load during :term:`inference`.
@@ -69,6 +75,12 @@ Glossary
    FP32
       32-bit floating-point precision, the default data type for representing weights and :term:`activations` in most deep learning frameworks.
 
+   Heterogeneous bit-width
+      Having more than one level of computational precision in the same model.
+
+   HTP
+      Hexagon tensor processor.
+   
    Inference
       The process of employing a trained AI model for its intended purpose: prediction, classification, content generation, etc.
 
@@ -87,6 +99,9 @@ Glossary
    LoRA MobileNet
       A family of :term:`convolutional neural network` architectures developed at Google optimized to operate efficiently with constrained computational resources.
 
+   Mixed precision
+      Another term for :term:`Heterogeneous bit-width.`
+   
    Model
       A computational structure made up of :term:`layers` of :term:`nodes` connected by :term:`weights`.
 
@@ -101,6 +116,12 @@ Glossary
 
    NNCF
       :term:`Neural Network Compression Framework`.
+
+   Off-target
+      Running in a non-target-device environment such as in :term:`QuantSim` on a sever.
+
+   On-target
+      Running on a target device. A target device is an :term:`edge device` that requires a quantized :term:`target runtime`. 
 
    ONNX
       :term:`Open Neural Network Exchange`.
@@ -123,17 +144,26 @@ Glossary
    PyTorch
       A open-source deep learning framework developed by Facebook's AI Research lab (FAIR), widely used in research environments.
 
+   QAIRT
+      Qualcomm AI Engine Direct. (Formerly Qualcomm AI run-time.)
+   
    QAT
       :term:`Quantization Aware Training`.
 
-   QDO
+   QDQ
       Quantize and dequantize operations.
+
+   QNN
+      Qualcomm Neural Network. Another name for Qualcomm AI Engine Direct.
+
+   Qualcomm AI Engine Direct
+      An SDK for running models on Qualcomm accelerators.
 
    Qualcomm Innovation Center
       A division of Qualcomm, Inc. responsible for developing advanced technologies and open-source projects, including AIMET.
 
    Quantization
-      A model :term:`compression` technique that reduces the bits used to represent each weight and :term:`activation` in a neural network, typically from floating-point 32-bit numbers to 8-bit integers.
+      A model :term:`compression` technique that reduces the bits used to represent each weight and :term:`activation` in a neural network, often from floating-point 32-bit numbers to 8-bit integers.
 
    Quantization-Aware Training
       A technique in which :term:`quantization` is simulated throughout the training process so that the network adapts to the lower precision during training.
@@ -162,5 +192,8 @@ Glossary
    Variant
       The combination of machine learning framework (:term:`PyTorch`, :term:`TensorFlow`, or :term:`ONNX`) and processor (Nvidia version or CPU) that determines which version of the AIMET API to install.
 
+   W16A16
+      An abbreviation for "weights 16, activations 16", indicating that both weights and activations are set to 16-bit integer quantization.
+   
    Weights
       Parameters that collectively represent features in a model.
