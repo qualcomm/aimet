@@ -36,15 +36,12 @@
 //
 //==============================================================================
 
+#include "test_quantization_lib.hpp"
 #include "quantization_utils.hpp"
 #include "tensor_utils.hpp"
 #include <gtest/gtest.h>
 #include <random>
 #include <cmath>
-
-#ifdef GPU_QUANTIZATION_ENABLED
-#include "cuda_runtime_api.h"
-#endif
 
 using namespace DlQuantization;
 
@@ -307,88 +304,72 @@ TEST_F(TestUtilitiesCpu, SANITY_QuantizeSingleChannelPerBlockScale) {
 }
 
 
-void launchPermuteKernel(float* in, float* out, std::vector<TensorDim> shape, std::vector<size_t> order, bool useCuda)
+template <typename TypeParam>
+class TestUtilitiesCpuGpu : public ::testing::Test
+{};
+
+TYPED_TEST_CASE(TestUtilitiesCpuGpu, TestDataTypesAndDevices);
+
+TYPED_TEST(TestUtilitiesCpuGpu, TensorBlockPermute)
 {
-    auto mode = useCuda ? COMP_MODE_GPU : COMP_MODE_CPU;
-    size_t numElements = getNumel(shape);
-    void* inputBuffer;
-    void* outputBuffer;
-    if (useCuda)
-    {
-        cudaMalloc(&inputBuffer, sizeof(float) * numElements);
-        cudaMalloc(&outputBuffer, sizeof(float) * numElements);
-        cudaMemcpy(inputBuffer, in, numElements * sizeof(float), cudaMemcpyHostToDevice);
-    }
-    else
-    {
-        inputBuffer = in;
-        outputBuffer = out;
-    }
+    if (!CheckRunTest<TypeParam>())
+        return;
 
-    permute((float*) inputBuffer, (float*) outputBuffer, shape, order, mode);
+    typedef typename TypeParam::dataType DataType;
 
-    if (useCuda)
-    {
-        cudaMemcpy(out, outputBuffer, numElements * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(outputBuffer);
-        cudaFree(inputBuffer);
-    }
-
-}
-
-TEST(TestUtilities, TensorBlockPermute)
-{
     const int numElements = 16;
 
-    float in[numElements] = {1.0f, 2.0f,     3.0f, 4.0f,
+    DataType in[numElements] = {1.0f, 2.0f,     3.0f, 4.0f,
                              5.0f, 6.0f,     7.0f, 8.0f,
                              9.0f, 10.0f,    11.0f, 12.0f,
                              13.0f, 14.0f,   15.0f, 16.0f};
 
-    float out[numElements];
+    DataType out[numElements];
 
     std::vector<int64_t> inputShape = {2, 2, 2, 2};
     std::vector<size_t> order = {0, 3, 1, 2};
 
+    DataType expected[numElements] = {1.0f,  3.0f,  5.0f,  7.0f,
+                                      2.0f,  4.0f,  6.0f,  8.0f,
+                                      9.0f, 11.0f, 13.0f, 15.0f,
+                                      10.0f, 12.0f, 14.0f, 16.0f};
 
-    float expected[numElements] = {1.0f,  3.0f,  5.0f,  7.0f,
-                                   2.0f,  4.0f,  6.0f,  8.0f,
-                                   9.0f, 11.0f, 13.0f, 15.0f,
-                                   10.0f, 12.0f, 14.0f, 16.0f};
+    Blob<TypeParam> inputBlob(in, numElements);
+    Blob<TypeParam> outputBlob(out, numElements);
 
-    std::vector<bool> useCuda = {false};
-#ifdef GPU_QUANTIZATION_ENABLED
-    useCuda.push_back(true);
-#endif
+    permute(inputBlob.getDataPtrOnDevice(), outputBlob.getDataPtrOnDevice(), inputShape, order, TypeParam::modeCpuGpu);
+    DataType* output = outputBlob.getDataPtrOnCpu();
 
-    for (int c = 0; c < 2; c++)
+    for (int i = 0; i < numElements; i++)
     {
-        launchPermuteKernel(in, out, inputShape, order, useCuda[c]);
-        for (int i = 0; i < numElements; i++)
-        {
-            EXPECT_EQ(out[i], expected[i]);
-        }
+        EXPECT_EQ(output[i], expected[i]);
     }
 
 }
 
 
-TEST(TestUtilities, TensorBlockPermute2) {
+TYPED_TEST(TestUtilitiesCpuGpu, TensorBlockPermute2) {
+
+    if (!CheckRunTest<TypeParam>())
+        return;
+
+    typedef typename TypeParam::dataType DataType;
+
     const int numElements = 64;
     const int outDims = 4;
     const int numElementsPerEncoding = 8;
 
 
-    float inp[4][2][2][4];   // becomes [4][2][2][4]
-    float* in = &inp[0][0][0][0];
-    float enc[4][1][2][1];  // becomes [4][1][2][1]
+    DataType inp[4][2][2][4];   // becomes [4][2][2][4]
+    DataType* in = &inp[0][0][0][0];
+    DataType enc[4][1][2][1];  // becomes [4][1][2][1]
     std::vector<size_t> order = {0, 2, 1, 3};
     std::vector<int64_t> encodingStrides = {2, 0, 1, 0};
     std::vector<int64_t> inputStrides = {16, 8, 4, 1};
 
     std::vector<int64_t> inputShape = {4, 2, 8};
 
-    float out[4 * 2 * 8];
+    DataType out[4 * 2 * 8];
 
     for (int i = 0; i < 4; i++)
     {
@@ -398,45 +379,47 @@ TEST(TestUtilities, TensorBlockPermute2) {
             {
                 for (int m = 0; m < 4; m++)
                 {
-                    inp[i][j][k][m] = static_cast<float>(k) + 2.0f * static_cast<float>(i);
+                    inp[i][j][k][m] = static_cast<DataType>(k) + 2.0f * static_cast<DataType>(i);
                 }
             }
         }
     }
 
-    float expected[numElements];
+    DataType expected[numElements];
     for (int i = 0; i < numElements; i++)
     {
-        expected[i] = static_cast<float>(i / numElementsPerEncoding);
+        expected[i] = static_cast<DataType>(i / numElementsPerEncoding);
     }
 
-    std::vector<bool> useCuda = {false};
-#ifdef GPU_QUANTIZATION_ENABLED
-    useCuda.push_back(true);
-#endif
+    Blob<TypeParam> inputBlob(in, numElements);
+    Blob<TypeParam> outputBlob(out, numElements);
 
-    for (int c = 0; c < 2; c++)
-    {
-        // Launch the kernel
-        launchPermuteKernel(in, out, inputShape, order, useCuda[c]);
+    permute(inputBlob.getDataPtrOnDevice(), outputBlob.getDataPtrOnDevice(), inputShape, order, TypeParam::modeCpuGpu);
+    DataType* output = outputBlob.getDataPtrOnCpu();
 
         // Check the results
-        for (int i = 0; i < numElements; i++)
-        {
-            EXPECT_EQ(out[i], expected[i]);
-        }
+    for (int i = 0; i < numElements; i++)
+    {
+        EXPECT_EQ(output[i], expected[i]);
     }
+
 }
 
-TEST(TestUtilities, TensorBlockPermute3) {
+TYPED_TEST(TestUtilitiesCpuGpu, TensorBlockPermute3) {
+
+    if (!CheckRunTest<TypeParam>())
+        return;
+
+    typedef typename TypeParam::dataType DataType;
+
     const int numElements = 16;
 
-    float in[numElements] = {1.0f, 2.0f,     3.0f, 4.0f,
+    DataType in[numElements] = {1.0f, 2.0f,     3.0f, 4.0f,
                              5.0f, 6.0f,     7.0f, 8.0f,
                              9.0f, 10.0f,    11.0f, 12.0f,
                              13.0f, 14.0f,   15.0f, 16.0f};
 
-    float out[numElements];
+    DataType out[numElements];
 
 
     std::vector<int64_t> inputShape = {4, 2, 2};
@@ -446,26 +429,22 @@ TEST(TestUtilities, TensorBlockPermute3) {
     std::vector<size_t> order = {1, 0, 2};
 
     // Check the results
-    float expected[numElements] = {1.0f, 2.0f,   5.0f, 6.0f,
-                                   9.0f, 10.0f,  13.0f, 14.0f,
-                                   3.0f, 4.0f,   7.0f, 8.0f,
-                                   11.0f, 12.0f, 15.0f, 16.0f};
+    DataType expected[numElements] = {1.0f, 2.0f,   5.0f, 6.0f,
+                                      9.0f, 10.0f,  13.0f, 14.0f,
+                                      3.0f, 4.0f,   7.0f, 8.0f,
+                                      11.0f, 12.0f, 15.0f, 16.0f};
 
-    std::vector<bool> useCuda = {false};
-#ifdef GPU_QUANTIZATION_ENABLED
-    useCuda.push_back(true);
-#endif
+    Blob<TypeParam> inputBlob(in, numElements);
+    Blob<TypeParam> outputBlob(out, numElements);
 
-    for (int c = 0; c < 2; c++)
+    permute(inputBlob.getDataPtrOnDevice(), outputBlob.getDataPtrOnDevice(), inputShape, order, TypeParam::modeCpuGpu);
+    DataType* output = outputBlob.getDataPtrOnCpu();
+
+    for (int i = 0; i < numElements; i++)
     {
-        // Launch the kernel
-        launchPermuteKernel(in, out, inputShape, order, useCuda[c]);
-
-        for (int i = 0; i < numElements; i++)
-        {
-            EXPECT_EQ(out[i], expected[i]);
-        }
+        EXPECT_EQ(output[i], expected[i]);
     }
+
 }
 
 TEST(TestUtilities, TestGetNumel)
