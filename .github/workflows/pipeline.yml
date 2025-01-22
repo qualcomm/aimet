@@ -174,7 +174,7 @@ jobs:
         with:
           path: ./.conda
           key: ${{ matrix.id }}-${{ hashFiles('pyproject.toml', 'packaging/dependencies/**/*.txt', 'packaging/dependencies/plugins/**/*.py') }}
-      - name: Create python virtial environment
+      - name: Create python virtual environment
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           echo "\
@@ -189,7 +189,30 @@ jobs:
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
           ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find wheelhouse -name '*.whl')[test]"
-      - run: |
+      - name: Run pylint
+        run: |
+          set -x
+
+          if [ "${{ matrix.VER_TORCH }}" != "" ]; then
+            export AIMET_PKG_NAME="aimet_torch"
+          elif [ "${{ matrix.VER_TENSORFLOW }}" != "" ]; then
+            export AIMET_PKG_NAME="aimet_tensorflow"
+          elif [ "${{ matrix.VER_ONNX }}" != "" ]; then
+            export AIMET_PKG_NAME="aimet_onnx"
+          fi
+
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
+              python3 -c "import ${AIMET_PKG_NAME}; \
+                          import aimet_common; \
+                          print(' '.join([ \
+                            *${AIMET_PKG_NAME}.__path__, \
+                            *aimet_common.__path__, \
+                          ]))" \
+          | tail -n 1 \
+          | xargs -r ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
+              python3 -m pylint --rcfile=.pylintrc
+      - name: Run unit tests
+        run: |
           TEST_DIR=""
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               TEST_DIR="$TEST_DIR ./TrainingExtensions/tensorflow/test"

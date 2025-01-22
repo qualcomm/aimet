@@ -10,14 +10,16 @@ extension-pkg-whitelist=
 ignore=CVS,
        apply_adaround.py,
        apply_bnf.py,
-       apply_cle.py,       
+       apply_cle.py,
        apply_bn.py,
        create_quantizationsimmodel.py,
        evaluate.py,
-       installation_verification.py,       
+       installation_verification.py,
        export.py,
        pass_calibration_data.py,
-       prepare_model.py
+       prepare_model.py,
+       _deps.py,
+       libaimet_tf_ops
 
 # Add files or directories matching the regex patterns to the blacklist. The
 # regex matches against base names, not paths.

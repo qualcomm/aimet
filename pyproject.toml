@@ -21,6 +21,7 @@ test = [
   "matplotlib",
   "onnxruntime",
   "peft",
+  "pylint==2.8.3",
   "pytest",
   "pytest-github-report",
   "pytorch-ignite",
