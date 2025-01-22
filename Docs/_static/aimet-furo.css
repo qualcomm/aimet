@@ -43,6 +43,10 @@ li.toctree-l2 [for^="toctree-checkbox-"] {
     padding-top: 10px;
 }
 
+body[data-theme="dark"] .script-output::before {
+    color: var(--aimet-white);
+}
+
 .script-output .highlight {
     background: transparent;
     flex-grow: 1;
