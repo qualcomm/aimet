@@ -199,8 +199,8 @@ jobs:
               TEST_DIR="$TEST_DIR ./TrainingExtensions/torch/test"
           fi
           TEST_ARGS=""
-          if [ "${{ matrix.VER_CUDA }}" != "" ] ; then
-              TEST_ARGS="$TEST_ARGS -m cuda"
+          if [ "${{ matrix.VER_CUDA }}" == "" ] ; then
+              TEST_ARGS="$TEST_ARGS -m \"not cuda\""
           fi
           ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $TEST_ARGS  $TEST_DIR
 
