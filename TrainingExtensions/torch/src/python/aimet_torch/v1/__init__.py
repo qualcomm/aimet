@@ -61,13 +61,21 @@ def _is_torch_compatible(current: str, required: str):
     _, *cuda = patch.split("+")
     _, *required_cuda = required_patch.split("+")
 
-    if not cuda:
+    if not cuda or not required_cuda:
         return True
 
     cuda, = cuda
     required_cuda, = required_cuda
 
-    return cuda in (required_cuda, "cpu")
+    if cuda == "cpu":
+        return True
+
+    # pylint: disable=unused-variable
+    cuda_major,          cuda_minor          = cuda[:4],          cuda[4:]
+    required_cuda_major, required_cuda_minor = required_cuda[:4], required_cuda[4:]
+
+    # Only check major CUDA version
+    return cuda_major == required_cuda_major
 
 
 def _check_requirements():
