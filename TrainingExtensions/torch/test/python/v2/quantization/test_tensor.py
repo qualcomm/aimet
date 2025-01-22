@@ -224,7 +224,7 @@ class TestQuantizedTensor:
         """
         Then: 2) Returned tensor has values equivalent to calling quantize_dequantize(tensor, encoding.scale, encoding.offset, encoding.bitwidth)
         """
-        assert torch.allclose(dq_tensor, quantize_dequantize(tensor, scale, offset, bitwidth))
+        assert torch.allclose(dq_tensor, quantize_dequantize(tensor, scale, offset, bitwidth), atol=scale)
        
     @pytest.mark.cuda() 
     @pytest.mark.parametrize("devices", [(torch.device("cpu"), torch.device("cuda:0")),

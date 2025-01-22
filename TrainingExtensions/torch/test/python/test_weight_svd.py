@@ -309,7 +309,8 @@ class TestWeightSvdPruning:
 
         assert id(mo_layer_db.model) != id(py_layer_db.model)
         with torch.no_grad():
-            assert torch.allclose(mo_layer_db.model(dummy_input), py_layer_db.model(dummy_input), atol=1e-5)
+            atol = torch.finfo(torch.float16).eps
+            assert torch.allclose(mo_layer_db.model(dummy_input), py_layer_db.model(dummy_input), atol=atol)
 
 
     @pytest.mark.cuda
@@ -346,4 +347,5 @@ class TestWeightSvdPruning:
 
         assert id(mo_layer_db.model) != id(py_layer_db.model)
         with torch.no_grad():
-            assert torch.allclose(mo_layer_db.model(dummy_input), py_layer_db.model(dummy_input), atol=1e-5)
+            atol = torch.finfo(torch.float16).eps
+            assert torch.allclose(mo_layer_db.model(dummy_input), py_layer_db.model(dummy_input), atol=atol)

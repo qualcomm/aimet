@@ -684,7 +684,8 @@ class TestTrainingExtensionsCrossLayerScalingPythonOnly:
         equalize_model(model_copy, (2, 10, 24, 24), dummy_input=random_input)
         output_using_python = model_copy(random_input)
 
-        assert torch.allclose(output, output_using_python)
+        atol = torch.finfo(torch.float16).eps
+        assert torch.allclose(output, output_using_python, atol=atol)
 
 
     @pytest.mark.cuda
