@@ -1028,6 +1028,77 @@ class TestQuantsim:
         # TODO: This assertion currently fails
         # _assert_same_keys(encodings['param_encodings'], expected_schema['param_encodings'])
 
+    def test_non_leaf_qmodule_exception_rules(self):
+        quantsim_config = {
+            "defaults": {
+                "hw_version": "V79",
+                "ops": {"is_output_quantized": "True"},
+                "params": {"is_quantized": "True", "is_symmetric": "True"},
+                "strict_symmetric": "False",
+            },
+            "params": {},
+            "op_type": {},
+            "supergroups": [],
+            "model_input": {"is_input_quantized": "True"},
+            "model_output": {},
+        }
+
+        class SupergroupLayer(torch.nn.Module):
+
+            def __init__(self):
+                super().__init__()
+                self.qk_matmul = custom.MatMul()
+                self.mask_add = custom.Add()
+                self.softmax = torch.nn.Softmax(dim=-1)
+
+            def forward(self, query, key, attn_mask):
+                attn_weight = self.qk_matmul(query, key.transpose(-2, -1))
+                attn_weight = self.mask_add(attn_weight, attn_mask)
+                attn_weight = self.softmax(attn_weight)
+                return attn_weight
+
+        @QuantizationMixin.implements(SupergroupLayer)
+        class QuantizedSupergroupLayer(QuantizationMixin, SupergroupLayer):
+
+            def __quant_init__(self):
+                super().__quant_init__()
+                # Supergroup itself doesn't need input/output quantizers
+                self.input_quantizers = torch.nn.ModuleList([])
+                self.output_quantizers = torch.nn.ModuleList([])
+
+            def forward(self, query, key, attn_mask):
+                return super().forward(query, key, attn_mask)
+
+        class Model(torch.nn.Module):
+
+            def __init__(self):
+                super().__init__()
+                self.q = torch.nn.Linear(10, 10)
+                self.k = torch.nn.Linear(10, 10)
+                self.v = torch.nn.Linear(10, 10)
+                self.attn = SupergroupLayer()
+                self.matmul = custom.MatMul()
+
+            def forward(self, x, mask):
+                attn = self.attn(self.q(x), self.k(x), mask)
+                return self.matmul(self.v(x), attn)
+
+        model = Model()
+        dummy_input = (torch.randn(1, 10, 10), torch.zeros(1, 1, 10, 10))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = f"{temp_dir}/quantsim_config.json"
+            with open(config_path, "w") as f:
+                json.dump(quantsim_config, f)
+            sim = QuantizationSimModel(model, dummy_input, default_output_bw=16, config_file=config_path)
+
+        sim.compute_encodings(lambda model: model(*dummy_input))
+        """
+        MatMul second inputs should be symmetric
+        """
+        assert sim.model.attn.softmax.output_quantizers[0].symmetric
+        assert sim.model.k.output_quantizers[0].symmetric
+
     def test_already_quantized_model(self):
         """
         Given: The model already consists of quantized modules

@@ -126,6 +126,12 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC): # pylint: disable=too-many-inst
 
         self.supported_kernels = {}
 
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self._module_to_wrap, name)
+
     def get_original_module(self):
         """
         Returns the floating point version of quantized module
