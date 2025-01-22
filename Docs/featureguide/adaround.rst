@@ -8,10 +8,9 @@ Context
 =======
 `Adaptive rounding <https://arxiv.org/pdf/2004.10568>`_ (AdaRound) is a rounding mechanism for model weights designed to adapt to the data to improve the accuracy of the quantized model.
 
-By default, AIMET uses nearest rounding for quantization, in which weight values are quantized to the nearest integer value.
-However, AdaRound uses training data to choose how to round quantized weights. This rounding technique improves the quantized model's accuracy in many cases.
+By default, AIMET uses nearest rounding for quantization, in which weight values are quantized to the nearest integer value. AdaRound instead uses training data to choose how to round quantized weights. This rounding technique improves the quantized model's accuracy in many cases.
 
-The following figures illustrates how AdaRound might change the rounding of a quantized value.
+The following figure illustrates how AdaRound might change the rounding of a quantized value.
 
 .. image:: ../images/adaround.png
     :width: 600px
@@ -22,10 +21,12 @@ See the :doc:`Optimization User Guide <../opt-guide/index>` for a discussion of 
 Complementary techniques
 ------------------------
 
-As a standalone, AdaRound can yield a significant improvement in performance. If you'd like to layer other techniques with AdaRound, it is recommended to apply AdaRound:
+As a standalone technique, AdaRound can yield a significant improvement in performance. To layer other techniques with AdaRound, we recommend applying AdaRound:
 
-- After batch norm folding (BNF) and cross layer equalization (CLE): Applying these techniques first can improve the accuracy gained using AdaRound.
-- Before quantization aware training (QAT): AdaRound serves as a well-disciplined weights initialization method for QAT
+After batch norm folding (BNF) and cross layer equalization (CLE).
+    Applying these techniques first can improve the accuracy gained using AdaRound.
+Before quantization aware training (QAT).
+    AdaRound serves as a well-disciplined weights initialization method for QAT.
 
 
 Hyper parameters
@@ -35,18 +36,18 @@ A number of hyper parameters used during AdaRound optimization are exposed in th
 
 Use the following guideline for adjusting hyper parameters with AdaRound.
 
-Hyper Parameters to be changed at will
-    - Number of batches. AdaRound should see 500-1000 images. Loader batch size times number of batches gives the number of images. For example if the data loader batch size is 64, set 16  batches to yield 1024 images.
+Hyper Parameters to be changed at will:
+    - Number of batches. AdaRound should see 500-1000 images. Loader batch size times number of batches gives the number of images. For example if the data loader batch size is 64, use 16 batches for a yield of 64 * 16 = 1024 images.
     - Number of iterations. Default is 10,000.
 
-Hyper Parameters to be changed with caution
+Hyper Parameters to be changed with caution:
     Regularization parameter. Default is 0.01.
 
-Hyper Parameters to avoid changing
+Hyper Parameters to avoid changing:
     - Beta range. Leave the value at the default of (20, 2).
     - Warm start period. Leave at the default value, 20%.
 
-You can learn more about the AdaRound parameters :doc:`here <../apiref/torch/adaround.rst>`
+You can learn more about the AdaRound parameters :ref:`here <apiref-torch-adaround>`.
 
 Workflow
 ========
@@ -63,7 +64,7 @@ Workflow
 --------
 
 Setup
-~~~~~~
+~~~~~
 
 .. tab-set::
     :sync-group: platform
@@ -81,7 +82,7 @@ Setup
 
         .. container:: tab-heading
 
-            Load the model for AdaRound. In this code example, we will use MobileNetV2
+            Load the model for AdaRound. In the following code example, the model is MobileNetV2. 
 
         .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
@@ -114,8 +115,8 @@ Setup
 
         .. container:: tab-heading
 
-            For AdaRound optimization, an unlabeled dataset is required.
-            In this example, we will use the ImageNet validation data.
+            AdaRound optimization requires an unlabeled dataset.
+            This example uses the ImageNet validation data.
 
         .. literalinclude:: ../snippets/tensorflow/apply_adaround.py
             :language: python
@@ -127,7 +128,7 @@ Setup
 
         .. container:: tab-heading
 
-            Load the model for AdaRound. In this code example, we will convert PyTorch MobileNetV2 to ONNX and use it in the subsequent code
+            Load the model for AdaRound. The following code example converts PyTorch MobileNetV2 to ONNX and uses it in the subsequent code.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
@@ -136,8 +137,8 @@ Setup
 
         .. container:: tab-heading
 
-            For AdaRound optimization, an unlabeled dataset is required.
-            In this example, we will use the ImageNet validation data.
+            AdaRound optimization requires an unlabeled dataset.
+            This example uses the ImageNet validation data.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
@@ -179,7 +180,7 @@ Apply AdaRound to the model.
 Step 2
 ~~~~~~
 
-Simulate quantization through AIMET's QuantSim
+Use AIMET's QuantSim to simulate quantization.
 
 .. tab-set::
     :sync-group: platform
@@ -212,7 +213,7 @@ Simulate quantization through AIMET's QuantSim
 Step 3
 ~~~~~~
 
-Evaluate the model
+Evaluate the model.
 
 .. tab-set::
     :sync-group: platform
