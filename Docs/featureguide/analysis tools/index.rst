@@ -11,23 +11,20 @@ Analysis tools
     Quantization analyzer <quant_analyzer>
     Layer output generation <layer_output_generation>
 
+AIMET offers these tools to view and analyze a model's interal quantization results.
 
-:ref:`Interactive visualization <featureguide-interactive-visualization>`
--------------------------------------------------------------------------
+Interactive visualization
+-------------------------
 
-Produces an interactive HTML to view the statistics collected by each quantizer during calibration.
+:ref:`Interactive visualization <featureguide-interactive-visualization>` produces an interactive HTML console showing the statistics collected by each quantizer during calibration.
 
-:ref:`Quantization analyzer <featureguide-quant-analyzer>`
-----------------------------------------------------------
+Quantization analyzer
+---------------------
 
-QuantAnalyzer analyzes your pre-trained model and points out sensitive layers to quantization
-in the model. It checks model sensitivity to weight and activation quantization, performs per
-layer sensitivity and MSE analysis. It also exports per layer encodings min and max ranges and
-statistics histogram for every layer.
+:ref:`Quantization analyzer <featureguide-quant-analyzer>` (QuantAnalyzer) analyzes your pre-trained model and identifies layers sensitive to quantization. It checks model sensitivity to weight and activation quantization, and performs per-layer sensitivity and mean square error analysis. It also exports per-layer encoding min and max ranges and
+statistics histograms for every layer.
 
-:ref:`Layer output generation <featureguide-layer-output-generation>`
----------------------------------------------------------------------
+Layer output generation
+-----------------------
 
-This API captures and saves intermediate layer-outputs of a model. This allows layer-output
-comparison between quantization simulated model (QuantSim object) and actually
-quantized model on target-device to debug accuracy miss-match issues at the layer level.
+:ref:`Layer output generation <featureguide-layer-output-generation>` is an API that captures and saves intermediate layer model outputs. This allows layer-output comparison between a quantization simulated model (QuantSim object) and an actual quantized model on a target device in order to debug accuracy mismatch issues at the layer level.

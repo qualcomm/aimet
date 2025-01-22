@@ -7,14 +7,13 @@ Interactive visualization
 Context
 =======
 
-Creates an interactive visualization of min and max activations/weights of all quantized modules
-in the Quantization simulation :class:`QuantizationSimModel` object.
+Interactive visualization displays the range (min and max values) of activations and weights for all quantized modules
+in the quantization simulation :class:`QuantizationSimModel` object.
 
-The features include:
+Interactive visualization functionality includes:
 
-- Adjustable threshold values to flag layers whose min or max activations/weights exceed the set thresholds
-
-- Tables containing names and ranges for layers exceeding threshold values.
+- Adjustable threshold values to flag layers for which min or max activations or weights exceed these values
+- Tables containing names and ranges for layers exceeding threshold values
 
 
 Workflow
@@ -33,3 +32,13 @@ API
 
         .. include:: ../../apiref/torch/interactive_visualization.rst
             :start-after: # start-after
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Interactive visualization does not support TensorFlow.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Interactive visualization does not support ONNX.

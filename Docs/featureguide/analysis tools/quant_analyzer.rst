@@ -7,89 +7,82 @@ Quantization analyzer
 Context
 =======
 
-The Quantization analyzer (QuantAnalyzer) performs several analyses to identify sensitive areas and
-hotspots in your model. These analyses are performed automatically. To use QuantAnalyzer, you pass
-in callbacks to perform forward passes and evaluations, and optionally a dataloader for MSE loss
-analysis.
+The Quantization analyzer (QuantAnalyzer) automatically performs several analyses to identify sensitive areas in your model. To use QuantAnalyzer, you pass in callbacks to perform forward passes and evaluations, and optionally a dataloader for mean square error (MSE) loss analysis.
 
-For each analysis, QuantAnalyzer outputs JSON and/or HTML files containing data and plots for
+For each analysis, QuantAnalyzer generates JSON and/or HTML files containing the data, and plots for
 visualization.
 
-Detailed analysis descriptions
-==============================
+Analysis descriptions
+=====================
 
-QuantAnalyzer performs the following analyses:
+QuantAnalyzer performs the following analyses.
 
-1. Sensitivity analysis to weight and activation quantization
--------------------------------------------------------------
+1: Sensitivity to weight and activation quantization
+----------------------------------------------------
 
 QuantAnalyzer compares the accuracies of the original FP32 model, an activation-only quantized model,
 and a weight-only quantized model. This helps determine which AIMET quantization technique(s) will
-be more beneficial for the model.
+be more effective in the model.
 
-For example, in situations where the model is more sensitive to activation quantization, Post-training
-quantization (PTQ) techniques like Adaptive Rounding (Adaround) or Cross-layer equalization (CLE) might
+For example, in situations where the model is more sensitive to activation quantization, post-training
+quantization (PTQ) techniques like Adaptive Rounding (Adaround) or Cross-layer Equalization (CLE) might
 not be very helpful.
 
-Quantized accuracy metric for your model are printed as part of AIMET logging.
+Quantized accuracy metrics for your model are printed as part of AIMET logging.
 
-2. Per-layer quantizer enablement analysis
-------------------------------------------
+2: Per-layer quantizer enablement
+---------------------------------
 
 Sometimes the accuracy drop incurred from quantization can be attributed to only a subset of layers
 within the model. QuantAnalyzer finds such layers by enabling and disabling individual quantizers to
 observe how the quantized model accuracy metric changes.
 
-The following two types of quantizer enablement analyses are performed:
+Two types of quantizer enablement analyses are performed:
 
-1. Disable all quantizers across the model and, for each layer, enable only that layer's output quantizer
-and perform evaluation with the provided callback. This results in accuracy values obtained for each
-layer in the model when only that layer's quantizer is enabled, exposing the effects of individual
-layer quantization and pinpointing culprit layer(s) and hotspots.
+1. **One at a time**: Disable all quantizers across the model and, for each layer, enable only that layer's output quantizer. Perform evaluation with the provided callback, giving accuracy values for each
+layer in the model when it's the sole quantized layer. This and pinpoints hotspots by exposing the effects of individual
+layer quantization.
 
-2. Enable all quantizers across the model and, for each layer, disable only that layer's output quantizer
-and perform evaluation with the provided callback. Once again, accuracy values are produced for each
+2. **Elimination**: Enable all quantizers across the model and, for each layer, disable only that layer's output quantizer. Perform evaluation with the provided callback, giving accuracy values for each
 layer in the model when only that layer's quantizer is disabled.
 
-As a result of these analyses, AIMET outputs `per_layer_quant_enabled.html` and
-`per_layer_quant_disabled.html` respectively, containing plots mapping layers on the x-axis to quantized
-model accuracy metrics on the y-axis.
+AIMET outputs the results of these analyses as `per_layer_quant_enabled.html` and
+`per_layer_quant_disabled.html` respectively. These files contain plots of the quantized
+model accuracy metrics for each layer.
 
 JSON files `per_layer_quant_enabled.json` and `per_layer_quant_disabled.json` are also produced,
 containing the data shown in the .html plots.
 
-3. Per-layer encodings min-max range analysis
----------------------------------------------
+3: Per-layer encodings min-max range
+------------------------------------
 
-As part of quantization, encoding parameters for each quantizer must be obtained.
-These parameters include scale, offset, min, and max, and are used to map floating point values to
-quantized integer values.
+As part of quantization, encoding parameters for each quantizer must be calculated.
+These parameters are used to map floating point values to
+quantized integer values and include scale, offset, min, and max.
 
 QuantAnalyzer tracks the min and max encoding parameters computed by each quantizer in the model
 as a result of forward passes through the model with representative data (from which the scale and
 offset values can be directly obtained).
 
-As a result of this analysis, AIMET outputs html plots and json files for each activation quantizer
-and each parameter quantizer (contained in the min_max_ranges folder) containing the encoding min/max
-values for each.
+AIMET outputs HTML plots and JSON files to the min_max_ranges folder for each activation quantizer
+and each parameter quantizer, containing the encoding min/max values for each.
 
-If Per-channel quantization (PCQ) is enabled, encoding min and max values for all the channels
-of each weight parameters are shown.
+If per-channel quantization (PCQ) is enabled, encoding min and max values are shown for all the channels
+of each weight parameter.
 
-4. Per-layer statistics histogram
+4: Per-layer statistics histogram
 ---------------------------------
 
-Under the TF-enhanced quantization scheme, encoding min/max values for each quantizer are obtained
-by collecting a histogram of tensor values seen at that quantizer and deleting outliers.
+Under the TF-enhanced quantization scheme, min/max encoding values for each quantizer are obtained
+by deleting outliers from the histogram of tensor values seen at the quantizer.
 
-When this quantization scheme is selected, QuantAnalyzer outputs plots for each quantizer in the model,
-displaying the histogram of tensor values seen at that quantizer.
+When this quantization scheme is selected, QuantAnalyzer outputs the histogram of tensor values seen at each quantizer in the model.
 
-These plots are available as part of the `activations_pdf` and `weights_pdf` folders, containing a
+These plots are available as part of the `activations_pdf` and `weights_pdf` folders. There is a
 separate .html plot for each quantizer.
 
-5. Per layer mean-square-error (MSE) loss
------------------------------------------
+5: Per-layer mean-square-error loss
+-----------------------------------
 
 QuantAnalyzer can monitor each layer's output in the original FP32 model as well as the corresponding
 layer output in the quantized model and calculate the MSE loss between the two.
@@ -101,15 +94,15 @@ Approximately **256 samples** are sufficient for the analysis.
 
 A `per_layer_mse_loss.html` file is generated containing a plot that maps layer quantizers on the
 x-axis to MSE loss on the y-axis. A corresponding `per_layer_mse_loss.json` file is generated
-containing data corresponding to the .html file.
+containing data used in the .html file.
 
 Prerequisites
 =============
 
-To call the QuantAnalyzer API, you must provide the following:
+To call the QuantAnalyzer API, provide the following:
 
 - An FP32 pre-trained model for analysis
-- A dummy input for the model that can contain random values but which must match the shape of the model's expected input
+- A dummy input for the model. This can contain random values but it must match the shape of the model's expected input
 - A user-defined function for passing 500-1000 representative data samples through the model for quantization calibration
 - A user-defined function for passing labeled data through the model for evaluation, returning an accuracy metric
 - (Optional, for running MSE loss analysis) A dataloader providing unlabeled data to be passed through the model
@@ -122,11 +115,10 @@ To call the QuantAnalyzer API, you must provide the following:
 Workflow
 ========
 
-Code example
-------------
+Step 1 Importing libraries
+--------------------------
 
-Step 1 Prepare callback for calibration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Import required libraries.
 
 .. tab-set::
     :sync-group: platform
@@ -134,14 +126,37 @@ Step 1 Prepare callback for calibration
     .. tab-item:: PyTorch
         :sync: torch
 
-        **Required imports**
-
         .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 0. Import statements
             :end-before: # End step 0
 
-        **Prepare forward pass callback**
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
+            :language: python
+            :lines: 39-47
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
+            :language: python
+            :start-after: # Step 0. Import statements
+            :end-before: # End step 0
+
+
+Step 2 Preparing the calibration callback
+-----------------------------------------
+
+Prepare the callback for calibration.
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
@@ -151,20 +166,14 @@ Step 1 Prepare callback for calibration
     .. tab-item:: TensorFlow
         :sync: tf
 
-        **Required imports**
-
-        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
-            :language: python
-            :lines: 39-47
-
-        **Prepare toy dataset to run example code**
+        **2.1 Prepare toy dataset to run example code**
 
         .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 0. Prepare toy dataset to run example code
             :end-before: # End step 0
 
-        **Prepare forward pass callback**
+        **2.2 Prepare forward pass callback**
 
         .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
@@ -174,30 +183,21 @@ Step 1 Prepare callback for calibration
     .. tab-item:: ONNX
         :sync: onnx
 
-        **Required imports**
-
-        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
-            :language: python
-            :start-after: # Step 0. Import statements
-            :end-before: # End step 0
-
-        **Prepare forward pass callback**
-
         .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 1. Prepare forward pass callback
             :end-before: # End step 1
 
-Step 2 Prepare callback for quantized model evaluation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 3 Preparing the evaluation callback 
+----------------------------------------
+
+Prepare the callback for quantized model evaluation.
 
 .. tab-set::
     :sync-group: platform
 
     .. tab-item:: PyTorch
         :sync: torch
-
-        **Prepare eval callback**
 
         .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
@@ -207,8 +207,6 @@ Step 2 Prepare callback for quantized model evaluation
     .. tab-item:: TensorFlow
         :sync: tf
 
-        **Prepare eval callback**
-
         .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 2. Prepare eval callback
@@ -217,15 +215,16 @@ Step 2 Prepare callback for quantized model evaluation
     .. tab-item:: ONNX
         :sync: onnx
 
-        **Prepare eval callback**
-
         .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 2. Prepare eval callback
             :end-before: # End step 2
 
-Step 3 Prepare model and callback functions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Step 4 Preparing model
+----------------------
+
+Prepare the model, callback functions, and dataloader as required per platform.
 
 .. tab-set::
     :sync-group: platform
@@ -233,7 +232,7 @@ Step 3 Prepare model and callback functions
     .. tab-item:: PyTorch
         :sync: torch
 
-        **Prepare model and callback functions**
+        **Prepare model, callback functions, and data**
 
         .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
@@ -242,6 +241,8 @@ Step 3 Prepare model and callback functions
 
     .. tab-item:: TensorFlow
         :sync: tf
+
+        **Prepare the model**
 
         .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
@@ -258,8 +259,10 @@ Step 3 Prepare model and callback functions
             :start-after: # Step 3. Prepare model, callback functions and dataloader
             :end-before: # End step 3
 
-Step 4 Create QuantAnalyzer and run analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 5 Creating the QuantAnalyzer 
+---------------------------------
+
+Create the QuantAnalyzer.
 
 .. tab-set::
     :sync-group: platform
@@ -267,14 +270,38 @@ Step 4 Create QuantAnalyzer and run analysis
     .. tab-item:: PyTorch
         :sync: torch
 
-        **Create QuantAnalyzer object**
-
         .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 4. Create QuantAnalyzer object
             :end-before: # End step 4
 
-        **Run QuantAnalyzer**
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
+            :language: python
+            :start-after: # Step 4. Create QuantAnalyzer object
+            :end-before: # End step 4
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
+            :language: python
+            :start-after: # Step 4. Create QuantAnalyzer object
+            :end-before: # End step 4
+
+
+Step 6 Running the analysis
+---------------------------
+
+Finally, run the QuantAnalyzer to analyze the data.
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
 
         .. literalinclude:: ../../legacy/torch_code_examples/quant_analyzer_code_example.py
             :language: python
@@ -284,15 +311,6 @@ Step 4 Create QuantAnalyzer and run analysis
     .. tab-item:: TensorFlow
         :sync: tf
 
-        **Create QuantAnalyzer object**
-
-        .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
-            :language: python
-            :start-after: # Step 4. Create QuantAnalyzer object
-            :end-before: # End step 4
-
-        **Run QuantAnalyzer**
-
         .. literalinclude:: ../../legacy/keras_code_examples/quant_analyzer_code_example.py
             :language: python
             :start-after: # Step 5. Run QuantAnalyzer
@@ -300,15 +318,6 @@ Step 4 Create QuantAnalyzer and run analysis
 
     .. tab-item:: ONNX
         :sync: onnx
-
-        **Create QuantAnalyzer object**
-
-        .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
-            :language: python
-            :start-after: # Step 4. Create QuantAnalyzer object
-            :end-before: # End step 4
-
-        **Run QuantAnalyzer**
 
         .. literalinclude:: ../../legacy/onnx_code_examples/quant_analyzer_code_example.py
             :language: python
