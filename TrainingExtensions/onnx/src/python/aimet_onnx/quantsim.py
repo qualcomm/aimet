@@ -67,7 +67,8 @@ from aimet_onnx.meta.utils import get_op_given_param_name, get_param_shape_using
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.qc_quantize_op import QcQuantizeOp, OpMode, TensorQuantizerParams, GroupedBlockQuantizeDequantize
 from aimet_onnx.quantsim_config.quantsim_config import QuantSimConfigurator
-from aimet_onnx.utils import make_dummy_input, save_model_with_external_weights
+from aimet_onnx.utils import make_dummy_input, save_model_with_external_weights, add_hook_to_get_activation, \
+    remove_activation_hooks
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -205,11 +206,10 @@ class QuantizationSimModel:
 
         # Get names of parameters and activations to quantize
         self._get_param_names()
-        self._get_activations_to_quantize()
+        self._get_activations_to_quantize(dummy_input)
 
         # Disable bias quantization
         self._disable_bias_quantization()
-
         self._add_quantization_nodes()
 
         # Apply configurations based on provided config file.
@@ -266,13 +266,17 @@ class QuantizationSimModel:
         valid_ops = list(self.connected_graph.get_all_ops().values())
         return valid_ops
 
-    def _get_activations_to_quantize(self):
+    def _get_activations_to_quantize(self, dummy_input: Dict[str, np.ndarray]):
         """
         Get the names of activations to quantize
 
         :param dummy_input: Sample input to be run through the model
         """
-        self.fill_activation_dtypes()
+        try:
+            self.activation_dtypes = self._infer_activation_dtypes()
+        except onnx.shape_inference.InferenceError:
+            self.activation_dtypes = self._observe_activation_dtypes(dummy_input)
+
         self.input_name_to_nodes = self.model.input_name_to_nodes()
         self.output_name_to_node = self.model.output_name_to_node()
 
@@ -368,9 +372,9 @@ class QuantizationSimModel:
                 return True
         return False
 
-    def fill_activation_dtypes(self):
+    def _infer_activation_dtypes(self):
         """
-        Get the data type for each activation
+        Get the data type for each activation through shape inference
         """
         if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
             with tempfile.TemporaryDirectory(dir=self._path) as tempdir:
@@ -382,12 +386,36 @@ class QuantizationSimModel:
         else:
             inferred_model = onnx.shape_inference.infer_shapes(self.model.model)
 
+        activation_dtypes = {}
         for val_info in itertools.chain(inferred_model.graph.value_info,
                                         inferred_model.graph.input,
                                         inferred_model.graph.output):
             act_name = val_info.name
             dtype = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[val_info.type.tensor_type.elem_type]
-            self.activation_dtypes[act_name] = dtype
+            activation_dtypes[act_name] = dtype
+        return activation_dtypes
+
+    def _observe_activation_dtypes(self, dummy_input: Dict[str, np.ndarray]):
+        """
+        Get the data type for each activation by returning all activations
+
+        :param dummy_input: Sample input to run through the model
+        """
+        activations = utils.get_graph_intermediate_activations(self.model.graph())
+        hooks = []
+        for name in activations:
+            hooks.append(add_hook_to_get_activation(self.model.model, name))
+        sess = QuantizationSimModel.build_session(self.model.model, ['CPUExecutionProvider'],
+                                                  user_onnx_libs=self._user_onnx_libs, path=self._path)
+        outputs = sess.run(None, dummy_input)
+
+        activation_dtypes = {}
+        for idx in range(len(self.model.graph().output)):
+            act_name = self.model.graph().output[idx].name
+            dtype = outputs[idx].dtype
+            activation_dtypes[act_name] = dtype
+        remove_activation_hooks(self.model.model, hooks)
+        return activation_dtypes
 
     def _add_quantization_nodes(self):
         """
@@ -528,8 +556,7 @@ class QuantizationSimModel:
         output_path = os.path.join(path, 'model.onnx')
         if save_as_external_data:
             # Note: Saving as external data mutates the saved model, removing all initializer data
-            onnx.save_model(model, output_path, save_as_external_data=True, location=Path(output_path).name + ".data")
-            onnx.load_external_data_for_model(model, base_dir=path)
+            save_model_with_external_weights(model, output_path, location=Path(output_path).name + ".data")
 
         path_or_bytes = output_path if save_as_external_data else model.SerializeToString()
         session = InferenceSession(
@@ -782,8 +809,7 @@ class QuantizationSimModel:
         self.remove_quantization_nodes()
         if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
             # Note: Saving as external data mutates the saved model, removing all initializer data
-            self.model.save_model_to_file(os.path.join(path, filename_prefix) + '.onnx', use_external_data_format=True)
-            onnx.load_external_data_for_model(self.model.model, base_dir=path)
+            save_model_with_external_weights(self.model.model, os.path.join(path, filename_prefix) + '.onnx')
         else:
             self.model.save_model_to_file(os.path.join(path, filename_prefix) + '.onnx')
 

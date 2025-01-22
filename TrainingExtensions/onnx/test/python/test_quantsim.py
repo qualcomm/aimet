@@ -1730,3 +1730,9 @@ class TestEncodingPropagation:
                                        config_file=get_path_for_per_channel_config())
             assert sim.qc_quantize_op_dict["identity.input"].quant_info.usePerChannelMode
             assert sim.qc_quantize_op_dict["identity.input"].quant_info.channelAxis == 0
+
+    def test_customop_model(self):
+        from onnxruntime_extensions import get_library_path
+        model = models_for_tests.custom_op_model()
+        sim = QuantizationSimModel(model, user_onnx_libs=[get_library_path()])
+        assert {"model_input", "output", "model_output", "y", "z"} == sim.qc_quantize_op_dict.keys()

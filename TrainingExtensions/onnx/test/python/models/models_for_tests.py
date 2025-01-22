@@ -52,6 +52,7 @@ from torch.nn.modules.instancenorm import _InstanceNorm
 from torch.nn.modules.batchnorm import _BatchNorm
 from onnx import helper, numpy_helper, OperatorSetIdProto, TensorProto, load_model
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
+from onnxruntime_extensions import PyOp, onnx_op
 
 from aimet_common import libquant_info
 from .mobilenet import MockMobileNetV1, MockMobileNetV11
@@ -2709,3 +2710,45 @@ def squeezenet1_0(tmpdir):
                       input_names=["input"], output_names=["output"])
     model = onnx.load(filepath)
     return ONNXModel(model)
+
+@onnx_op(op_type="CustomAdd",
+         inputs=[PyOp.dt_float, PyOp.dt_float],
+         outputs=[PyOp.dt_float])
+def add_op(x, y):
+    return x + y
+
+def custom_op_model():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name="CustomAddModel",
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10])],
+            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10])],
+            initializer=[],
+            nodes=[
+                helper.make_node(
+                    "Relu",
+                    inputs=["model_input"],
+                    outputs=["y"],
+                ),
+                helper.make_node(
+                    "CustomAdd",
+                    inputs=["model_input", "y"],
+                    outputs=["z"],
+                    domain="ai.onnx.contrib"
+                ),
+                helper.make_node(
+                    "CustomAdd",
+                    inputs=["z", "y"],
+                    outputs=["output"],
+                    domain="ai.onnx.contrib"
+                ),
+                helper.make_node(
+                    "Exp",
+                    inputs=["output"],
+                    outputs=["model_output"]
+                )
+            ],
+        ),
+        opset_imports=[helper.make_operatorsetid('ai.onnx.contrib', 1)]
+    )
+    return model
