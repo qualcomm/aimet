@@ -50,7 +50,7 @@ import onnx
 
 from onnx import helper
 import onnxruntime as ort
-from onnxruntime import SessionOptions, GraphOptimizationLevel, InferenceSession
+from onnxruntime import SessionOptions, InferenceSession
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from packaging import version
 
