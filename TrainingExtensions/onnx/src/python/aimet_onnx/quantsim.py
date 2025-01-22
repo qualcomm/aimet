@@ -543,7 +543,6 @@ class QuantizationSimModel:
         if user_onnx_libs is not None:
             for lib in user_onnx_libs:
                 sess_options.register_custom_ops_library(lib)
-        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
 
         # Convert and save ONNX model to external data if larger than 2GB.
         # External data will be saved under same directory.
