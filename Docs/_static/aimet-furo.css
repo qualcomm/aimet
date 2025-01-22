@@ -9,6 +9,7 @@
     --aimet-menu-hover: #e3efff;
     --aimet-menu-font-active: #0058ff;
     --aimet-code-grey: #fafafa;
+    --aimet-code-grey-dark: #535353;
     --aimet-light-blue: #e7f2fa;
   }
   
@@ -50,9 +51,16 @@ li.toctree-l2 [for^="toctree-checkbox-"] {
     max-height: 25em;
 }
 
-*.highlight pre, pre.literal-block {
+/* Change the code backgorund in light and default mode */ 
+:not(body[data-theme="dark"]) *.highlight pre, :not(body[data-theme="dark"]) pre.literal-block { 
     background-color: var(--aimet-code-grey);
 }
+
+/* Change the code backgorund in dark mode */ 
+body[data-theme="dark"] *.highlight pre, body[data-theme="dark"] pre.literal-block { 
+    background-color: var(--aimet-code-grey-dark);
+}
+
 
 /*
  * Glossary formatting
