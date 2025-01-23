@@ -9,20 +9,21 @@ Batch norm folding
 Context
 =======
 
-Batch norm folding is a technique widely used in deep learning inference runtimes, including the |qnn|_.
-Batch normalization layers are typically folded into the weights and biases of adjacent convolution layers whenever possible to eliminate unnecessary computations.
-To accurately simulate inference in these runtimes, it is generally advisable to perform batch norm folding on the floating-point model before applying quantization.
-Doing so not only results in a speedup in inferences per second by avoiding unnecessary computations but also often improves the accuracy of the quantized model by removing redundant computations and requantization.
-We aim to simulate this on-target behavior by performing batch norm folding here.
+Batch norm folding (BNF) is a technique widely used in deep learning inference runtimes, including |qnn|_.
+In BNF, batch normalization layers are folded into the weights and biases of adjacent convolution layers where possible to eliminate unnecessary computations. 
+
+To accurately simulate inference in these runtimes, perform BNF on the floating-point model before applying quantization. Doing so not only speeds performance (inferences per second) but also often improves the accuracy of the quantized model by removing redundant computations and requantization. AIMET enables you to apply BNF to the pre-quantized model as a precursor to simulating this on-target behavior in the quantization simulation (QuantSim) model.
 
 Workflow
 ========
 
-Code example
-------------
+Procedure
+---------
 
 Step 1
 ~~~~~~
+
+Load the model.
 
 .. tab-set::
     :sync-group: platform
@@ -32,7 +33,7 @@ Step 1
 
         .. container:: tab-heading
 
-            Load the model for batch norm folding. In this code example, we will use MobileNetV2
+            This example uses the MobileNetV2 model.
 
         .. literalinclude:: ../snippets/torch/apply_bnf.py
             :language: python
@@ -58,7 +59,7 @@ Step 1
 
         .. container:: tab-heading
 
-            Load the model for batch norm folding. In this code example, we will use MobileNetV2
+            This example uses the MobileNetV2 model.
 
         .. literalinclude:: ../snippets/tensorflow/apply_bnf.py
             :language: python
@@ -91,7 +92,7 @@ Step 1
 
         .. container:: tab-heading
 
-            Load the model for batch norm folding. In this code example, we will convert PyTorch MobileNetV2 to ONNX and use it in the subsequent code
+            This example converts the PyTorch MobileNetV2 to ONNX and subsequently uses the ONNX model.
 
         .. literalinclude:: ../snippets/onnx/apply_bnf.py
             :language: python
@@ -115,6 +116,8 @@ Step 1
 Step 2
 ~~~~~~
 
+Prepare the model, if required by the model framework.
+
 .. tab-set::
     :sync-group: platform
 
@@ -130,7 +133,7 @@ Step 2
 
         .. container:: tab-heading
 
-            AIMET provides TensorFlow `prepare_model` API, which performs preprocessing on the user model if necessary
+            AIMET provides the TensorFlow `prepare_model` API, which pre-processes the user model if necessary.
 
         .. literalinclude:: ../snippets/tensorflow/apply_bnf.py
             :language: python
@@ -163,7 +166,7 @@ Step 2
 
         .. container:: tab-heading
 
-            It's recommended to simplify the ONNX model before applying AIMET functionalities
+            We recommend that you simplify the ONNX model as follows.
 
         .. literalinclude:: ../snippets/onnx/apply_bnf.py
             :language: python
@@ -194,6 +197,8 @@ Step 2
 Step 3
 ~~~~~~
 
+Perform the batch norm folding.
+
 .. tab-set::
     :sync-group: platform
 
@@ -202,7 +207,7 @@ Step 3
 
         .. container:: tab-heading
 
-            Execute AIMET batch norm folding API
+            Execute the AIMET BNF API.
 
         .. literalinclude:: ../snippets/torch/apply_bnf.py
             :language: python
@@ -235,7 +240,7 @@ Step 3
 
         .. container:: tab-heading
 
-            Execute AIMET batch norm folding API
+            Execute the AIMET BNF API.
 
         .. literalinclude:: ../snippets/tensorflow/apply_bnf.py
             :language: python
@@ -268,7 +273,7 @@ Step 3
 
         .. container:: tab-heading
 
-            Execute AIMET batch norm folding API
+            Execute the AIMET BNF API.
 
         .. literalinclude:: ../snippets/onnx/apply_bnf.py
             :language: python
