@@ -625,14 +625,15 @@ class QuantizedNormalize(_DispatchMixin, QuantizationMixin, Normalize):
 # class QuantizedPad(_DispatchMixin, QuantizationMixin, Pad):
 #     """ Quantized Pad """
 #     _builtin_torch_fn = torch.nn.functional.pad
-#
-#
-# @QuantizationMixin.implements(GridSample)
-# class QuantizedGridSample(_DispatchMixin, QuantizationMixin, GridSample):
-#     """ Quantized GridSample """
-#     _builtin_torch_fn = torch.nn.functional.grid_sample
-#
-#
+
+
+@QuantizationMixin.implements(GridSample)
+class QuantizedGridSample(_DispatchMixin, QuantizationMixin, GridSample):
+    """ Quantized GridSample """
+    __quant_init__ = _binary_quant_init
+    _builtin_torch_fn = torch.nn.functional.grid_sample
+
+
 # @QuantizationMixin.implements(DynamicConv2d)
 # class QuantizedDynamicConv2d(QuantizationMixin, DynamicConv2d):
 #     """ Quantized DynamicConv2d """

@@ -756,6 +756,7 @@ _AIMET_V1_BINARY_MODULES = [
     custom.LogicalAnd,
     custom.CustomGather,
     custom.GatherNd,
+    custom.GridSample,
 ]
 _AIMET_V1_TERNARY_MODULES = [
     custom.Baddbmm,

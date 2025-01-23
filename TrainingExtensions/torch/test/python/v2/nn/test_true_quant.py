@@ -983,7 +983,7 @@ def _create_quantized_module(module):
     (lambda: custom.GroupNorm(),                      lambda: (randn(20, 6, 10, 10), tensor(6))),
     (lambda: custom.Normalize(),                      lambda: randn(100, 100)),
     # (lambda: custom.Pad(),                          lambda: ...),
-    # (lambda: custom.GridSample(),                   lambda: ...),
+    (lambda: custom.GridSample(),                     lambda: (randn(1, 3, 30, 30), randn(1, 3, 5, 2))),
     (lambda: custom.RmsNorm([5, 2, 3], [2], 1e-5),    lambda: (randn(5, 2, 3))),
     # (lambda custom.DynamicConv2d(),                 lambda: ...),
     # (lambda custom.Pow(),                           lambda: ...),
