@@ -57,14 +57,49 @@ jobs:
             }')
           echo "value=$VALUE" >> $GITHUB_OUTPUT
 
-  docker-build-image:
-    name: Docker image ${{ matrix.id }}
+  create-pip-constraints-file:
+    name: Create constraints.txt for ${{ matrix.id }}
     runs-on: ubuntu-latest
     needs: [docker-tag, variants]
     strategy:
       matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     steps:
+      - run: |
+          echo "" > /tmp/constraints.txt
+
+          if [ "${{ matrix.VER_TORCH }}" != "" ]; then
+              echo "torch==${{ matrix.VER_TORCH }}"                 | tee --append /tmp/constraints.txt
+          fi
+          if [ "${{ matrix.VER_TENSORFLOW }}" != "" ]; then
+              if [ "${{ matrix.VER_CUDA }}" == "" ]; then
+                echo "tensorflow-cpu==${{ matrix.VER_TENSORFLOW }}" | tee --append /tmp/constraints.txt
+              else
+                echo "tensorflow-gpu==${{ matrix.VER_TENSORFLOW }}" | tee --append /tmp/constraints.txt
+              fi
+          fi
+          if [ "${{ matrix.VER_ONNX }}" != "" ]; then
+              echo "onnx==${{ matrix.VER_ONNX }}"                   | tee --append /tmp/constraints.txt
+          fi
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "${{ matrix.id }}-constraints.txt"
+          path: "/tmp/constraints.txt"
+          if-no-files-found: error
+          retention-days: 1d
+
+  docker-build-image:
+    name: Docker image ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    needs: [docker-tag, variants, create-pip-constraints-file]
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
+        with:
+          name: "${{ matrix.id }}-constraints.txt"
+          path: "Jenkins/fast-release"
       - uses: ./.github/actions/docker-build-image
         with:
           dockerfile: Jenkins/fast-release/Dockerfile.ci
@@ -76,9 +111,6 @@ jobs:
           build-args: |
             VER_PYTHON=${{ matrix.VER_PYTHON }}
             VER_CUDA=${{ matrix.VER_CUDA }}
-            VER_TORCH=${{ matrix.VER_TORCH }}
-            VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
-            VER_ONNX=${{ matrix.VER_ONNX }}
 
   build-wheel:
     name: Build AIMET wheels
@@ -168,6 +200,10 @@ jobs:
         with:
           name: "${{ matrix.id }}"
           path: "wheelhouse"
+      - uses: actions/download-artifact@v3
+        with:
+          name: "${{ matrix.id }}-constraints.txt"
+          path: "/tmp"
       - name: Try to load python virtual environment from the cache
         uses: actions/cache@v4
         id: cache
@@ -181,7 +217,7 @@ jobs:
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find wheelhouse -name '*.whl')[test]"
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find wheelhouse -name '*.whl')[test]"
       - run: |
           TEST_DIR=""
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
