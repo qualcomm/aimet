@@ -38,8 +38,8 @@ jobs:
       - name: ONNX variants
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":""       },
-              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"1.13.1", "VER_ONNX":"1.14.1", "VER_CUDA":"11.8.0" }
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"",      "VER_ONNX":"1.16.2", "VER_CUDA":""       },
+              { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"",      "VER_ONNX":"1.16.2", "VER_CUDA":"11.8.0" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
 
@@ -50,7 +50,8 @@ jobs:
             "runs-on":(if .VER_CUDA != "" then "k8s-gpu" else "ubuntu-latest" end),
             "id":(""
                     +(if .VER_TENSORFLOW != "" then "tf-" else "" end)
-                    +(if .VER_ONNX != "" then "onnx-" elif .VER_TORCH != "" then "torch-" else "" end)
+                    +(if .VER_ONNX != "" then "onnx-" else "" end)
+                    +(if .VER_TORCH != "" then "torch-" else "" end)
                     +(if .VER_CUDA != "" then "gpu" else "cpu" end)
                  )
             }')
@@ -104,7 +105,7 @@ jobs:
           CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
       - name: "Exclude Torch libraries from dependencies for manylinux"
-        if: matrix.VER_TORCH
+        if: matrix.VER_TORCH || matrix.VER_ONNX
         run: |
           . /etc/profile.d/conda.sh
           TORCH_DIR=$(python3 -c 'import torch; print(f"{torch.utils.cmake_prefix_path}/../../lib")')
@@ -185,8 +186,7 @@ jobs:
           TEST_DIR=""
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               TEST_DIR="$TEST_DIR ./TrainingExtensions/tensorflow/test"
-          fi
-          if [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+          elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
               TEST_DIR="$TEST_DIR ./TrainingExtensions/onnx/test"
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
               TEST_DIR="$TEST_DIR ./TrainingExtensions/torch/test"
