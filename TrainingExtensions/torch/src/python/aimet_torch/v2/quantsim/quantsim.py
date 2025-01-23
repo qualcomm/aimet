@@ -99,14 +99,19 @@ def _convert_to_qmodule(module: torch.nn.Module):
     Helper function to convert all modules to quantized aimet.nn modules.
     """
     if not isinstance(module, (*quantized_modules, *unquantizable_modules, *containers)):
+        qmodule = None
         try:
-            module = QuantizationMixin.from_module(module)
+            qmodule = QuantizationMixin.from_module(module)
+            module = qmodule
         except RuntimeError as e:
             try:
-                module = _legacy_impl.FakeQuantizationMixin.from_module(module)
+                qmodule = _legacy_impl.FakeQuantizationMixin.from_module(module)
+                module = qmodule
             except RuntimeError:
-                if not tuple(module.children()):
-                    raise e # pylint: disable=raise-missing-from
+                pass
+
+            if not qmodule and not tuple(module.children()):
+                raise e # pylint: disable=raise-missing-from
 
     for name, child in module.named_children():
         setattr(module, name, _convert_to_qmodule(child))
