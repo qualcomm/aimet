@@ -6,17 +6,22 @@ Cross-layer equalization
 
 Context
 =======
-Quantization of floating point models into lower bitwidths introduces quantization noise on the weights and activations, which often leads to reduced model performance. To minimize quantization noise, there are a variety of post training quantization (PTQ) techniques offered by AIMET. You can learn more about these techniques `here <https://arxiv.org/pdf/1906.04721>`_.
+Quantization of floating-point models into lower bitwidths introduces quantization noise on the weights and activations, which often reduces model performance. To minimize quantization noise, AIMET recommends a :ref:`quantization workflow <opt-guide-quantization-workflow>` that includes a variety of post training quantization (PTQ) techniques. You can learn more about these techniques `here <https://arxiv.org/pdf/1906.04721>`_.
 
-AIMET's cross-layer equalization tool involves the following techniques:
+AIMET includes a cross-layer equalization (CLE) tool that applies the following PTQ techniques:
 
-- **Batch Norm Folding**: This feature folds batch norm layers into adjacent convolutional and linear layers. You can learn more :ref:`here <featureguide-bnf>`
+Batch Norm Folding
+  This feature folds batch norm layers into adjacent convolutional and linear layers. For more on BNF see :ref:`Batch norm folding <featureguide-bnf>`.
   
-- **Cross Layer Scaling**: In some models, the parameter ranges for different channels in a layer show a wide variance (as shown below). This feature attempts to equalize the distribution of weights per channel of consecutive layers. Thus, different channels have a similar range and the same quantization parameters can be used for weights across all channels.
+Cross Layer Scaling
+  In some models, the parameter ranges for different channels in a layer show a wide variance. See the first chart in the following figure. 
+  
+  Cross-layer scaling attempts to equalize the distribution of weights per channel of consecutive layers. This gives different channels a similar range so that the same quantization parameters can be used for weights across all channels. See the second chart in the figure.
 
     .. figure:: ../images/cross_layer_scaling.png
 
-- **High Bias Fold**: Cross layer scaling may result in high bias parameter values for some layers. This technique folds some of the bias of a layer into the subsequent layer's parameters. This feature requires batch norm parameters to operate on and will not be applied otherwise. 
+High Bias Fold
+  Cross layer scaling may result in high bias parameter values for some layers. This technique folds some of the bias of a layer into the subsequent layer's parameters. This feature requires batch norm parameters to operate on and is not applied otherwise. 
 
 Workflow
 ========
@@ -24,12 +29,18 @@ Workflow
 Setup
 ~~~~~~
 
+Load the model.
+
 .. tab-set::
     :sync-group: platform
 
     .. tab-item:: PyTorch
         :sync: torch
-        
+
+        .. container:: tab-heading
+
+            This code example uses MobileNetV2.
+          
         .. literalinclude:: ../snippets/torch/apply_cle.py
             :start-after: [setup]
             :end-before: [step_1]
@@ -39,9 +50,9 @@ Setup
 
         .. container:: tab-heading
 
-            Load the model for cross-layer equalization. In this code example, we will use MobileNetV2.
+            This code example uses MobileNetV2.
 
-            It's recommended to apply the TensorFlow `prepare_model` API before applying AIMET functionalities. After preparation, we find that the model contains consecutive convolutions, which can be optimized through cross-layer equalization.
+            We recommend applying the TensorFlow `prepare_model` API before applying AIMET functionalities. After preparation the model contains consecutive convolutions, which can be optimized through cross-layer equalization.
 
         .. literalinclude:: ../snippets/tensorflow/apply_cle.py
             :language: python
@@ -103,9 +114,9 @@ Setup
 
         .. container:: tab-heading
 
-            Load the model for cross-layer equalization. In this code example, we will convert PyTorch MobileNetV2 to ONNX and use it in the subsequent code. 
+            Load the model for cross-layer equalization. This example converts PyTorch MobileNetV2 to ONNX and uses it in the subsequent code. 
             
-            It's recommended to simplify the ONNX model before applying AIMET functionalities. After simplification, we find that the model contains consecutive convolutions, which can be optimized through cross-layer equalization. 
+            We recommend simplifying the ONNX model before applying AIMET functionalities. After simplification, the model contains consecutive convolutions, which can be optimized through cross-layer equalization. 
 
         .. literalinclude:: ../snippets/onnx/apply_cle.py
             :language: python
@@ -151,16 +162,18 @@ Setup
               [[ 4.35139937e-03]]
               [[ 2.57021021e-02]]]]
 
-Step 1
-~~~~~~
+Execution
+~~~~~~~~~
 
-Execute AIMET cross-layer equalization API
+Apply cross-layer equalization.
 
 .. tab-set::
     :sync-group: platform
 
     .. tab-item:: PyTorch
         :sync: torch
+
+        Execute the AIMET cross-layer equalization API function.
         
         .. literalinclude:: ../snippets/torch/apply_cle.py
             :language: python
@@ -171,7 +184,7 @@ Execute AIMET cross-layer equalization API
 
         .. container:: tab-heading
 
-            Execute AIMET cross-layer equalization API
+            Execute the AIMET cross-layer equalization API function.
 
         .. literalinclude:: ../snippets/tensorflow/apply_cle.py
             :language: python
@@ -207,7 +220,7 @@ Execute AIMET cross-layer equalization API
 
         .. container:: tab-heading
 
-            Execute AIMET cross-layer equalization API
+            Execute the AIMET cross-layer equalization API function.
 
         .. literalinclude:: ../snippets/onnx/apply_cle.py
             :language: python
