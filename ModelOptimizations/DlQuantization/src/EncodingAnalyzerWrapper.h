@@ -36,40 +36,52 @@
 //
 //==============================================================================
 
-#ifndef DL_QUANTIZATION_TENSOR_UTILS_H
-#define DL_QUANTIZATION_TENSOR_UTILS_H
+#ifndef DL_QUANTIZATION_WRAPPED_ENCODING_ANALYZER_H
+#define DL_QUANTIZATION_WRAPPED_ENCODING_ANALYZER_H
 
-#include <DlQuantization/Quantization.hpp>
+#include <cstdint>
+#include <memory>
+
+#include <DlQuantization/IQuantizationEncodingAnalyzer.hpp>
 
 namespace DlQuantization
 {
 
+/**
+ * @class EncodingAnalyzerWrapper
+ * @brief Wrapper over legacy encoding analyzers enabling blockwise behavior
+ */
+template <typename DTYPE>
+class EncodingAnalyzerWrapper : public IBlockEncodingAnalyzer<DTYPE>
+{
+public:
+    EncodingAnalyzerWrapper(TensorDims shape, QuantizationMode mode);
 
-std::tuple<TensorDims, TensorDims> getBroadcastableShapes(const TensorDims& tensorShape,
-                                                          const TensorDims& encodingShape);
+    void updateStats(const DTYPE* tensor, const TensorDims& tensorShape, ComputationMode tensorCpuGpuMode,
+                     IAllocator* allocator = nullptr, void* stream = nullptr) override;
 
-size_t getNumel(const TensorDims& shape);
+    std::vector<TfEncoding> computeEncoding(uint8_t bw, bool useSymmetricEncodings, bool useStrictSymmetric,
+                                            bool useUnsignedSymmetric) const override;
 
-TensorDims shapeToStrides(const TensorDims& shape);
+    std::vector<std::vector<std::tuple<double, double>>> getStatsHistogram() const override;
 
-bool hasContiguousBlocks(const TensorDims& tensorShape, const TensorDims& encodingShape);
+    void setPercentileValue(float percentile) override;
 
-template <typename T>
-void permute(const T* input, T* output, const TensorDims& inputShape, std::vector<size_t> order, ComputationMode mode,
-             void* stream = nullptr);
+    float getPercentileValue() override;
 
-template <typename T>
-void permuteKernelCPU(const T* inTensor, T* outTensor, size_t numel, const TensorDims& inputStrides,
-                      const TensorDims& outputStrides);
+    TensorDims getShape();
 
-template <typename T>
-void permuteKernelGPU(const T* inTensor, T* outTensor, size_t numel, const TensorDims& inputStrides,
-                      const TensorDims& outputStrides, void* stream);
 
-void synchronizeStream(ComputationMode mode, void* stream);
+private:
+    void _updateStatsContiguous(const DTYPE* tensor, ComputationMode tensorCpuGpuMode, size_t blockSize,
+                                IAllocator* allocator, void* stream);
 
-void synchronizeCudaStream(void* stream);
+    TensorDims _shape;
+    std::vector<std::unique_ptr<IQuantizationEncodingAnalyzer<DTYPE>>> _encodingAnalyzers;
+};
+
 
 }   // namespace DlQuantization
 
-#endif   // DL_QUANTIZATION_TENSOR_UTILS_H
+
+#endif   // DL_QUANTIZATION_WRAPPED_ENCODING_ANALYZER_H

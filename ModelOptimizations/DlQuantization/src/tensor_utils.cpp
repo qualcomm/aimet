@@ -192,6 +192,18 @@ void permuteKernelCPU(const T* inTensor, T* outTensor, size_t numel, const Tenso
     }
 }
 
+void synchronizeStream(ComputationMode mode, void* stream)
+{
+    if (mode == COMP_MODE_GPU)
+    {
+#ifdef GPU_QUANTIZATION_ENABLED
+        synchronizeCudaStream(stream);
+#else
+        throw std::runtime_error("Not compiled for GPU mode.");
+#endif
+    }
+}
+
 template void permute(const float* input, float* output, const TensorDims& inputShape, std::vector<size_t> order,
                       ComputationMode mode, void* stream);
 

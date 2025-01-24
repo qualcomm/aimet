@@ -54,6 +54,7 @@ add_executable(MoDlQuantizationTest
       TestEntropyEncodingAnalyzer.cpp
       TestQuantizationFunctions.cpp
       TestEncodingRescale.cpp
+      TestEncodingAnalyzerWrapper.cpp
       )
 
 if (ENABLE_CUDA)

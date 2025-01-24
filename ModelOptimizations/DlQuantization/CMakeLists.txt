@@ -65,6 +65,8 @@ add_library(MoDlQuantization STATIC
       src/TfEnhancedEncodingAnalyzer.h
       src/TfEncodingAnalyzer.h
       src/TfEncodingAnalyzer.cpp
+      src/EncodingAnalyzerWrapper.h
+      src/EncodingAnalyzerWrapper.cpp
       src/TensorQuantizationSim.h
       src/TensorQuantizationSim.cpp
       src/EncodingAnalyzerForPython.cpp

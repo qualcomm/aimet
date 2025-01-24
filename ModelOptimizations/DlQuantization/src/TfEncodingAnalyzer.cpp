@@ -53,7 +53,7 @@ template <typename DTYPE>
 std::vector<std::tuple<double, double>> TfEncodingAnalyzer<DTYPE>::getStatsHistogram() const
 {
     // No real histogram data is kept for TF Encoding analyzer
-    assert(0);
+    throw std::runtime_error("TfEncodingAnalyzer does not maintain histogram data");
 }
 
 template <typename DTYPE>

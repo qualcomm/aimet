@@ -90,6 +90,11 @@ void permuteKernelGPU(const T* inTensor, T* outTensor, size_t numel, const Tenso
     cudaFree(deviceStrideData);
 }
 
+void synchronizeCudaStream(void* stream)
+{
+    cudaStreamSynchronize(static_cast<cudaStream_t>(stream));
+}
+
 
 template void permuteKernelGPU(const float* intensor, float* outTensor, size_t numel, const TensorDims& inputStrides,
                                const TensorDims& outputStrides, void* stream);
