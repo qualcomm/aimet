@@ -59,14 +59,6 @@ def seed(request):
     torch.manual_seed(seed)
 
 
-@pytest.fixture
-def onnx_only_export():
-    original_flag = quantsim._EXPORT_USING_ONNX_ONLY_EXPORT
-    quantsim._EXPORT_USING_ONNX_ONLY_EXPORT = True
-    yield
-    quantsim._EXPORT_USING_ONNX_ONLY_EXPORT = original_flag
-
-
 @contextlib.contextmanager
 def set_encoding_version(version):
     old_version = quantsim_common.encoding_version
@@ -277,7 +269,7 @@ def test_export_torchvision_models(model_factory, input_shape):
                                                         (mobilenet_v3_small, (1, 3, 224, 224)),
                                                         ])
 @pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0"])
-def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding_version, onnx_only_export):
+def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding_version):
     """
     When: Export quantized torchvision model using quantsim.export
     """
@@ -307,7 +299,7 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
         encodings_path = os.path.join(dirname, "torchvision_model.encodings")
 
         with set_encoding_version(encoding_version):
-            sim.export(dirname, 'torchvision_model', x)
+            sim.onnx.export(dirname, 'torchvision_model', x)
 
         """
         Then: The saved onnx model should pass onnx model checker
