@@ -37,7 +37,7 @@
 """ Top level API for performing quantization simulation of a pytorch model """
 
 import copy
-from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload, Dict
+from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload
 import warnings
 import itertools
 import io
@@ -50,7 +50,6 @@ import onnx
 
 from aimet_common import quantsim
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_torch.onnx_utils import OnnxExportApiArgs
 from aimet_torch._base.quantsim import (
     _QuantizationSimModelBase,
     logger,
@@ -545,13 +544,20 @@ class QuantizationSimModel(_QuantizationSimModelBase):
                 cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
 
 class _QuantizationSimOnnxExport:
+    """
+    Helper class for exporting quantized models to ONNX format.
+    This class is used by the QuantizationSimModel.onnx.export() method.
+    """
     def __init__(self, sim):
         self.sim = sim
 
-    def export(self, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple],
-               onnx_export_args: Optional[Union[OnnxExportApiArgs, Dict]] = None):
+    def export(self,
+               args: Union[Tuple[Any, ...], torch.Tensor],
+               f: Union[str, io.BytesIO],
+               *posargs, **kwargs):
         """
-        This method exports out the quant-sim model so it is ready to be run on-target.
+        This method exports out the quant-sim model so it is ready to be run on-target and
+        takes the same arguments as torch.onnx.export()
 
         Specifically, the following are saved:
 
@@ -559,31 +565,22 @@ class _QuantizationSimOnnxExport:
         2. The quantization encodings are exported to a separate JSON-formatted file that can
            then be imported by the on-target runtime (if desired)
 
-        :param path: path where to store model pth and encodings
-        :param filename_prefix: Prefix to use for filenames of the model pth and encodings files
-        :param dummy_input: Dummy input to the model. Used to parse model graph. It is required for the dummy_input to
-                be placed on CPU.
-        :param onnx_export_args: Optional export argument with onnx specific overrides provided as a dictionary or
-            OnnxExportApiArgs object.
+        :param args: Dummy input to the model. Used to export model to ONNX format.
+        :param f: file object or path where to store exported ONNX mode
         """
         # pylint: disable=too-many-locals, too-many-branches, protected-access
         if self._has_non_affine_quantizer(self.sim.model):
             raise RuntimeError("Export using onnx only export only supports affine quantizers. "
                                "Other quantizer types are not supported.")
 
-        if onnx_export_args is None:
-            onnx_export_args = {}
-        elif isinstance(onnx_export_args, OnnxExportApiArgs):
-            onnx_export_args = onnx_export_args.kwargs
-
-        with tempfile.TemporaryDirectory() as tmp_dir, torch.no_grad(), self.sim._apply_qdq_to_model_parameters(self.sim.model):
-            tmp_onnx_path = os.path.join(tmp_dir, "quantized_model.onnx")
-            export(self.sim.model, dummy_input, tmp_onnx_path, **onnx_export_args)
-            onnx_model = onnx.load(tmp_onnx_path)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.sim._apply_qdq_to_model_parameters(self.sim.model):
+                tmp_onnx_path = os.path.join(tmp_dir, "quantized_model.onnx")
+                export(self.sim.model, args, tmp_onnx_path, *posargs, **kwargs)
+                onnx_model = onnx.load(tmp_onnx_path)
 
         tensor_to_encoding_map = remove_quantization_nodes_from_onnx_graph(onnx_model)
-        onnx_path = os.path.join(path, filename_prefix + '.onnx')
-        onnx.save(onnx_model, onnx_path)
+        onnx.save(onnx_model, f)
 
         param_names = []
         param_encodings = {}
@@ -625,7 +622,8 @@ class _QuantizationSimOnnxExport:
             encodings_dict.update({'quantizer_args': self.sim.quant_args})
 
         # export weight encodings to output json file
-        encoding_file_path = os.path.join(path, filename_prefix + '.encodings')
+        onnx_file_path = (f if isinstance(f, str) else f.name)
+        encoding_file_path = os.path.splitext(onnx_file_path)[0] + ".encodings"
         with open(encoding_file_path, 'w', encoding='utf-8') as encoding_file:
             json.dump(encodings_dict, encoding_file, sort_keys=True, indent=4)
 

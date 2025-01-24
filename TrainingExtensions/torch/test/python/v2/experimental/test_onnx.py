@@ -299,7 +299,7 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
         encodings_path = os.path.join(dirname, "torchvision_model.encodings")
 
         with set_encoding_version(encoding_version):
-            sim.onnx.export(dirname, 'torchvision_model', x)
+            sim.onnx.export(x, onnx_path)
 
         """
         Then: The saved onnx model should pass onnx model checker
