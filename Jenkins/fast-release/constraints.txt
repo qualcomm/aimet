@@ -1,9 +1,0 @@
-# Placeholder for constraints.txt
-# When building docker image from GitHub Actions defined in .github/workflows,
-# this file will be auto-generated with the following template:
-#
-# ```
-# torch=={VER_TORCH}
-# tensorflow-(cpu|gpu)=={VER_TENSORFLOW}
-# onnx=={VER_ONNX}
-# ```

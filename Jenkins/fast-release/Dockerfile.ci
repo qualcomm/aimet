@@ -35,6 +35,9 @@ RUN apt update && \
 
 ARG VER_PYTHON=3.8
 ARG VER_CUDA=11.7.1
+ARG VER_TORCH=""
+ARG VER_TENSORFLOW=""
+ARG VER_ONNX=""
 
 COPY Jenkins/fast-release/environment.devenv.yml /tmp/
 RUN export PATH=$PATH:${CONDA_PREFIX}/bin PIP_NO_CACHE_DIR=1 \
@@ -49,14 +52,17 @@ RUN export PATH=$PATH:${CONDA_PREFIX}/bin PIP_NO_CACHE_DIR=1 \
     && echo "conda activate ${CONDA_DEFAULT_ENV}" >> /etc/profile.d/conda.sh \
     && rm -rf ~/.conda*
 
-COPY Jenkins/fast-release/constraints.txt /tmp/
+RUN echo "\
+torch$([ -n "${VER_TORCH}" ] && echo "==${VER_TORCH}")\n\
+tensorflow-cpu$([ -n "${VER_TENSORFLOW}" ] && echo "==${VER_TENSORFLOW}")\n\
+tensorflow-gpu$([ -n "${VER_TENSORFLOW}" ] && echo "==${VER_TENSORFLOW}")\n\
+onnx$([ -n "${VER_ONNX}" ] && echo "==${VER_ONNX}") \
+" > /tmp/constraints.txt
+
 RUN --mount=type=bind,target=/workspace \
     echo "Install all required dependencies" \
     && export PIP_NO_CACHE_DIR=1 \
     && export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo $VER_CUDA | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')" \
-    && export VER_TORCH="$(     cat /tmp/constraints.txt | grep '^ *torch=='                   | sed 's/.*==//g' )" \
-    && export VER_TENSORFLOW="$(cat /tmp/constraints.txt | grep '^ *tensorflow-\(cpu\|gpu\)==' | sed 's/.*==//g')" \
-    && export VER_ONNX="$(      cat /tmp/constraints.txt | grep '^ *onnx=='                    | sed 's/.*==//g' )" \
     && export CMAKE_ARGS="\
         -DENABLE_TENSORFLOW=$([ -z ${VER_TENSORFLOW} ]; echo $?) \
         -DENABLE_TORCH=$([ -z ${VER_TORCH} ]; echo $?) \

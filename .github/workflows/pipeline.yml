@@ -65,29 +65,6 @@ jobs:
       matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Create constraints.txt
-        run: |
-          echo "" > Jenkins/fast-release/constraints.txt
-
-          if [ "${{ matrix.VER_TORCH }}" != "" ]; then
-              echo "torch==${{ matrix.VER_TORCH }}"                 | tee --append Jenkins/fast-release/constraints.txt
-          fi
-          if [ "${{ matrix.VER_TENSORFLOW }}" != "" ]; then
-              if [ "${{ matrix.VER_CUDA }}" == "" ]; then
-                echo "tensorflow-cpu==${{ matrix.VER_TENSORFLOW }}" | tee --append Jenkins/fast-release/constraints.txt
-              else
-                echo "tensorflow-gpu==${{ matrix.VER_TENSORFLOW }}" | tee --append Jenkins/fast-release/constraints.txt
-              fi
-          fi
-          if [ "${{ matrix.VER_ONNX }}" != "" ]; then
-              echo "onnx==${{ matrix.VER_ONNX }}"                   | tee --append Jenkins/fast-release/constraints.txt
-          fi
-      - uses: actions/upload-artifact@v3
-        with:
-          name: "${{ matrix.id }}-constraints.txt"
-          path: "Jenkins/fast-release/constraints.txt"
-          if-no-files-found: error
-          retention-days: 1d
       - uses: ./.github/actions/docker-build-image
         with:
           dockerfile: Jenkins/fast-release/Dockerfile.ci
@@ -99,6 +76,9 @@ jobs:
           build-args: |
             VER_PYTHON=${{ matrix.VER_PYTHON }}
             VER_CUDA=${{ matrix.VER_CUDA }}
+            VER_TORCH=${{ matrix.VER_TORCH }}
+            VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
+            VER_ONNX=${{ matrix.VER_ONNX }}
 
   build-wheel:
     name: Build AIMET wheels
@@ -188,10 +168,6 @@ jobs:
         with:
           name: "${{ matrix.id }}"
           path: "wheelhouse"
-      - uses: actions/download-artifact@v3
-        with:
-          name: "${{ matrix.id }}-constraints.txt"
-          path: "/tmp"
       - name: Try to load python virtual environment from the cache
         uses: actions/cache@v4
         id: cache
@@ -201,6 +177,13 @@ jobs:
       - name: Create python virtial environment
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
+          echo "\
+          torch$([ -n "${{ matrix.VER_TORCH }}" ] && echo "==${{ matrix.VER_TORCH }}")\n\
+          tensorflow-cpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
+          tensorflow-gpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
+          onnx$([ -n "${{ matrix.VER_ONNX }}" ] && echo "==${{ matrix.VER_ONNX }}") \
+          " > /tmp/constraints.txt
+
           curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels

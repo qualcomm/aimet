@@ -3,7 +3,6 @@
 
 # Except few files and directories
 !Jenkins/fast-release/environment.devenv.yml
-!Jenkins/fast-release/constraints.txt
 !packaging/dependencies
 !packaging/plugins
 !packaging/version.txt

@@ -1,0 +1,3 @@
+# pytorch uses setuptools to build C++ extensions
+# [ImportError: cannot import name 'packaging' from 'pkg_resources']
+setuptools<70
