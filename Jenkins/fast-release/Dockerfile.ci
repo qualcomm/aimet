@@ -76,4 +76,3 @@ ENV PYTHONPYCACHEPREFIX=/tmp
 
 ENTRYPOINT ["/bin/bash", "--login", "-c", "${0#--} \"$@\""]
 CMD ["/bin/bash"]
-

@@ -185,6 +185,8 @@ jobs:
           onnx$([ -n "${{ matrix.VER_ONNX }}" ] && echo "==${{ matrix.VER_ONNX }}") \
           " > /tmp/constraints.txt
 
+          export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo "${{ matrix.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
+
           curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
