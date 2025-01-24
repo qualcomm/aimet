@@ -38,8 +38,10 @@
 
 from contextlib import contextmanager, ExitStack
 import functools
-from typing import Sequence
+from collections import defaultdict
+from typing import Sequence, Iterable
 
+import onnx
 import onnxscript
 from onnxscript import opset15 as ops
 import torch
@@ -48,6 +50,7 @@ from torch.onnx import is_in_onnx_export, symbolic_helper
 from aimet_torch.v2.utils import patch_attr
 
 
+ONNX_QUANTIZER_OP_TYPES = ("quantize", "quantize_dequantize")
 aimet_opset = onnxscript.values.Opset(domain="aimet", version=1)
 
 
@@ -214,6 +217,125 @@ def export(model: torch.nn.Module, *args, **kwargs):
         # Precompute scale/offset before entering torch.onnx.export so that
         # scale/offset are always represented as a leaf inputs in the onnx graphs
         return torch.onnx.export(model, *args, **kwargs)
+
+
+def remove_quantization_nodes_from_onnx_graph(model: onnx.ModelProto):
+    """
+    Remove quantization nodes from ONNX graph with quantization nodes
+    :param model: ONNX model with quantization nodes
+    """
+    tensor_to_encoding_map = {}
+    name_to_producer, name_to_consumer = _get_producer_consumer_info_from_onnx_graph(model)
+    node_list = list(model.graph.node)
+
+    for node in node_list:
+        if node.op_type not in ONNX_QUANTIZER_OP_TYPES:
+            continue
+
+        # Get quantizer name in torch model
+        encoding = _get_encoding_from_onnx_node(model, node)
+
+        # Remove qdq node from graph
+        model.graph.node.remove(node)
+
+        # Remove scale and offset from onnx graph
+        _remove_constants(model, node.input[1:])
+
+        # Connect next node to the prev node of quantizer node
+        if node.output[0] in name_to_consumer:
+            tensor_to_encoding_map[node.input[0]] = encoding
+            next_nodes = name_to_consumer[node.output[0]]
+            for next_node in next_nodes:
+                for input_index, input_name in enumerate(next_node.input):
+                    if input_name == node.output[0]:
+                        next_node.input.remove(input_name)
+                        next_node.input.insert(input_index, node.input[0])
+                        break
+                else:
+                    raise ValueError(f"Could not find input name {node.output[0]} from node {next_node.name}")
+
+        # Connect prev node to the next node of quantizer node if above is not possible
+        elif node.input[0] in name_to_producer:
+            tensor_to_encoding_map[node.output[0]] = encoding
+            prev_node = name_to_producer[node.input[0]]
+            for output_index, output_name in enumerate(prev_node.output):
+                if output_name == node.input[0]:
+                    prev_node.output.remove(output_name)
+                    prev_node.output.insert(output_index, node.output[0])
+
+        else:
+            raise ValueError(f"Cannot find prev node and next node for quantization node {node.name}")
+
+    return tensor_to_encoding_map
+
+
+def _get_tensor_from_constant_name(onnx_model: onnx.ModelProto, constant_name: str):
+    """
+    Returns tensor from the constant name.
+    """
+    for node in onnx_model.graph.node:
+        if constant_name in node.output:
+            for attr in node.attribute:
+                if attr.name == "value":
+                    return onnx.numpy_helper.to_array(attr.t)
+            raise RuntimeError(f"Cannot find value attribute inside constant node {constant_name}")
+    raise RuntimeError(f"Cannot find constant with name {constant_name} in onnx model")
+
+
+def _get_encoding_from_onnx_node(onnx_model: onnx.ModelProto, quant_node: onnx.NodeProto):
+    """
+    Get encoding from quantization node.
+    """
+    # pylint: disable=import-outside-toplevel
+    from aimet_torch.v2.quantization.affine.encoding import AffineEncoding
+    assert quant_node.op_type in ONNX_QUANTIZER_OP_TYPES
+
+    qmin, qmax, block_size = None, None, None
+    scale_name, offset_name = quant_node.input[1], quant_node.input[2]
+
+    for attr in quant_node.attribute:
+        if attr.name == "qmin":
+            qmin = attr.i
+        if attr.name == "qmax":
+            qmax = attr.i
+        if attr.name == "block_size":
+            block_size = attr.ints
+            if block_size == [1]:
+                block_size = None
+
+        scale = torch.tensor(_get_tensor_from_constant_name(onnx_model, scale_name))
+        offset = torch.tensor(_get_tensor_from_constant_name(onnx_model, offset_name))
+
+    return AffineEncoding(scale, offset, qmin, qmax, block_size=block_size)
+
+
+def _remove_constants(onnx_model: onnx.ModelProto, constant_names: Iterable[str]):
+    """
+    Remove constants from onnx model.
+    """
+    constant_names = set(constant_names)
+    for node in onnx_model.graph.node[::-1]:
+        if node.op_type == "Constant" and node.output[0] in constant_names:
+            onnx_model.graph.node.remove(node)
+
+
+def _get_producer_consumer_info_from_onnx_graph(onnx_model: onnx.ModelProto):
+    """
+    Get producer and consumer information from ONNX graph for graph traversal.
+    :param onnx_model: ONNX model
+    :return: Tuple of name to producer mappings and name to consumer mappings
+    """
+    name_to_producer = {}
+    name_to_consumer = defaultdict(list)
+
+    for node in onnx_model.graph.node:
+        for output_name in node.output:
+            name_to_producer[output_name] = node
+
+        for input_name in node.input:
+            name_to_consumer[input_name].append(node)
+
+    return name_to_producer, name_to_consumer
 
 
 @contextmanager

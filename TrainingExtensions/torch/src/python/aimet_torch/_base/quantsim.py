@@ -44,6 +44,7 @@ from collections import OrderedDict, defaultdict
 import json
 import warnings
 import pickle
+import contextlib
 from typing import (
     Callable,
     List,
@@ -64,7 +65,7 @@ import onnx
 from packaging import version  # pylint: disable=wrong-import-order
 from safetensors.numpy import save_file as save_safetensor_file
 
-from aimet_common.utils import AimetLogger, save_json_yaml, log_with_error_and_assert_if_false
+from aimet_common.utils import AimetLogger, save_json_yaml, log_with_error_and_assert_if_false, Handle
 from aimet_common.defs import QuantScheme, QuantizationDataType, SupportedKernelsAction, QuantDtypeBwInfo
 from aimet_common.quantsim import validate_quantsim_inputs, extract_global_quantizer_args, VALID_ENCODING_VERSIONS
 from aimet_common.quant_utils import get_conv_accum_bounds
@@ -1439,10 +1440,16 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         :param module: The PyTorch module whose parameters need to be updated.
         """
         # pylint: disable=protected-access
+        stack = contextlib.ExitStack()
         for param_name, _ in module.named_parameters():
             if param_name in module.__dict__ and param_name in module._parameters:
                 module._parameters[param_name] = module.__dict__[param_name]
-                module.__dict__.pop(param_name)
+                param = module.__dict__.pop(param_name)
+                def cleanup(module=module, param_name=param_name, param=param):
+                    module.__dict__[param_name] = param
+                stack.enter_context(Handle(cleanup))
+
+        return stack
 
     def _get_leaf_module_to_name_map(self):
         """

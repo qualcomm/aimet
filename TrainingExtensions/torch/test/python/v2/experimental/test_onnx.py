@@ -35,15 +35,18 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 import os
+import json
 import onnxruntime as ort
 import pytest
+import contextlib
 import numpy as np
 import torch
 import onnx
 import tempfile
+from aimet_common import quantsim as quantsim_common
 import aimet_torch.v2 as aimet
 import aimet_torch.v2.quantization as Q
-from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_torch.v2.quantsim import quantsim, QuantizationSimModel
 from torchvision.models import resnet18, mobilenet_v3_small
 from aimet_torch.v2.experimental.onnx._export import export as _export
 from aimet_torch.utils import get_all_quantizers
@@ -54,6 +57,22 @@ from aimet_torch.model_preparer import prepare_model
 def seed(request):
     seed = request.param
     torch.manual_seed(seed)
+
+
+@pytest.fixture
+def onnx_only_export():
+    original_flag = quantsim._EXPORT_USING_ONNX_ONLY_EXPORT
+    quantsim._EXPORT_USING_ONNX_ONLY_EXPORT = True
+    yield
+    quantsim._EXPORT_USING_ONNX_ONLY_EXPORT = original_flag
+
+
+@contextlib.contextmanager
+def set_encoding_version(version):
+    old_version = quantsim_common.encoding_version
+    quantsim_common.encoding_version = version
+    yield
+    quantsim_common.encoding_version = old_version
 
 
 @pytest.mark.parametrize("qtzr_cls", [Q.affine.Quantize, Q.affine.QuantizeDequantize])
@@ -220,6 +239,9 @@ def test_export_torchvision_models(model_factory, input_shape):
         with open(full_path, "wb") as f:
             _export(model, x, f, input_names=['input'], output_names=['output'])
 
+        """
+        Then: The saved onnx model should pass onnx model checker
+        """
         onnx_model = onnx.load_model(full_path)
         onnx.checker.check_model(onnx_model)
 
@@ -248,3 +270,79 @@ def test_export_torchvision_models(model_factory, input_shape):
         # Allow off-by-3 error
         atol = 3 * y.encoding.scale.item()
         assert torch.allclose(torch.from_numpy(out), y, atol=atol)
+
+
+@torch.no_grad()
+@pytest.mark.parametrize("model_factory, input_shape", [(resnet18, (1, 3, 224, 224)),
+                                                        (mobilenet_v3_small, (1, 3, 224, 224)),
+                                                        ])
+@pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0"])
+def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding_version, onnx_only_export):
+    """
+    When: Export quantized torchvision model using quantsim.export
+    """
+    x = torch.randn(input_shape)
+    model = model_factory().eval()
+    model = prepare_model(model)
+    sim = QuantizationSimModel(model, x)
+
+    sim.compute_encodings(lambda m, _: m(x), None)
+
+    # Compute original pytorch model output with qdq weights
+    with contextlib.ExitStack() as stack:
+        for qmodule in sim.qmodules():
+            stack.enter_context(qmodule._remove_activation_quantizers())
+        y = sim.model(x)
+
+    # Set min and max of quantizers for testing exported encodings
+    _, input_quantizers, output_quantizers = get_all_quantizers(sim.model)
+    for quantizer in input_quantizers + output_quantizers:
+        if not quantizer:
+            continue
+        quantizer.min = torch.nn.Parameter(torch.tensor(0.0))
+        quantizer.max = torch.nn.Parameter(torch.tensor(255.0))
+
+    with tempfile.TemporaryDirectory() as dirname:
+        onnx_path = os.path.join(dirname, "torchvision_model.onnx")
+        encodings_path = os.path.join(dirname, "torchvision_model.encodings")
+
+        with set_encoding_version(encoding_version):
+            sim.export(dirname, 'torchvision_model', x)
+
+        """
+        Then: The saved onnx model should pass onnx model checker
+        """
+        onnx_model = onnx.load_model(onnx_path)
+        onnx.checker.check_model(onnx_model)
+
+        with open(encodings_path) as f:
+            onnx_encodings = json.load(f)
+
+        """
+        Then: The onnx encodings should have the same number of encodings
+              as the number of quantizers in the original pytorch model
+        """
+        param_quantizers = [qtzr for qtzr_group in get_all_quantizers(sim.model)[:1] for qtzr in qtzr_group if qtzr]
+        activation_quantizers = [qtzr for qtzr_group in get_all_quantizers(sim.model)[1:] for qtzr in qtzr_group if qtzr]
+        assert len(onnx_encodings['param_encodings']) == len(param_quantizers)
+        assert len(onnx_encodings['activation_encodings']) == len(activation_quantizers)
+
+        """
+        Then: The onnx encodings should have the same scale and offset value
+              as the values of quantizers in the original pytorch model
+        """
+        if encoding_version == '0.6.1':
+            assert all(encoding[0]['offset'] == 0.0 and encoding[0]['scale'] == 1.0 \
+                       for encoding in onnx_encodings['activation_encodings'].values())
+        else:
+            assert all(encoding['offset'][0] == 0.0 and encoding['scale'][0] == 1.0 \
+                       for encoding in onnx_encodings['activation_encodings'])
+
+        """
+        Then: The exported onnx model should produce output close enough to
+              the original pytorch model with qdq weights
+        """
+        sess = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
+        out, = sess.run(None, {onnx_model.graph.input[0].name: x.numpy()})
+
+        assert torch.allclose(torch.from_numpy(out), y, atol=1e-5)
