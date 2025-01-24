@@ -309,8 +309,8 @@ class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):
 
         if not qtzn_module_cls:
             api_reference_url = "https://quic.github.io/aimet-pages/releases/" \
-                                "latest/torch_docs/api/" \
-                                "nn.quantization_mixin.html#aimet_torch.v2.nn.QuantizationMixin.implements"
+                                "latest/apiref/torch/generated/" \
+                                "aimet_torch.nn.QuantizationMixin.html#aimet_torch.nn.QuantizationMixin.implements"
 
             raise RuntimeError(
                 f'The quantized module definition of {module_cls} is not registered. '
