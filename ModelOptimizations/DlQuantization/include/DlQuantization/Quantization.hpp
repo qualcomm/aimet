@@ -150,6 +150,7 @@ enum RoundingMode
 
 using TensorDim = int64_t;
 using TensorDims = std::vector<TensorDim>;
+using Encodings = std::vector<TfEncoding>;
 
 /**
  * @brief Performs quantize-dequantize using numpy-style broadcasting between input and encodings
@@ -166,7 +167,7 @@ using TensorDims = std::vector<TensorDim>;
 template <typename T>
 void quantizeDequantizeBroadcast(const T* inTensor,
                                  T* outTensor,
-                                 const std::vector<TfEncoding*>& encodings,
+                                 const Encodings& encodings,
                                  const TensorDims& inputShape,
                                  const TensorDims& encodingShape,
                                  ComputationMode mode,

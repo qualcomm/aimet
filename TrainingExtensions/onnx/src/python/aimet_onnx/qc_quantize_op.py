@@ -330,8 +330,6 @@ class QcQuantizeOp:
         for tensor_quantizer in self._tensor_quantizer:
             tensor_quantizer.isEncodingValid = True
         self.op_mode = OpMode.quantizeDequantize
-        # pylint: disable=attribute-defined-outside-init
-        self._encoding = encoding
         self.quant_info.encoding = encoding
 
     @encodings.setter
@@ -388,7 +386,6 @@ class QcQuantizeOp:
             encodings.append(encoding)
             tensor_quantizer.isEncodingValid = False
 
-        self._encoding = encodings
         self.quant_info.encoding = encodings
 
     def set_bitwidth(self, bitwidth: int):

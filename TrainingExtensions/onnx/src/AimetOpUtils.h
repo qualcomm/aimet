@@ -146,7 +146,7 @@ template <typename T>
 void modeSpecificActionBroadcastInt(const T* inTensor, T* outTensor, const BroadcastShapeInfo& shapeInfo,
                                     std::vector<DlQuantization::TensorQuantizer*>& tensorQuantizers,
                                     const DlQuantization::TensorQuantizerOpMode opMode,
-                                    std::vector<DlQuantization::TfEncoding*>& encodings,
+                                    DlQuantization::Encodings& encodings,
                                     const bool useSymmetricEncoding, DlQuantization::IAllocator* allocator,
                                     bool useCuda, void* stream)
 {
@@ -182,11 +182,8 @@ void modeSpecificActionBroadcastInt(const T* inTensor, T* outTensor, const Broad
             tensorQuantizer->resetEncodingStats();
             tensorQuantizer->updateStats(buffer + idx * blockSize, blockSize, useCuda, allocator);
             DlQuantization::TfEncoding blockEncoding =
-                tensorQuantizer->computeEncoding(encodings[idx]->bw, useSymmetricEncoding);
-            encodings[idx]->min    = blockEncoding.min;
-            encodings[idx]->max    = blockEncoding.max;
-            encodings[idx]->offset = blockEncoding.offset;
-            encodings[idx]->delta  = blockEncoding.delta;
+                tensorQuantizer->computeEncoding(encodings[idx].bw, useSymmetricEncoding);
+            encodings[idx] = blockEncoding;
         }
         allocator->deleteRaw(tempBuffer);
         // Continue to quantizeDequantize

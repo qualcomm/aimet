@@ -632,7 +632,7 @@ void quantizeDequantizePerChannel(const DTYPE* in, int numChannel, int numElemen
 
 
 template <typename DTYPE>
-void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const std::vector<TfEncoding*>& encodings,
+void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const Encodings& encodings,
                                     int64_t numElement, const TensorDims& inputStrides,
                                     const TensorDims& encodingStrides)
 {
@@ -648,10 +648,10 @@ void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const std::vect
             encodingIdx += encodingStrides[dim] * dimIdx;
         }
 
-        auto delta  = encodings[encodingIdx]->delta;
-        auto offset = encodings[encodingIdx]->offset;
-        auto min    = encodings[encodingIdx]->min;
-        auto max    = encodings[encodingIdx]->max;
+        auto delta  = encodings[encodingIdx].delta;
+        auto offset = encodings[encodingIdx].offset;
+        auto min    = encodings[encodingIdx].min;
+        auto max    = encodings[encodingIdx].max;
 
         quantizeValueCpu<DTYPE>(in + i, out + i, min, max, delta, offset, ROUND_NEAREST);
 
@@ -675,7 +675,7 @@ void quantizeDequantizePerChannelCpu(const DTYPE* in, int numChannel, int numEle
 }
 
 template <typename T>
-void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const std::vector<TfEncoding*>& encodings,
+void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const Encodings& encodings,
                                  const TensorDims& inputShape, const TensorDims& encodingShape, ComputationMode mode,
                                  void* stream)
 {
@@ -747,10 +747,10 @@ template void quantizeDequantizePerChannel(const double* in, int numChannel, int
                                            RoundingMode roundingMode, void* stream);
 
 template void quantizeDequantizeBroadcast(const float* inTensor, float* outTensor,
-                                          const std::vector<TfEncoding*>& encodings, const TensorDims& inputShape,
+                                          const Encodings& encodings, const TensorDims& inputShape,
                                           const TensorDims& encodingShape, ComputationMode mode, void* stream);
 
-template void quantizeDequantizeBroadcastCpu(const float* in, float* out, const std::vector<TfEncoding*>& encodings,
+template void quantizeDequantizeBroadcastCpu(const float* in, float* out, const Encodings& encodings,
                                              int64_t numElement, const TensorDims& inputStrides,
                                              const TensorDims& encodingStrides);
 

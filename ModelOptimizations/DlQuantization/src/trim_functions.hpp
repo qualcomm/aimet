@@ -100,7 +100,7 @@ void quantizeDequantizePerChannel(const DTYPE* in, int numChannel, int numElemen
 
 
 template <typename DTYPE>
-void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const std::vector<TfEncoding*>& encodings,
+void quantizeDequantizeBroadcastCpu(const DTYPE* in, DTYPE* out, const Encodings& encodings,
                                     int64_t numElement, const TensorDims& inputStrides,
                                     const TensorDims& encodingStrides);
 
@@ -122,7 +122,7 @@ void quantizeDequantizePerChannelGpu(const DTYPE* in, int numChannel, int numEle
                                      DTYPE* encodingOffset, RoundingMode roundingMode, void* stream);
 
 template <typename DTYPE>
-void quantizeDequantizeBroadcastGpu(const DTYPE* in, DTYPE* out, const std::vector<TfEncoding*>& encodings,
+void quantizeDequantizeBroadcastGpu(const DTYPE* in, DTYPE* out, const Encodings& encodings,
                                     int64_t numElements, const TensorDims& inputStrides,
                                     const TensorDims& encodingStrides, void* stream);
 

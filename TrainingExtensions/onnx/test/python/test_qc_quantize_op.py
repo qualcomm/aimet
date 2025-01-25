@@ -786,6 +786,7 @@ class TestBlockwiseQuantizeOp:
 
         # Computed encodings should be symmetric and correspond to the absolute min/max in the block
         expected_max = np.max(np.abs(input_tensor.reshape(4, 3)), axis=1)
+        cpp_encodings = quant_info.encoding
         for idx, enc in enumerate(cpp_encodings):
             assert isclose(enc.max, expected_max[idx])
             assert isclose((enc.max + enc.min), -1 * enc.delta)

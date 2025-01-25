@@ -60,7 +60,7 @@ struct QcQuantizeInfo
     }
 
     std::vector<DlQuantization::TensorQuantizer*> tensorQuantizerRef;
-    std::vector<DlQuantization::TfEncoding*> encoding;
+    DlQuantization::Encodings encoding;
     DlQuantization::TensorQuantizerOpMode opMode;
     bool useSymmetricEncoding;
     bool enabled;

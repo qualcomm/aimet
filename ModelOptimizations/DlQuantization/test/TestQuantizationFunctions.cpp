@@ -55,11 +55,6 @@ void launchBlockQdqKernel(float* in, float* out, std::vector<DlQuantization::TfE
 {
     void* inputBuffer;
     void* outputBuffer;
-    std::vector<DlQuantization::TfEncoding*> encoding_ptrs;
-    for (auto& enc : encodings)
-    {
-        encoding_ptrs.push_back(&enc);
-    }
 
     if (useCuda)
     {
@@ -69,7 +64,7 @@ void launchBlockQdqKernel(float* in, float* out, std::vector<DlQuantization::TfE
         // copy input to gpu
         cudaMemcpy(inputBuffer, in, numElements * sizeof(float), cudaMemcpyHostToDevice);
 
-        DlQuantization::quantizeDequantizeBroadcast((float*) inputBuffer, (float*) outputBuffer, encoding_ptrs, inputShape, encodingShape, DlQuantization::COMP_MODE_GPU);
+        DlQuantization::quantizeDequantizeBroadcast((float*) inputBuffer, (float*) outputBuffer, encodings, inputShape, encodingShape, DlQuantization::COMP_MODE_GPU);
 
         // copy output to cpu
         cudaMemcpy(out, outputBuffer, numElements * sizeof(float), cudaMemcpyDeviceToHost);
@@ -80,7 +75,7 @@ void launchBlockQdqKernel(float* in, float* out, std::vector<DlQuantization::TfE
     }
     else
     {
-        DlQuantization::quantizeDequantizeBroadcast(in, out, encoding_ptrs, inputShape, encodingShape, DlQuantization::COMP_MODE_CPU);
+        DlQuantization::quantizeDequantizeBroadcast(in, out, encodings, inputShape, encodingShape, DlQuantization::COMP_MODE_CPU);
     }
 
 }
