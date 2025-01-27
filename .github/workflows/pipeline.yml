@@ -195,24 +195,8 @@ jobs:
                                    # (aimet-onnx and -tensorflow uses bokeh 3.3.2 which works okay with pylint 2.8.3)
                                    # FIXME: Upgrade pylint version to latest.
         run: |
-          if [ "${{ matrix.VER_TORCH }}" != "" ]; then
-            export AIMET_PKG_NAME="aimet_torch"
-          elif [ "${{ matrix.VER_TENSORFLOW }}" != "" ]; then
-            export AIMET_PKG_NAME="aimet_tensorflow"
-          elif [ "${{ matrix.VER_ONNX }}" != "" ]; then
-            export AIMET_PKG_NAME="aimet_onnx"
-          fi
-
           ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
-              python3 -c "import ${AIMET_PKG_NAME}; \
-                          import aimet_common; \
-                          print(' '.join([ \
-                            *${AIMET_PKG_NAME}.__path__, \
-                            *aimet_common.__path__, \
-                          ]))" \
-          | tail -n 1 \
-          | xargs -r ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
-              python3 -m pylint --rcfile=.pylintrc
+              python3 -m pylint --rcfile=.pylintrc ".conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages/aimet_*"
       - name: Run unit tests
         run: |
           TEST_DIR=""
