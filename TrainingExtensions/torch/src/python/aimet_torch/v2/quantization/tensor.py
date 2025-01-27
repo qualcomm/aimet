@@ -90,14 +90,6 @@ class QuantizedTensorBase(torch.Tensor):
 
     encoding: EncodingBase
 
-    _attr_types = {
-        torch.dtype,
-        torch.device,
-        torch.layout,
-        torch.Size,
-        str,
-    }
-
     _attr_descriptors = {
         # attribute descriptor        attribute type
         ( torch.Tensor.dtype.__get__,  torch.dtype),
