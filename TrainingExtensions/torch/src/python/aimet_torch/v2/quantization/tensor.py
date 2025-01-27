@@ -90,12 +90,26 @@ class QuantizedTensorBase(torch.Tensor):
 
     encoding: EncodingBase
 
+    _attr_types = {
+        torch.dtype,
+        torch.device,
+        torch.layout,
+        torch.Size,
+        str,
+    }
+
     _attr_descriptors = {
-        torch.Tensor.dtype.__get__,
-        torch.Tensor.device.__get__,
-        torch.Tensor.layout.__get__,
-        torch.Tensor.shape.__get__,
-        torch.Tensor.size,
+        # attribute descriptor        attribute type
+        ( torch.Tensor.dtype.__get__,  torch.dtype),
+        ( torch.Tensor.device.__get__, torch.device),
+        ( torch.Tensor.layout.__get__, torch.layout),
+        ( torch.Tensor.shape.__get__,  torch.Size),
+        ( torch.Tensor.size,           torch.Size),
+        ( torch.Tensor.type,           str), # NOTE: Tensor.type is overloaded with two different specs:
+                                             #   1) Without argument: `tensor.type() -> str`;
+                                             #      should be considered a attribute descriptor
+                                             #   2) With arguments: `tensor.type(dtype) -> torch.Tensor`;
+                                             #      should be considered a typecasting operator
     }
 
     _cast_ops = {
@@ -310,7 +324,7 @@ class QuantizedTensorBase(torch.Tensor):
             return HANDLED_FUNCTIONS[func](*args, **kwargs)
         ret = super().__torch_function__(func, types, args, kwargs)
 
-        if func in cls._attr_descriptors:
+        if (func, type(ret)) in cls._attr_descriptors:
             return ret
 
         self, *_ = args

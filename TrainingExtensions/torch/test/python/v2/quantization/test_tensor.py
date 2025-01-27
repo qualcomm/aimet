@@ -702,6 +702,7 @@ class TestQuantizedTensor:
             * layout
             * shape
             * size()
+            * type()
         Then: The attributes from both tensors should be value-equal and type-equal
         """
         tensor = torch.empty(10, 10)
@@ -721,3 +722,6 @@ class TestQuantizedTensor:
 
         assert tensor.size() == qtensor.size()
         assert type(tensor.size()) == type(qtensor.size())
+
+        assert tensor.type() == qtensor.type()
+        assert type(tensor.type()) == type(qtensor.type())
