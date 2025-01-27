@@ -656,7 +656,6 @@ class QuantizationSimModel(_QuantizationSimModelBase):
 
 
 
-@deprecated("Use QuantizationSimModel.load_encodings instead.")
 def load_encodings_to_sim(quant_sim_model: _QuantizationSimModelBase, pytorch_encoding_path: str):
     """
     Loads the saved encodings to quant sim model. The encoding filename to load should end in _torch.encodings,
