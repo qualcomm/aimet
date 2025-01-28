@@ -241,22 +241,39 @@ class BaseQuantizationMixin(abc.ABC):
         mixin_clsname = cls.__name__
         module_clsname = module_cls.__name__
         forward_fn_signature = inspect.signature(module_cls.forward)
-        _, *forward_fn_args = list(forward_fn_signature.parameters.keys())
+        _, *forward_fn_args = list(forward_fn_signature.parameters.values())
         ret_type = forward_fn_signature.return_annotation
 
         if ret_type == inspect.Parameter.empty:
             # if return annotation is unspecified, assume torch.Tensor as return type
             ret_type = torch.Tensor
 
-        _declare_input_quantizers = [
-            f'self.input_quantizers = torch.nn.ModuleList({[None for _ in forward_fn_args]})',
+        positional_or_keyword_args = [
+            arg for arg in forward_fn_args
+            if arg.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD)
         ]
-        _quantize_inputs = []
-        for i, varname in enumerate(forward_fn_args):
-            _quantize_inputs += [
-                f"if self.input_quantizers[{i}]:",
-                f"    {varname} = self.input_quantizers[{i}]({varname})\n",
+        if positional_or_keyword_args != forward_fn_args:
+            # Module takes variable number of inputs (*args and/or **kwargs)
+            # In this case, only the user knows the proper number of input quantizers
+            _declare_input_quantizers = [
+                'self.input_quantizers = torch.nn.ModuleList(',
+                "    # <TODO: Declare the number of input quantizers here>",
+                ')',
             ]
+            _quantize_inputs = [
+                "# <TODO: Quantize inputs as necessary>\n",
+            ]
+        else:
+            _declare_input_quantizers = [
+                f'self.input_quantizers = torch.nn.ModuleList({[None for _ in positional_or_keyword_args]})',
+            ]
+            _quantize_inputs = []
+            for i, arg in enumerate(positional_or_keyword_args):
+                _quantize_inputs += [
+                    f"if self.input_quantizers[{i}]:",
+                    f"    {arg.name} = self.input_quantizers[{i}]({arg.name})\n",
+                ]
 
         if ret_type == torch.Tensor:
             _declare_output_quantizers = [
@@ -276,6 +293,22 @@ class BaseQuantizationMixin(abc.ABC):
                 "# <TODO: Quantize `ret` as necessary>\n",
             ]
 
+        def format_arg(arg: inspect.Parameter):
+            if arg.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD):
+                return arg.name
+            if arg.kind == inspect.Parameter.VAR_POSITIONAL:
+                return f"*{arg.name}"
+            if arg.kind == inspect.Parameter.KEYWORD_ONLY:
+                return f"{arg.name}={arg.name}"
+            if arg.kind == inspect.Parameter.VAR_KEYWORD:
+                return f"**{arg.name}"
+            raise RuntimeError
+
+        _call_super_forward = [
+            f'ret = super().forward({", ".join([format_arg(arg) for arg in forward_fn_args])})',
+        ]
+
         return '\n'.join([
             f'@{mixin_clsname}.implements({module_clsname})',
             f'class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):',
@@ -292,11 +325,11 @@ class BaseQuantizationMixin(abc.ABC):
 
              '        # Run forward with quantized inputs and parameters',
              '        with self._patch_quantized_parameters():',
-            f'            ret = super().forward({", ".join(forward_fn_args)})',
+          *(f'            {line}' for line in _call_super_forward),
              '',
              '        # Quantize output tensors',
           *(f'        {line}' for line in _quantize_outputs),
-             '',
+
              '        return ret',
         ])
 

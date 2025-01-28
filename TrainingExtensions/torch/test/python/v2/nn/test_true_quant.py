@@ -1059,6 +1059,8 @@ def test_default_kernels(module_factory, input_factory):
     # transformers.models.llama.modeling_llama.LlamaRotaryEmbedding, # requires latest transformer
     # transformers.models.llama.modeling_llama.LlamaRMSNorm, # requires latest transformer
     torch.nn.Linear,
+    custom.Multiply,
+    custom.MatMul,
 ])
 def test_code_example(module_cls):
     """
