@@ -114,13 +114,6 @@ struct QcQuantizeOpCuda : QcQuantizeOp
                  Ort::Custom::Tensor<float>& output)
     {
         cudaStream_t stream = cuda_ctx.cuda_stream;
-        if ((quantInfo->opMode == DlQuantization::TensorQuantizerOpMode::updateStats) ||
-            (quantInfo->opMode == DlQuantization::TensorQuantizerOpMode::oneShotQuantizeDequantize))
-        {
-            // updateStats doesn't use cuda stream, must synchronize first to ensure input buffer is populated
-            cudaStreamSynchronize(stream);
-        }
-
         computeImpl(input, output, stream, true, &cudaAllocator);
     }
 };
