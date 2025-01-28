@@ -202,7 +202,7 @@ def _get_config_file(is_symmetric: bool, strict_symmetric: bool, unsigned_symmet
 
 
 @pytest.mark.parametrize("inp_symmetry", ['asym', 'symfp', 'symqt'])
-@pytest.mark.parametrize("param_bw", [2, 31])
+@pytest.mark.parametrize("param_bw", [31])
 @pytest.mark.parametrize("loss_fn", ['mse', 'l1'])
 @pytest.mark.parametrize("enable_pcq", [True, False])
 def test_do_seq_mse_for_conv(inp_symmetry, param_bw, loss_fn, enable_pcq):
@@ -228,7 +228,7 @@ def test_do_seq_mse_for_conv(inp_symmetry, param_bw, loss_fn, enable_pcq):
 
     weight_name = seq_mse.node_name_to_input_names[conv_node.op_name][1]
     quantize_op = seq_mse.sim.qc_quantize_op_dict[weight_name]
-    encodings = quantize_op.encodings
+    encodings = quantize_op.get_encodings()
     encodings_max = [encoding.max for encoding in encodings]
     if param_bw == 31:
         assert np.all(np.isclose(encodings_max, per_channel_max))

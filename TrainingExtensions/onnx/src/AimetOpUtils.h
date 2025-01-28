@@ -39,6 +39,7 @@
 #ifndef AIMET_MAIN_AIMETOPUTILS_H
 #define AIMET_MAIN_AIMETOPUTILS_H
 
+#include <numeric>
 #include "DlQuantization/Fp16Quantization.hpp"
 #include "DlQuantization/Quantization.hpp"
 #include "DlQuantization/TensorQuantizer.h"
@@ -46,7 +47,6 @@
 #include "Eigen/Core"
 #include "Eigen/src/Core/arch/Default/Half.h"
 #include "OnnxOpUtils.h"
-#include "QuantizeDequantizeUtils.hpp"
 
 #include <cstdint>
 #include <stdexcept>
@@ -93,128 +93,37 @@ void copyInputTensorsToOutputTensors(const T* inTensor, size_t count, T* outTens
 
 void quantizeDequantizeFp16Cpu(const float* in, int cnt, float* out);
 
-
 template <typename T>
-void modeSpecificActionInt(const T* inTensor, size_t count, T* outTensor,
-                           DlQuantization::TensorQuantizer* tensorQuantizer,
-                           const DlQuantization::TensorQuantizerOpMode opMode, DlQuantization::TfEncoding* encoding,
-                           const bool useSymmetricEncoding, DlQuantization::IAllocator* allocator, bool useCuda,
-                           void* stream)
+void modeSpecificActionBroadcastInt(const T* inTensor, T* outTensor, const std::vector<int64_t> inputShape,
+                                    DlQuantization::BlockTensorQuantizer* tensorQuantizer,
+                                    const DlQuantization::TensorQuantizerOpMode opMode,
+                                    const bool useSymmetricEncoding, DlQuantization::IAllocator* allocator,
+                                    bool useCuda, void* stream)
 {
     switch (opMode)
     {
     case DlQuantization::TensorQuantizerOpMode::oneShotQuantizeDequantize:
     {
         tensorQuantizer->resetEncodingStats();
-        tensorQuantizer->updateStats(inTensor, count, useCuda, allocator);
-        DlQuantization::TfEncoding initial_encoding =
-            tensorQuantizer->computeEncoding(encoding->bw, useSymmetricEncoding);
-        tensorQuantizer->quantizeDequantize(inTensor, count, outTensor, initial_encoding.min, initial_encoding.max,
-                                            encoding->bw, useCuda, stream);
-        // Update encoding object with computed encoding
-        encoding->min    = initial_encoding.min;
-        encoding->max    = initial_encoding.max;
-        encoding->offset = initial_encoding.offset;
-        encoding->delta  = initial_encoding.delta;
-        break;
-    }
-    case DlQuantization::TensorQuantizerOpMode::updateStats:
-    {
-        tensorQuantizer->updateStats(inTensor, count, useCuda, allocator);
-        copyInputTensorsToOutputTensors(inTensor, count, outTensor, useCuda, stream);
-        break;
-    }
-    case DlQuantization::TensorQuantizerOpMode::quantizeDequantize:
-    {
-        tensorQuantizer->quantizeDequantize(inTensor, count, outTensor, encoding->min, encoding->max, encoding->bw,
-                                            useCuda, stream);
-        break;
-    }
-    case DlQuantization::TensorQuantizerOpMode::passThrough:
-    {
-        copyInputTensorsToOutputTensors(inTensor, count, outTensor, useCuda, stream);
-        break;
-    }
-    default:
-    {
-        throw std::exception();
-    }
-    }
-}
-
-template <typename T>
-void modeSpecificActionBroadcastInt(const T* inTensor, T* outTensor, const BroadcastShapeInfo& shapeInfo,
-                                    std::vector<DlQuantization::TensorQuantizer*>& tensorQuantizers,
-                                    const DlQuantization::TensorQuantizerOpMode opMode,
-                                    DlQuantization::Encodings& encodings,
-                                    const bool useSymmetricEncoding, DlQuantization::IAllocator* allocator,
-                                    bool useCuda, void* stream)
-{
-    // Note: This case should be able to handle the per-channel and per-tensor cases as well, but may not
-    //       be as efficient as the specialized per-channel/per-tensor logic. After benchmarking, consider
-    //       merging all these into a single function.
-
-    const int64_t numEncodings = shapeInfo.numEncodings;
-    if (numEncodings != encodings.size())
-    {
-        throw std::runtime_error("Expected number of encodings (" + std::to_string(numEncodings) +
-                                 ") does not match provided encoding list size (" + std::to_string(encodings.size()) +
-                                 ").");
-    }
-
-    int blockSize = shapeInfo.numElements / numEncodings;
-    switch (opMode)
-    {
-    case DlQuantization::TensorQuantizerOpMode::oneShotQuantizeDequantize:
-    {
-        T* tempBuffer = static_cast<T*>(allocator->allocateRaw(sizeof(T) * shapeInfo.numElements));
-        const T* buffer = inTensor;
-
-        if (not shapeInfo.hasContiguousBlocks())
-        {
-            copyToContiguousBlockLayout(inTensor, tempBuffer, shapeInfo, useCuda);
-            buffer = tempBuffer;
-        }
-
-        for (int idx = 0; idx < numEncodings; idx++)
-        {
-            auto tensorQuantizer = tensorQuantizers[idx];
-            tensorQuantizer->resetEncodingStats();
-            tensorQuantizer->updateStats(buffer + idx * blockSize, blockSize, useCuda, allocator);
-            DlQuantization::TfEncoding blockEncoding =
-                tensorQuantizer->computeEncoding(encodings[idx].bw, useSymmetricEncoding);
-            encodings[idx] = blockEncoding;
-        }
-        allocator->deleteRaw(tempBuffer);
+        tensorQuantizer->updateStats(inTensor, inputShape, useCuda, allocator, stream);
+        auto computedEncodings = tensorQuantizer->computeEncodings(useSymmetricEncoding);
+        tensorQuantizer->setEncodings(computedEncodings);
         // Continue to quantizeDequantize
     }
     case DlQuantization::TensorQuantizerOpMode::quantizeDequantize:
     {
-        auto mode = useCuda ? DlQuantization::COMP_MODE_GPU : DlQuantization::COMP_MODE_CPU;
-        DlQuantization::quantizeDequantizeBroadcast(inTensor, outTensor, encodings, shapeInfo.tensorShape, shapeInfo.encodingShape, mode, stream);
+        tensorQuantizer->quantizeDequantize(inTensor, outTensor, inputShape, useCuda, stream);
         break;
     }
     case DlQuantization::TensorQuantizerOpMode::updateStats:
     {
-        T* tempBuffer = static_cast<T*>(allocator->allocateRaw(sizeof(T) * shapeInfo.numElements));
-        const T* buffer = inTensor;
-
-        if (not shapeInfo.hasContiguousBlocks())
-        {
-            copyToContiguousBlockLayout(inTensor, tempBuffer, shapeInfo, useCuda);
-            buffer = tempBuffer;
-        }
-
-        for (int idx = 0; idx < numEncodings; idx++)
-        {
-            tensorQuantizers[idx]->updateStats(buffer + idx * blockSize, blockSize, useCuda, allocator);
-        }
-        allocator->deleteRaw(tempBuffer);
+        tensorQuantizer->updateStats(inTensor, inputShape, useCuda, allocator, stream);
         // Continue to passThrough
     }
     case DlQuantization::TensorQuantizerOpMode::passThrough:
     {
-        copyInputTensorsToOutputTensors(inTensor, shapeInfo.numElements, outTensor, useCuda, stream);
+        int64_t numElements = std::accumulate(inputShape.begin(), inputShape.end(), 1, std::multiplies<size_t>());
+        copyInputTensorsToOutputTensors(inTensor, numElements, outTensor, useCuda, stream);
         break;
     }
     default:

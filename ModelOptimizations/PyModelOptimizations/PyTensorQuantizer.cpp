@@ -77,4 +77,17 @@ void PyTensorQuantizer::quantizeDequantize(py::array_t<float> inputTensor, py::a
 }
 
 
+void pyUpdateStats(BlockTensorQuantizer &self, py::array_t<float> tensor)
+{
+    py::buffer_info buf = tensor.request();
+    TensorDims shape(buf.ndim);
+    for (size_t i = 0; i < buf.ndim; i++)
+    {
+        shape[i] = buf.shape[i];
+    }
+    auto ptr = static_cast<float*>(buf.ptr);
+    self.updateStats(ptr, shape, false);
+
+}
+
 }   // namespace DlQuantization

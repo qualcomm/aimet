@@ -161,6 +161,26 @@ PYBIND11_MODULE(_libpymo, m)
         .value("quantizeDequantize", DlQuantization::TensorQuantizerOpMode::quantizeDequantize)
         .value("passThrough", DlQuantization::TensorQuantizerOpMode::passThrough);
 
+    py::class_<DlQuantization::BlockTensorQuantizer, std::shared_ptr<DlQuantization::BlockTensorQuantizer>>(m, "BlockTensorQuantizer")
+        .def(py::init<TensorDims, int, QuantizationMode>())
+        .def("resetEncodingStats", &DlQuantization::BlockTensorQuantizer::resetEncodingStats)
+        .def("setEncodings", &DlQuantization::BlockTensorQuantizer::setEncodings)
+        .def("getEncodings", &DlQuantization::BlockTensorQuantizer::getEncodings)
+        .def("setQuantScheme", &DlQuantization::BlockTensorQuantizer::setQuantScheme)
+        .def("getQuantScheme", &DlQuantization::BlockTensorQuantizer::getQuantScheme)
+        .def("setStrictSymmetric", &DlQuantization::BlockTensorQuantizer::setStrictSymmetric)
+        .def("getStrictSymmetric", &DlQuantization::BlockTensorQuantizer::getStrictSymmetric)
+        .def("setUnsignedSymmetric", &DlQuantization::BlockTensorQuantizer::setUnsignedSymmetric)
+        .def("getUnsignedSymmetric", &DlQuantization::BlockTensorQuantizer::getUnsignedSymmetric)
+        .def("getStatsHistogram", &DlQuantization::BlockTensorQuantizer::getStatsHistogram)
+        .def("setPercentileValue", &DlQuantization::BlockTensorQuantizer::setPercentileValue)
+        .def("getPercentileValue", &DlQuantization::BlockTensorQuantizer::getPercentileValue)
+        .def("computeEncodings", &DlQuantization::BlockTensorQuantizer::computeEncodings)
+        .def("getShape", &DlQuantization::BlockTensorQuantizer::getShape)
+        .def("updateStats", &pyUpdateStats)
+        .def_readwrite("bitwidth", &DlQuantization::BlockTensorQuantizer::bitwidth)
+        .def_readwrite("isEncodingValid", &DlQuantization::BlockTensorQuantizer::isEncodingValid);
+
     py::class_<DlQuantization::PyTensorQuantizer>(m, "TensorQuantizer")
         .def(py::init<DlQuantization::QuantizationMode, DlQuantization::RoundingMode>())
         .def("updateStats",

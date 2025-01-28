@@ -67,41 +67,31 @@ else:
 op_name = "QcQuantizeOp"
 per_channel_op_name = "QcQuantizeOp"
 
-def create_quant_info(encoding,
-                      tensor_quantizer,
-                      opMode,
-                      useSymmetricEncoding=False,
-                      enabled=True,
-                      bitwidth=8):
-    quant_info = libquant_info.QcQuantizeInfo()
-    encoding.bw = bitwidth
-    quant_info.encoding = [encoding]
-    quant_info.opMode = opMode
-    quant_info.useSymmetricEncoding = useSymmetricEncoding
-    quant_info.enabled = enabled
-    quant_info.tensorQuantizerRef = [libpymo.PtrToInt64(tensor_quantizer)]
-    quant_info.isIntDataType = True
-    quant_info.usePerChannelMode = False
-    return quant_info
+def create_tensor_quantizer(tensor_shape,
+                            bitwidth=8,
+                            ch_axis=None,
+                            block_axis=None,
+                            block_size=0,
+                            quant_scheme=QuantScheme.post_training_tf):
+    shape = [1 for _ in tensor_shape]
+    if ch_axis is not None:
+        shape[ch_axis] = tensor_shape[ch_axis]
+    if block_axis is not None:
+        shape[block_axis] = tensor_shape[block_axis] // block_size
 
-def create_per_channel_quant_info(encoding,
-                      tensor_quantizer,
+    return libpymo.BlockTensorQuantizer(shape, bitwidth, MAP_QUANT_SCHEME_TO_PYMO[quant_scheme])
+
+
+def create_quant_info(tensor_quantizer,
                       opMode,
                       useSymmetricEncoding=False,
-                      enabled=True,
-                      ch_idx=0,
-                      bitwidth=8):
+                      enabled=True):
     quant_info = libquant_info.QcQuantizeInfo()
-    for enc in encoding:
-        enc.bw = bitwidth
-    quant_info.encoding = encoding
+    quant_info.tensorQuantizerRef = tensor_quantizer
     quant_info.opMode = opMode
     quant_info.useSymmetricEncoding = useSymmetricEncoding
     quant_info.enabled = enabled
-    quant_info.tensorQuantizerRef = [libpymo.PtrToInt64(item) for item in tensor_quantizer]
-    quant_info.channelAxis = ch_idx
     quant_info.isIntDataType = True
-    quant_info.usePerChannelMode = True
     return quant_info
 
 
@@ -161,22 +151,20 @@ class TestQcQuantizeOp:
 
         input_arr = np.random.rand(1, 3, 4, 4).astype(np.float32)
 
-        tensor_quantizer = libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                   MAP_ROUND_MODE_TO_PYMO['stochastic'])
-        cpp_encodings = libpymo.TfEncoding()
-        quant_info = create_quant_info(cpp_encodings, tensor_quantizer, OpMode.updateStats,
+        tensor_quantizer = create_tensor_quantizer([], 8, quant_scheme=QuantScheme.post_training_tf)
+        quant_info = create_quant_info(tensor_quantizer, OpMode.updateStats,
                                        useSymmetricEncoding=False)
         quant_node = helper.make_node(op_name, inputs=['input'], outputs=['output'],
                                       domain=op_domain, quant_info=libpymo.PtrToInt64(quant_info))
         model = create_model_from_node(quant_node, input_arr.shape)
         session = build_session(model, available_providers)
         session.run(None, {'input': input_arr})
-        encodings = tensor_quantizer.computeEncoding(cpp_encodings.bw,
-                                                     quant_info.useSymmetricEncoding)
+        encodings = tensor_quantizer.computeEncodings(quant_info.useSymmetricEncoding)[0]
         print("Encoding returned: min={}, max={}, offset={}. delta={}, bw={}"
               .format(encodings.min, encodings.max, encodings.offset, encodings.delta, encodings.bw))
         assert encodings is not None
-        assert quant_info.tensorQuantizerRef[0].isEncodingValid is True
+        tensor_quantizer.setEncodings([encodings])
+        assert quant_info.tensorQuantizerRef.isEncodingValid
 
     def test_quantize_dequantize_with_pymo(self):
 
@@ -200,6 +188,8 @@ class TestQcQuantizeOp:
         encodings.bw = 8
         encodings.max = 1
         encodings.min = -5.0
+        encodings.delta = (1 + 5) / 255.
+        encodings.offset = - 5.0 / encodings.delta
 
         qc_op.load_encodings([encodings])
 
@@ -277,14 +267,12 @@ class TestQcQuantizeOp:
                              use_symmetric_encodings=False,
                              )
 
-        quantizer = libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                            MAP_ROUND_MODE_TO_PYMO['nearest'])
+        quantizer = create_tensor_quantizer([], 8, quant_scheme=QuantScheme.post_training_tf)
         out_tensor = np.zeros(input_arr.shape).astype(np.float32)
         # Perform one-shot quant-dequant in python
-        quantizer.updateStats(input_arr, False)
-        enc = quantizer.computeEncoding(8, False)
-        quantizer.quantizeDequantize(input_arr.copy(), out_tensor, enc.min,
-                                     enc.max, 8, False)
+        quantizer.updateStats(input_arr)
+        enc = quantizer.computeEncodings(False)[0]
+        out_tensor = (np.round(np.clip(input_arr / enc.delta - enc.offset, 0, 255)) + enc.offset) * enc.delta
 
         output = session.run(None, {'input': input_arr})[0]
         assert quant_info.encoding[0].max == enc.max
@@ -425,13 +413,13 @@ class TestQcQuantizeOp:
                              use_symmetric_encodings=True,
                              )
         qc_op.use_strict_symmetric = True
-        assert quant_info.tensorQuantizerRef[0].getStrictSymmetric() == True
+        assert quant_info.tensorQuantizerRef.getStrictSymmetric() == True
 
         qc_op.use_unsigned_symmetric = False
-        assert quant_info.tensorQuantizerRef[0].getUnsignedSymmetric()== False
+        assert quant_info.tensorQuantizerRef.getUnsignedSymmetric()== False
 
         qc_op.use_unsigned_symmetric = True
-        assert quant_info.tensorQuantizerRef[0].getUnsignedSymmetric() == True
+        assert quant_info.tensorQuantizerRef.getUnsignedSymmetric() == True
 
         qc_op.data_type = QuantizationDataType.float
         assert qc_op.data_type == QuantizationDataType.float
@@ -447,22 +435,19 @@ class TestQcQuantizeOp:
         input_shape = (12, 6, 3, 3)
         input_arr = np.random.randn(*input_shape, ).astype(np.float32)
         expected_output_arr = []
-        tensor_quantizers = []
-        encodings = []
-        for idx in range (input_shape[quant_axis]):
-            tensor_quantizer = libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                       MAP_ROUND_MODE_TO_PYMO['nearest'])
-            tensor_quantizer.setStrictSymmetric(strict_symmetric)
-            tensor_quantizer.setUnsignedSymmetric(unsigned_symmetric)
-            tensor_quantizers.append(tensor_quantizer)
-            encodings.append(libpymo.TfEncoding())
 
-        quant_info = create_per_channel_quant_info(encodings, tensor_quantizers, OpMode.oneShotQuantizeDequantize,
-                                                   useSymmetricEncoding=use_symmetric, ch_idx=quant_axis)
+        tensor_params = TensorQuantizerParams(input_shape, quant_axis, None)
+        quant_info = libquant_info.QcQuantizeInfo()
+        qc_op = QcQuantizeOp(quant_info=quant_info,
+                             quant_scheme=QuantScheme.post_training_tf,
+                             op_mode=OpMode.oneShotQuantizeDequantize,
+                             bitwidth=8,
+                             use_symmetric_encodings=use_symmetric,
+                             tensor_quantizer_params=tensor_params
+                             )
 
         quant_node = helper.make_node(op_name, inputs=['input'], outputs=['output'],
                                       domain=op_domain, quant_info=libpymo.PtrToInt64(quant_info))
-        quant_info.usePerChannelMode = False
         per_tensor_model = create_model_from_node(quant_node, input_arr.take(indices=0, axis=quant_axis).shape)
         session = build_session(per_tensor_model, available_providers)
         # Run each channel through a per-tensor quantizer
@@ -473,7 +458,7 @@ class TestQcQuantizeOp:
             quant_info.opMode = OpMode.oneShotQuantizeDequantize
         expected_output_arr = np.concatenate(expected_output_arr, axis=quant_axis)
 
-        quant_info.usePerChannelMode = True
+        qc_op.enable_per_channel_quantization()
         per_channel_quant_node = helper.make_node(per_channel_op_name, inputs=['input'], outputs=['output'],
                                                   domain=op_domain, quant_info=libpymo.PtrToInt64(quant_info))
         per_channel_model = create_model_from_node(per_channel_quant_node, input_arr.shape)
@@ -488,13 +473,8 @@ class TestQcQuantizeOp:
                               [-7, -5, -3, 0, .1, 2.5],
                               [-7, -5, -3, 0, .1, 2.5]],
                              ).astype(np.float32)
-        tensor_quantizers = []
         encodings = [libpymo.TfEncoding() for _ in range(4)]
         for index in range(3):
-            tensor_quantizer = libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                       MAP_ROUND_MODE_TO_PYMO['nearest'])
-            tensor_quantizer.isEncodingValid = True
-            tensor_quantizers.append(tensor_quantizer)
             encodings[index].bw = 8
             encodings[index].max = 3.81
             encodings[index].min = -3.84
@@ -505,8 +485,9 @@ class TestQcQuantizeOp:
         encodings[3].min = -6.4
         encodings[3].delta = 0.05
         encodings[3].offset = -128
-        quant_info = create_per_channel_quant_info(encodings, tensor_quantizers, OpMode.quantizeDequantize,
-                                                   useSymmetricEncoding=True, ch_idx=0)
+        tensor_quantizer = create_tensor_quantizer(inp_array.shape, encodings[0].bw, ch_axis=0, quant_scheme=QuantScheme.post_training_tf)
+        tensor_quantizer.setEncodings(encodings)
+        quant_info = create_quant_info(tensor_quantizer, OpMode.quantizeDequantize, useSymmetricEncoding=True)
         per_channel_quant_node = helper.make_node(per_channel_op_name, inputs=['input'], outputs=['output'],
                                                   domain=op_domain, quant_info=libpymo.PtrToInt64(quant_info))
 
@@ -656,14 +637,10 @@ class TestBlockwiseQuantizeOp:
 
         encodings = create_encoding(encoding_min, encoding_max, 8, False)
 
-        tensor_quantizers = [libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                     MAP_ROUND_MODE_TO_PYMO['nearest']) for _ in range(len(encoding_max))]
+        tensor_quantizer = create_tensor_quantizer(input_shape, test_set["bitwidth"], channel_axis, block_axis, block_size, quant_scheme=QuantScheme.post_training_tf)
+        tensor_quantizer.setEncodings(encodings)
 
-        for t in tensor_quantizers:
-            t.isEncodingValid = True
-
-        quant_info = create_per_channel_quant_info(encodings, tensor_quantizers, OpMode.quantizeDequantize,
-                                                   useSymmetricEncoding=True, ch_idx=channel_axis)
+        quant_info = create_quant_info(tensor_quantizer, OpMode.quantizeDequantize, useSymmetricEncoding=True)
 
         quant_info.blockAxis = block_axis
         quant_info.blockSize = block_size
@@ -688,21 +665,15 @@ class TestBlockwiseQuantizeOp:
             -.1, 0.3, 0.1
         ]).astype(np.float32).reshape(input_shape)
 
-        # Set up the quantizer op
-        cpp_encodings = [libpymo.TfEncoding() for _ in range(4)]
-        tensor_quantizer = [libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                   MAP_ROUND_MODE_TO_PYMO['nearest']) for _ in range(4)]
-        quant_info = create_per_channel_quant_info(cpp_encodings, tensor_quantizer, OpMode.updateStats,
-                                                   useSymmetricEncoding=symmetric, ch_idx=channel_axis)
-        quant_info.blockSize = block_size
-        quant_info.blockAxis = block_axis
+        tensor_quantizer = create_tensor_quantizer(input_shape, bitwidth, channel_axis, block_axis, block_size, quant_scheme=QuantScheme.post_training_tf)
+        quant_info = create_quant_info(tensor_quantizer, OpMode.updateStats, useSymmetricEncoding=symmetric)
         session = create_qc_quantize_model_session(quant_info, input_shape)
 
         # Run calibration
         output_tensor = session.run(None, {'input': input_tensor})[0]
 
         # Compute encodings
-        encodings = [quantizer.computeEncoding(bitwidth, symmetric) for quantizer in tensor_quantizer]
+        encodings = tensor_quantizer.computeEncodings(symmetric)
 
         # Op should be passthrough in update_stats mode
         assert np.alltrue(input_tensor == output_tensor)
@@ -730,21 +701,15 @@ class TestBlockwiseQuantizeOp:
             -.1, 0.3, 0.1
         ]).astype(np.float32).reshape(input_shape)
 
-        # Set up the quantizer op
-        cpp_encodings = [libpymo.TfEncoding() for _ in range(6)]
-        tensor_quantizer = [libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                    MAP_ROUND_MODE_TO_PYMO['nearest']) for _ in range(6)]
-        quant_info = create_per_channel_quant_info(cpp_encodings, tensor_quantizer, OpMode.updateStats,
-                                                   useSymmetricEncoding=symmetric, ch_idx=channel_axis)
-        quant_info.blockSize = block_size
-        quant_info.blockAxis = block_axis
+        tensor_quantizer = create_tensor_quantizer(input_shape, bitwidth, channel_axis, block_axis, block_size, quant_scheme=QuantScheme.post_training_tf)
+        quant_info = create_quant_info(tensor_quantizer, OpMode.updateStats, useSymmetricEncoding=symmetric)
         session = create_qc_quantize_model_session(quant_info, input_shape)
 
         # Run calibration
         output_tensor = session.run(None, {'input': input_tensor})[0]
 
         # Compute encodings
-        encodings = [quantizer.computeEncoding(bitwidth, symmetric) for quantizer in tensor_quantizer]
+        encodings = tensor_quantizer.computeEncodings(symmetric)
 
         # Op should be passthrough in update_stats mode
         assert np.alltrue(input_tensor == output_tensor)
@@ -773,14 +738,8 @@ class TestBlockwiseQuantizeOp:
             -.1, 0.3, 0.1
         ]).astype(np.float32).reshape(input_shape)
 
-        # Set up the quantizer op
-        cpp_encodings = [libpymo.TfEncoding() for _ in range(4)]
-        tensor_quantizer = [libpymo.TensorQuantizer(MAP_QUANT_SCHEME_TO_PYMO[QuantScheme.post_training_tf],
-                                                    MAP_ROUND_MODE_TO_PYMO['nearest']) for _ in range(4)]
-        quant_info = create_per_channel_quant_info(cpp_encodings, tensor_quantizer, OpMode.oneShotQuantizeDequantize,
-                                                   useSymmetricEncoding=symmetric, ch_idx=channel_axis)
-        quant_info.blockSize = block_size
-        quant_info.blockAxis = block_axis
+        tensor_quantizer = create_tensor_quantizer(input_shape, bitwidth, channel_axis, block_axis, block_size, quant_scheme=QuantScheme.post_training_tf)
+        quant_info = create_quant_info(tensor_quantizer, OpMode.oneShotQuantizeDequantize, useSymmetricEncoding=symmetric)
         session = create_qc_quantize_model_session(quant_info, input_shape)
 
         # Run calibration
@@ -807,7 +766,6 @@ class TestBlockwiseQuantizeOp:
                                                                     (False, 16, 0.0125, -1000)])
     def test_export_per_tensor_int_encodings(self, symmetric, bitwidth, delta, offset):
         quant_info = libquant_info.QcQuantizeInfo()
-        quant_info.usePerChannelMode = False
         qc_quantize_op = QcQuantizeOp(quant_info, use_symmetric_encodings=symmetric, op_mode=OpMode.quantizeDequantize)
         assert qc_quantize_op.export_encodings() is None
         encoding = libpymo.TfEncoding()
@@ -847,7 +805,6 @@ class TestBlockwiseQuantizeOp:
         params = TensorQuantizerParams(tensor_shape, channel_axis, block_axis)
 
         quant_info = libquant_info.QcQuantizeInfo()
-        quant_info.usePerChannelMode = False
         qc_quantize_op = QcQuantizeOp(quant_info, use_symmetric_encodings=symmetric, op_mode=OpMode.quantizeDequantize,
                                       tensor_quantizer_params=params)
         qc_quantize_op.enable_per_channel_quantization()

@@ -83,6 +83,7 @@ public:
     ~PyTensorQuantizer() = default;
 };
 
+void pyUpdateStats(BlockTensorQuantizer &self, py::array_t<float> tensor);
 
 }   // namespace DlQuantization
 

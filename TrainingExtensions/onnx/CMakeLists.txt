@@ -50,9 +50,6 @@ add_library(OnnxCppOps SHARED
         src/QcQuantizeInfo.h
         src/QcQuantizeOp.cpp
         src/OnnxOpUtils.h
-        src/QuantizeDequantizeUtils.hpp
-        src/QuantizeDequantizeUtils.cu
-        src/QuantizeDequantizeUtils.cpp
 )
 
 target_include_directories(OnnxCppOps PRIVATE

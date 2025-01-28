@@ -46,21 +46,27 @@
 
 struct QcQuantizeInfo
 {
-    void set_tensor_quantizer(std::vector<uint64_t>& addr)
+    void setEncodings(const DlQuantization::Encodings& encodings)
     {
-        tensorQuantizerRef = std::vector<DlQuantization::TensorQuantizer*>();
-        for (uint64_t i: addr)
+        if (tensorQuantizer.get())
         {
-            tensorQuantizerRef.push_back(reinterpret_cast<DlQuantization::TensorQuantizer*>(i));
+            tensorQuantizer->setEncodings(encodings);
+        }
+        else
+        {
+            throw std::runtime_error("Cannot set encodings before instantiating tensor quantizer");
         }
     }
-    std::vector<DlQuantization::TensorQuantizer*> get_tensor_quantizer()
+    DlQuantization::Encodings getEncodings()
     {
-        return tensorQuantizerRef;
+        if (tensorQuantizer.get())
+        {
+            return tensorQuantizer->getEncodings();
+        }
+        return DlQuantization::Encodings(0);
     }
 
-    std::vector<DlQuantization::TensorQuantizer*> tensorQuantizerRef;
-    DlQuantization::Encodings encoding;
+    std::shared_ptr<DlQuantization::BlockTensorQuantizer> tensorQuantizer;
     DlQuantization::TensorQuantizerOpMode opMode;
     bool useSymmetricEncoding;
     bool enabled;

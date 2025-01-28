@@ -47,9 +47,8 @@ PYBIND11_MODULE(libquant_info, m)
 {
     pybind11::class_<QcQuantizeInfo>(m, "QcQuantizeInfo")
         .def(py::init<>())
-        .def_property("tensorQuantizerRef", &QcQuantizeInfo::get_tensor_quantizer,
-                      &QcQuantizeInfo::set_tensor_quantizer)
-        .def_readwrite("encoding", &QcQuantizeInfo::encoding)
+        .def_readwrite("tensorQuantizerRef", &QcQuantizeInfo::tensorQuantizer)
+        .def_property("encoding", &QcQuantizeInfo::getEncodings, &QcQuantizeInfo::setEncodings)
         .def_readwrite("opMode", &QcQuantizeInfo::opMode)
         .def_readwrite("name", &QcQuantizeInfo::name)
         .def_readwrite("enabled", &QcQuantizeInfo::enabled)
