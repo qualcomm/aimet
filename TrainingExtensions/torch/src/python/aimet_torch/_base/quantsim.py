@@ -61,6 +61,7 @@ from typing import (
 )
 
 import torch
+from torch.utils._pytree import tree_iter
 import onnx
 from packaging import version  # pylint: disable=wrong-import-order
 from safetensors.numpy import save_file as save_safetensor_file
@@ -279,6 +280,10 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         # Perform sanity checks on inputs
         validate_quantsim_inputs(quant_scheme, rounding_mode, default_output_bw, default_param_bw,
                                  default_data_type)
+
+        # Assert dummy input is traceable by torch.jit.trace
+        _assert_jit_traceable(type(model), dummy_input)
+
         # save some parameters
         if in_place:
             self.model = model
@@ -1803,3 +1808,56 @@ def check_accumulator_overflow(model: torch.nn.Module, quant_bw: int, accum_bw: 
                     most_accum_range_used_layer, most_accum_range_used * 100)
 
     return most_accum_range_used_layer, most_accum_range_used
+
+
+def _assert_jit_traceable(model_cls, dummy_input):
+    try:
+        from transformers import Cache, DynamicCache, EncoderDecoderCache # pylint: disable=import-outside-toplevel
+    except ImportError:
+        # Dummy definition in case transformers package doesn't exist
+        Cache = type('Cache', (), {})
+        DynamicCache = type('DynamicCache', (), {})
+        EncoderDecoderCache = type('EncoderDecoderCache', (), {})
+
+    try:
+        untraceable_obj = next(
+            x for x in tree_iter(dummy_input) if not isinstance(x, torch.Tensor)
+        )
+    except StopIteration:
+        return
+
+    msg = "QuantizationSimModel can only take a tensor or tuple, list, or dict of tensors as input; "\
+         f"Got {type(untraceable_obj)}."
+
+    if not isinstance(untraceable_obj, Cache):
+        raise RuntimeError(msg)
+
+    cache_cls = type(untraceable_obj)
+    parent_clsname = model_cls.__name__
+    new_clsname = f"My{parent_clsname}"
+
+    msg += '\n'.join([
+         " If the model is from HuggingFace transformers that takes Cache object as input, "\
+        "consider defining a subclass that only takes tensors instead of Cache.\n",
+
+         "For example:\n\n",
+    ])
+
+    if cache_cls in (DynamicCache, EncoderDecoderCache):
+        msg += '\n'.join([
+            f"class {new_clsname}({parent_clsname}):",
+             "    def forward(self, ..., past_key_values: List[Tuple[Tensor, Tensor]] = None, ...):",
+            f"        # Create {cache_cls.__name__} object from nested tuple of tensors `past_key_values`",
+            f"        past_key_values = {cache_cls.__name__}.from_legacy_cache(past_key_values)",
+             "        return super().forward(..., past_key_values, ...)",
+         ])
+    else:
+        msg += '\n'.join([
+            f"class {new_clsname}({parent_clsname}):",
+             "    def forward(self, ..., past_key_values: List[Tuple[Tensor, Tensor]] = None, ...):",
+            f"        # TODO: Create {cache_cls.__name__} object from nested tuple of tensors `past_key_values`",
+            f"        past_key_values: {cache_cls.__name__} = ...",
+             "        return super().forward(..., past_key_values, ...)",
+         ])
+
+    raise RuntimeError(msg)
