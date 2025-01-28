@@ -7,22 +7,24 @@ Manual mixed precision
 Context
 =======
 
-To set the model in mixed precision, AIMET user would have to find the correct quantizer(s) and change to the new
-settings. This requires complex graph traversals which are error prone. Manual Mixed Precision (MMP) Configurator hides
-this issue by providing easy to use APIs to configure the model in mixed precision. User can change the precision of a
-layer by directly specifying the layer and the intended precision. User would also get a report to analyze how it was achieved.
+To effectively use mixed precision, you must find the correct quantizers to run at higher precision settings. This requires complex, error-prone graph traversals. The AIMET manual mixed precision (MMP) configurator hides this issue by providing easy-to-use APIs to configure the model in mixed precision. You can change the precision of a layer by directly specifying the layer and the intended precision. MMP configurator also analyzes and reports how the mixed precision was achieved.
 
-MMP configurator provides the following mechanisms to change the precision in a model
+MMP configurator enables you to change the precision of the following within a model:
 
-* Change the precision of a leaf layer
-* Change the precision of a non-leaf layer (layer composed of multiple leaf layers)
-* Change the precision of all the layers in the model of a certain type
-* Change the precision of model input tensors (or only a subset of input tensors)
-* Change the precision of model output tensors (or only a subset of output tensors)
+* A leaf layer
+* A non-leaf layer (a layer composed of multiple leaf layers)
+* All layers of a certain type
+* Model input tensors or a subset of input tensors
+* Model output tensors or a subset of output tensors
 
 
 Workflow
 ========
+
+Prerequisites
+-------------
+
+Manual mixed precision is supported only on PyTorch models.
 
 Setup
 -----
@@ -38,19 +40,30 @@ Setup
             :start-after: [setup]
             :end-before: [set_precision_leaf]
 
-MMP API options
----------------
+    .. tab-item:: TensorFlow
+        :sync: tf
 
-MMP provides the following APIs to change the precision. The APIs can be called in any order. But, in case of conflicts, latest request will triumph the older request.
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
+
+Step 1: Applying MMP API options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note::
-    The requests are processed using the leaf layers in the model
+    All requests are processed using the leaf layers in the model.
 
-* If one of the below APIs is called multiple times for the same layer but with a different precision in each of those calls, only the latest one would be serviced
-* This rule holds good even if the requests are from two different APIs ie if user calls a non-leaf layer (L1) with precision (P1) and a leaf layer inside L1 (L2) with precision (P2). This would be serviced by setting all the layers in L1 at P1 precision, except layer L2 which would be set at P2 precision.
+MMP provides the following APIs to change layers' precision. The APIs can be called in any order. In case of conflicts, the latest request overrides an older request. For example:
+
+* If one of the following APIs is called multiple times but with a different precision for the same layer, only the latest call is serviced.
+* The last request takes precedence even if the requests are from two different APIs. For example, say you call a non-leaf layer L1 with precision P1 and then a leaf layer L2, inside L1, with precision P2. This sets all the layers in L1 to precision P1, except layer L2 which is set to P2.
 
 Set precision of a leaf layer
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
     :sync-group: platform
@@ -63,9 +76,19 @@ Set precision of a leaf layer
             :start-after: [set_precision_leaf]
             :end-before: [set_precision_non_leaf]
 
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
 
 Set precision of a non-leaf layer
----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
     :sync-group: platform
@@ -78,9 +101,19 @@ Set precision of a non-leaf layer
             :start-after: [set_precision_non_leaf]
             :end-before: [set_precision_type]
 
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
 
 Set precision based on layer type
----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
     :sync-group: platform
@@ -93,8 +126,19 @@ Set precision based on layer type
             :start-after: [set_precision_type]
             :end-before: [set_precision_model_input]
 
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
+
 Set model input precision
--------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
     :sync-group: platform
@@ -107,10 +151,20 @@ Set model input precision
             :start-after: [set_precision_model_input]
             :end-before: [set_precision_model_output]
 
-* Do note that if a model has more than one input tensor (say the structure is [In1, In2]), but only one of them (say In2) needs to be configured to a new precision (say P1), user can achieve it by setting ``activation=[None, P1]`` in the above API
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
+If a model has more than one input tensor (for example, the structure is [In1, In2]), you can set just one of them (say In2) to a new precision (say P1) by setting ``activation=[None, P1]`` in the above API.
 
 Set model output precision
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
     :sync-group: platform
@@ -123,12 +177,23 @@ Set model output precision
             :start-after: [set_precision_model_output]
             :end-before: [apply]
 
-* Do note that if a model has more than one output tensor (say the structure is [Out1, Out2, Out3]), but only one of them (say Out2) needs to be configured to a new precision (say P1), user can achieve it by setting ``activation=[None, P1, None]`` in the above API
+    .. tab-item:: TensorFlow
+        :sync: tf
 
-Apply the profile
------------------
+        Not supported.
 
-All the above `set precision` family of calls would be processed at once when the below ``apply(...)`` API is called
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
+If a model has more than one output tensor (for example, the structure is [Out1, Out2, Out3]), you can set just one of them (say Out2) to a new precision (say P1) by setting ``activation=[None, P1, None]`` in the above API.
+
+
+Step 2: Applying the profile
+----------------------------
+
+All of the `set precision` family of calls from step 1 are processed at once when the following ``apply(...)`` API is called.
 
 .. tab-set::
     :sync-group: platform
@@ -140,8 +205,18 @@ All the above `set precision` family of calls would be processed at once when th
             :language: python
             :start-after: [apply]
 
-.. note::
-    The above call would generate a report detailing how a user's request was inferred, propagated to other layers and realized eventually
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
+
+The ``apply`` call generates a report detailing how the request was inferred, propagated to other layers, and eventually realized.
 
 API
 ===
@@ -155,3 +230,14 @@ API
         .. include:: ../../apiref/torch/mp.rst
             :start-after: # start-after mmp
             :end-before: # end-before mmp
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        Not supported.
+
