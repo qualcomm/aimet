@@ -181,9 +181,9 @@ class QuantizationSimModel(_QuantizationSimModelBase):
            Passing `rounding_mode` will throw runtime error in >=1.35.
 
         .. warning::
-           The default value of `quant_scheme` will change
+           The default value of `quant_scheme` has changed
            from `QuantScheme.post_training_tf_enhanced` to `QuantScheme.training_range_learning_with_tf_init`
-           in the future versions, and will be deprecated in the longer term.
+           since 2.0.0, and will be deprecated in the longer term.
 
         Args:
             model (torch.nn.Module): Model to simulate the quantized execution of
