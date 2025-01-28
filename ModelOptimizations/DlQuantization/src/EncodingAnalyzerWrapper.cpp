@@ -69,8 +69,7 @@ void EncodingAnalyzerWrapper<DTYPE>::updateStats(const DTYPE* tensor, const Tens
     // Early exit for per-tensor mode
     if (numBlocks == 1)
     {
-        _encodingAnalyzers[0]->updateStats(tensor, numel, tensorCpuGpuMode, allocator);
-        return;
+        return _updateStatsContiguous(tensor, tensorCpuGpuMode, numel, allocator, stream);
     }
 
     // View tensor and encoding as broadcastable shapes
