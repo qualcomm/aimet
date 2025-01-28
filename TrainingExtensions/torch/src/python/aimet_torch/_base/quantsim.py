@@ -61,7 +61,7 @@ from typing import (
 )
 
 import torch
-from torch.utils._pytree import tree_iter
+from torch.utils._pytree import tree_flatten
 import onnx
 from packaging import version  # pylint: disable=wrong-import-order
 from safetensors.numpy import save_file as save_safetensor_file
@@ -1821,7 +1821,7 @@ def _assert_jit_traceable(model_cls, dummy_input):
 
     try:
         untraceable_obj = next(
-            x for x in tree_iter(dummy_input) if not isinstance(x, torch.Tensor)
+            x for x in tree_flatten(dummy_input) if not isinstance(x, torch.Tensor)
         )
     except StopIteration:
         return
