@@ -244,54 +244,61 @@ class BaseQuantizationMixin(abc.ABC):
         _, *forward_fn_args = list(forward_fn_signature.parameters.keys())
         ret_type = forward_fn_signature.return_annotation
 
-        if ret_type == inspect._empty: # pylint: disable=protected-access
+        if ret_type == inspect.Parameter.empty:
             # if return annotation is unspecified, assume torch.Tensor as return type
             ret_type = torch.Tensor
 
-        _quantize_inputs = "\n\n".join([
-f"""
-        if self.input_quantizers[{i}]:
-            {varname} = self.input_quantizers[{i}]({varname})
-""".strip('\n')
-            for i, varname in enumerate(forward_fn_args)
+        _declare_input_quantizers = [
+            f'self.input_quantizers = torch.nn.ModuleList({[None for _ in forward_fn_args]})',
+        ]
+        _quantize_inputs = []
+        for i, varname in enumerate(forward_fn_args):
+            _quantize_inputs += [
+                f"if self.input_quantizers[{i}]:",
+                f"    {varname} = self.input_quantizers[{i}]({varname})\n",
+            ]
+
+        if ret_type == torch.Tensor:
+            _declare_output_quantizers = [
+                'self.output_quantizers = torch.nn.ModuleList([None])',
+            ]
+            _quantize_outputs = [
+                "if self.output_quantizers[0]:",
+                "    ret = self.output_quantizers[0](ret)\n",
+            ]
+        else:
+            _declare_output_quantizers = [
+                "self.output_quantizers = torch.nn.ModuleList(",
+                "    # <TODO: Declare the number of output quantizers here>",
+                ")",
+            ]
+            _quantize_outputs = [
+                "# <TODO: Quantize `ret` as necessary>\n",
+            ]
+
+        return '\n'.join([
+            f'@{mixin_clsname}.implements({module_clsname})',
+            f'class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):',
+             '    def __quant_init__(self):',
+             '        super().__quant_init__()',
+             '',
+             '        # Declare the number of input/output quantizers',
+          *(f'        {line}' for line in _declare_input_quantizers),
+          *(f'        {line}' for line in _declare_output_quantizers),
+             '',
+            f'    def forward{forward_fn_signature}:',
+             '        # Quantize input tensors',
+          *(f'        {line}' for line in _quantize_inputs),
+
+             '        # Run forward with quantized inputs and parameters',
+             '        with self._patch_quantized_parameters():',
+            f'            ret = super().forward({", ".join(forward_fn_args)})',
+             '',
+             '        # Quantize output tensors',
+          *(f'        {line}' for line in _quantize_outputs),
+             '',
+             '        return ret',
         ])
-
-        _quantize_outputs = \
-"""
-        if self.output_quantizers[0]:
-            ret = self.output_quantizers[0](ret)
-""".strip('\n') \
-        if ret_type == torch.Tensor else \
-"""
-        # <TODO: Quantize `ret` as necessary>
-""".strip('\n')
-
-        return \
-f"""
-@{mixin_clsname}.implements({module_clsname})
-class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):
-    def __quant_init__(self):
-        super().__quant_init__()
-
-        # Declare the number of input/output quantizers
-        self.input_quantizers = torch.nn.ModuleList({[None for _ in forward_fn_args]})
-        self.output_quantizers = torch.nn.ModuleList({
-            [None] if ret_type == torch.Tensor else "<TODO: declare the number of output quantizers here>"
-        })
-
-    def forward{forward_fn_signature}:
-        # Quantize input tensors
-{_quantize_inputs}
-
-        # Run forward with quantized inputs and parameters
-        with self._patch_quantized_parameters():
-            ret = super().forward({", ".join(forward_fn_args)})
-
-        # Quantize output tensors
-{_quantize_outputs}
-
-        return ret
-""".strip('\n')
 
     @classmethod
     def from_module(cls, module: nn.Module):
