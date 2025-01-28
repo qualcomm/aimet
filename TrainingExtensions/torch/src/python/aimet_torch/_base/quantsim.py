@@ -282,7 +282,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                                  default_data_type)
 
         # Assert dummy input is traceable by torch.jit.trace
-        _assert_jit_traceable(type(model), dummy_input)
+        _assert_jit_traceable(model, dummy_input)
 
         # save some parameters
         if in_place:
@@ -1810,14 +1810,28 @@ def check_accumulator_overflow(model: torch.nn.Module, quant_bw: int, accum_bw: 
     return most_accum_range_used_layer, most_accum_range_used
 
 
-def _assert_jit_traceable(model_cls, dummy_input):
+def _assert_jit_traceable(model, dummy_input):
     try:
-        from transformers import Cache, DynamicCache, EncoderDecoderCache # pylint: disable=import-outside-toplevel
+        from transformers import ( # pylint: disable=import-outside-toplevel
+            PreTrainedModel,
+            Cache,
+            DynamicCache,
+            EncoderDecoderCache
+        )
     except ImportError:
         # Dummy definition in case transformers package doesn't exist
+        PreTrainedModel = type('PreTrainedModel', (), {})
         Cache = type('Cache', (), {})
         DynamicCache = type('DynamicCache', (), {})
         EncoderDecoderCache = type('EncoderDecoderCache', (), {})
+
+    if isinstance(model, PreTrainedModel) and model.config.use_return_dict:
+        msg = ' '.join([
+            "QuantizationSimModel only supports models that return a tensor or tuple, list, or dict of tensors",
+            "If the model is from HuggingFace transformers,",
+            "it is required to set ``model.config.return_dict=False``",
+        ])
+        raise RuntimeError(msg)
 
     try:
         untraceable_obj = next(
@@ -1833,7 +1847,7 @@ def _assert_jit_traceable(model_cls, dummy_input):
         raise RuntimeError(msg)
 
     cache_cls = type(untraceable_obj)
-    parent_clsname = model_cls.__name__
+    parent_clsname = type(model).__name__
     new_clsname = f"My{parent_clsname}"
 
     msg += '\n'.join([
@@ -1849,7 +1863,8 @@ def _assert_jit_traceable(model_cls, dummy_input):
              "    def forward(self, ..., past_key_values: List[Tuple[Tensor, Tensor]] = None, ...):",
             f"        # Create {cache_cls.__name__} object from nested tuple of tensors `past_key_values`",
             f"        past_key_values = {cache_cls.__name__}.from_legacy_cache(past_key_values)",
-             "        return super().forward(..., past_key_values, ...)",
+             "        ..., new_past_key_values, ... =  super().forward(..., past_key_values, ...)",
+             "        return (..., new_past_key_values.to_legacy_cache(), ...)",
          ])
     else:
         msg += '\n'.join([
@@ -1857,7 +1872,12 @@ def _assert_jit_traceable(model_cls, dummy_input):
              "    def forward(self, ..., past_key_values: List[Tuple[Tensor, Tensor]] = None, ...):",
             f"        # TODO: Create {cache_cls.__name__} object from nested tuple of tensors `past_key_values`",
             f"        past_key_values: {cache_cls.__name__} = ...",
-             "        return super().forward(..., past_key_values, ...)",
+             "",
+             "        ..., new_past_key_values, ... =  super().forward(..., past_key_values, ...)",
+             "",
+            f"        # TODO: Create nested tuple of tensors from a {cache_cls.__name__} object `new_past_key_values`",
+            f"        new_past_key_values: List[Tuple[Tensor, Tensor]] = ...",
+             "        return (..., new_past_key_values.to_legacy_cache(), ...)",
          ])
 
     raise RuntimeError(msg)
