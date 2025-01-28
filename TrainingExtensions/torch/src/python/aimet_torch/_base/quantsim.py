@@ -1876,7 +1876,7 @@ def _assert_jit_traceable(model, dummy_input):
              "        ..., new_past_key_values, ... =  super().forward(..., past_key_values, ...)",
              "",
             f"        # TODO: Create nested tuple of tensors from a {cache_cls.__name__} object `new_past_key_values`",
-            f"        new_past_key_values: List[Tuple[Tensor, Tensor]] = ...",
+             "        new_past_key_values: List[Tuple[Tensor, Tensor]] = ...",
              "        return (..., new_past_key_values.to_legacy_cache(), ...)",
          ])
 
