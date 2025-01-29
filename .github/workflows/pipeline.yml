@@ -22,13 +22,54 @@ jobs:
     outputs:
       matrix: ${{ steps.final.outputs.value }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Get changed files
+        id: diff
+        uses: ./.github/actions/changed-files
+      - name: Select AIMET variants that needs testing
+        id: select
+        env:
+          ALL_CHANGED_FILES: ${{ steps.diff.outputs.changed_files }}
+          AIMET_TORCH_SRC_CODE: "TrainingExtensions/torch/*"
+          AIMET_ONNX_SRC_CODE:  "TrainingExtensions/onnx/*"
+          AIMET_TF_SRC_CODE:    "TrainingExtensions/tensorflow/*"
+        shell: bash
+        run: |
+          set -x
+
+          TORCH_TEST_REQUIRED='false'
+          ONNX_TEST_REQUIRED='false'
+          TF_TEST_REQUIRED='false'
+
+          for file in ${ALL_CHANGED_FILES}; do
+            if [[ $file == $AIMET_TORCH_SRC_CODE ]]; then
+              TORCH_TEST_REQUIRED='true'
+            elif [[ $file == $AIMET_ONNX_SRC_CODE ]]; then
+              ONNX_TEST_REQUIRED='true'
+            elif [[ $file == $AIMET_TF_SRC_CODE ]]; then
+              TF_TEST_REQUIRED='true'
+            else
+              TORCH_TEST_REQUIRED='true'
+              ONNX_TEST_REQUIRED='true'
+              TF_TEST_REQUIRED='true'
+              break
+            fi
+          done
+
+          echo "test_torch=$TORCH_TEST_REQUIRED" >> $GITHUB_OUTPUT
+          echo "test_onnx=$ONNX_TEST_REQUIRED"   >> $GITHUB_OUTPUT
+          echo "test_tf=$TF_TEST_REQUIRED"       >> $GITHUB_OUTPUT
       - name: Torch variants
+        # For the default branch, we still test all variants every time (yet)
+        if: steps.select.outputs.test_torch == 'true' || github.ref_name == github.event.repository.default_branch
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"2.1.2", "VER_ONNX":"",        "VER_CUDA":"12.1.1" }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
       - name: Tensorflow variants
+        # For the default branch, we still test all variants every time (yet)
+        if: steps.select.outputs.test_tf == 'true' || github.ref_name == github.event.repository.default_branch
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"2.10.1", "VER_TORCH":"",      "VER_ONNX":"",        "VER_CUDA":"" },
@@ -36,6 +77,8 @@ jobs:
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
       - name: ONNX variants
+        # For the default branch, we still test all variants every time (yet)
+        if: steps.select.outputs.test_onnx == 'true' || github.ref_name == github.event.repository.default_branch
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               { "VER_PYTHON":"3.10", "VER_TENSORFLOW":"",       "VER_TORCH":"",      "VER_ONNX":"1.16.2", "VER_CUDA":""       },
