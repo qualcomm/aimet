@@ -34,4 +34,4 @@ runs:
           BASE_SHA=$(git merge-base origin/${{ github.event.repository.default_branch }} HEAD)
         fi
 
-        echo "value=$(git diff --name-only ${BASE_SHA}..HEAD -- ${{ inputs.file }} | tr '\n' ' ')" >> $GITHUB_OUTPUT
+        echo "value=$(git diff --name-only ${BASE_SHA}..HEAD -- ${{ inputs.files }} | tr '\n' ' ')" >> $GITHUB_OUTPUT
