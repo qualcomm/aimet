@@ -223,30 +223,26 @@ pipeline {
 
                         steps {
                             script {
-                                if ("${env.QCInternalValidation}" == "false") {
-                                    echo 'Building code and running tests...'
-                                    runStage("${ML_FMWORK}-${PROC_TYPE}", "-u")
-                                }
+                                echo 'Building code and running tests...'
+                                runStage("${ML_FMWORK}-${PROC_TYPE}", "-u")
                             }
                         }
                         post {
                             always {
                                 script {
-                                    if ("${env.QCInternalValidation}" == "false") {
-                                        // Parse CTest, Junit, or GoogleTest results
-                                        xunit thresholdMode: 2,
-                                        thresholds: [
-                                            failed(failureNewThreshold: THRESHOLD_OBJ.unittests_thresholds.failed_thresholds.new_tests,
-                                                failureThreshold: THRESHOLD_OBJ.unittests_thresholds.failed_thresholds.total_tests,
-                                                unstableNewThreshold: THRESHOLD_OBJ.unittests_thresholds.skipped_thresholds.new_tests,
-                                                unstableThreshold: THRESHOLD_OBJ.unittests_thresholds.skipped_thresholds.total_tests)],
-                                        tools: [Custom(customXSL: "${XUNIT_XSL_FILE}",
-                                                    deleteOutputFiles: false,
-                                                    excludesPattern: '',
-                                                    pattern: "**/unit_test_results/**/*.xml",
-                                                    skipNoTestFiles: true,
-                                                    stopProcessingIfError: true)]
-                                    }
+                                    // Parse CTest, Junit, or GoogleTest results
+                                    xunit thresholdMode: 2,
+                                    thresholds: [
+                                        failed(failureNewThreshold: THRESHOLD_OBJ.unittests_thresholds.failed_thresholds.new_tests,
+                                            failureThreshold: THRESHOLD_OBJ.unittests_thresholds.failed_thresholds.total_tests,
+                                            unstableNewThreshold: THRESHOLD_OBJ.unittests_thresholds.skipped_thresholds.new_tests,
+                                            unstableThreshold: THRESHOLD_OBJ.unittests_thresholds.skipped_thresholds.total_tests)],
+                                    tools: [Custom(customXSL: "${XUNIT_XSL_FILE}",
+                                                deleteOutputFiles: false,
+                                                excludesPattern: '',
+                                                pattern: "**/unit_test_results/**/*.xml",
+                                                skipNoTestFiles: true,
+                                                stopProcessingIfError: true)]
                                 }
                             }
                         }
@@ -270,14 +266,14 @@ pipeline {
 
 
         stage("AIMET extra ALL STAGES") {
-
+            when {
+                expression { false } // Always skip AIMET-extra stage
+            }
 
             steps {
                 script {
-                    if ("${env.QCInternalValidation}" == "true") {
-                        echo 'Running AIMET additional stages'
-                        callAimetExtra(env.CHANGE_TARGET)
-                    }
+                    echo 'Running AIMET additional stages'
+                    callAimetExtra(env.CHANGE_TARGET)
                 }
             }
 
