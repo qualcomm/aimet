@@ -1835,7 +1835,7 @@ def _assert_jit_traceable(model, dummy_input):
 
     try:
         untraceable_obj = next(
-            x for x in tree_flatten(dummy_input) if not isinstance(x, torch.Tensor)
+            x for x in tree_flatten(dummy_input)[0] if not isinstance(x, torch.Tensor)
         )
     except StopIteration:
         return
