@@ -238,8 +238,6 @@ class BaseQuantizationMixin(abc.ABC):
 
     @classmethod
     def _generate_code_example(cls, module_cls) -> str:
-        mixin_clsname = cls.__name__
-        module_clsname = module_cls.__name__
         forward_fn_signature = inspect.signature(module_cls.forward)
         _, *forward_fn_args = list(forward_fn_signature.parameters.values())
         ret_type = forward_fn_signature.return_annotation
@@ -310,8 +308,8 @@ class BaseQuantizationMixin(abc.ABC):
         ]
 
         return '\n'.join([
-            f'@{mixin_clsname}.implements({module_clsname})',
-            f'class Quantized{module_clsname}({mixin_clsname}, {module_clsname}):',
+            f'@{cls.__name__}.implements({module_cls.__name__})',
+            f'class Quantized{module_cls.__name__}({cls.__name__}, {module_cls.__name__}):',
              '    def __quant_init__(self):',
              '        super().__quant_init__()',
              '',
