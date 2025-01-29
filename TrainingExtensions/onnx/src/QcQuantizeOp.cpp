@@ -68,7 +68,6 @@ void QcQuantizeOp::computeImpl(const Ort::Custom::Tensor<float>& input, Ort::Cus
     auto result     = output.Allocate(inputShape);
 
     DlQuantization::TensorQuantizerOpMode opMode = quantInfo->opMode;
-
     // Disable unused quantizers
     if (!quantInfo->enabled)
     {

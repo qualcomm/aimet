@@ -385,11 +385,10 @@ class SequentialMse:
             raise ValueError(weight_name, " should be per-tensor or number of "
                                           "quantizer must match with number of channels")
 
-        # pylint: disable=protected-access
         if quantizer_shape:
-            quantize_op._tensor_quantizer.updateStats(np.reshape(cand, (*quantizer_shape[0:-1], 2 * quantizer_shape[-1])))
+            quantize_op.update_encoding_stats(np.reshape(cand, (*quantizer_shape[0:-1], 2 * quantizer_shape[-1])))
         else:
-            quantize_op._tensor_quantizer.updateStats(cand)
+            quantize_op.update_encoding_stats(cand)
 
         quantize_op.compute_encodings()
 

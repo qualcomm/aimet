@@ -202,7 +202,7 @@ def _get_config_file(is_symmetric: bool, strict_symmetric: bool, unsigned_symmet
 
 
 @pytest.mark.parametrize("inp_symmetry", ['asym', 'symfp', 'symqt'])
-@pytest.mark.parametrize("param_bw", [31])
+@pytest.mark.parametrize("param_bw", [2, 31])
 @pytest.mark.parametrize("loss_fn", ['mse', 'l1'])
 @pytest.mark.parametrize("enable_pcq", [True, False])
 def test_do_seq_mse_for_conv(inp_symmetry, param_bw, loss_fn, enable_pcq):

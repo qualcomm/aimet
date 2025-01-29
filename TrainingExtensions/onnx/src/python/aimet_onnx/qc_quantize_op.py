@@ -99,7 +99,6 @@ class QcQuantizeOp:
         self.enabled = True
         self._data_type = QuantizationDataType.int
         self.tensor_quantizer_params = tensor_quantizer_params
-        self._reset_encodings()
         self._encoding_min_max_fixed_vals = None
 
     def is_encoding_frozen(self) -> bool:
@@ -120,7 +119,6 @@ class QcQuantizeOp:
         self.quant_info.usePerChannelMode = True
         self.quant_info.channelAxis = channel_axis if channel_axis >= 0 else channel_axis + len(self.tensor_quantizer_params.tensor_shape)
         self._tensor_quantizer = self._build_tensor_quantizer()
-        self._reset_encodings()
 
     def _enable_blockwise_quantization(self, block_size):
         assert self.tensor_quantizer_params is not None
@@ -144,7 +142,6 @@ class QcQuantizeOp:
         self.quant_info.blockAxis = block_axis if block_axis >= 0 else block_axis + len(tensor_shape)
         self.quant_info.blockSize = block_size
         self._tensor_quantizer = self._build_tensor_quantizer()
-        self._reset_encodings()
 
     @property
     def data_type(self) -> QuantizationDataType:
@@ -679,7 +676,7 @@ class QcQuantizeOp:
 
         :param tensor: Tensor to use for updating the encodings stats
         """
-        self._tensor_quantizer.updateStats(tensor, False)
+        self._tensor_quantizer.updateStats(tensor)
 
     def clip_and_recompute_encodings(self, clamp_val: float) -> bool:
         """
