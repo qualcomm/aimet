@@ -70,6 +70,7 @@ libpymo_classes = [
     'BiasCorrection',
     'BnBasedBiasCorrection',
     'BnParamsBiasCorr',
+    'BlockTensorQuantizer'
 ]
 
 libpymo_functions = [
