@@ -501,15 +501,23 @@ class QuantizationSimModel(_QuantizationSimModelBase):
     def quant_wrappers(self): # pylint: disable=missing-docstring
         return self.named_qmodules()
 
-    # Overrides V1QuantizationSimModel._add_quantization_wrappers
     def _add_quantization_wrappers(self, module, num_inout_tensors, default_data_type):
-        # pylint: disable=protected-access
-        for name, child in module.named_children():
-            if isinstance(child, BaseQuantizationMixin):
+        visited = set()
+        def wrap_children(parent: torch.nn.Module):
+            for name, child in parent.named_children():
+                if not isinstance(child, BaseQuantizationMixin):
+                    continue
+
+                if child in visited:
+                    continue
+
+                visited.add(child)
+
                 child_wrapper = self._create_quantizer_module(child, num_inout_tensors, default_data_type)
-                setattr(module, name, child_wrapper)
-                child = child_wrapper._module_to_wrap
-            self._add_quantization_wrappers(child, num_inout_tensors, default_data_type)
+                setattr(parent, name, child_wrapper)
+                visited.add(child_wrapper)
+
+        module.apply(wrap_children)
 
     def _realize_quant_wrappers_in_model(self, model: torch.nn.Module):
         for name, child in model.named_children():

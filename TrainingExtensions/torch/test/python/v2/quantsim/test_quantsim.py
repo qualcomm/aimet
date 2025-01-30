@@ -51,7 +51,13 @@ from aimet_torch.v2.quantization.encoding_analyzer import PercentileEncodingAnal
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase, GroupedBlockQuantizeDequantize, QuantizeDequantize
 from aimet_torch.v2.experimental import propagate_output_encodings
-from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin, QuantizedConv2d
+from aimet_torch.v2.nn import (
+    BaseQuantizationMixin,
+    QuantizationMixin,
+    QuantizedConv2d,
+    QuantizedLinear,
+    QuantizedReLU,
+)
 import aimet_torch.v2.nn.modules.custom as custom
 from ..models_ import test_models
 
@@ -1694,3 +1700,54 @@ class TestEncodingPropagation:
 
             assert encodings_0_6_1['activation_encodings'] == encodings_1_0_0['activation_encodings']
             assert encodings_0_6_1['param_encodings'] == encodings_1_0_0['param_encodings']
+
+    def test_shared_module(self):
+        """
+        Given: Model with ambiguous child module ownership.
+
+                        Model
+                          |
+                     +----+----+
+                     |         V
+                     |     ModuleList
+                     V         |
+                 Sequential <--+
+                     |
+                  +--+--+
+                  V     V
+               Linear  ReLU
+
+        (Note that Sequential is a child of Model and ModuleList at the same time)
+        """
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.seq = torch.nn.Sequential(
+                    torch.nn.Linear(10, 10),
+                    torch.nn.ReLU(),
+                )
+                self.module_list = torch.nn.ModuleList([
+                    self.seq
+                ])
+
+        """
+        When: The shared child modules are NOT reused during forward
+        Then: Quantsim should be instantiated normally
+        """
+        class _Model(Model):
+            def forward(self, x):
+                return self.seq(x)
+
+        sim = QuantizationSimModel(_Model(), torch.randn(10, 10))
+
+        assert sim.model.seq is sim.model.module_list[0]
+
+        assert isinstance(sim.model.seq[0], QuantizedLinear)
+        assert isinstance(sim.model.seq[0].param_quantizers['weight'], QuantizeDequantize)
+        assert isinstance(sim.model.seq[0].input_quantizers[0], QuantizeDequantize)
+        assert sim.model.seq[0].output_quantizers[0] is None
+
+        assert isinstance(sim.model.seq[1], QuantizedReLU)
+        assert sim.model.seq[1].input_quantizers[0] is None
+        assert isinstance(sim.model.seq[1].output_quantizers[0], QuantizeDequantize)
