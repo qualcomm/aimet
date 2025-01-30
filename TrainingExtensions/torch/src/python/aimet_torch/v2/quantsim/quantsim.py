@@ -37,7 +37,7 @@
 """ Top level API for performing quantization simulation of a pytorch model """
 
 import copy
-from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload
+from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload, List
 import warnings
 import itertools
 import io
@@ -62,7 +62,7 @@ from aimet_torch._base.quantsim import (
     _QuantizedModuleProtocol,
 )
 from aimet_torch.v2 import nn as aimet_nn
-from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin
+from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin, UnkownModuleError
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
 from aimet_torch.v2._builder import _V2LazyQuantizeWrapper
 from aimet_torch.v2.quantization.base import QuantizerBase
@@ -101,29 +101,56 @@ class _NOT_SPECIFIED:
     pass
 
 
-def _convert_to_qmodule(module: torch.nn.Module):
+def _convert_to_qmodel(model: torch.nn.Module):
     """
     Helper function to convert all modules to quantized aimet.nn modules.
     """
-    if not isinstance(module, (*quantized_modules, *unquantizable_modules, *containers)):
-        qmodule = None
-        try:
-            qmodule = QuantizationMixin.from_module(module)
-            module = qmodule
-        except RuntimeError as e:
+
+    def _convert_to_qmodule(module: torch.nn.Module):
+        if not isinstance(module, (*quantized_modules, *unquantizable_modules, *containers)):
+            qmodule = None
             try:
-                qmodule = _legacy_impl.FakeQuantizationMixin.from_module(module)
+                qmodule = QuantizationMixin.from_module(module)
                 module = qmodule
-            except RuntimeError:
-                pass
+            except UnkownModuleError as e:
+                try:
+                    qmodule = _legacy_impl.FakeQuantizationMixin.from_module(module)
+                    module = qmodule
+                except UnkownModuleError:
+                    pass
 
-            if not qmodule and not tuple(module.children()):
-                raise e # pylint: disable=raise-missing-from
+                if not qmodule and not tuple(module.children()):
+                    exceptions.append(e)
 
-    for name, child in module.named_children():
-        setattr(module, name, _convert_to_qmodule(child))
+        for name, child in module.named_children():
+            setattr(module, name, _convert_to_qmodule(child))
 
-    return module
+        return module
+
+    exceptions: List[UnkownModuleError] = []
+    model = _convert_to_qmodule(model)
+
+    if not exceptions:
+        return model
+
+    if len(exceptions) == 1:
+        raise exceptions[0]
+
+    # Multiple unknown modules found. Batch all error messages in one exception
+    msg = '\n'.join([
+        'Quantized module definitions of the following modules are not registered: [',
+        *(f'    {e.module_cls},' for e in exceptions),
+        ']\n',
+    ])
+
+    # Only print code example of the first exception
+    e = exceptions[0]
+    msg += f'Please register the quantized module definition of the modules listed above ' \
+           f'using `@{e.mixin_cls.__name__}.implements({e.module_cls.__name__})` decorator.\n\n' \
+           f"For example:\n\n{e.generate_code_example()}\n\n" \
+           f"For more details, please refer to the official API reference:\n{e.api_reference_url}"
+
+    raise RuntimeError(msg)
 
 
 class QuantizationSimModel(_QuantizationSimModelBase):
@@ -253,7 +280,7 @@ class QuantizationSimModel(_QuantizationSimModelBase):
             model = copy.deepcopy(model)
             in_place = True
 
-        model = _convert_to_qmodule(model)
+        model = _convert_to_qmodel(model)
 
         with _register_zero3_forward_hooks(model, use_dummy_params=True):
             # NOTE: Register for the model is pre-partitioned by deepspeed zero3 or zero3-offload.
