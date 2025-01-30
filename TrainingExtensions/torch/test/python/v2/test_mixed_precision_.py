@@ -41,7 +41,6 @@ import unittest
 import unittest.mock
 import os
 import pickle
-import shutil
 import json
 import numpy as np
 import math
@@ -62,8 +61,10 @@ from aimet_torch.amp.mixed_precision_algo import (
     GreedyMixedPrecisionAlgo,
     _compute_sqnr,
 )
+from aimet_torch.mixed_precision import choose_mixed_precision
 from aimet_torch.amp.quantizer_groups import QuantizerGroup
 from aimet_torch.v2.nn import BaseQuantizationMixin
+from aimet_torch.nn.modules import custom
 from aimet_torch.v2.amp.utils import _mock_v1_quantizers
 from aimet_common.defs import CallbackFunc
 
@@ -217,7 +218,6 @@ def results_dir():
     with tempfile.TemporaryDirectory() as path:
         os.makedirs(os.path.join(path, ".cache"))
         yield path
-        shutil.rmtree(path)
 
 
 @pytest.fixture(autouse=True)
@@ -1258,3 +1258,46 @@ def test_search_algo_reverse(search_algo, func_name):
         # Case 3. Target value is slightly bigger than one of the element in the array
         found = search_algo(values, target=ith_value + 1e-5, phase2_reverse=True)
         assert found == min(index+1, len(values)-1)
+
+
+def test_pyfloat_input(results_dir):
+    """
+    Given: Model where one of the child module takes Python float as input
+    When: Run AMP
+    Then: Should finish normally
+    """
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(10, 10)
+            self.mul = custom.Multiply()
+
+        def forward(self, x: torch.Tensor, y: torch.Tensor):
+            x = self.linear(x)
+            return self.mul(x, y.item())
+
+    dummy_input = (torch.randn(10, 10), torch.randn(()))
+    sim = QuantizationSimModel(Model(), dummy_input)
+    candidates = [
+        ((8, QuantizationDataType.int), (8,  QuantizationDataType.int)),
+        ((8, QuantizationDataType.int), (16, QuantizationDataType.int)),
+    ]
+
+    def forward(model, _):
+        return model(*dummy_input).sum().item()
+
+    sim.compute_encodings(forward, None)
+
+    forward_pass_callback = CallbackFunc(forward)
+    eval_callback_for_phase_1 = forward_pass_callback
+    eval_callback_for_phase_2 = forward_pass_callback
+
+    with _mock_v1_quantizers(sim):
+        algo = GreedyMixedPrecisionAlgo(sim, dummy_input,
+                                        candidates,
+                                        eval_callback_for_phase_1,
+                                        eval_callback_for_phase_2,
+                                        results_dir=results_dir,
+                                        clean_start=True,
+                                        forward_pass_callback=forward_pass_callback)
+        algo.run(allowed_accuracy_drop=None)
