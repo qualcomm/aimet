@@ -66,6 +66,7 @@ from aimet_torch.v2.nn import (
     QuantizedSoftmax,
     QuantizedLayerNorm,
     QuantizedGroupNorm,
+    UnknownModuleError,
 )
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
 from aimet_torch.v2.nn.true_quant import _dispatch, _dispatch_table
@@ -1068,7 +1069,7 @@ def test_code_example(module_cls):
     When: Generate code example with _generate_code_example
     Then: The generated code should be parseable by python interpreter
     """
-    src_code = QuantizationMixin._generate_code_example(module_cls)
+    src_code = UnknownModuleError(module_cls, QuantizationMixin).generate_code_example()
     try:
         ast.parse(src_code)
     except SyntaxError as e:
