@@ -137,20 +137,25 @@ def _convert_to_qmodel(model: torch.nn.Module):
         raise exceptions[0]
 
     # Multiple unknown modules found. Batch all error messages in one exception
+    e = exceptions[0]
     msg = '\n'.join([
         'Quantized module definitions of the following modules are not registered: [',
         *(f'    {e.module_cls},' for e in exceptions),
-        ']\n',
+        ']',
     ])
 
-    # Only print code example of the first exception
-    e = exceptions[0]
-    msg += f'Please register the quantized module definition of the modules listed above ' \
-           f'using `@{e.mixin_cls.__name__}.implements({e.module_cls.__name__})` decorator.\n\n' \
-           f"For example:\n\n{e.generate_code_example()}\n\n" \
-           f"For more details, please refer to the official API reference:\n{e.api_reference_url}"
+    raise RuntimeError('\n\n'.join([
+        msg,
 
-    raise RuntimeError(msg)
+        'Please register the quantized module definition of the modules listed above ' \
+        f'using `@{e.mixin_cls.__name__}.implements()` decorator.',
+
+        "For example:",
+
+        *(e.generate_code_example() for e in exceptions),
+
+       f"For more details, please refer to the official API reference:\n{e.api_reference_url}"
+    ]))
 
 
 class QuantizationSimModel(_QuantizationSimModelBase):
