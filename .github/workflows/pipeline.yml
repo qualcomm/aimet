@@ -196,7 +196,7 @@ jobs:
                                    # FIXME: Upgrade pylint version to latest.
         run: |
           ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
-              python3 -m pylint --rcfile=.pylintrc ".conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages/aimet_*"
+              python3 -m pylint --rcfile=.pylintrc .conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages/aimet_*
       - name: Run unit tests
         run: |
           TEST_DIR=""
