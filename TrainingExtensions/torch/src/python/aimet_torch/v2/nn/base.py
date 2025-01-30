@@ -61,7 +61,7 @@ def _no_op(in_tensor):
     return in_tensor
 
 
-class UnkownModuleError(RuntimeError):
+class UnknownModuleError(RuntimeError):
     """
     Exception thrown when an unknown module is encountered
     whose quantized definition isn't registered using @QuantizationMixin.implements().
@@ -376,7 +376,7 @@ class BaseQuantizationMixin(abc.ABC):
         qtzn_module_cls = cls.cls_to_qcls.get(module_cls, None)
 
         if not qtzn_module_cls:
-            raise UnkownModuleError(module_cls, cls)
+            raise UnknownModuleError(module_cls, cls)
 
         qtzn_module = cls.__new__(qtzn_module_cls)
 

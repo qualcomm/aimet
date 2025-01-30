@@ -62,7 +62,7 @@ from aimet_torch._base.quantsim import (
     _QuantizedModuleProtocol,
 )
 from aimet_torch.v2 import nn as aimet_nn
-from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin, UnkownModuleError
+from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin, UnknownModuleError
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
 from aimet_torch.v2._builder import _V2LazyQuantizeWrapper
 from aimet_torch.v2.quantization.base import QuantizerBase
@@ -112,11 +112,11 @@ def _convert_to_qmodel(model: torch.nn.Module):
             try:
                 qmodule = QuantizationMixin.from_module(module)
                 module = qmodule
-            except UnkownModuleError as e:
+            except UnknownModuleError as e:
                 try:
                     qmodule = _legacy_impl.FakeQuantizationMixin.from_module(module)
                     module = qmodule
-                except UnkownModuleError:
+                except UnknownModuleError:
                     pass
 
                 if not qmodule and not tuple(module.children()):
@@ -127,7 +127,7 @@ def _convert_to_qmodel(model: torch.nn.Module):
 
         return module
 
-    exceptions: List[UnkownModuleError] = []
+    exceptions: List[UnknownModuleError] = []
     model = _convert_to_qmodule(model)
 
     if not exceptions:
