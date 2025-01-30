@@ -37,8 +37,8 @@
 
 """Per layer cost calculator specialized for PyTorch"""
 
-from functools import reduce
 from typing import List
+import numpy as np
 
 import torch
 
@@ -69,17 +69,17 @@ class CostCalculator(GenericCostCalculator):
         weight_dim = list(layer.weight_shape)
         if len(weight_dim) > 1:
             additional_act_dim = [layer.output_shape[-1], layer.output_shape[-2]]
-            mem_cost = reduce(lambda x, y: x * y, weight_dim)
+            mem_cost = np.prod(weight_dim).item()
             mac_dim = weight_dim + additional_act_dim
-            mac_cost = reduce(lambda x, y: x * y, mac_dim)
+            mac_cost = np.prod(mac_dim).item()
 
         else:  # For Ops w/o weights (or single dim), take the max b/w input and output size to calculate cost
-            output_mac_cost = reduce(lambda x, y: x * y, layer.output_shape)
+            output_mac_cost = np.prod(layer.output_shape).item()
             input_mac_cost = 0
             if layer.input_shape:
                 if not isinstance(layer.input_shape, List):
                     layer.input_shape = [layer.input_shape]
-                input_mac_cost = max([reduce(lambda x, y: x * y, i_input) for i_input in layer.input_shape])
+                input_mac_cost = max([np.prod(i_input).item() for i_input in layer.input_shape])
 
             mac_cost = max([output_mac_cost, input_mac_cost])
             mem_cost = mac_cost
