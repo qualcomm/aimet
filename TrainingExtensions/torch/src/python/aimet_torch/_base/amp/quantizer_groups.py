@@ -483,7 +483,7 @@ def find_supported_candidates(quantizer_groups: List[QuantizerGroup],
                                                                                    amp_candidates,
                                                                                    use_all_amp_candidates)
 
-        quantizers_with_supported_candidates[quantizer_group] = supported_kernels_for_quantizers.copy()
+        quantizers_with_supported_candidates[quantizer_group] = list(supported_kernels_for_quantizers)
 
     max_candidate_options = compute_baseline_candidate_options(quantizers_with_supported_candidates, amp_candidates,
                                                                use_all_amp_candidates)
