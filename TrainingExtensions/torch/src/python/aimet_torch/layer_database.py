@@ -225,8 +225,13 @@ class LayerDatabase(aimet_common.layer_database.LayerDatabase):
         information :
         model name (which will be removed), model reference, input shape and output shape
         """
-        input_activation_shape = [list(i_input.size()) for i_input in input_tensor]
-        output_activation_shape = list(output_tensor.size())
+        def _shape(x):
+            if isinstance(x, torch.Tensor):
+                return list(x.size())
+            return []
+
+        input_activation_shape = [_shape(i_input) for i_input in input_tensor]
+        output_activation_shape = _shape(output_tensor)
         # activation dimension for FC layer is (1,1)
         if isinstance(module, torch.nn.Linear):
             # In cases where batch dimension is 1
