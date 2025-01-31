@@ -606,7 +606,7 @@ class QuantizationSimModel:
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to GroupNorm op.
         """
-        for op in self.connected_graph.ordered_ops:
+        for op in self.connected_graph.get_all_ops().values():
             input_quantizers, output_quantizers, param_quantizers = self.get_op_quantizers(op)
 
             if op.type == 'GroupNormalization':
