@@ -529,16 +529,17 @@ def is_leaf_module(module):
     :return:
         True if the module is a leaf, False otherwise
     """
-    module_list = list(module.modules())
+    try:
+        _ = next(module.children())
+    except StopIteration:
+        has_child = False
+    else:
+        has_child = True
 
     # pylint: disable=unidiomatic-typecheck
-    ret = bool(len(module_list) == 1) or type(module) in modules_to_treat_as_leaf
-
-    if ret:
-        return ret
-
-    return CustomSparseConv3DLayer is not None and\
-           isinstance(module, CustomSparseConv3DLayer)
+    return not has_child or \
+           type(module) in modules_to_treat_as_leaf or\
+           (CustomSparseConv3DLayer is not None and isinstance(module, CustomSparseConv3DLayer))
 
 
 def get_input_shape_batch_size(data_loader):
@@ -893,18 +894,6 @@ def is_torch_nn_leaf_module(module: torch.nn.Module) -> bool:
     if is_leaf_module(module) and is_torch_nn_module(module):
         torch_nn_leaf_module = True
     return torch_nn_leaf_module
-
-
-def is_custom_leaf_module(module: torch.nn.Module, nodes: List[torch._C.Node]) -> bool:
-    """
-    Given PyTorch module, determine whether the module is leaf module and has not more than one aten node(s).
-
-    :param module: PyTorch module.
-    :param nodes: List of trace graph nodes if node.kind() starts with "aten::".
-    :return: True if module is custom leaf module, False otherwise.
-    """
-    # pylint: disable=protected-access
-    return is_leaf_module(module) and len(nodes) <= 1
 
 
 def get_torch_tensortype_shape(torch_graph_output: torch._C.TensorType) -> Union[None, List[int]]:
