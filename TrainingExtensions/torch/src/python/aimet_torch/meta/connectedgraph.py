@@ -210,19 +210,19 @@ class ConnectedGraph(AimetCommonConnectedGraph):
     }
 
     # Graph nodes for which we will treat as passthrough and not represent with an Op
-    passthrough_graph_nodes = [
+    passthrough_graph_nodes = {
         "Int",       # aten::Int
         "t",         # aten::t
         "to",        # aten::to
         "detach",    # aten::detach
         "values",    # aten::values
         "Identity"
-    ]
+    }
 
     # Input graph nodes to ignore
-    input_graph_nodes_to_ignore = [
+    input_graph_nodes_to_ignore = {
         "Constant",     # prim::Constant
-    ]
+    }
 
     def __del__(self):
         """
