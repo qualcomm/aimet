@@ -71,7 +71,7 @@ class ModuleReducer(AimetCommonModuleReducer):
 
         super().__init__(using_cuda, reshape, op_to_mask_dict)
         self._model = model
-        self._parent_module_ref = dict()
+        self._parent_module_ref = {}
 
         self._generate_parent_ref(self._model)
 

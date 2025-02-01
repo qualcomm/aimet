@@ -92,7 +92,7 @@ def _visualize(sim: QuantizationSimModel, dummy_input, mode: str, save_path: str
             "No stats found to plot. Either there were no quantized modules, or calibration was not performed before calling this function, or no observers of type _MinMaxObserver or _HistogramObserver were present.")
 
 
-    stats_dict = dict()
+    stats_dict = {}
     keys_list = ["name", 0, 100] + percentile_list
     stats_dict["idx"] = list(range(len(stats_list)))
     for i in keys_list:
@@ -215,7 +215,7 @@ def _get_observer_stats(module, percentile_list):
         if isinstance(module_quantizer.encoding_analyzer.observer, _MinMaxObserver):
             rng = module_quantizer.encoding_analyzer.observer.get_stats()
             if rng.min is not None:
-                stats = dict()
+                stats = {}
                 stats["name"] = module_name
                 stats[0] = torch.min(rng.min).item()
                 stats[100] = torch.max(rng.max).item()
@@ -228,14 +228,14 @@ def _get_observer_stats(module, percentile_list):
             if len(histogram_list) == 1:
                 histogram = histogram_list[0]
                 if histogram.min is not None:
-                    stats = dict()
+                    stats = {}
                     stats["name"] = module_name
                     stats[0] = histogram.min.item()
                     stats[100] = histogram.max.item()
                     _get_advanced_stats_from_histogram(histogram, stats, percentile_list)
                     return stats
             elif len(histogram_list) > 1:
-                stats = dict()
+                stats = {}
                 stats["name"] = module_name
                 curmin = float("inf")
                 curmax = float("-inf")
@@ -530,7 +530,7 @@ class QuantStatsVisualizer:
             x_axis_label="Layer index",
             y_axis_label="Activation/Weight",
             tools="pan,wheel_zoom,box_zoom")
-        self.default_values = dict()
+        self.default_values = {}
         self.percentiles = []
         for percentile in percentile_list:
             if percentile not in [25, 50, 75]:

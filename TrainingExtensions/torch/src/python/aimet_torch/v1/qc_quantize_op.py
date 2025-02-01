@@ -946,7 +946,7 @@ class StaticGridQuantWrapper(QcQuantizeWrapper):
 QcPostTrainingWrapper = StaticGridQuantWrapper
 
 
-_fused_forward_functions: Dict[Type[nn.Module], Callable] = dict()
+_fused_forward_functions: Dict[Type[nn.Module], Callable] = {}
 
 def _register_forward(layer_type: Type[nn.Module]):
     """

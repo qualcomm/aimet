@@ -110,8 +110,8 @@ class SequentialMse:
         self.sim = sim
         self.model = model
         self.params = params
-        self.node_name_to_input_names = dict()
-        self.static_tensor_name_to_proto = dict()
+        self.node_name_to_input_names = {}
+        self.static_tensor_name_to_proto = {}
 
         if not isinstance(self.model, ONNXModel):
             self.model = ONNXModel(self.model)
@@ -119,7 +119,7 @@ class SequentialMse:
         self._fill_node_name_to_input_names()
         self._fill_static_tensor_name_to_proto()
 
-        raw_data = dict()
+        raw_data = {}
         for initializer in self.model.model.graph.initializer:
             if initializer.HasField('raw_data'):
                 raw_data[initializer.name] = initializer.raw_data
@@ -281,8 +281,8 @@ class SequentialMse:
         :return Returns the quantizers of unsupported modules
         """
 
-        quantizer_to_disable_name = list()
-        quantizer_to_not_disable_name = list()
+        quantizer_to_disable_name = []
+        quantizer_to_not_disable_name = []
 
         for name, qc_quantize_op in self.sim.qc_quantize_op_dict.items():
             if qc_quantize_op.enabled:
@@ -296,7 +296,7 @@ class SequentialMse:
         quantizer_to_disable_name = [name for name in quantizer_to_disable_name
                                      if name not in quantizer_to_not_disable_name]
 
-        quantizer_to_disable = list()
+        quantizer_to_disable = []
 
         for name in quantizer_to_disable_name:
             if name in self.sim.qc_quantize_op_dict:
@@ -346,7 +346,7 @@ class SequentialMse:
         :param per_channel_min: Per channel min values
         :return: candidates
         """
-        candidates = list()
+        candidates = []
         num_candidates = self.params.num_candidates
         for i in range(num_candidates):
             cand_max = per_channel_max / num_candidates * (i + 1)
@@ -467,7 +467,7 @@ class SequentialMse:
 
         candidates = self._get_candidates(per_channel_max, per_channel_min)
 
-        total_loss = list()
+        total_loss = []
 
         float_split_model, sim_split_model = self._split_onnx_graph(dependency_node.op_input_names,
                                                                     dependency_node.op_output_names)
@@ -535,8 +535,8 @@ class SequentialMse:
         :return: float inputs and sim inputs
         """
 
-        float_inputs = dict()
-        sim_inputs = dict()
+        float_inputs = {}
+        sim_inputs = {}
 
         for inward_node in dependency_node.inward_nodes:
             float_inputs.update(self.dependency_graph.get_float_data(inward_node))
@@ -568,17 +568,17 @@ class SequentialMse:
         session = QuantizationSimModel.build_session(model, self.sim.providers,
                                                      user_onnx_libs=self.sim._user_onnx_libs, path=self.sim._path)
 
-        outputs = list()
+        outputs = []
 
         num_batches = min(self.params.num_batches, len(self.data_loader.dataset) // self.data_loader.batch_size)
 
         for i in range(num_batches):
-            input_batch = dict()
+            input_batch = {}
             for name, data in inputs.items():
                 input_batch[name] = data[i]
             output = session.run(None, input_batch)
             if len(outputs) == 0:
-                outputs = [list() for _ in range(len(output))]
+                outputs = [[] for _ in range(len(output))]
             for idx, out in enumerate(output):
                 outputs[idx].append(out)
 

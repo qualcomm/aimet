@@ -57,8 +57,8 @@ class DependencyNode:
         self.op_name = op_name
         self.op_output_names = op_output_names # Check
         self.op_input_names = op_input_names
-        self.inward_nodes = list()
-        self.outward_nodes = list()
+        self.inward_nodes = []
+        self.outward_nodes = []
         self.outdegree = 0
         self.op_type = op_type
         self.indegree = 0
@@ -71,12 +71,12 @@ class DependencyGraph:
         """
         Intializes the object of the Dependency Graph
         """
-        self.starting_ops = list()
-        self.node_by_name = dict()
-        self.float_data = dict()
-        self.sim_data = dict()
-        self.ref_cnt_for_float_data = dict()
-        self.ref_cnt_for_sim_data = dict()
+        self.starting_ops = []
+        self.node_by_name = {}
+        self.float_data = {}
+        self.sim_data = {}
+        self.ref_cnt_for_float_data = {}
+        self.ref_cnt_for_sim_data = {}
 
     def add_node(self, op_name, op_output_names, op_input_names, op_type, dependent_on_supported_module):
         """
@@ -120,7 +120,7 @@ class DependencyGraph:
         :return: returns the float data of the input tensor
         """
 
-        float_data_for_dependency_node = dict()
+        float_data_for_dependency_node = {}
 
         for input_name in dependency_node.op_input_names:
             float_data_for_dependency_node[input_name] = self.float_data[input_name]
@@ -132,7 +132,7 @@ class DependencyGraph:
         :return: returns the sim data of the input tensor
         """
 
-        sim_data_for_dependency_node = dict()
+        sim_data_for_dependency_node = {}
 
         for input_name in dependency_node.op_input_names:
             sim_data_for_dependency_node[input_name] = self.sim_data[input_name]

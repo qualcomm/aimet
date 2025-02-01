@@ -47,7 +47,7 @@ class PolySlice:
 
     def __init__(self, dim=None, index=None):
         """dim is an int; indices may be a single int or list of int's"""
-        self._slices_by_dim = dict()  # a set per dimension
+        self._slices_by_dim = {}  # a set per dimension
         if dim is not None:
             assert index not in (None, [])
             self.set(dim, index)

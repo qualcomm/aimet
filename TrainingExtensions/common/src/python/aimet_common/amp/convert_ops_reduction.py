@@ -277,8 +277,8 @@ class ReduceConvertOps(abc.ABC):
         :param ops_dict: CG ops
         :return:
         """
-        dotted_name2output_shape = dict()
-        dotted_name2op_name = dict()
+        dotted_name2output_shape = {}
+        dotted_name2op_name = {}
         for op in ops_dict:
             # pylint: disable=protected-access
             dotted_name2output_shape[ops_dict[op].dotted_name] = [dim if dim else 1 for dim in ops_dict[op]._output_shape]
@@ -541,7 +541,7 @@ class ReduceConvertOps(abc.ABC):
 
         elif alpha == 1.0:  # output the phase 2 solution
             phase_three_sol = self._phase_two_sol.copy()
-            solve_data_dict = dict()
+            solve_data_dict = {}
             solve_data_dict["status"] = "alpha = 1.0; solution copied from phase 2."
             solve_data_dict["num_precision_changes_phase_2"] = ReduceConvertOps.compute_num_precision_changes(
                 self.quantizer_group_graph,
@@ -568,7 +568,7 @@ class ReduceConvertOps(abc.ABC):
 
         num_nodes = qg_graph.number_of_nodes()
 
-        node2index = dict()
+        node2index = {}
         for i, node in enumerate(qg_graph.nodes):
             if "_weights_only" not in node:
                 node2index[node] = i
@@ -662,7 +662,7 @@ class ReduceConvertOps(abc.ABC):
         prob.solve(solver=cp.CBC, maximumSeconds=10, verbose=True)
 
         # print information about the cvxpy solution and save data to solve_data_dict
-        solve_data_dict = dict()
+        solve_data_dict = {}
         solve_data_dict["graph_number_of_nodes"] = qg_graph.number_of_nodes()
         solve_data_dict["graph_number_of_edges"] = qg_graph.number_of_edges()
         solve_data_dict["alpha"] = alpha
@@ -674,7 +674,7 @@ class ReduceConvertOps(abc.ABC):
         _logger.info("---------------")
         _logger.info("prob.status: %s", prob.status)
         _logger.info("objective.value: %s", objective.value)
-        phase_three_sol = dict()
+        phase_three_sol = {}
         for node, idx in node2index.items():
             if round(x[idx].value) == 1 and round(y[idx].value) == 0:  # "round" is for tolerance
                 phase_three_sol[node] = 8

@@ -365,7 +365,7 @@ else:
             '''
             device = weight.device
             dense_inputs = dense_inputs.to(device)
-            sp_conv_attrs = dict()
+            sp_conv_attrs = {}
             ignore = ['ndim', 'output_bound', 'input_spatial_shape', 'activation', 'subm', 'batch_size', 'spatial_shape',
                       'input_shape', 'inverse', 'transposed', 'rulebook', 'output_shape', 'output_spatial_shape',
                       'output_padding']
@@ -428,7 +428,7 @@ else:
             device = weight.device
             indices = indices.to(device)
             features = features.to(device)
-            sp_conv_attrs = dict()
+            sp_conv_attrs = {}
             ignore = ['ndim', 'output_bound', 'input_spatial_shape', 'activation', 'subm', 'batch_size', 'spatial_shape',
                       'input_shape', 'inverse', 'transposed', 'rulebook', 'output_shape', 'output_spatial_shape',
                       'output_padding']

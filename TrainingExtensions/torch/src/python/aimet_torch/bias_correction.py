@@ -130,8 +130,8 @@ def get_output_data(layer: torch.nn.Module, model: torch.nn.Module, images_in_on
         orig_layer_out_data.append(out_data)
         raise StopForwardException
 
-    hook_handles = list()
-    orig_layer_out_data = list()
+    hook_handles = []
+    orig_layer_out_data = []
 
     # register forward hooks
     hook_handles.append(register_fwd_hook_for_layer(layer, _hook_to_collect_output_data))

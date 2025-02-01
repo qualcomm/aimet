@@ -51,7 +51,7 @@ class GraphMeta:
     def __init__(self, model_name=''):
         self._model_name = model_name
         self._nodes_by_name = OrderedDict()
-        self._invocations = list()
+        self._invocations = []
 
     def add_node(self, full_name, layer, name, node_type, parms):
         """Register an operation node in the graph; any node can be added only once.
@@ -129,7 +129,7 @@ class GraphMeta:
         """Return statistics by node type: number of nodes in the graph,
         number of parameters, number of invocations, number of MAC's.
         Note that number of invocations is already included in number of MAC's """
-        types = dict()
+        types = {}
         for node_dict in self._nodes_by_name.values():
             typ = node_dict['type']
             if typ not in types:

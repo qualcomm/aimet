@@ -80,7 +80,7 @@ class ReduceConvertOps(BaseReduceConvertOps):
         The function returns quantizer-group name to its list index dictionary
         :return: mapping of quantizer-group name and its position in the quantizer-group list
         """
-        quantizer_group2node_index = dict()
+        quantizer_group2node_index = {}
         counter = 0
         for qgroup in self._quantizer_groups:
             if len(qgroup.input_quantizers) == 1 and not qgroup.output_quantizers:
@@ -187,7 +187,7 @@ class ReduceConvertOps(BaseReduceConvertOps):
         QUANTIZER_TYPE_INPUT = 'input'
         QUANTIZER_TYPE_OUTPUT = 'output'
 
-        solution_dict = dict()
+        solution_dict = {}
         # pylint: disable=protected-access
         for layer_name, layer in self._sim._layer_name_to_quant_wrapper.items():
             for quantizer in layer.input_quantizers.layers:

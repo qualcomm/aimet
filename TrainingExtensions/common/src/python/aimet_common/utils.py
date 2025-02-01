@@ -171,11 +171,11 @@ class AimetLogger(metaclass=SingletonType):
         # Need to fix this issue and then remove the pylint disablement.
         configured_items = list(logging.root.manager.loggerDict.items()) # pylint: disable=no-member
 
-        log_areas_list = list()
+        log_areas_list = []
         for x in AimetLogger.LogAreas:
             log_areas_list.append(x.value)
 
-        configured_areas_list = list()
+        configured_areas_list = []
         for name, _ in configured_items:
             configured_areas_list.append(name)
 

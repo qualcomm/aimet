@@ -46,8 +46,8 @@ class ConnectedGraph(ABC):
     """ ConnectedGraph abstract class """
 
     def __init__(self):
-        self._ops = dict()
-        self._products = dict()
+        self._ops = {}
+        self._products = {}
 
     @abstractmethod
     def get_op_from_module_name(self, name: str):

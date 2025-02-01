@@ -426,7 +426,7 @@ class QcQuantizeRecurrent(torch.nn.Module): # pylint: disable=too-many-public-me
         Quantizes and dequantizes a parameter
         @returns A dictionary of parameters (with quantization noise if enabled.)
         """
-        quantized_params = dict()
+        quantized_params = {}
         shadow_params = {name: param.detach().clone()  for name, param in self.named_parameters(recurse=False)}
 
         if self._mode != QcQuantizeOpMode.LEARN_ENCODINGS:

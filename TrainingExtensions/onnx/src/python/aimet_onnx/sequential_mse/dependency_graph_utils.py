@@ -69,12 +69,12 @@ class DependencyGraphUtils:
 
         self.connected_graph = connected_graph
         self.node_name_to_input_names = node_name_to_input_names
-        self.indegree = dict()
-        self.name_to_dependent_on_supported_module = dict()
+        self.indegree = {}
+        self.name_to_dependent_on_supported_module = {}
         self.static_tensor_name_to_proto = static_tensor_name_to_proto
-        self.starting_ops = list()
+        self.starting_ops = []
         self.graph_outputs = [output.name for output in self.connected_graph.model.graph.output]
-        self.input_ops_name = list()
+        self.input_ops_name = []
 
         self._fill_indegree()
         self._fill_input_ops_name()
@@ -85,7 +85,7 @@ class DependencyGraphUtils:
         Fill the input op names dict with ops having at least one graph input
         """
 
-        graph_inputs = list()
+        graph_inputs = []
 
         for input_tensor in self.connected_graph.model.graph.input:
             graph_inputs.append(input_tensor.name)
@@ -112,7 +112,7 @@ class DependencyGraphUtils:
         """
 
         for op in self.connected_graph.ordered_ops:
-            self.name_to_dependent_on_supported_module[op.name_op] = list()
+            self.name_to_dependent_on_supported_module[op.name_op] = []
 
     def _populate_data_for_starting_ops(self, dependency_graph, data_loader, num_batches):
         """
@@ -123,10 +123,10 @@ class DependencyGraphUtils:
 
         model_inputs = [node.name for node in self.connected_graph.model.graph.input]
 
-        data = dict()
+        data = {}
 
         for model_input in model_inputs:
-            data[model_input] = list()
+            data[model_input] = []
 
         for i, batch in enumerate(data_loader):
             if i == len(data_loader) - 1 and len(batch) < data_loader.batch_size:

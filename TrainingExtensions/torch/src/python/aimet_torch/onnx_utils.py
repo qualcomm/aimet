@@ -322,7 +322,7 @@ class CustomMarker(torch.nn.Module):
         """
         Forward method for this CustomMarker layer
         """
-        marked_tensor_map = dict()
+        marked_tensor_map = {}
         marked_inputs = self._apply_markers_to_tuple(inputs, 'True', marked_tensor_map)
 
         if kwargs:
@@ -380,7 +380,7 @@ class CustomMarker(torch.nn.Module):
         :param is_start_marker: set to 'True' or 'False' based on if called for input or output dict of tensors
         :param marked_tensor_map: contains a map of id(tensor) to updated tensor i.e. after applying marker function.
         """
-        marked_dict_inputs = dict()
+        marked_dict_inputs = {}
         for k, t in tensors_dict.items():
             if id(t) in marked_tensor_map: # if tensor is already seen before map to the previous tensor
                 t = marked_tensor_map[id(t)]
@@ -1143,7 +1143,7 @@ class OnnxSaver:
         :param start_marker_map: Map of start marker nodes in the ONNX graph
         :return:
         """
-        node_name_count_map = dict()
+        node_name_count_map = {}
         visited = set()
         leaf_only_start_marker = {n:m for n, m in start_marker_map.items()
                                   if m[0].attribute[MarkerAttr.IS_LEAF].s.decode() == 'True'}
@@ -1469,7 +1469,7 @@ class OnnxSaver:
                 recurrent_nodes.append(node.name)
 
         # Collection of recurrent nodes that includes only the first layer nodes
-        root_nodes = dict()
+        root_nodes = {}
         # onnx graph is maintained in topological order, the first occurrence of the onnx node with the module name will
         # be the root node of the recurrent module
         for node_name in recurrent_nodes:
