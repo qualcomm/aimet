@@ -77,9 +77,10 @@ def remove_nodes_with_type(node_type: str, onnx_graph: onnx.GraphProto):
             input_output_pairs[node.output[0]] = node.input[0]
             onnx_graph.node.remove(node)
     for node in onnx_graph.node:
-        for i in range(len(node.input)):
-            if node.input[i] in input_output_pairs.keys():
-                node.input[i] = input_output_pairs[node.input[i]]
+        for i, _input in enumerate(node.input):
+            output = input_output_pairs.get(_input, None)
+            if output:
+                node.input[i] = input_output_pairs[_input]
         for outputs in onnx_graph.output:
             if outputs.name in input_output_pairs.keys() and \
                     node.output[0] == input_output_pairs[outputs.name]:
@@ -112,8 +113,8 @@ def remove_node(node: NodeProto, onnx_graph: onnx.GraphProto):
     for other_node in onnx_graph.node:
         if other_node.input and other_node.output:
             # Check if other node takes input from removed node
-            for idx in range(len(other_node.input)):
-                if other_node.input[idx] == node.output[0]:
+            for idx, _input in enumerate(other_node.input):
+                if _input == node.output[0]:
                     other_node.input[idx] = node.input[0]
             # Check if removed node output is an output of the graph
             for outputs in onnx_graph.output:

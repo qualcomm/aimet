@@ -281,8 +281,8 @@ def _get_percentile_stats_from_histogram(histogram, percentile_list):
     cum_f = 0
     idx = 0
     percentile_stats = []
-    for i in range(len(histogram.histogram)):
-        f = histogram.histogram[i].item()
+    for i, hist in enumerate(histogram.histogram):
+        f = hist.item()
         if f > 0:
             bin_low = histogram.bin_edges[i].item()
             bin_high = histogram.bin_edges[i + 1].item()

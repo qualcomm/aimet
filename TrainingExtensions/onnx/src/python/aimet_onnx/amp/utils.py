@@ -64,8 +64,8 @@ def get_activation_shapes(sim: QuantizationSimModel) -> Dict[str, Any]:
     sess = QuantizationSimModel.build_session(sim.model.model, sim.providers, sim._user_onnx_libs)
     outputs = sess.run(None, dummy_input)
     activation_shapes = {}
-    for idx in range(len(sim.model.graph().output)):
-        act_name = sim.model.graph().output[idx].name
+    for idx, node in enumerate(sim.model.graph().output):
+        act_name = node.name
         activation_shapes[act_name] = outputs[idx].shape
     utils.remove_activation_hooks(sim.model.model, hooks)
     return activation_shapes

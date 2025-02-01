@@ -410,8 +410,8 @@ class QuantizationSimModel:
         outputs = sess.run(None, dummy_input)
 
         activation_dtypes = {}
-        for idx in range(len(self.model.graph().output)):
-            act_name = self.model.graph().output[idx].name
+        for idx, node in enumerate(self.model.graph().output):
+            act_name = node.name
             dtype = outputs[idx].dtype
             activation_dtypes[act_name] = dtype
         remove_activation_hooks(self.model.model, hooks)

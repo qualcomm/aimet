@@ -496,9 +496,9 @@ class MpHandler:
         for module, request in mp_requests.items():
             if request.input_candidates:
                 assert len(module.input_quantizers) == len(request.input_candidates)
-                for idx in range(len(module.input_quantizers)):
-                    if request.input_candidates[idx] and module.input_quantizers[idx]:
-                        module.input_quantizers[idx] = self._apply_request_to_quantizer(module.input_quantizers[idx],
+                for idx, qtzr in enumerate(module.input_quantizers):
+                    if request.input_candidates[idx] and qtzr:
+                        module.input_quantizers[idx] = self._apply_request_to_quantizer(qtzr,
                                                                                         request.input_candidates[idx])
 
             if request.param_candidate:
@@ -510,10 +510,10 @@ class MpHandler:
 
             if request.output_candidates:
                 assert len(module.output_quantizers) == len(request.output_candidates)
-                for idx in range(len(module.output_quantizers)):
-                    if request.output_candidates[idx] and module.output_quantizers[idx]:
-                        module.output_quantizers[idx] = self._apply_request_to_quantizer(module.output_quantizers[idx],
-                                                                                        request.output_candidates[idx])
+                for idx, qtzr in enumerate(module.output_quantizers):
+                    if request.output_candidates[idx] and qtzr:
+                        module.output_quantizers[idx] = self._apply_request_to_quantizer(qtzr,
+                                                                                         request.output_candidates[idx])
 
     def _resolve_contentions_at_module(self, current_module, mp_request, visited_modules, mp_requests: Dict,
                                        strict: bool = True):
