@@ -417,7 +417,7 @@ class QuantAnalyzer:
         param_quantizers = {name: q for name, q in param_quantizers.items() if q.enabled}
         return input_quantizers, output_quantizers, param_quantizers
 
-    # pylint: disable=no-self-use, too-many-branches, too-many-locals
+    # pylint: disable=too-many-branches, too-many-locals
     def export_per_layer_encoding_min_max_range(self, sim: QuantizationSimModel, results_dir: str) -> Tuple[Dict, Dict]:
         """
         Exports encoding min and max range for all weights and activations. results_dir has

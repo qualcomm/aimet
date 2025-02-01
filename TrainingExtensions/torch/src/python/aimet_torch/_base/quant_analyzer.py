@@ -369,7 +369,6 @@ class QuantAnalyzerBase(ABC):
 
         return eval_score_dict
 
-    # pylint: disable=no-self-use
     @abstractmethod
     def _create_and_export_stats_histogram_plot(self,
                                                 quantizer,
@@ -480,7 +479,6 @@ class QuantAnalyzerBase(ABC):
         _logger.info("Exported per-layer quant analysis (disabled) plot.")
         return layer_wise_eval_score_dict
 
-    # pylint: disable=no-self-use
     def export_per_layer_encoding_min_max_range(self,
                                                 sim: _QuantizationSimModelInterface,
                                                 results_dir: str,

@@ -274,7 +274,6 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
 
         return sim
 
-    # pylint: disable=no-self-use
     def _apply_batchnorm_folding(self, model: tf.keras.Model) -> Tuple[tf.keras.Model, List[Tuple]]:
         """
         Apply batchnorm folding
@@ -288,7 +287,6 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
         folded_pairs, model = fold_all_batch_norms(model)
         return model, folded_pairs
 
-    # pylint: disable=no-self-use
     @cache.mark("cle", KerasModelSerializationProtocol())
     def _apply_cross_layer_equalization(self, model: tf.keras.Model) -> tf.keras.Model:
         """

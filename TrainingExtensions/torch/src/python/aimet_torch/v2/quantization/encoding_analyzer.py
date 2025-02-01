@@ -181,7 +181,6 @@ class _HistogramObserver(_Observer[_Histogram]):
 
         return hist_stats
 
-    # pylint: disable=no-self-use
     def _handle_inputs(self, hist_input):
         if not torch.any(hist_input.isfinite()):
             raise ValueError('Input tensor cannot contain only infinite or only NaN values')

@@ -650,7 +650,6 @@ class PythonHbfImpl(HbfImpl):
     """
     This class implements the HBF algorithm using python version while following the base Implementation interface.
     """
-    # pylint: disable=no-self-use
     def bias_fold(self, cls_pair_info, bn_layers):
         """
         Bias fold implementation using python version.

@@ -73,7 +73,6 @@ class QuantAnalyzer(QuantAnalyzerBase):
     def _get_quant_wrapper_type() -> Tuple[Type]:
         return (BaseQuantizationMixin,)
 
-    # pylint: disable=no-self-use
     def _create_and_export_stats_histogram_plot(self,
                                                 quantizer: QuantizerBase,
                                                 results_dir: str,

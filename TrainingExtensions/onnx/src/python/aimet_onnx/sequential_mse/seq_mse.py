@@ -511,7 +511,6 @@ class SequentialMse:
         self._compute_encoding_from_candidate(best_candidate, dependency_node)
         self._freeze_encodings(dependency_node)
 
-    # pylint: disable=no-self-use
     def _get_input_names_from_dependencies(self, dependency_node: DependencyNode):
         """
         Returns the input names for the op corresponding to dependency node

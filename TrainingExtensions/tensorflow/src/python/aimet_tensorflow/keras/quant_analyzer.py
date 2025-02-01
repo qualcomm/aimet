@@ -152,7 +152,6 @@ class QuantAnalyzer:
         self._unlabeled_dataset = None
         self._num_batches = None
 
-    # pylint: disable=unused-argument, no-self-use
     def analyze(self,
                 quant_scheme: QuantScheme = QuantScheme.post_training_tf_enhanced,
                 rounding_mode: str = "nearest",
@@ -412,7 +411,6 @@ class QuantAnalyzer:
 
         return eval_score_dict
 
-    # pylint: disable=no-self-use
     def export_per_layer_encoding_min_max_range(self,
                                                 sim: QuantizationSimModel,
                                                 results_dir: str) -> Tuple[Dict, Dict]:

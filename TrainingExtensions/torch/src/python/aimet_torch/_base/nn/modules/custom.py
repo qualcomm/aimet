@@ -43,7 +43,6 @@ import torchvision
 import torch
 import torch.nn
 
-# pylint: disable=no-self-use
 
 def forward_function_wrapper(functional: Callable) -> Any:
     """
@@ -920,7 +919,6 @@ class Expand(torch.nn.Module):
 
 class DynamicLinear(torch.nn.Module):
     """Custom module for Dynamic Linear / FullyConnected Op"""
-    # pylint:disable=no-self-use
     def forward(self, x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor = None) -> torch.Tensor:
         """
         Forward-pass routine for Dynamic Linear Op

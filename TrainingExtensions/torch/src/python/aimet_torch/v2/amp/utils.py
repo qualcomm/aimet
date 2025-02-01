@@ -171,7 +171,7 @@ class _V1DisabledQuantizer(_V1QuantizerMixin, QuantizeDequantize):
         return False
 
     @enabled.setter
-    def enabled(self, val): # pylint: disable=no-self-use
+    def enabled(self, val):
         if val:
             raise RuntimeError
 

@@ -78,7 +78,6 @@ class QuantAnalyzer(QuantAnalyzerBase):
         for quantizer in quantizers:
             quantizer.enabled = enabled
 
-    # pylint: disable=no-self-use
     def _create_and_export_stats_histogram_plot(self,
                                                 quantizer: StaticGridTensorQuantizer,
                                                 results_dir: str,

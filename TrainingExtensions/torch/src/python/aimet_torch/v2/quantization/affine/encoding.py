@@ -280,7 +280,6 @@ class AffineEncoding(EncodingBase, _GridMixin):
             for min_, max_, scale_, offset_ in zip(min, max, scale, offset)
         ]
 
-    # pylint: disable=no-self-use
     def _get_additional_properties(self) -> Dict[str, Any]:
         return {}
 

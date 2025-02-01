@@ -60,7 +60,6 @@ class SpatialSvdPruner(aimet_common.svd_pruner.SpatialSvdPruner):
     """
     Pruner for Spatial-SVD method
     """
-    # pylint: disable=no-self-use
     def _perform_svd_and_split_layer(self, layer: Layer, rank: int, comp_layer_db: LayerDatabase):
         """
         Performs spatial svd and splits given layer into two layers
