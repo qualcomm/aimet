@@ -284,11 +284,11 @@ def create_cached_block_schedule_list(model: torch.nn.Module, dummy_input, block
                     })
 
     block_list = []
-    block = None
+    block = (None, None)
     for module, value in caching_modules.items():
         block_module = value['block']
         name_module_pair = [value['name'], module]
-        if block is None: # init ?
+        if block == (None, None): # init ?
             block = (block_module, [name_module_pair])
         elif block[0] != block_module: # end of block ?
             block_list.append(block)
