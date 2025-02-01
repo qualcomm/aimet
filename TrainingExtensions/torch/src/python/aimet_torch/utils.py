@@ -1026,7 +1026,7 @@ def add_foward_fn_kwargs_to_inputs(module: torch.nn.Module, *args: Tuple[Any], *
             if default != inspect.Parameter.empty:
                 add_args.append(default)
             else:
-                ValueError(f'no value provided for kwarg={k}, which has no defaults')
+                raise ValueError(f'no value provided for kwarg={k}, which has no defaults')
     return tuple([*args, *add_args])
 
 
