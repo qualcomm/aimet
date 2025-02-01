@@ -402,19 +402,6 @@ def get_layer_name(model, layer):
     raise KeyError(f"Couldn't find layer {layer} from model {model}")
 
 
-def get_layer_by_name(model, layer_name):
-    """
-    Helper function to get layer reference given layer name
-    :param model        : model (nn.Module)
-    :param layer_name   : layer_name
-    :return:
-    """
-    try:
-        return dict(model.named_modules())[layer_name]
-    except KeyError as e:
-        raise KeyError(f"Couldn't find layer named {layer_name}") from e
-
-
 def is_model_on_gpu(model):
     """
     Function to check whether given model is created on GPU or CPU

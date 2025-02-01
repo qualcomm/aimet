@@ -56,7 +56,7 @@ from aimet_torch.data_subsampler import DataSubSampler
 from aimet_torch.channel_pruning.weight_reconstruction import WeightReconstructor
 from aimet_torch.channel_pruning.channel_pruner import InputChannelPruner
 from .models.mnist_torch_model import Net as mnist_model
-from aimet_torch.utils import create_fake_data_loader, get_layer_name, get_layer_by_name,\
+from aimet_torch.utils import create_fake_data_loader, get_layer_name, get_named_module,\
     create_rand_tensors_given_shapes, get_device
 from aimet_torch.layer_database import Layer, LayerDatabase
 
@@ -507,7 +507,7 @@ class TestTrainingExtensionsChannelPruning(unittest.TestCase):
                                                                                  num_reconstruction_samples=
                                                                                  num_reconstruction_samples)
 
-        conv_layer = get_layer_by_name(model=comp_model, layer_name=conv2_pr_layer_name)
+        conv_layer = get_named_module(comp_model, conv2_pr_layer_name)
 
         assert conv_layer == comp_model.conv2
         # original weight before reconstruction

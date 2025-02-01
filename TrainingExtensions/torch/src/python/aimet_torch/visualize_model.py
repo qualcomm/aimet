@@ -42,7 +42,7 @@ import torch
 from bokeh import plotting
 from bokeh.layouts import column
 from aimet_torch import plotting_utils
-from aimet_torch.utils import get_layer_by_name
+from aimet_torch.utils import get_named_module
 
 
 def visualize_changes_after_optimization(
@@ -67,7 +67,7 @@ def visualize_changes_after_optimization(
     if selected_layers:
         for name, module in new_model.named_modules():
             if name in selected_layers and hasattr(module, "weight"):
-                old_model_module = get_layer_by_name(old_model, name)
+                old_model_module = get_named_module(old_model, name)
                 new_model_module = module
                 subplots.append(
                     plotting_utils.visualize_changes_after_optimization_single_layer(
@@ -79,7 +79,7 @@ def visualize_changes_after_optimization(
         for name, module in new_model.named_modules():
             if hasattr(module, "weight") and\
                     isinstance(module, (torch.nn.modules.conv.Conv2d, torch.nn.modules.linear.Linear)):
-                old_model_module = get_layer_by_name(old_model, name)
+                old_model_module = get_named_module(old_model, name)
                 new_model_module = module
                 subplots.append(
                     plotting_utils.visualize_changes_after_optimization_single_layer(
