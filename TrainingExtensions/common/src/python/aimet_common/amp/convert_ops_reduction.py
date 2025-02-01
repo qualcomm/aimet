@@ -786,6 +786,6 @@ class ReduceConvertOps(abc.ABC):
                 del G_without_contraction_attribute.edges[edge][attribute]
 
         p = to_pydot(G_without_contraction_attribute)
-        p.write_raw(results_dir + "/AMP_ph3_quantizer_group_graph_{}_color_{}.dot".format(model_name, filename_suffix))
+        p.write(results_dir + "/AMP_ph3_quantizer_group_graph_{}_color_{}.dot".format(model_name, filename_suffix))
 
         # Note: We can later convert the dot file to png using: "dot filename.dot -Tpng -o filename.png"
