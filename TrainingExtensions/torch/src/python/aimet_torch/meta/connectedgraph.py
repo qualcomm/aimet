@@ -46,7 +46,7 @@ import copy
 from collections import defaultdict
 from types import SimpleNamespace
 import inspect
-import itertools
+from itertools import islice
 from typing import Tuple, Union, List, Dict, Type, Optional, Iterator
 import torch
 
@@ -413,16 +413,18 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             # functional operations e.g. cat, size etc
             else:
                 try:
-                    aten_node = next(self._find_aten_nodes_in_forward_pass(trace))
+                    is_elementwise = bool(elementwise_info) and \
+                                     node == next(self._find_aten_nodes_in_forward_pass(trace))
                 except StopIteration:
-                    aten_node = None
+                    is_elementwise = False
 
-                if elementwise_info and node == aten_node:
+                if is_elementwise:
                     # Aten op that corresponds to the elementwise op
-                    op_type = self.get_op_type(type(elementwise_info[1]))
+                    residing_module, op_module = elementwise_info
+                    op_type = self.get_op_type(type(op_module))
                     op = self._create_new_multi_output_op(op_type,
-                                                          residing_module=elementwise_info[0],
-                                                          op_module=elementwise_info[1])
+                                                          residing_module=residing_module,
+                                                          op_module=op_module)
                 else:
                     op_type = self._get_functional_node_type(node)
                     op = self._create_new_multi_output_op(op_type, residing_module=model)
@@ -1354,13 +1356,15 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         if is_torch_nn_leaf_module(module):
             return False
 
-        aten_nodes = list(itertools.islice(self._find_aten_nodes_in_forward_pass(trace), 2))
-
-        if len(aten_nodes) <= 1 and is_leaf_module(module):
-            # Custom leaf module
+        if isinstance(module, (self._aimet_defined_modules, *aimet_torch.utils.modules_to_treat_as_leaf)):
             return False
 
-        if isinstance(module, (self._aimet_defined_modules, *aimet_torch.utils.modules_to_treat_as_leaf)):
+        is_custom_leaf_module = is_leaf_module(module) and \
+            len(tuple(
+                islice(self._find_aten_nodes_in_forward_pass(trace), 2)
+            )) <= 1
+
+        if is_custom_leaf_module:
             return False
 
         return True
