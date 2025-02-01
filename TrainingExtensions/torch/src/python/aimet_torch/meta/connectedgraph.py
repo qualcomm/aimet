@@ -626,23 +626,6 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 op.add_input(inp_product)
 
     @staticmethod
-    def _get_attribute_name(node: torch._C.Node) -> Dict[str, str]:
-        """
-        Retrieve the attributes associated with the graph node
-        :param node: trace graph node
-        :return: a dictionary of attributes associated with the node
-        """
-        attributes = {}
-        # node description has pseudo-code of the form  '... torch_mangle_2.Module = prim::GetAttr[name="fc"](%self.1)'
-        # for the above example attributeNames() iterator should return a string 'name'
-        node_desc = str(node)
-        for attribute_name in node.attributeNames():
-            pattern = attribute_name + '="'
-            if pattern in node_desc:
-                attributes[attribute_name] = node_desc.split(pattern)[1].split('"')[0]
-        return attributes
-
-    @staticmethod
     def _get_module_instance(node: torch._C.Node,
                              node_name_to_module: Dict[str, torch.nn.Module]) -> torch.nn.Module:
         """
@@ -652,9 +635,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :return: torch module corresponding to the node
         """
         input_name: str = node.input().debugName()
-        attributes = ConnectedGraph._get_attribute_name(node)
+        name = node.s('name')
         model = node_name_to_module[input_name]
-        sub_model = getattr(model, attributes['name'])
+        sub_model = getattr(model, name)
         return sub_model
 
     @staticmethod
@@ -672,11 +655,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # %2 : ... prim::GetAttr[name="_layer0"](%1)
         # Here, to call into %2 from the current trace, we must call .model._layer0. Tracking inputs to
         # the GetAttr nodes tells us this path (%2 comes from %1 which comes from %self.1, the current module)
-        # pylint: disable=unnecessary-comprehension
-        node_input = [inp for inp in node.inputs()][0].debugName()
-        # pylint: disable=unnecessary-comprehension
-        node_alias = [output for output in node.outputs()][0].debugName()
-        node_name = ConnectedGraph._get_attribute_name(node).get('name')
+        node_input = next(node.inputs()).debugName()
+        node_alias = next(node.outputs()).debugName()
+        node_name = node.s('name')
         return GetAttrNodeInfo(node_alias, node_name, node_input)
 
     @staticmethod
