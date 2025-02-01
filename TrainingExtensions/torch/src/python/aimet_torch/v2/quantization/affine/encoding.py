@@ -348,8 +348,8 @@ class VectorEncoding(AffineEncoding):
 
     def _to_legacy_format(self):
         encoding = super()._to_legacy_format()
-        for i, _ in enumerate(encoding):
-            encoding[i].update(
+        for e in encoding:
+            e.update(
                 rows_per_block=self.rows_per_block,
                 cols_per_block=self.cols_per_block,
                 vector_dim=self.vector_dim,

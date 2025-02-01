@@ -589,15 +589,15 @@ def brute_force_search(values: Sequence[Callable[[], float]], target: float, pha
     :returns: Index of the element that is equal to or higher than the target value.
     """
     if phase2_reverse:
-        for i, _ in enumerate(values):
-            if values[i]() >= target:
+        for i, fn in enumerate(values):
+            if fn() >= target:
                 return i
 
     else:
-        for i, _ in enumerate(values):
-            if values[i]() == target:
+        for i, fn in enumerate(values):
+            if fn() == target:
                 return i
-            if values[i]() < target:
+            if fn() < target:
                 if i > 0:
                     return i - 1 # (i-1)-th elem is the smallest elem that satisfies the target score
                 return i         # Even 0-th elem can't satisfy the target score

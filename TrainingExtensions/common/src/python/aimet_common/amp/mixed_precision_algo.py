@@ -327,8 +327,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
         """
         max_idx = 0
         max_acc = eval_results[0][0]
-        for idx, acc in enumerate(eval_results):
-            acc = eval_results[idx][0]
+        for idx, (acc, _) in enumerate(eval_results):
             if acc > max_acc:
                 max_acc = acc
                 max_idx = idx

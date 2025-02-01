@@ -153,8 +153,8 @@ class GreedyCompRatioSelectAlgo(CompRatioSelectAlgo):
             eval_score = layer_eval_score_dict[comp_ratio]
         else:
             ind = 0
-            for ind, _ in enumerate(comp_ratio_list, start=0):
-                if comp_ratio < comp_ratio_list[ind]:
+            for ind, c in enumerate(comp_ratio_list, start=0):
+                if comp_ratio < c:
                     break
 
             if ind == len(comp_ratio_list) - 1:
