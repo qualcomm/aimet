@@ -543,13 +543,15 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
 
             # Check if phase 2 solution is all 8 bits
             phase2_all_8bits = all(
-                reduce_convert_ops_algo._phase_two_sol[qg] == 8 for qg in
-                reduce_convert_ops_algo._phase_two_sol)
+                sol == 8 for sol in
+                reduce_convert_ops_algo._phase_two_sol.values()
+            )
 
             # Check if phase 2 solution is all 16 bits
             phase2_all_16bits = all(
-                reduce_convert_ops_algo._phase_two_sol[qg] == 16 for qg in
-                reduce_convert_ops_algo._phase_two_sol)
+                sol == 16 for sol in
+                reduce_convert_ops_algo._phase_two_sol.values()
+            )
 
             if phase2_all_8bits or phase2_all_16bits:
                 logger.warning('Skipping phase3 because there is no scope to reduce convert-op overhead')

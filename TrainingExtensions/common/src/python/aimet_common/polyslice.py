@@ -56,8 +56,8 @@ class PolySlice:
         """ Printable representation of the object. """
         slices_by_dim = self.get_all()
         repr_str = ""
-        for dim in slices_by_dim.keys():
-            slices = ", ".join(str(idx) for idx in slices_by_dim[dim])
+        for dim, indices in slices_by_dim.items():
+            slices = ", ".join(str(idx) for idx in indices)
             repr_str += "dim." + str(dim) + ": " + slices + "  "
         return repr_str
 

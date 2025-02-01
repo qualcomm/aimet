@@ -675,19 +675,18 @@ class ReduceConvertOps(abc.ABC):
         _logger.info("prob.status: %s", prob.status)
         _logger.info("objective.value: %s", objective.value)
         phase_three_sol = dict()
-        for node in node2index:
-            if round(x[node2index[node]].value) == 1 and round(
-                    y[node2index[node]].value) == 0:  # "round" is for tolerance
+        for node, idx in node2index.items():
+            if round(x[idx].value) == 1 and round(y[idx].value) == 0:  # "round" is for tolerance
                 phase_three_sol[node] = 8
-            elif round(x[node2index[node]].value) == 0 and round(y[node2index[node]].value) == 1:
+            elif round(x[idx].value) == 0 and round(y[idx].value) == 1:
                 phase_three_sol[node] = 16
             else:
                 raise Exception("The solution has a bug")
 
-        solve_data_dict["num_nodes_8bits_phase2"] = sum([phase_two_sol[node] == 8 for node in phase_two_sol])
-        solve_data_dict["num_nodes_16bits_phase2"] = sum([phase_two_sol[node] == 16 for node in phase_two_sol])
-        solve_data_dict["num_nodes_8bits_phase3"] = sum([phase_three_sol[node] == 8 for node in phase_three_sol])
-        solve_data_dict["num_nodes_16bits_phase3"] = sum([phase_three_sol[node] == 16 for node in phase_three_sol])
+        solve_data_dict["num_nodes_8bits_phase2"] = sum(sol == 8 for sol in phase_two_sol.values())
+        solve_data_dict["num_nodes_16bits_phase2"] = sum(sol == 16 for sol in phase_two_sol.values())
+        solve_data_dict["num_nodes_8bits_phase3"] = sum(sol == 8 for sol in phase_three_sol.values())
+        solve_data_dict["num_nodes_16bits_phase3"] = sum(sol == 16 for sol in phase_three_sol.values())
 
         num_precision_changes_phase_3 = ReduceConvertOps.compute_num_precision_changes(qg_graph, phase_three_sol)
         _logger.info("num_precision_changes_phase_3: %d", num_precision_changes_phase_3)
@@ -782,7 +781,7 @@ class ReduceConvertOps(abc.ABC):
             G_without_contraction_attribute.nodes[node]["style"] = "filled"
 
         # Also, need to remove edge attributes, otherwise we get a pydot error
-        for edge in G_without_contraction_attribute.edges:
+        for edge in G_without_contraction_attribute.edges: # pylint: disable=consider-using-dict-items
             for attribute in qg_graph.edges[edge]:
                 del G_without_contraction_attribute.edges[edge][attribute]
 
