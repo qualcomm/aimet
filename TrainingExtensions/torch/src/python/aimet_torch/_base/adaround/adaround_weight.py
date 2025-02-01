@@ -445,7 +445,6 @@ class AdaroundBase(ABC):
         :param module_name: Module name
         :return: Quantized wrapper module or None
         """
-        ...
 
     @classmethod
     def _export_encodings_to_json(cls, path: str, filename_prefix: str, quant_sim: _QuantizationSimModelInterface):
