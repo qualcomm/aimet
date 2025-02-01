@@ -157,7 +157,7 @@ class _V1QuantizerMixin:
 
             raise RuntimeError
 
-        v2_qtzr = self.__new__(QuantizeDequantize)
+        v2_qtzr = QuantizeDequantize.__new__(QuantizeDequantize)
         v2_qtzr.__dict__ = self.__dict__
         delattr(v2_qtzr, 'enabled')
         delattr(v2_qtzr, 'data_type')

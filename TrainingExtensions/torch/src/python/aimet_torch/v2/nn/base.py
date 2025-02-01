@@ -615,9 +615,9 @@ class BaseQuantizationMixin(abc.ABC):
         # pylint: disable=protected-access
 
         qtzn_module_cls = type(self)
-        orig_module_cls = self.qcls_to_cls.get(qtzn_module_cls)
+        orig_module_cls = self.qcls_to_cls[qtzn_module_cls]
 
-        orig_module = self.__new__(orig_module_cls)
+        orig_module = orig_module_cls.__new__(orig_module_cls)
         orig_module.__dict__ = self.__dict__.copy()
         orig_module.__dict__.pop('forward', None)
 
