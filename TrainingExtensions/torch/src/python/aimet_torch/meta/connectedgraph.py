@@ -46,6 +46,7 @@ import copy
 from collections import defaultdict
 from types import SimpleNamespace
 import inspect
+import itertools
 from typing import Tuple, Union, List, Dict, Type, Optional, Iterator
 import torch
 
@@ -1353,12 +1354,10 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         if is_torch_nn_leaf_module(module):
             return False
 
-        try:
-            aten_node = next(self._find_aten_nodes_in_forward_pass(trace))
-        except StopIteration:
-            aten_node = None
+        aten_nodes = list(itertools.islice(self._find_aten_nodes_in_forward_pass(trace), 2))
 
-        if not aten_node and is_leaf_module(module):
+        if len(aten_nodes) <= 1 and is_leaf_module(module):
+            # Custom leaf module
             return False
 
         if isinstance(module, (self._aimet_defined_modules, *aimet_torch.utils.modules_to_treat_as_leaf)):
