@@ -193,10 +193,6 @@ jobs:
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
           ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find wheelhouse -name '*.whl')[test]"
       - name: Run pylint
-        if: matrix.VER_TORCH == '' # NOTE: Pylint 2.8.3 throws parsing error when run on latest bokeh 3.6.2.
-                                   # Therefore, currently aimet-torch will NOT pass pylint test since it uses the latest bokeh.
-                                   # (aimet-onnx and -tensorflow uses bokeh 3.3.2 which works okay with pylint 2.8.3)
-                                   # FIXME: Upgrade pylint version to latest.
         run: |
           CONDA_PYTHONPATH="./.conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages"
           AIMET_PACKAGES=$(find $CONDA_PYTHONPATH -regex ".*/aimet_\(common\|torch\|tensorflow\|onnx\)" | tr "\n" " ")
