@@ -95,7 +95,7 @@ class ReduceConvertOps(BaseReduceConvertOps):
                 quantizer_group2node_index[qgroup.parameter_quantizers[0].split('/')[0] + "_weights_only"] = counter
                 counter += 1
             else:
-                raise Exception("Issue with this quantizer group:{}".format(qgroup))
+                raise RuntimeError("Issue with this quantizer group:{}".format(qgroup))
         return quantizer_group2node_index
 
     def generate_graphs(self) -> Tuple:
@@ -220,9 +220,9 @@ class ReduceConvertOps(BaseReduceConvertOps):
                 if all(all_eight_bits):
                     bitwidth = 8
                 else:
-                    raise Exception("Candidate parameter bandwidths are not all 8 bits -- unsupported.")
+                    raise RuntimeError("Candidate parameter bandwidths are not all 8 bits -- unsupported.")
             else:
-                raise Exception("Unexpected quantizer group type.")
+                raise RuntimeError("Unexpected quantizer group type.")
 
             if bitwidth == 8:
                 candidate = ((8, QuantizationDataType.int), (8, QuantizationDataType.int))

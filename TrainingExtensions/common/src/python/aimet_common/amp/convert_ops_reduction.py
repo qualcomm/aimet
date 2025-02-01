@@ -225,7 +225,7 @@ class ReduceConvertOps(abc.ABC):
                         for edge in edges_to_remove:
                             G.remove_edge(edge[0], edge[1])
                     else:
-                        raise Exception("Unexpected quantizer group type.")
+                        raise RuntimeError("Unexpected quantizer group type.")
 
     @staticmethod
     def contract_non_qg_nodes(G: nx.DiGraph):
@@ -352,7 +352,7 @@ class ReduceConvertOps(abc.ABC):
                 tensor_dims_corr = list(tensor_dims)[1:]
                 _logger.info("WARNING: 5-dimensional tensor, taking the last 4 dimensions only!")
             else:
-                raise Exception("Unexpected tensor dimensions.")
+                raise RuntimeError("Unexpected tensor dimensions.")
 
             # pylint: disable=no-member
             convert_cost = \
@@ -501,7 +501,7 @@ class ReduceConvertOps(abc.ABC):
             elif solution_dict[qgroup] == 16:
                 nodes_16bit.add(qgroup)
             else:
-                raise Exception("Bitwidth not supported.")
+                raise RuntimeError("Bitwidth not supported.")
 
         _logger.info("Number of 8-bit activations is %d", len(nodes_8bit))
         _logger.info("Number of 16-bit activations is %d", len(nodes_16bit))
@@ -523,7 +523,7 @@ class ReduceConvertOps(abc.ABC):
             elif solution_dict[qgroup] == 16:
                 nodes_16bit.add(qgroup)
             else:
-                raise Exception("Bitwidth not supported.")
+                raise RuntimeError("Bitwidth not supported.")
 
         return nx.cut_size(qg_graph, nodes_8bit, nodes_16bit, weight=weight_key)
 
@@ -547,7 +547,7 @@ class ReduceConvertOps(abc.ABC):
                 self.quantizer_group_graph,
                 self._phase_two_sol)
         else:
-            raise Exception("Invalid value for alpha.")
+            raise RuntimeError("Invalid value for alpha.")
 
         return phase_three_sol, solve_data_dict
 
@@ -639,7 +639,7 @@ class ReduceConvertOps(abc.ABC):
                     cp.abs(x[node2index[u]] - x[node2index[v]]) * qg_graph.edges[(u, v)]["convert_cycles"])
             constraints += [cp.sum(weight_cut_terms) <= cost_sum_threshold]
         else:
-            raise Exception(
+            raise RuntimeError(
                 "Available versions are unweighted_cut_size(1), weighted_with_tensor_size(2), and weighted_with_predicted_convert_cost(3)")
 
         # objective
@@ -654,7 +654,7 @@ class ReduceConvertOps(abc.ABC):
                     elif key == (16, 8):
                         objective_terms.append(qg_graph.nodes[node][key] * y[i])
                     else:
-                        raise Exception("Considering only 8 or 16 bit activation candidates.")
+                        raise RuntimeError("Considering only 8 or 16 bit activation candidates.")
         objective = cp.sum(objective_terms)
 
         # cvxpy problem instance
@@ -681,7 +681,7 @@ class ReduceConvertOps(abc.ABC):
             elif round(x[idx].value) == 0 and round(y[idx].value) == 1:
                 phase_three_sol[node] = 16
             else:
-                raise Exception("The solution has a bug")
+                raise RuntimeError("The solution has a bug")
 
         solve_data_dict["num_nodes_8bits_phase2"] = sum(sol == 8 for sol in phase_two_sol.values())
         solve_data_dict["num_nodes_16bits_phase2"] = sum(sol == 16 for sol in phase_two_sol.values())
