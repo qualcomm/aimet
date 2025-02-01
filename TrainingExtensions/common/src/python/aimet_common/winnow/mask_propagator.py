@@ -153,9 +153,9 @@ class MaskPropagator:
         """ Propagate the output channel masks to input channel masks, followed by
         propagating the input channel masks to output channel masks. """
 
-        for op, _ in self._op_to_mask_dict.items():
-            self._op_to_mask_dict[op].propagate_internal_connectivity_out_channels_to_in_channels()
-            self._op_to_mask_dict[op].propagate_internal_connectivity_in_channels_to_out_channels()
+        for op_mask in self._op_to_mask_dict.values():
+            op_mask.propagate_internal_connectivity_out_channels_to_in_channels()
+            op_mask.propagate_internal_connectivity_in_channels_to_out_channels()
 
     def _propagate_inter_module_masks(self):
         """ Propagate masks between Ops. In the case of Ops with multiple inputs and/or outputs, masks must be
@@ -242,11 +242,11 @@ class MaskPropagator:
         If a module has a mask with default value (all 1s), it is printed as []
         indicating no channels are masked. """
 
-        for op, _ in self._op_to_mask_dict.items():
+        for op, op_mask in self._op_to_mask_dict.items():
             ip_mask_zero_positions_list = []
             op_mask_zero_positions_list = []
 
-            ip_masks = self._op_to_mask_dict[op].input_channel_masks
+            ip_masks = op_mask.input_channel_masks
             if ip_masks:
                 for num in range(len(ip_masks)):
                     ip_mask_zero_positions = [i for i in range(len(ip_masks[num])) if ip_masks[num][i] == 0]
@@ -259,7 +259,7 @@ class MaskPropagator:
                         if ip_mask_zero_positions:
                             ip_mask_zero_positions_list.append(ip_mask_zero_positions)
 
-            op_masks = self._op_to_mask_dict[op].output_channel_masks
+            op_masks = op_mask.output_channel_masks
             if op_masks:
                 for num in range(len(op_masks)):
                     op_mask_zero_positions = [i for i in range(len(op_masks[num])) if op_masks[num][i] == 0]
@@ -282,7 +282,7 @@ class MaskPropagator:
 
         list_of_mask_modified_ops = []
 
-        for op, _ in self._op_to_mask_dict.items():
+        for op, op_mask in self._op_to_mask_dict.items():
             check_op = False
             if self._model_api == ModelApi.pytorch and op.type in ('Dropout', 'Relu', 'ReLU', 'MaxPool', 'MaxPool2d',
                                                                    'AveragePool', 'Neg', 'BatchNorm2d',
@@ -294,7 +294,6 @@ class MaskPropagator:
                 check_op = True
 
             if check_op:
-                op_mask = self._op_to_mask_dict[op]
                 ip_masks, op_masks = op_mask.input_channel_masks, op_mask.output_channel_masks
                 modified = False
                 for ip_mask in ip_masks:
@@ -305,8 +304,8 @@ class MaskPropagator:
 
                 # None of the input masks have been modified. Check the output masks.
                 if op_masks:
-                    for op_mask in op_masks:
-                        out_zero_channels = get_zero_positions_in_binary_mask(op_mask)
+                    for _op_mask in op_masks:
+                        out_zero_channels = get_zero_positions_in_binary_mask(_op_mask)
                         if out_zero_channels:
                             modified = True
                             continue
