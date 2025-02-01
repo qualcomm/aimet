@@ -567,7 +567,7 @@ class _KerasModelPreparer:
                                             name=_TEMP_MODEL_NAME)
             _logger.debug("Model created for layer '%s'", layer.name)
         except TypeError as e:
-            if "call() got an unexpected keyword argument 'training'" in e.__str__():
+            if "call() got an unexpected keyword argument 'training'" in str(e):
                 _logger.error(
                     "Model preparer calls subclassed layers call functions with the parameter 'training=False', "
                     "in the case that the layer behaves differently during evaluation. Please add **kwargs to your "

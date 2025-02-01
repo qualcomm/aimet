@@ -1279,7 +1279,7 @@ def load_torch_model_using_safetensors(model_name: str, path: str, filename: str
 
     # Sets the MPP meta data extracted from safetensors file into the model as an atribute
     # so that it can be extracted and saved at the time of weights export.
-    model.__setattr__('mpp_meta', meta_data)
+    setattr(model, 'mpp_meta', meta_data)
     return model
 
 

@@ -103,18 +103,18 @@ _ds_ctx = {}
 
 def _all_gather(module, _):
     ctx = SafeGatheredParameters(module.parameters(recurse=False))
-    ctx.__enter__()
+    ctx.__enter__() # pylint: disable=unnecessary-dunder-call
     _ds_ctx[module] = ctx
 
 def _patch_dummy_parameters(module, _):
     ctx = _do_patch_dummy_parameters(module)
-    ctx.__enter__() # pylint: disable=no-member
+    ctx.__enter__() # pylint: disable=no-member, unnecessary-dunder-call
     _ds_ctx[module] = ctx
 
 def _restore(module, *_):
     ctx = _ds_ctx.pop(module, None)
     if ctx:
-        ctx.__exit__(None, None, None)
+        ctx.__exit__(None, None, None) # pylint: disable=unnecessary-dunder-call
 
 
 @contextlib.contextmanager

@@ -304,7 +304,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
         ## Json dump will not work with accuracy_list as it has objects inside it, so converting the objects to list or to string.
         acc_list_with_quant_groups_as_list = []
         for quantizer_group, candidate, eval_score, bit_ops_reduction in accuracy_list:
-            acc_list_with_quant_groups_as_list.append((quantizer_group.to_list(), candidate.__str__(),  \
+            acc_list_with_quant_groups_as_list.append((quantizer_group.to_list(), str(candidate),  \
                                                        eval_score, bit_ops_reduction))
 
 
@@ -728,7 +728,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
 
         pareto_list_with_quant_groups_as_list = []
         for bitops, acc, quant_group, candidate in pareto_front:
-            pareto_list_with_quant_groups_as_list.append((bitops, acc, quant_group.to_list(), candidate.__str__()))
+            pareto_list_with_quant_groups_as_list.append((bitops, acc, quant_group.to_list(), str(candidate)))
 
         with open(file_path_pickle, 'wb') as f:
             pickle.dump(pareto_front, f)

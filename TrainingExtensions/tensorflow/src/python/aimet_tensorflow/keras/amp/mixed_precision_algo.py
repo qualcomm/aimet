@@ -117,7 +117,7 @@ class EvalCallbackFactory:
 
 
 def _default_forward_fn(model, inputs):
-    return model.__call__(inputs)
+    return model(inputs)
 
 
 @contextlib.contextmanager
