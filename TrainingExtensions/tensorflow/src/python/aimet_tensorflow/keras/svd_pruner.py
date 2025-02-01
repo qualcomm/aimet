@@ -39,7 +39,7 @@
 from typing import Tuple
 
 import tensorflow as tf
-import aimet_common.libpymo as pymo
+from aimet_common import _libpymo as pymo
 
 from aimet_common.utils import AimetLogger
 from aimet_common import cost_calculator

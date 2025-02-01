@@ -81,7 +81,7 @@ disable=raw-checker-failed,
         duplicate-code,
         unspecified-encoding,
         consider-using-f-string,
-        unnecessary-lambda-assignment
+        unnecessary-lambda-assignment,
 
 
 # Enable the message, report, category or checker with the given id(s). You can
