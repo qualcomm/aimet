@@ -152,7 +152,8 @@ disable=print-statement,
         e1129,
         fixme,
         duplicate-code,
-        unspecified-encoding
+        unspecified-encoding,
+        consider-using-f-string
 
 
 # Enable the message, report, category or checker with the given id(s). You can
