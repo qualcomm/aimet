@@ -68,7 +68,7 @@ def calc_params_for_native_torch_quantizer(quantizer, ch_axis, device: torch.dev
     encodings = quantizer.encoding
 
     if quantizer.use_strict_symmetric:
-        error_msg = ('Strict symmetric is not supported by native torch quantizer')
+        error_msg = 'Strict symmetric is not supported by native torch quantizer'
         logger.error(error_msg)
         raise ValueError(error_msg)
 

@@ -54,7 +54,7 @@ def get_conv_accum_bounds(weights: np.ndarray, quant_bw: int, accum_bw: int):
     """
 
     # Max integer value
-    max_int_value = ((2 ** quant_bw) - 1)
+    max_int_value = (2 ** quant_bw) - 1
     max_accum_value = 2 ** (accum_bw - 1)
 
     # Calculate min and max (absolute)

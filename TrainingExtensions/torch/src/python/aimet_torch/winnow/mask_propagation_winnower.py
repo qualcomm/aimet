@@ -178,7 +178,7 @@ class MaskPropagationWinnower(AimetCommonMaskPropagationWinnower):
             raise ValueError("The list of channels to winnow is empty for the module: %s" % name)
 
         max_channel_num = max(list_of_channels_to_winnow)
-        max_in_channel_index = (module.in_channels - 1)
+        max_in_channel_index = module.in_channels - 1
         if max_channel_num > max_in_channel_index:
             raise ValueError("Channel number: %s exceeds module's max channel number index: %s for module: %s" %
                              (max_channel_num, max_in_channel_index, name))

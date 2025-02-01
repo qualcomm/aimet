@@ -376,7 +376,7 @@ def detect_outlier_channels(data_frame_with_relative_ranges):
     Q1 = data_frame_with_relative_ranges.quantile(0.25)
     Q3 = data_frame_with_relative_ranges.quantile(0.75)
     IQR = Q3 - Q1
-    v = (data_frame_with_relative_ranges > (Q3 + 1.5 * IQR))
+    v = data_frame_with_relative_ranges > (Q3 + 1.5 * IQR)
     v_df = v.to_frame()
     keep_only_outliers = v_df.loc[v_df['relative range']]
     output_channels_list = keep_only_outliers.index

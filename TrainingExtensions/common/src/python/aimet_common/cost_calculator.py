@@ -301,7 +301,7 @@ class SpatialSvdCostCalculator(CostCalculator):
             kw = layer.weight_shape[3]
 
             # (m, n, kh, kw) is split into (m, rank, kh, 1) and (rank, n, 1, kw)
-            mem_cost = (m * rank * kh + rank * n * kw)
+            mem_cost = (m * rank * kh) + (rank * n * kw)
             output_dim_cost = layer.output_shape[2] * layer.output_shape[3]
             mac_cost = (m * rank * kh * layer.type_specific_params.stride[1] +
                         rank * n * kw) * output_dim_cost
@@ -345,7 +345,7 @@ class WeightSvdCostCalculator(CostCalculator):
 
         # (m, n, kh, kw) is split into (m, rank, 1, 1) and (rank, n, kh, kw)
         # stride only applied to the 1st layer. And stride has no effect on memory cost
-        mem_cost = (m * rank + rank * n * kernel_size)
+        mem_cost = (m * rank) + (rank * n * kernel_size)
         mac_cost = (m * rank * stride_factor + rank * n * kernel_size) * layer.output_shape[2] * layer.output_shape[3]
 
         return Cost(mem_cost, mac_cost)

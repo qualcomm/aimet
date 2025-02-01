@@ -313,7 +313,7 @@ class QuantizedLSTM(*base_list):
         # The input should be dense, padded with zeros. If a ragged input is fed
         # into the layer, it is padded and the row lengths are used for masking.
         inputs, row_lengths = backend.convert_inputs_if_ragged(inputs)
-        is_ragged_input = (row_lengths is not None)
+        is_ragged_input = row_lengths is not None
         self._validate_args_if_ragged(is_ragged_input, mask)
 
         # LSTM does not support constants. Ignore it during process.

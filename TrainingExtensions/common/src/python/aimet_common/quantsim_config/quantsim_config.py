@@ -756,7 +756,7 @@ def reformat_supported_kernels(supported_kernels: Dict):
         candidates = []
         for supported_kernel in op_supported_kernels:
             activation_info = (supported_kernel['activation']['bitwidth'], supported_kernel['activation']['dtype'])
-            candidate = (activation_info)
+            candidate = activation_info
             if 'param' in supported_kernel:
                 param_info = (supported_kernel['param']['bitwidth'], supported_kernel['param']['dtype'])
                 candidate = (activation_info, param_info)
