@@ -650,26 +650,16 @@ def replace_modules_of_type1_using_constructor(model, type1, constructor):
             replace_modules_of_type1_using_constructor(module_ref, type1, constructor)
 
 
-def replace_modules_with_instances_of_new_type(model: torch.nn.Module, modules_to_replace_list: List[torch.nn.Module],
-                                               new_type: type(torch.nn.Module)):
-    """
-    Given a model, replaces given modules with instances of new_type
-    Note: Since instances of new_type are instantiated using a default constructor (no parameters),
-    only certain module types e.g. torch.nn.ReLU can be used as new_type
-    :param model: Model to replace modules in
-    :param modules_to_replace_list: Modules to replace
-    :param new_type: Module type to instantiate to replace modules with
-    :return: None
-    """
 
-    for module_name, module_ref in model.named_children():
+def replace_modules(model: torch.nn.Module,
+                    condition: Callable[[torch.nn.Module], bool],
+                    factory: Callable[[torch.nn.Module], torch.nn.Module]):
+    def fn(parent):
+        for name, child in parent.named_children():
+            if condition(child):
+                setattr(parent, name, factory(child))
 
-        if module_ref in modules_to_replace_list:
-            setattr(model, module_name, new_type())
-
-        children_module_list = list(module_ref.modules())
-        if len(children_module_list) != 1:
-            replace_modules_with_instances_of_new_type(module_ref, modules_to_replace_list, new_type)
+    model.apply(fn)
 
 
 def create_rand_tensors_given_shapes(input_shape: Union[Tuple, List[Tuple]], device: torch.device) \

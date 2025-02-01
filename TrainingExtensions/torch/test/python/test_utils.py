@@ -94,8 +94,9 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
         model = torchvision.models.resnet18()
         model.eval()
 
-        utils.replace_modules_with_instances_of_new_type(model, [model.layer1[0].bn1, model.layer1[1].bn1],
-                                                         torch.nn.Identity)
+        utils.replace_modules(model,
+                              lambda module: module in [model.layer1[0].bn1, model.layer1[1].bn1],
+                              lambda _: torch.nn.Identity())
 
         # check - given modules have been replaced
         self.assertTrue(isinstance(model.layer1[0].bn1, torch.nn.Identity))
