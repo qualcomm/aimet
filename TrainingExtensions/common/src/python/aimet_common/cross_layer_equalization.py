@@ -49,7 +49,7 @@ import numpy as np
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.connectedgraph_utils import get_all_input_ops
-import aimet_common.libpymo as libpymo      # pylint: disable=import-error
+from aimet_common import libpymo
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 

@@ -43,7 +43,7 @@ from typing import Union, Callable, Any, Optional, Dict, List
 from decimal import Decimal
 
 from aimet_common.layer_database import Layer
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 
 
 # supported quantization schemes

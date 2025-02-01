@@ -423,8 +423,8 @@ class MaskPropagator:
                 logger.debug("Propagate up concat: Matching Product: %s with input_op: %s", input_product.name,
                              input_op.dotted_name)
 
-                for product_consumer_index in range(len(input_product.consumers)):
-                    if input_product.consumers[product_consumer_index].dotted_name == concat_op.dotted_name:
+                for product_consumer_index, consumer in enumerate(input_product.consumers):
+                    if consumer.dotted_name == concat_op.dotted_name:
                         logger.debug("Propagate up concat: Input op's index for the Concat Op: %s",
                                      product_consumer_index)
 
@@ -464,11 +464,10 @@ class MaskPropagator:
         """
         logger.debug("propagate_up_add_masks: Add's inputs: %s", [product.name for product in add_op.inputs])
 
-        for index in range(len(add_op.inputs)):
+        for index, a_product in enumerate(add_op.inputs):
             # get the product.
             # look at the product shape[1]
             # Propagate only those channel masks up.
-            a_product = add_op.inputs[index]
             if a_product.producer is not None and a_product.producer.dotted_name == product.producer.dotted_name:
                 if isinstance(self._op_to_mask_dict[a_product.producer].internal_connectivity,
                               SplitInternalConnectivity):

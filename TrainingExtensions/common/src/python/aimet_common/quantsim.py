@@ -41,7 +41,7 @@ import numpy as np
 
 from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_common.quantsim_config.quantsim_config import QuantSimConfigurator
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 
 # Defined below is a quantization encoding format version, which will follow XX.YY.ZZ versioning as described below,
 #
