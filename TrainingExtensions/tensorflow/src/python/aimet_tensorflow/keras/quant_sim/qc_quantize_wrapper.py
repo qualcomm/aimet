@@ -309,10 +309,7 @@ class QcQuantizeWrapper(tf.keras.layers.Layer):
         """
 
         # TODO kwargs = {} in same instalnce which needs to be investigation
-        if "training" in kwargs:
-            is_call_training_mode = kwargs["training"]
-        else:
-            is_call_training_mode = False
+        is_call_training_mode = kwargs.get("training", False)
 
         for param in self._layer_to_wrap.weights:
             if param.name in self._shadow_params:
