@@ -283,21 +283,21 @@ class FloatQuantizeDequantize(QuantizerBase): # pylint: disable=abstract-method
                 yield
         except: # pylint: disable=try-except-raise
             raise
-        else:
-            try:
-                num_steps = math.pow(2, self.bitwidth) - 1
-                min, max = self.encoding_analyzer.compute_encodings(num_steps,
-                                                                    is_symmetric=False)
-                _flag_extreme_min_max(min, max)
-            except StatisticsNotFoundError:
-                return
 
-            if min is None or max is None:
-                return
+        try:
+            num_steps = math.pow(2, self.bitwidth) - 1
+            min, max = self.encoding_analyzer.compute_encodings(num_steps,
+                                                                is_symmetric=False)
+            _flag_extreme_min_max(min, max)
+        except StatisticsNotFoundError:
+            return
 
-            absmax = torch.maximum(min.abs(), max.abs()).expand_as(self.maxval)
-            with torch.no_grad():
-                self.maxval.copy_(absmax)
+        if min is None or max is None:
+            return
+
+        absmax = torch.maximum(min.abs(), max.abs()).expand_as(self.maxval)
+        with torch.no_grad():
+            self.maxval.copy_(absmax)
 
     def forward(self, input: torch.Tensor):
         """

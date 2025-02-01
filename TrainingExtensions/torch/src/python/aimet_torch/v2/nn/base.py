@@ -704,5 +704,5 @@ def _remove_quantizers(quantizers, keys):
     except Exception:
         ctx._cleanup() # pylint: disable=protected-access
         raise
-    else:
-        return ctx
+
+    return ctx

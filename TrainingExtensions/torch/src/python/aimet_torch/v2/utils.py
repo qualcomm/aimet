@@ -299,8 +299,8 @@ def _map_qmodule(modules, func):
     except Exception:
         ctx._cleanup()
         raise
-    else:
-        return ctx
+
+    return ctx
 
 def remove_input_quantizers(modules):
     '''

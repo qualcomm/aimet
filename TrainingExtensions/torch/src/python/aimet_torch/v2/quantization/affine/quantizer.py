@@ -363,22 +363,22 @@ class MinMaxQuantizer(AffineQuantizerBase): # pylint: disable=abstract-method
                 yield
         except: # pylint: disable=try-except-raise
             raise
-        else:
-            try:
-                num_steps = self.qmax - self.qmin
-                enc_min, enc_max = self.encoding_analyzer.compute_encodings(num_steps, self.symmetric)
-                if self.block_size is not None:
-                    enc_min = enc_min.view(self.min.shape)
-                    enc_max = enc_max.view(self.max.shape)
-                _flag_extreme_min_max(enc_min, enc_max)
 
-            except StatisticsNotFoundError:
-                return
+        try:
+            num_steps = self.qmax - self.qmin
+            enc_min, enc_max = self.encoding_analyzer.compute_encodings(num_steps, self.symmetric)
+            if self.block_size is not None:
+                enc_min = enc_min.view(self.min.shape)
+                enc_max = enc_max.view(self.max.shape)
+            _flag_extreme_min_max(enc_min, enc_max)
 
-            if enc_min is None or enc_max is None:
-                return
+        except StatisticsNotFoundError:
+            return
 
-            self.set_range(enc_min, enc_max)
+        if enc_min is None or enc_max is None:
+            return
+
+        self.set_range(enc_min, enc_max)
 
     def get_min(self, dtype=None) -> Optional[torch.Tensor]:
         """
