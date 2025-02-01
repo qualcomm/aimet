@@ -48,7 +48,7 @@ from safetensors import safe_open
 from peft.tuners.lora.layer import LoraLayer as PeftLoraLayer
 from peft.tuners.lora.layer import Conv2d as PeftConv2d
 
-from aimet_torch.utils import replace_modules_of_type1_using_constructor
+from aimet_torch.utils import replace_module
 from aimet_torch._base.nn.modules.custom import Add, Multiply
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
@@ -121,8 +121,9 @@ def replace_lora_layers_with_quantizable_layers(model: torch.nn.Module):
 
     :param model: PEFT model
     """
-    replace_modules_of_type1_using_constructor(model, PeftLoraLayer, LoraLayer)
-    replace_modules_of_type1_using_constructor(model, PeftConv2d, LoraLayer)
+    replace_module(model,
+                   lambda module: isinstance(module, (PeftLoraLayer, PeftConv2d)),
+                   LoraLayer)
 
 
 class AdapterMetaData:

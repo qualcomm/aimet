@@ -227,10 +227,11 @@ class TestSparseConv(unittest.TestCase):
 
         sequential_model = SequentialModel()
 
-        from aimet_torch.utils import replace_modules_of_type1_using_constructor
+        from aimet_torch.utils import replace_modules
         from aimet_torch.custom.custom_modules import create_quantizable_sparse_sequential, QuantizableSparseSequential
-        replace_modules_of_type1_using_constructor(sequential_model, spconv.SparseSequential,
-                                                   create_quantizable_sparse_sequential)
+        replace_modules(sequential_model,
+                        lambda module: isinstance(module, spconv.SparseSequential),
+                        create_quantizable_sparse_sequential)
         self.assertTrue(isinstance(sequential_model.seq, QuantizableSparseSequential))
 
         sim = QuantizationSimModel(sequential_model, dummy_input)

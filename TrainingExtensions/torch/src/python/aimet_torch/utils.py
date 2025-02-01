@@ -631,26 +631,6 @@ def replace_modules_of_type1_with_type2(model: torch.nn.Module,
             replace_modules_of_type1_with_type2(module_ref, type1, type2)
 
 
-def replace_modules_of_type1_using_constructor(model, type1, constructor):
-    """
-    Given a model, finds all modules of type type1 and replaces them with the module created with constructor
-    constructor should accept original module as an argument
-    :param model: Model to replace modules in
-    :param type1: Module type of modules to replace
-    :param constructor: Constructor of the new module
-    :return: None
-    """
-
-    for module_name, module_ref in model.named_children():
-        if isinstance(module_ref, type1):
-            setattr(model, module_name, constructor(module_ref))
-
-        children_module_list = list(module_ref.modules())
-        if len(children_module_list) != 1:
-            replace_modules_of_type1_using_constructor(module_ref, type1, constructor)
-
-
-
 def replace_modules(model: torch.nn.Module,
                     condition: Callable[[torch.nn.Module], bool],
                     factory: Callable[[torch.nn.Module], torch.nn.Module]):
