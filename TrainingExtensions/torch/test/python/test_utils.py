@@ -79,7 +79,9 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
         model = torchvision.models.resnet18()
         model.eval()
 
-        utils.replace_modules_of_type1_with_type2(model, torch.nn.ReLU, torch.nn.ReLU6)
+        utils.replace_modules(model,
+                              lambda module: isinstance(module, torch.nn.ReLU),
+                              lambda _: torch.nn.ReLU6())
 
         # check - no ReLU modules left in the model anymore
         for module in model.modules():

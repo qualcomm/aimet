@@ -626,10 +626,14 @@ class TestQuantizationSimTransformers(unittest.TestCase):
         # add in quantizable enc/dec
         prepare_pt_transformer_for_quantsim(transformer_model_2)
         utils.replace_modules(transformer_model_2.encoder,
-                              lambda module: isinstance(module, (nn.TransformerEncoderLayer,
-                                                                 nn.TransformerDecoderLayer,
-                                                                 nn.MultiheadAttention)),
+                              lambda module: isinstance(module, nn.TransformerEncoderLayer),
                               create_quantizable_transformer_encoder_layer)
+        utils.replace_modules(transformer_model_2.encoder,
+                              lambda module: isinstance(module, nn.TransformerDecoderLayer),
+                              create_quantizable_transformer_decoder_layer)
+        utils.replace_modules(transformer_model_2.encoder,
+                              lambda module: isinstance(module, nn.MultiheadAttention),
+                              create_quantizable_multihead_attention)
         transformer_model_2.eval()
         out_fp_2 = transformer_model_2(src=copy.deepcopy(src), tgt=copy.deepcopy(src))
         diff = out_fp_2 - out_fp

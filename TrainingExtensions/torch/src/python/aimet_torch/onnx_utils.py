@@ -436,7 +436,9 @@ class OnnxSaver:
         """
         # Pre-processing pytorch model
         for dropout_type in aimet_torch.utils.DROPOUT_TYPES:
-            aimet_torch.utils.replace_modules_of_type1_with_type2(pytorch_model, dropout_type, torch.nn.Identity)
+            aimet_torch.utils.replace_modules(pytorch_model,
+                                              lambda module: isinstance(module, dropout_type),
+                                              lambda _: torch.nn.Identity())
 
         if EXPORT_TO_ONNX_DIRECT:
             cls._export_model_to_onnx(pytorch_model, dummy_input, onnx_model_path, is_conditional, onnx_export_args)

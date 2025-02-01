@@ -137,7 +137,7 @@ import torch
 import torch.fx
 from aimet_common.utils import AimetLogger
 from aimet_torch.utils import in_eval_mode
-from aimet_torch.utils import replace_modules_of_type1_with_type2
+from aimet_torch.utils import replace_modules
 import aimet_torch._base.nn.modules.custom as aimet_modules
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.ModelPreparer)
@@ -561,7 +561,9 @@ def _prepare_traced_model(traced_model: torch.fx.GraphModule,
     _verify_traced_model(traced_model)
 
     # Replace SiLU with CustomSiLU
-    replace_modules_of_type1_with_type2(traced_model, torch.nn.SiLU, aimet_modules.CustomSiLU)
+    replace_modules(traced_model,
+                    lambda module: isinstance(module, torch.nn.SiLU),
+                    lambda _: aimet_modules.CustomSiLU())
 
 
 def _verify_traced_model(traced_model: torch.fx.GraphModule):

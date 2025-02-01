@@ -610,30 +610,12 @@ def get_ordered_list_of_modules(model: torch.nn.Module,
     return list_modules
 
 
-def replace_modules_of_type1_with_type2(model: torch.nn.Module,
-                                        type1: type(torch.nn.Module), type2: type(torch.nn.Module)):
-    """
-    Given a model, finds all modules of type type1 and replaces them with instances of type2
-    Note: Since instances of type2 are instantiated using a default constructor (no parameters),
-    only certain module types e.g. torch.nn.ReLU can be used as type2
-    :param model: Model to replace modules in
-    :param type1: Module type of modules to replace
-    :param type2: Module type to instantiate to replace modules with
-    :return: None
-    """
-
-    for module_name, module_ref in model.named_children():
-        if isinstance(module_ref, type1):
-            setattr(model, module_name, type2())
-
-        children_module_list = list(module_ref.modules())
-        if len(children_module_list) != 1:
-            replace_modules_of_type1_with_type2(module_ref, type1, type2)
-
-
 def replace_modules(model: torch.nn.Module,
                     condition: Callable[[torch.nn.Module], bool],
                     factory: Callable[[torch.nn.Module], torch.nn.Module]):
+    """
+    Replace all modules that satisfy the given condition
+    """
     def fn(parent):
         for name, child in parent.named_children():
             if condition(child):

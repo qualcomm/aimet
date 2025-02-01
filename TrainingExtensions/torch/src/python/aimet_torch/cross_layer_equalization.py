@@ -736,7 +736,9 @@ def equalize_bn_folded_model(model: torch.nn.Module,
 
         with place_model(model, torch.device('cpu')):
             # replace any ReLU6 layers with ReLU
-            utils.replace_modules_of_type1_with_type2(model, torch.nn.ReLU6, torch.nn.ReLU)
+            utils.replace_modules(model,
+                                  lambda module: isinstance(module, torch.nn.ReLU6),
+                                  lambda _: torch.nn.ReLU())
 
             # perform cross-layer scaling on applicable layer sets
             cls_set_info_list = CrossLayerScaling.scale_model(model, input_shapes, dummy_input=dummy_input)

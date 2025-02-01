@@ -68,7 +68,9 @@ def cross_layer_equalization_manual():
     batch_norm_fold.fold_given_batch_norms(model, layer_list)
 
     # Replace any ReLU6 layers with ReLU
-    utils.replace_modules_of_type1_with_type2(model, torch.nn.ReLU6, torch.nn.ReLU)
+    utils.replace_modules(model,
+                          lambda module: isinstance(module, torch.nn.ReLU6),
+                          lambda _: torch.nn.ReLU())
 
     # Cross Layer Scaling
     # Create a list of consecutive conv layers to be equalized
@@ -115,7 +117,9 @@ def cross_layer_equalization_depthwise_layers():
     batch_norm_fold.fold_given_batch_norms(model, layer_list)
 
     # Replace any ReLU6 layers with ReLU
-    utils.replace_modules_of_type1_with_type2(model, torch.nn.ReLU6, torch.nn.ReLU)
+    utils.replace_modules(model,
+                          lambda module: isinstance(module, torch.nn.ReLU6),
+                          lambda _: torch.nn.ReLU())
 
     # Cross Layer Scaling
     # Create a list of consecutive conv layers to be equalized
@@ -144,7 +148,9 @@ def cross_layer_equalization_auto_step_by_step():
         bn_dict[conv_bn[0]] = conv_bn[1]
 
     # Replace any ReLU6 layers with ReLU
-    utils.replace_modules_of_type1_with_type2(model, torch.nn.ReLU6, torch.nn.ReLU)
+    utils.replace_modules(model,
+                          lambda module: isinstance(module, torch.nn.ReLU6),
+                          lambda _: torch.nn.ReLU())
 
     # Perform cross-layer scaling on applicable layer sets
     cls_set_info_list = cross_layer_equalization.CrossLayerScaling.scale_model(model, input_shape)
