@@ -79,7 +79,7 @@ class CostCalculator(GenericCostCalculator):
             if layer.input_shape:
                 if not isinstance(layer.input_shape, List):
                     layer.input_shape = [layer.input_shape]
-                input_mac_cost = max([np.prod(i_input).item() for i_input in layer.input_shape])
+                input_mac_cost = max(np.prod(i_input).item() for i_input in layer.input_shape)
 
             mac_cost = max([output_mac_cost, input_mac_cost])
             mem_cost = mac_cost

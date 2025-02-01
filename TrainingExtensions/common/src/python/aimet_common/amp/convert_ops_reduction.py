@@ -234,7 +234,7 @@ class ReduceConvertOps(abc.ABC):
         :param G: Op graph
         :return: QuantizerGroup Graph
         """
-        num_quantizer_group_nodes = sum([G.nodes[node]["is_quantizer_group"] for node in G.nodes])
+        num_quantizer_group_nodes = sum(G.nodes[node]["is_quantizer_group"] for node in G.nodes)
         while num_quantizer_group_nodes < G.number_of_nodes():
             for node in G.nodes:
                 if not G.nodes[node]["is_quantizer_group"]:
@@ -250,7 +250,7 @@ class ReduceConvertOps(abc.ABC):
                         if G.nodes[succ_node]["is_quantizer_group"]:
                             G = nx.contracted_nodes(G, succ_node, node, self_loops=False)
                             break
-            num_quantizer_group_nodes = sum([G.nodes[node]["is_quantizer_group"] for node in G.nodes])
+            num_quantizer_group_nodes = sum(G.nodes[node]["is_quantizer_group"] for node in G.nodes)
         return G
 
     @staticmethod

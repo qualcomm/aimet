@@ -320,11 +320,9 @@ class StaticGridTensorQuantizer(TensorQuantizer): # pylint: disable=abstract-met
 
                 # NOTE: Check feasibility about unsigned symmetric case
                 #   whether encoding range is all positive
-                is_in_positive_range = lambda enc_min, enc_max: enc_min >= 0 and enc_max >= 0
-                # pylint: disable=consider-using-generator, use-a-generator
                 self.is_unsigned_symmetric = self.use_symmetric_encodings and \
                                              self.use_unsigned_symmetric and \
-                                             all([is_in_positive_range(enc.min, enc.max) for enc in self._encoding])
+                                             all(enc.min >= 0 for enc in self._encoding)
 
                 # Check for the case when some cppOp encodings are not valid while others are.
                 # In the case that a module is unused, all cppOp encodings will have is_encoding_valid False, and there
