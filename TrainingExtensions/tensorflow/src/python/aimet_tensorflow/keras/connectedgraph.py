@@ -340,7 +340,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :param product_name: Name of the product to create.
         :param shape: Shape of the product to create.
         """
-        if product_name not in self._products.keys():
+        if product_name not in self._products:
             product = Product(product_name, shape)
             product.is_parm = True
             product.add_consumer(op)

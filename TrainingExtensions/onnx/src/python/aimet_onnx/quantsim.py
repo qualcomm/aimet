@@ -314,7 +314,7 @@ class QuantizationSimModel:
             if self.model.get_initializer(name).data_type != 1:  # 1 corresponds to float, dictionary can be found by using onnx.TensorProto.DataType.items()
                 return False
         else:  # dynamic activation
-            if name not in self.activation_dtypes.keys() or self.activation_dtypes[name] not in data_types_to_quantize:
+            if name not in self.activation_dtypes or self.activation_dtypes[name] not in data_types_to_quantize:
                 return False
 
         # Check if the tensor is param to certain ops (eg: Resize)
@@ -1201,7 +1201,7 @@ def set_blockwise_quantization_for_weights(sim: QuantizationSimModel,
         if op.type in op_types:
             _, _, param_quantizers = sim.get_op_quantizers(op)
 
-            if "weight" in param_quantizers.keys():
+            if "weight" in param_quantizers:
                 weight_quantizer: QcQuantizeOp = param_quantizers["weight"]
 
                 try:
@@ -1251,7 +1251,7 @@ def set_grouped_blockwise_quantization_for_weights(sim: QuantizationSimModel,
             _, _, param_quantizers = sim.get_op_quantizers(op)
 
 
-            if "weight" in param_quantizers.keys():
+            if "weight" in param_quantizers:
                 weight_quantizer: QcQuantizeOp = param_quantizers["weight"]
 
                 try:

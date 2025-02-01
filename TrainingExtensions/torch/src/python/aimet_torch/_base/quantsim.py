@@ -560,7 +560,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
             elif isinstance(original_module, MatMul):
                 # Skip unused modules
-                if original_module not in self.connected_graph._module_to_op_dict.keys():
+                if original_module not in self.connected_graph._module_to_op_dict:
                     continue
 
                 first_input_quantizer, second_input_quantizer = wrapper.input_quantizers
@@ -1064,7 +1064,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             if isinstance(layer, _QuantizedModuleProtocol) and isinstance(layer.get_original_module(), utils.DROPOUT_TYPES):
                 continue
 
-            if layer_name not in layers_to_onnx_op_names.keys():
+            if layer_name not in layers_to_onnx_op_names:
                 layer_names_not_found.append(layer_name)
                 # Some layers like transpose etc. may get removed after onnx export due to internal onnx optimization.
                 # An error will be thrown if the exported encodings(without missing layers's encoding) are loaded back
@@ -1245,7 +1245,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         for op_name in op_names:
             # Loop through outputs of each op and check whether the output leads to an op not in
             for output in op_to_io_tensor_map[op_name].outputs:
-                assert output in tensor_to_consumer_map.keys()
+                assert output in tensor_to_consumer_map
                 if not tensor_to_consumer_map[output]:
                     if op_name not in end_op_names_set:
                         # output has no consumers, and can either be a model output or an unused op output.
@@ -1498,7 +1498,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         missing_inputs_entries = []
 
         for leaf_module in all_leaf_modules:
-            if leaf_module not in self._module_marker_map.keys():
+            if leaf_module not in self._module_marker_map:
                 missing_inputs_entries.append(leaf_module)
 
         if missing_inputs_entries:

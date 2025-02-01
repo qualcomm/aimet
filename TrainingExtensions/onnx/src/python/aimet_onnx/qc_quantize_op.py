@@ -657,7 +657,7 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         encodings = super()._export_1_0_0_encodings()
         if not encodings:
             return None
-        if "block_size" not in encodings.keys():
+        if "block_size" not in encodings:
             return encodings
 
         encodings["compressed_bw"] = self.bitwidth
