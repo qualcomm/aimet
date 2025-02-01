@@ -188,7 +188,8 @@ class SequentialMse(SequentialMseBase):
                                                  block_size=quantizer.block_size).to(x_min.device)
 
         with quantize_dequantize.compute_encodings():
-            _ = quantize_dequantize(torch.stack([x_min, x_max]))
+            _ = quantize_dequantize(torch.stack([x_min, x_max])) # pylint: disable=not-callable
+                                                                 # (pylint throws a false alarm)
 
         quantizer.set_range(quantize_dequantize.min, quantize_dequantize.max)
 
