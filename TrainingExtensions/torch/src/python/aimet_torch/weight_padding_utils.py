@@ -38,7 +38,7 @@
 # pylint: disable=protected-access, cyclic-import
 from typing import Dict
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.defs import MAP_ROUND_MODE_TO_PYMO, MAP_QUANT_SCHEME_TO_PYMO
 from aimet_common.quantsim import recompute_grid_params
 

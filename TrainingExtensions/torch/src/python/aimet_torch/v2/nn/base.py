@@ -43,7 +43,7 @@ import itertools
 from typing import Type, List, Dict, Union, Iterable, Mapping, Optional
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from aimet_torch.utils import is_vector_encoding
 from aimet_torch.v2.quantization.affine.encoding import VectorEncoding, AffineEncoding

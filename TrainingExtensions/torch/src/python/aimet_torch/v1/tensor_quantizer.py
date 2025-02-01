@@ -45,7 +45,7 @@ import abc
 import torch
 
 from aimet_common.aimet_tensor_quantizer import AimetTensorQuantizer
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_QUANT_SCHEME_TO_PYMO
 from aimet_common.quantsim import is_non_strict_symmetric
 from aimet_common.utils import AimetLogger, log_with_error_and_assert_if_false

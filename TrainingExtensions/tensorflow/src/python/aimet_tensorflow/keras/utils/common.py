@@ -45,7 +45,7 @@ from tensorflow.python.framework.convert_to_constants import convert_variables_t
 from tensorflow.python.framework.graph_util_impl import remove_training_nodes
 from packaging import version  # pylint: disable=wrong-import-order
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger, log_with_error_and_assert_if_false
 
 from aimet_tensorflow.keras.defs import AxisHandling
@@ -651,20 +651,20 @@ def set_keras_backend_version_to_v2(func_to_run_before_setting_back_to_v2: Calla
         if version.parse(tf.version.VERSION) >= version.parse("2.10"):
             # pylint: disable=import-error
             from keras.engine.functional import Functional
-            import keras.engine.base_layer as base_layer
-            import keras.engine.base_layer_v1 as base_layer_v1
+            from keras.engine import base_layer
+            from keras.engine import base_layer_v1
 
-            import keras.engine.training as training
-            import keras.engine.training_v1 as training_v1
+            from keras.engine import training
+            from keras.engine import training_v1
 
             from keras.utils.version_utils import swap_class
         else:
             from tensorflow.python.keras.engine.functional import Functional
-            import tensorflow.python.keras.engine.base_layer as base_layer
-            import tensorflow.python.keras.engine.base_layer_v1 as base_layer_v1
+            from tensorflow.python.keras.engine import base_layer
+            from tensorflow.python.keras.engine import base_layer_v1
 
-            import tensorflow.python.keras.engine.training as training
-            import tensorflow.python.keras.engine.training_v1 as training_v1
+            from tensorflow.python.keras.engine import training
+            from tensorflow.python.keras.engine import training_v1
 
             from tensorflow.python.keras.utils.version_utils import swap_class
 

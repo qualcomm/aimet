@@ -46,7 +46,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger, Handle
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
 from aimet_torch.custom import custom_tensor_utils

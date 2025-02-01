@@ -48,7 +48,7 @@ from tensorflow.keras.layers import Dense, Conv2D, BatchNormalization, Flatten, 
 from packaging import version
 
 if version.parse(tf.version.VERSION) < version.parse("2.00"):
-    import tensorflow.contrib.slim as slim
+    from tensorflow.contrib import slim
 
 
 def transposed_conv2d_model():

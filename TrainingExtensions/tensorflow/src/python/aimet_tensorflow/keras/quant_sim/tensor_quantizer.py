@@ -41,7 +41,7 @@ from typing import List, Optional, Tuple, Callable
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 import aimet_common.libaimet_tf_ops as qcops
 
 from aimet_common.defs import MAP_QUANT_SCHEME_TO_PYMO, MAP_ROUND_MODE_TO_PYMO, QuantScheme, QuantizationDataType, \

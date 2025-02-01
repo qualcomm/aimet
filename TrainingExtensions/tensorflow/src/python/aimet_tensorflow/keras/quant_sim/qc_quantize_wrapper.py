@@ -40,7 +40,7 @@ from typing import Union, List, Dict
 import tensorflow as tf
 import numpy as np
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme, QuantizationDataType
 import aimet_tensorflow.keras.utils.common as keras_common_utils

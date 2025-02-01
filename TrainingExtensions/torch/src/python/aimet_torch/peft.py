@@ -40,7 +40,7 @@ from typing import Dict, Type
 import os
 import pickle
 from collections import defaultdict
-import torch.nn as nn
+from torch import nn
 import torch
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -95,8 +95,8 @@ class LoraLayer(torch.nn.Module):
                 self.active_adapters[adapter_name] = True
             else:
                 self.active_adapters[adapter_name] = False
-        for adapter_name in self.adapter_name_to_index:
-            self.index_to_adapter_name[self.adapter_name_to_index[adapter_name]] = adapter_name
+        for adapter_name, idx in self.adapter_name_to_index.items():
+            self.index_to_adapter_name[idx] = adapter_name
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """ Forward pass for replaced layer"""

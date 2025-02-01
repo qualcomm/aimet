@@ -42,7 +42,7 @@ import torch
 import torch.nn
 from torch.nn.modules.conv import _ConvTransposeNd
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
 
 from aimet_torch import utils

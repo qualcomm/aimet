@@ -42,7 +42,7 @@ from functools import reduce
 import psutil
 import numpy as np
 import torch
-import torch.nn.functional as functional
+from torch.nn import functional
 from torch.utils.data import Dataset, Subset
 import torch.distributed as dist
 

@@ -44,7 +44,7 @@ import psutil
 import onnx
 from onnx import numpy_helper
 import torch
-import torch.nn.functional as functional
+from torch.nn import functional
 from torch.utils.data import Dataset
 from packaging import version  # pylint: disable=wrong-import-order
 

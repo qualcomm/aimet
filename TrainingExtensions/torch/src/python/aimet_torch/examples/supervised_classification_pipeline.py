@@ -71,7 +71,7 @@ import collections
 from ignite.engine import Engine, Events, create_supervised_evaluator
 from ignite.metrics import Accuracy, Loss, TopKCategoricalAccuracy
 import torch
-import torch.nn as nn
+from torch import nn
 
 from aimet_common.utils import AimetLogger
 

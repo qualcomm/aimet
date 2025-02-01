@@ -42,7 +42,7 @@ from typing import Tuple, Union
 import torch
 from packaging import version  # pylint: disable=wrong-import-order
 
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantizationDataType
 from aimet_torch.v1.tensor_quantizer import StaticGridTensorQuantizer, LearnedGridTensorQuantizer

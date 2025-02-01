@@ -45,7 +45,7 @@ import warnings
 
 import torch
 from torch import Tensor
-import torch.nn as nn
+from torch import nn
 from torch.nn.modules.adaptive import _ASMoutput
 from torch.nn.utils.rnn import PackedSequence
 from torch.utils._pytree import tree_map

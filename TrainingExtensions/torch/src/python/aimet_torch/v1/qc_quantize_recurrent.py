@@ -42,7 +42,7 @@ from collections import defaultdict
 from typing import Tuple, List, Union, Dict
 import torch
 from torch.nn.utils.rnn import PackedSequence, pad_packed_sequence, pack_padded_sequence
-import aimet_common.libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
 from aimet_common.utils import AimetLogger
 from aimet_torch.defs import OpToIOTensors

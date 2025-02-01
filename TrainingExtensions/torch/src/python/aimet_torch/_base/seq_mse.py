@@ -46,7 +46,7 @@ import contextlib
 from dataclasses import dataclass
 from typing import Optional, Tuple, List, Callable
 import torch
-import torch.nn.functional as functional
+from torch.nn import functional
 from torch.utils.data import DataLoader
 
 from aimet_common.utils import AimetLogger

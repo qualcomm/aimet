@@ -39,7 +39,7 @@
 from typing import List, Tuple
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
 from aimet_common.polyslice import PolySlice
 

@@ -54,7 +54,7 @@ from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.connectedgraph import get_ordered_ops
 from aimet_common.cross_layer_equalization import GraphSearchUtils, CrossLayerScaling as CLS, ClsSetInfo, \
     HighBiasFold as HBF
-import aimet_common.libpymo as libpymo      # pylint: disable=import-error
+from aimet_common import libpymo      # pylint: disable=import-error
 
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, WEIGHT_INDEX, BIAS_INDEX
 from aimet_onnx.meta.operations import Op

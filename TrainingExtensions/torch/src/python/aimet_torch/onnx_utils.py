@@ -45,7 +45,7 @@ import copy
 from collections import defaultdict, deque
 from enum import IntEnum
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.onnx.symbolic_caffe2
 import torchvision
 import onnx

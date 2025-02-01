@@ -48,7 +48,7 @@ from weakref import WeakKeyDictionary
 import warnings
 
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.overrides import BaseTorchFunctionMode, get_overridable_functions
