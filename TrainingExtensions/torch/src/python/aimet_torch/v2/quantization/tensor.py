@@ -278,6 +278,7 @@ class QuantizedTensorBase(torch.Tensor):
 
     def new_empty(self, size, *, dtype=None, device=None, requires_grad=False,
                   layout=torch.strided, pin_memory=False, **kwargs) -> "QuantizedTensorBase":
+        """ Overrides torch.Tensor.new_empty """
         # PyTorch requires subclasses of torch.Tensor to override this method such that
         # it returns an instance of the subclass, not a plain torch.Tensor,
         # for the subclass to be deep-copyable
