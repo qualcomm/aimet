@@ -320,8 +320,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             self._determine_split_behavior_for_op_and_insert_split_op_in_connected_graph(op,
                                                                                          producer_to_product_name_map)
 
-    def _parse_top_level_trace(self, trace: Union[torch.jit.TopLevelTracedModule, torch.jit.TracedModule],
-                               model: torch.nn.Module):
+    def _parse_top_level_trace(self, trace: torch.jit.TopLevelTracedModule, model: torch.nn.Module):
         """
         Parse the top level trace.
         :param trace: Pytorch JIT trace for model or a submodule
@@ -341,7 +340,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
     # pylint: disable=too-many-branches
     def _parse_trace_graph(self, # pylint: disable=too-many-locals
-                           trace: Union[torch.jit.TopLevelTracedModule, torch.jit.TracedModule],
+                           trace: torch.jit.TracedModule,
                            model: torch.nn.Module,
                            output_map: Dict[torch._C.TensorType, Product],
                            higher_level_inputs: List[torch._C.TensorType],
@@ -525,7 +524,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
     # pylint: disable=too-many-arguments
     def _parse_callmethod_node(self, node: torch._C.Node,
-                               trace: Union[torch.jit.TopLevelTracedModule, torch.jit.TracedModule],
+                               trace: torch.jit.TracedModule,
                                node_name_to_module: Dict[str, torch.nn.Module],
                                node_name_to_subgraph_model: Dict[str, Tuple[torch.jit.TracedModule, torch._C.Node]],
                                output_map: Dict[torch._C.TensorType, Product],
@@ -1305,17 +1304,14 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # The following line filters out the Relu whose output is NOT split :(
         out_product_names = [name for name in output_product_names if preceding_op.name in name]
 
-        num_products = len(out_product_names)
-        consumer_index = 0
-        for a_product_index in range(num_products):
-            a_product = self.get_product(out_product_names[a_product_index])
+        for name in out_product_names:
+            a_product = self.get_product(name)
             a_consumer = a_product.consumers[0]
             split_op_product.consumers.append(a_consumer)
             # Need to insert the newly created split_op product in the correct input index of the op
             input_product_index = determine_preceding_op_input_product_index_in_multi_input_op(preceding_op,
                                                                                                a_consumer)
             a_consumer.inputs[input_product_index] = split_op_product
-            consumer_index += 1
 
     def _is_recursive_parsing_needed(self, module: torch.nn.Module,
                                      trace: torch.jit.TracedModule) -> bool:
@@ -1361,9 +1357,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
         return isinstance(module, tuple(MULTI_INPUT_OPS_TO_PARSE))
 
-    def _generate_trace_lookup_table(self,
-                                     model: torch.nn.Module,
-                                     trace: Union[torch.jit.TopLevelTracedModule, torch.jit.TracedModule]):
+    def _generate_trace_lookup_table(self, model: torch.nn.Module, trace: torch.jit.TracedModule):
         """
         Generate pytorch module names to corresponding JIT trace dictionary. There will be always one to one
         mapping between pytorch module and corresponding JIT trace.
@@ -1371,8 +1365,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :param model: PyTorch model.
         :param trace: PyTorch JIT trace.
         """
-        def _add_jit_trace(model: torch.nn.Module,
-                           trace: Union[torch.jit.TopLevelTracedModule, torch.jit.TracedModule]):
+        def _add_jit_trace(model: torch.nn.Module, trace: torch.jit.TracedModule):
             """
             Recursively add jit trace for all the modules to dictionary.
             :param model: PyTorch model or submodule.
@@ -1406,8 +1399,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         return module_to_jit_trace
 
     @staticmethod
-    def _find_aten_nodes_in_forward_pass(trace: Union[torch.jit.TopLevelTracedModule, torch.jit.TracedModule]) \
-            -> Iterator[torch._C.Node]:
+    def _find_aten_nodes_in_forward_pass(trace: torch.jit.TracedModule) -> Iterator[torch._C.Node]:
         """
         Find all the valid nodes in forward pass for given trace of model or submodule.
         Three possible outcomes:
