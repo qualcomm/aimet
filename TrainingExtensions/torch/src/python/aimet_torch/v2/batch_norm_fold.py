@@ -145,7 +145,7 @@ class BatchNormFold(BatchNormFoldBase):
 
             cls._delete_bn_from_model(model, bn_modules)
 
-    # pylint: disable=arguments-differ
+    # pylint: disable=arguments-renamed
     @classmethod
     def _fold_to_scale(cls, conv: BaseQuantizationMixin, bn: BaseQuantizationMixin):
         """

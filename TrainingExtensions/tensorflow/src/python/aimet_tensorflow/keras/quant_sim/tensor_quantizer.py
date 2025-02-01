@@ -245,7 +245,7 @@ class TensorQuantizer(tf.keras.layers.Layer, abc.ABC):
         `call` function handles passThrough at the top level
         """
 
-    # pylint: disable=arguments-differ
+    # pylint: disable=arguments-differ, arguments-renamed
     def call(self, tensor):
         """
         Forward pass for the quantizer
