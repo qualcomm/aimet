@@ -386,7 +386,7 @@ class BatchNormFoldBase(ABC):
         conv_bn_pairs = []
         # Backward fold is given priority over Forward fold
         for module in ordered_conv_fc_modules:
-            if module in conv_linear_bn_activation_info_dict.keys() and cls._is_valid_bn_fold(module, True):
+            if module in conv_linear_bn_activation_info_dict and cls._is_valid_bn_fold(module, True):
                 bn_info = conv_linear_bn_activation_info_dict[module]
                 # print(bn_info)
                 if bn_info.output_bn and bn_info.output_bn not in bn_picked_for_folding:
@@ -395,7 +395,7 @@ class BatchNormFoldBase(ABC):
 
         bn_conv_pairs = []
         for module in ordered_conv_fc_modules:
-            if module in conv_linear_bn_activation_info_dict.keys() and cls._is_valid_bn_fold(module, False):
+            if module in conv_linear_bn_activation_info_dict and cls._is_valid_bn_fold(module, False):
                 bn_info = conv_linear_bn_activation_info_dict[module]
                 if bn_info.input_bn and bn_info.input_bn not in bn_picked_for_folding:
                     bn_conv_pairs.append((bn_info.input_bn.get_module(), module))

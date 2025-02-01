@@ -1760,18 +1760,18 @@ def get_layers_in_io_tensor_map(op_to_io_tensor_map: Dict) -> Dict[str, str]:
     """
     layers_to_onnx_op_names = {}
     if version.parse(torch.__version__) < version.parse("1.13.0") or not EXPORT_TO_ONNX_DIRECT:
-        for name in op_to_io_tensor_map.keys():
+        for name in op_to_io_tensor_map:
             modified_name = name
             if modified_name.endswith('.end'):
                 modified_name = modified_name[:-4]
-            if name in layers_to_onnx_op_names.keys():
+            if name in layers_to_onnx_op_names:
                 layers_to_onnx_op_names[modified_name.split('#')[0]].append(name)
             else:
                 layers_to_onnx_op_names[modified_name.split('#')[0]] = [name]
     else:
-        for name in op_to_io_tensor_map.keys():
+        for name in op_to_io_tensor_map:
             pytorch_name = get_pytorch_name_from_onnx_name(name)
-            if pytorch_name in layers_to_onnx_op_names.keys():
+            if pytorch_name in layers_to_onnx_op_names:
                 layers_to_onnx_op_names[pytorch_name].append(name)
             else:
                 layers_to_onnx_op_names[pytorch_name] = [name]

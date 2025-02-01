@@ -106,7 +106,7 @@ class ConvBnPatternHandler:
             if op.type in CONV_OP_TYPES + LINEAR_OP_TYPES:
                 conv_op = op
                 op_key = get_op_dict_key(conv_op)
-                if op_key in self.conv_linears_with_bn_dict.keys():
+                if op_key in self.conv_linears_with_bn_dict:
                     bn_activation_info = self.conv_linears_with_bn_dict[op_key]
             elif op.type in BN_OP_TYPES:
                 bn_op = op

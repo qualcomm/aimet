@@ -133,7 +133,7 @@ def find_all_batch_norms_to_fold(connected_graph: ConnectedGraph,
     # Backward fold is given priority over Forward fold
     for node in ordered_conv_fc_nodes:
         # Filter out combinations that are not supported
-        if node in conv_linear_bn_activation_info_dict.keys():
+        if node in conv_linear_bn_activation_info_dict:
             bn_info = conv_linear_bn_activation_info_dict[node]
             if bn_info.output_bn and bn_info.output_bn not in bn_picked_for_folding:
                 if is_valid_bn_fold(node.get_module(), model, True):
@@ -145,7 +145,7 @@ def find_all_batch_norms_to_fold(connected_graph: ConnectedGraph,
     bn_conv_pairs = []
     for node in ordered_conv_fc_nodes:
         # Filter out combinations that are not supported
-        if node in conv_linear_bn_activation_info_dict.keys():
+        if node in conv_linear_bn_activation_info_dict:
             bn_info = conv_linear_bn_activation_info_dict[node]
             if bn_info.input_bn and bn_info.input_bn not in bn_picked_for_folding:
                 if is_valid_bn_fold(node.get_module(), model, False):

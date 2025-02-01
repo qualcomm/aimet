@@ -368,7 +368,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # Inputs to the current trace level will correspond to higher level inputs passed in from an upper trace level.
         # Replace entries of higher level inputs in the output_map with corresponding current level inputs.
         for idx, higher_level_inp in enumerate(higher_level_inputs):
-            if higher_level_inp in output_map.keys():
+            if higher_level_inp in output_map:
                 temp_product = output_map[higher_level_inp]
                 del output_map[higher_level_inp]
                 output_map[curr_inputs[idx + 1]] = temp_product
@@ -431,7 +431,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # replace entries in output_map for current level inputs back to the higher_level_inputs entries, so that other
         # callmethod nodes in the higher level trace graph can make use of those inputs.
         for idx, higher_level_inp in enumerate(higher_level_inputs):
-            if curr_inputs[idx + 1] in output_map.keys():
+            if curr_inputs[idx + 1] in output_map:
                 temp_product = output_map[curr_inputs[idx + 1]]
                 del output_map[curr_inputs[idx + 1]]
                 output_map[higher_level_inp] = temp_product
@@ -1104,7 +1104,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :param product_name: Name of the product to create.
         :param shape: Shape of the product to create.
         """
-        if product_name not in self._products.keys():
+        if product_name not in self._products:
             product = Product(product_name, shape)
             product.is_parm = True
             product.add_consumer(op)
@@ -1437,7 +1437,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         """
         op_type = ConnectedGraph._parse_op_type(node)
         # If there is a known mapping to an onnx type for this functional, use the onnx type as the op type
-        if op_type in onnx_utils.pytorch_functional_name_to_onnx_dict.keys():
+        if op_type in onnx_utils.pytorch_functional_name_to_onnx_dict:
             op_type = onnx_utils.pytorch_functional_name_to_onnx_dict[op_type]
         return op_type
 

@@ -301,7 +301,7 @@ class Adaround:
         :param framework_to_onnx_type_dict: Dictionary mapping framework type to ONNX type.
         :return: is_symmetric flag for given op's param.
         """
-        assert param_name in MAP_TF_PARAM_NAME_TO_QUANTSIM_NAME.keys(), "param name is invalid."
+        assert param_name in MAP_TF_PARAM_NAME_TO_QUANTSIM_NAME, "param name is invalid."
 
         # third level of specificity which applies to specific op_type's parameters.
         try:

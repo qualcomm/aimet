@@ -74,7 +74,7 @@ class PolySlice:
     def add(self, dim, index):
         """Add one or more slices in the specified dimension"""
         to_add = index if isinstance(index, list) else [index]
-        if dim in self._slices_by_dim.keys():
+        if dim in self._slices_by_dim:
             for idx in to_add:
                 self._slices_by_dim[dim].add(idx)
         else:
@@ -87,7 +87,7 @@ class PolySlice:
 
     def get_dims(self):
         """ Returns the dimensions which have zero channels """
-        return sorted(self._slices_by_dim.keys())
+        return sorted(self._slices_by_dim)
 
     def get_slices(self, dim):
         """ Returns the indices which have zero channels. """
@@ -97,6 +97,6 @@ class PolySlice:
         """ Returns all the dimensions and the corresponding channels
         with zero planes. """
         result = OrderedDict()
-        for dim in sorted(self._slices_by_dim.keys()):
+        for dim in sorted(self._slices_by_dim):
             result[dim] = sorted(list(self._slices_by_dim[dim]))
         return result

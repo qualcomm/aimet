@@ -105,7 +105,7 @@ class MaskPropagator:
             current_op = dfs_queue.pop()
             # If current_op already has a mask, it means we have already created masks for it and all ancestors from a
             # conv descendant.
-            if current_op in self._op_to_mask_dict.keys():
+            if current_op in self._op_to_mask_dict:
                 continue
 
             if current_op.inputs:
@@ -181,7 +181,7 @@ class MaskPropagator:
                 consumers = a_product.consumers
 
                 for consumer in consumers:
-                    if consumer in self._op_to_mask_dict.keys():
+                    if consumer in self._op_to_mask_dict:
                         consumer_connectivity = self._op_to_mask_dict[consumer].internal_connectivity
                         # If consumer op is stop connectivity, do not propagate mask up
                         if isinstance(consumer_connectivity, StopInternalConnectivity):
@@ -556,7 +556,7 @@ class MaskPropagator:
         # the Conv Op's masks. From Add and Concat Ops, the masks are not propagated to Split Op
         # as this considered as a special-Op to special-Op.
         for consumer in op.output.consumers:
-            while consumer in self._op_to_mask_dict.keys() and \
+            while consumer in self._op_to_mask_dict and \
                     isinstance(self._op_to_mask_dict[consumer].internal_connectivity, DirectInternalConnectivity):
                 self._op_to_mask_dict[consumer].set_input_channel_mask(0, input_mask)
                 if not consumer.output:

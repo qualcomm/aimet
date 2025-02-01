@@ -82,7 +82,7 @@ def remove_nodes_with_type(node_type: str, onnx_graph: onnx.GraphProto):
             if output:
                 node.input[i] = input_output_pairs[_input]
         for outputs in onnx_graph.output:
-            if outputs.name in input_output_pairs.keys() and \
+            if outputs.name in input_output_pairs and \
                     node.output[0] == input_output_pairs[outputs.name]:
                 node.output[0] = outputs.name
 

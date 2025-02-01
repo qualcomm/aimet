@@ -115,7 +115,7 @@ def get_weight_constraints(parser: ModelOpDefParser, op_name_in_opdef: str, op_i
     :return: List of weight constraints for the op in {bitwidth, dtype} Dict form
     """
     weight_constraints = []
-    if op_name_in_opdef in op_to_weight_index_map.keys():
+    if op_name_in_opdef in op_to_weight_index_map:
         try:
             datatype_constraints = parser.get_input_datatype_list(op_name_in_opdef, op_to_weight_index_map[op_name_in_opdef])[op_index]
             for datatype in datatype_constraints:

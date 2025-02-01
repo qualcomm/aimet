@@ -167,7 +167,7 @@ class QcQuantizeWrapper(tf.keras.layers.Layer):
                  shadow_params: Dict[str, tf.Variable] = None,
                  **kwargs):
 
-        if 'in_quant_enabled' in kwargs.keys():
+        if 'in_quant_enabled' in kwargs:
             new_kwargs = dict(kwargs)
             new_kwargs.pop('in_quant_enabled')
             super().__init__(**new_kwargs)
@@ -184,7 +184,7 @@ class QcQuantizeWrapper(tf.keras.layers.Layer):
         self._shadow_params = shadow_params
         self._is_lambda_operator_layer = keras_common_utils.is_lambda_operator(layer_to_wrap)
         self._is_a_tf_op_lambda_layer = keras_common_utils.is_a_tf_op_lambda_layer(layer_to_wrap)
-        if 'in_quant_enabled' in kwargs.keys():
+        if 'in_quant_enabled' in kwargs:
             self._set_quantizers(per_channel_quantization_enabled, in_quant_enabled=kwargs['in_quant_enabled'])
         else:
             self._set_quantizers(per_channel_quantization_enabled)
@@ -309,13 +309,13 @@ class QcQuantizeWrapper(tf.keras.layers.Layer):
         """
 
         # TODO kwargs = {} in same instalnce which needs to be investigation
-        if "training" in kwargs.keys():
+        if "training" in kwargs:
             is_call_training_mode = kwargs["training"]
         else:
             is_call_training_mode = False
 
         for param in self._layer_to_wrap.weights:
-            if param.name in self._shadow_params.keys():
+            if param.name in self._shadow_params:
                 self._shadow_params[param.name].assign(param)
         # for BN with training = True ,only write to shadow params for beta and gamma
         if isinstance(self._layer_to_wrap, tf.keras.layers.BatchNormalization):
