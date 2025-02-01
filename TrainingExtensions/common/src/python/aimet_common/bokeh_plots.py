@@ -256,7 +256,7 @@ class FigurePlot:
         self.y_axis_label = y_axis_label
         self.title = title
 
-        self.source = ColumnDataSource(data=dict(x=[], y=[]))
+        self.source = ColumnDataSource(data={"x": [], "y": []})
 
         self.title_object = Title()
         self.title_object.text = self.title

@@ -370,7 +370,7 @@ def create_pareto_curve(pareto_front_list: List) -> figure:
         bits_ops.append(relative_bit_ops)
         acc_list.append(acc)
 
-    source = ColumnDataSource(data=dict(BitOps=bits_ops, Accuracy=acc_list))
+    source = ColumnDataSource(data={"BitOps": bits_ops, "Accuracy": acc_list})
 
     plot = figure(x_axis_label='BitOps', y_axis_label='Accuracy', width=800, height=800,
                   title="Accuracy vs BitOps")

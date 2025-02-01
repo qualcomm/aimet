@@ -235,13 +235,13 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
         self.dataset = dataset
         self.eval_callback = eval_callback
 
-        self._quantsim_params = dict(
-            param_bw=param_bw,
-            output_bw=output_bw,
-            quant_scheme=_QuantSchemePair(quant_scheme, quant_scheme),
-            rounding_mode=rounding_mode,
-            config_file=config_file,
-        )
+        self._quantsim_params = {
+            "param_bw": param_bw,
+            "output_bw": output_bw,
+            "quant_scheme": _QuantSchemePair(quant_scheme, quant_scheme),
+            "rounding_mode": rounding_mode,
+            "config_file": config_file,
+        }
 
         self.results_dir = results_dir
         if cache_id:
@@ -373,12 +373,12 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
         if output_quant_scheme is None or param_quant_scheme is None:
             assert self._quantsim_params["quant_scheme"] is not None
 
-        kwargs = dict(
-            rounding_mode=(rounding_mode or self._quantsim_params["rounding_mode"]),
-            default_output_bw=(output_bw or self._quantsim_params["output_bw"]),
-            default_param_bw=(param_bw or self._quantsim_params["param_bw"]),
-            config_file=(config_file or self._quantsim_params["config_file"]),
-        )
+        kwargs = {
+            "rounding_mode": (rounding_mode or self._quantsim_params["rounding_mode"]),
+            "default_output_bw": (output_bw or self._quantsim_params["output_bw"]),
+            "default_param_bw": (param_bw or self._quantsim_params["param_bw"]),
+            "config_file": (config_file or self._quantsim_params["config_file"]),
+        }
         sim = QuantizationSimModel(model, **kwargs)
         input_quantizers, param_quantizers, output_quantizers = sim._get_quantizer_list() # pylint: disable=protected-access
 
@@ -722,10 +722,12 @@ class PtqResult:
                 shutil.copyfile(file, dest)
     def as_dict(self):
         """Convert to dictionary"""
-        return dict(model=self.load_model(),
-                    accuracy=self.accuracy,
-                    encoding_path=self.encoding_path,
-                    applied_techniques=self.applied_techniques)
+        return {
+            "model": self.load_model(),
+            "accuracy": self.accuracy,
+            "encoding_path": self.encoding_path,
+            "applied_techniques": self.applied_techniques,
+        }
 
 
 class _EvalManager:

@@ -258,13 +258,13 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
         :param encoding_path: Path to parameter encodings file.
         :return: Quantsim model.
         """
-        kwargs = dict(
-            quant_scheme=(quant_scheme or self.default_quant_scheme),
-            rounding_mode=(rounding_mode or self.default_rounding_mode),
-            default_output_bw=(default_output_bw or self.default_output_bw),
-            default_param_bw=(default_param_bw or self.default_param_bw),
-            config_file=(config_file or self.default_config_file),
-        )
+        kwargs = {
+            "quant_scheme": (quant_scheme or self.default_quant_scheme),
+            "rounding_mode": (rounding_mode or self.default_rounding_mode),
+            "default_output_bw": (default_output_bw or self.default_output_bw),
+            "default_param_bw": (default_param_bw or self.default_param_bw),
+            "config_file": (config_file or self.default_config_file),
+        }
         sim = QuantizationSimModel(model, **kwargs)
 
         if encoding_path:
@@ -414,10 +414,12 @@ class PtqResult:
         Convert to dictionary
         :param custom_objects: Custom objects of model.
         """
-        return dict(model=self.load_model(custom_objects=custom_objects),
-                    accuracy=self.accuracy,
-                    encoding_path=self.encoding_path,
-                    applied_techniques=self.applied_techniques)
+        return {
+            "model": self.load_model(custom_objects=custom_objects),
+            "accuracy": self.accuracy,
+            "encoding_path": self.encoding_path,
+            "applied_techniques": self.applied_techniques,
+        }
 
 
 class _EvalManager:

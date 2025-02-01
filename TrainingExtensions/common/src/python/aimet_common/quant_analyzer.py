@@ -208,7 +208,7 @@ def export_stats_histogram_plot(histogram: List,
     plot = plotting.figure(height=DEFAULT_BOKEH_FIGURE_HEIGHT,
                            title=title)
     # Add line and underlying color for histogram.
-    plot_source = ColumnDataSource(data=dict(entries=entries, pdfs=pdfs))
+    plot_source = ColumnDataSource(data={"entries": entries, "pdfs": pdfs})
     plot.line("entries", "pdfs", source=plot_source, color="blue", legend_label="PDF")
     band = Band(base="entries", upper="pdfs", source=plot_source, level="underlay", fill_color="blue")
     plot.add_layout(band)

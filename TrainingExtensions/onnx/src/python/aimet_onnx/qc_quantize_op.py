@@ -497,13 +497,15 @@ class QcQuantizeOp:
         if self.data_type == QuantizationDataType.int:
             encodings = []
             for encoding in self.get_encodings():
-                enc_dict = dict(min=encoding.min,
-                                max=encoding.max,
-                                scale=encoding.delta,
-                                offset=int(encoding.offset),
-                                bitwidth=encoding.bw,
-                                is_symmetric=str(self.use_symmetric_encodings),
-                                dtype="int")
+                enc_dict = {
+                    "min": encoding.min,
+                    "max": encoding.max,
+                    "scale": encoding.delta,
+                    "offset": int(encoding.offset),
+                    "bitwidth": encoding.bw,
+                    "is_symmetric": str(self.use_symmetric_encodings),
+                    "dtype": "int",
+                }
                 encodings.append(enc_dict)
             return encodings
 
@@ -523,10 +525,11 @@ class QcQuantizeOp:
         if not self.enabled or not self.is_initialized():
             return None
 
-        enc_dict = dict(enc_type=self._encoding_type().name,
-                        dtype="INT" if self.data_type == QuantizationDataType.int else "FLOAT",
-                        bw=self.bitwidth,
-                        )
+        enc_dict = {
+            "enc_type": self._encoding_type().name,
+            "dtype": "INT" if self.data_type == QuantizationDataType.int else "FLOAT",
+            "bw": self.bitwidth,
+        }
 
         if self.data_type == QuantizationDataType.int:
             enc_dict["is_sym"] = self.use_symmetric_encodings

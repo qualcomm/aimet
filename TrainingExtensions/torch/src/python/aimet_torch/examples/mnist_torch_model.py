@@ -50,14 +50,16 @@ from aimet_common.utils import AimetLogger
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 
 # Training settings
-args = dict(batch_size=64,
-            test_batch_size=1000,
-            epochs=2,
-            lr=0.01,
-            momentum=0.5,
-            no_cuda=True,
-            seed=1,
-            log_interval=10)
+args = {
+    "batch_size": 64,
+    "test_batch_size": 1000,
+    "epochs": 2,
+    "lr": 0.01,
+    "momentum": 0.5,
+    "no_cuda": True,
+    "seed": 1,
+    "log_interval": 10,
+}
 
 
 class DataLoaderMnist:

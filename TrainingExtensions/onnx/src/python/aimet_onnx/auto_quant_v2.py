@@ -251,15 +251,15 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
         self.data_loader = data_loader
         self.eval_callback = eval_callback
 
-        self._quantsim_params = dict(
-            param_bw=param_bw,
-            output_bw=output_bw,
-            quant_scheme=_QuantSchemePair(quant_scheme, quant_scheme),
-            rounding_mode=rounding_mode,
-            config_file=config_file,
-            use_cuda=use_cuda,
-            device=device
-        )
+        self._quantsim_params = {
+            "param_bw": param_bw,
+            "output_bw": output_bw,
+            "quant_scheme": _QuantSchemePair(quant_scheme, quant_scheme),
+            "rounding_mode": rounding_mode,
+            "config_file": config_file,
+            "use_cuda": use_cuda,
+            "device": device,
+        }
 
         self.results_dir = results_dir
         self.cache_dir = None
@@ -392,14 +392,14 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
             assert self._quantsim_params["quant_scheme"] is not None
 
         model = copy.deepcopy(fp32_model)
-        kwargs = dict(
-            rounding_mode=(rounding_mode or self._quantsim_params["rounding_mode"]),
-            default_activation_bw=(output_bw or self._quantsim_params["output_bw"]),
-            default_param_bw=(param_bw or self._quantsim_params["param_bw"]),
-            config_file=(config_file or self._quantsim_params["config_file"]),
-            use_cuda=self._quantsim_params['use_cuda'],
-            device=self._quantsim_params['device']
-        )
+        kwargs = {
+            "rounding_mode": (rounding_mode or self._quantsim_params["rounding_mode"]),
+            "default_activation_bw": (output_bw or self._quantsim_params["output_bw"]),
+            "default_param_bw": (param_bw or self._quantsim_params["param_bw"]),
+            "config_file": (config_file or self._quantsim_params["config_file"]),
+            "use_cuda": self._quantsim_params['use_cuda'],
+            "device": self._quantsim_params['device'],
+        }
         sim = QuantizationSimModel(model, self.dummy_input, **kwargs)
 
         param_quantizers, activation_quantizers = sim.get_all_quantizers()
@@ -743,10 +743,12 @@ class PtqResult:
 
     def as_dict(self):
         """Convert to dictionary"""
-        return dict(model=self.load_model(),
-                    accuracy=self.accuracy,
-                    encoding_path=self.encoding_path,
-                    applied_techniques=self.applied_techniques)
+        return {
+            "model": self.load_model(),
+            "accuracy": self.accuracy,
+            "encoding_path": self.encoding_path,
+            "applied_techniques": self.applied_techniques,
+        }
 
     def save_result_as(self, prefix: str = "best_model"):
         """

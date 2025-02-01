@@ -185,12 +185,12 @@ class QuantAnalyzerBase(ABC):
             input_shape = [tuple(x.shape) for x in self._dummy_input]
         _ = self._fold_all_batch_norms(self._model, input_shape, dummy_input=self._dummy_input)
 
-        kwargs = dict(
-            quant_scheme=quant_scheme,
-            default_output_bw=default_output_bw,
-            default_param_bw=default_param_bw,
-            config_file=config_file,
-        )
+        kwargs = {
+            "quant_scheme": quant_scheme,
+            "default_output_bw": default_output_bw,
+            "default_param_bw": default_param_bw,
+            "config_file": config_file,
+        }
         sim = self._get_quantsim_cls()(self._model, self._dummy_input, **kwargs)
         if self._modules_to_ignore:
             self._exclude_modules_from_quantization(self._model, sim, self._modules_to_ignore)

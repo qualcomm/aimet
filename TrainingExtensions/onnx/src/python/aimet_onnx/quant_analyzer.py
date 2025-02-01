@@ -168,12 +168,12 @@ class QuantAnalyzer:
         :return: Quantsim object.
         """
         _ = fold_all_batch_norms_to_weight(self._onnx_model)
-        kwargs = dict(
-            quant_scheme=quant_scheme,
-            default_activation_bw=default_activation_bw,
-            default_param_bw=default_param_bw,
-            config_file=config_file,
-        )
+        kwargs = {
+            "quant_scheme": quant_scheme,
+            "default_activation_bw": default_activation_bw,
+            "default_param_bw": default_param_bw,
+            "config_file": config_file,
+        }
         sim = QuantizationSimModel(copy.deepcopy(self._onnx_model), self._dummy_input, **kwargs)
         sim.compute_encodings(self._forward_pass_callback.func, self._forward_pass_callback.args)
         return sim
