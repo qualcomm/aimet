@@ -351,8 +351,8 @@ class QuantizationSimModel(_QuantizationSimModelBase):
         """
         Replaces StaticGridWrapper with LearnedGridWrapper
         """
-        if self._quant_scheme == QuantScheme.training_range_learning_with_tf_init or self._quant_scheme == \
-                QuantScheme.training_range_learning_with_tf_enhanced_init:
+        if self._quant_scheme in (QuantScheme.training_range_learning_with_tf_init,
+                                  QuantScheme.training_range_learning_with_tf_enhanced_init):
             try:
                 device = utils.get_device(self.model)
             except StopIteration:
