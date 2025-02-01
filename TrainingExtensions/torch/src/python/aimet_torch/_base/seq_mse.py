@@ -184,7 +184,8 @@ class SequentialMseBase(ABC):
         :param tempdir: temporary working directory
         """
         # pylint: disable=too-many-locals
-        ckpts_file = json.load(open(checkpoints_config))
+        with open(checkpoints_config) as f:
+            ckpts_file = json.load(f)
         assert 'grouped_modules' in ckpts_file.keys(), \
             "Please provide a dictionary of grouped_modules in the file to define checkpoints"
         assert 'include_static_inputs' in ckpts_file.keys(), \

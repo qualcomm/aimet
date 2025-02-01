@@ -229,7 +229,8 @@ class AdaroundBase(ABC):
             # AdaRound must be applied to modules in the order of occurrence
             if checkpoints_config:
                 # Load the predefined json file for checkpoints info
-                checkpoint_config = json.load(open(checkpoints_config))
+                with open(checkpoints_config) as f:
+                    checkpoint_config = json.load(f)
                 convert_configs_values_to_bool(checkpoint_config)
 
                 assert 'cache_on_cpu' in checkpoint_config.keys(), \
