@@ -39,7 +39,7 @@
 
 from typing import Union
 import tensorflow as tf
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 if version.parse(tf.version.VERSION) >= version.parse("2.10"):
     # Ignore pylint errors as keras module is not available in TF 2.4

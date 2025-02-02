@@ -46,7 +46,7 @@ from onnx import numpy_helper
 import torch
 from torch.nn import functional
 from torch.utils.data import Dataset
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 # Import AIMET specific modules
 from aimet_common.utils import AimetLogger

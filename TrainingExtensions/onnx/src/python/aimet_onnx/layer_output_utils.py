@@ -45,7 +45,6 @@ import onnxruntime as ort
 import onnx
 from packaging import version
 
-# pylint: disable=wrong-import-order
 from aimet_common.utils import AimetLogger
 from aimet_common.layer_output_utils import SaveInputOutput, save_layer_output_names
 

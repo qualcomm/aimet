@@ -41,7 +41,6 @@ from typing import List, Dict, Tuple, Union
 import onnx
 from packaging import version
 
-# pylint: disable=wrong-import-order
 from aimet_common.defs import QuantizationDataType
 from aimet_common.graph_searcher import GraphSearcher
 from aimet_common.connected_graph.connectedgraph_utils import get_all_input_ops, get_all_output_ops

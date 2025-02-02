@@ -40,7 +40,7 @@
 import math
 from typing import Tuple, Union
 import torch
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
@@ -90,8 +90,7 @@ def calc_params_for_native_torch_quantizer(quantizer, ch_axis, device: torch.dev
         # Per Channel quantization
         scale = torch.tensor([encoding.delta for encoding in encodings], device=device)
         zero_point = torch.tensor([int(-encoding.offset) for encoding in encodings], device=device, dtype=torch_quantizer_zero_ponit_data_type)
-        # pylint: disable=consider-using-generator,use-a-generator
-        if quantizer.use_symmetric_encodings and (all([encoding.min < 0 for encoding in encodings])
+        if quantizer.use_symmetric_encodings and (all(encoding.min < 0 for encoding in encodings)
                                                   or (not quantizer.use_unsigned_symmetric)):
             # Symmetric quantization
             q_max = math.floor(numSteps / 2)

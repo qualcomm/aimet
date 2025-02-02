@@ -43,7 +43,7 @@ from typing import Callable, Union, List, Dict, Tuple, AnyStr
 import tensorflow as tf
 from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_from_session_graph
 from tensorflow.python.framework.graph_util_impl import remove_training_nodes
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 from aimet_common import _libpymo as libpymo
 from aimet_common.utils import AimetLogger, log_with_error_and_assert_if_false

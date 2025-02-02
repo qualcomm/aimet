@@ -63,7 +63,7 @@ from typing import (
 import torch
 from torch.utils._pytree import tree_flatten
 import onnx
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 from safetensors.numpy import save_file as save_safetensor_file
 
 from aimet_common.utils import AimetLogger, save_json_yaml, log_with_error_and_assert_if_false, Handle

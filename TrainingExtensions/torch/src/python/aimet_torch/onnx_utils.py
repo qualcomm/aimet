@@ -51,7 +51,7 @@ import torchvision
 import onnx
 import yaml
 from onnx import GraphProto
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 from aimet_common.utils import AimetLogger
 import aimet_torch.utils
@@ -487,8 +487,7 @@ class OnnxSaver:
         :param onnx_model: ONNX model object
         :param pytorch_model: Equivalent PyTorch model instance
         """
-        # pylint: disable=consider-using-generator
-        root_module_names = tuple([local_module_name for local_module_name, _ in pytorch_model.named_children()])
+        root_module_names = tuple(local_module_name for local_module_name, _ in pytorch_model.named_children())
         node_names = [node.name  for node in onnx_model.graph.node if not node.name.startswith('Constant')]
         num_nodes = len(node_names)
         node_names = set(node_names)

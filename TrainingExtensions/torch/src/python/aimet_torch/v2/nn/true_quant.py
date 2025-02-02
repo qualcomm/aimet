@@ -34,7 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=too-many-lines, wrong-import-order, redefined-builtin
+# pylint: disable=too-many-lines, redefined-builtin
 """ Quantized modules"""
 
 from packaging import version

@@ -34,7 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=too-many-lines, wrong-import-order
+# pylint: disable=too-many-lines
 """Fake-quantized modules (deprecated)"""
 
 from packaging import version

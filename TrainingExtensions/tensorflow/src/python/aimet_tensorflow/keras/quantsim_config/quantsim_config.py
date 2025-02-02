@@ -40,7 +40,7 @@ from typing import List, Tuple, Dict, Union
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 if version.parse(tf.version.VERSION) >= version.parse("2.10.1"):
     from keras.layers.core.tf_op_layer import TFOpLambda  # pylint: disable=import-error
 else:

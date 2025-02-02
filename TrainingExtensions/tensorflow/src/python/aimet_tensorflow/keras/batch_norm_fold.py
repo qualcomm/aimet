@@ -41,7 +41,7 @@ from typing import Iterable, Optional, Tuple, Union, List, Dict, Set
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 if version.parse(tf.version.VERSION) >= version.parse("2.10"):
     # Ignore pylint errors as keras module is not available in TF 2.4

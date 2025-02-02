@@ -44,7 +44,6 @@ import onnxruntime as ort
 import onnx
 from packaging import version
 
-# pylint: disable=wrong-import-order
 from aimet_common.utils import AimetLogger
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import add_hook_to_get_activation, remove_activation_hooks, create_input_dict

@@ -49,7 +49,6 @@ from onnx import numpy_helper
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from packaging import version
 
-# pylint: disable=wrong-import-order
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.connectedgraph import get_ordered_ops
 from aimet_common.cross_layer_equalization import GraphSearchUtils, CrossLayerScaling as CLS, ClsSetInfo, \

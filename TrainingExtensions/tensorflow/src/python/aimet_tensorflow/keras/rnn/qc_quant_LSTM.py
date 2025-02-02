@@ -37,10 +37,11 @@
 
 """Code to override Keras LSTM classes"""
 
+import sys
 from typing import Union
 import tensorflow as tf
 from tensorflow.python.platform import tf_logging as logging
-from packaging import version  # pylint: disable=wrong-import-order
+from packaging import version
 
 if version.parse(tf.version.VERSION) >= version.parse("2.10"):
     # pylint: disable=ungrouped-imports
@@ -127,7 +128,7 @@ class QuantizedLSTM(*base_list):
         #Quantization is supported for urolled LSTM only.
         if not unroll:
             logging.error("Only unrolled LSTM can be quantized, as of now. Need to use flag 'unroll=True'")
-            exit()  # pylint: disable=consider-using-sys-exit
+            sys.exit()
 
         self._wrapped_layers = []
         self.is_sequential_model = is_sequential_model

@@ -42,7 +42,7 @@ import tensorflow as tf
 from packaging import version
 
 # Disable pylint errors because of conditional imports
-# pylint: disable=wrong-import-order, ungrouped-imports
+# pylint: disable=ungrouped-imports
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras.layers.advanced_activations import _large_compatible_negative
 from tensorflow.python.keras.utils import tf_utils

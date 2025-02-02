@@ -48,7 +48,6 @@ from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from onnx import numpy_helper
 from onnx.utils import Extractor
 
-# pylint: disable=wrong-import-order
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.sequential_mse.dependency_graph_utils import DependencyGraphUtils
@@ -332,8 +331,7 @@ class SequentialMse:
         connected_op = self.connected_graph.get_op_from_module_name(dependency_node.op_name)
         # pylint: disable=protected-access
         channel_axis = QuantizationSimModel._get_quantization_axes(connected_op)[0]
-        # pylint: disable=consider-using-generator, use-a-generator
-        axis = tuple([i for i in range(len(weight_data.shape)) if i != channel_axis])
+        axis = tuple(i for i in range(len(weight_data.shape)) if i != channel_axis)
 
         per_channel_max = np.max(abs(weight_data), axis=axis)
 
