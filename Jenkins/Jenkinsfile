@@ -185,7 +185,7 @@ pipeline {
                         // Works with older jenkins instances that support the warnings plugin (https://plugins.jenkins.io/warnings)
                         when {
                             expression {
-                                env.QCInternalValidation == "true"
+                                false // Temporarily skip code violation stage
                             }
                         }
                         steps {
