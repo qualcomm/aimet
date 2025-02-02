@@ -139,7 +139,7 @@ RUN apt-get update > /dev/null && \
 
 # Python3 Packages
 RUN python3 -m pip --no-cache-dir install \
-        astroid==2.5.6 \
+        astroid \
         attrs>=19.1.0 \
         behave==1.2.6 \
         blosc==1.10.1 \
@@ -185,7 +185,7 @@ RUN python3 -m pip --no-cache-dir install \
         pybind11 \
         pydot \
         pyDOE2 \
-        pylint==2.8.3 \
+        pylint<3 \
         pymoo \
         pytest \
         pytest-cov \
