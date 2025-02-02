@@ -77,7 +77,7 @@ from aimet_torch import torchscript_utils, utils, onnx_utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.quantsim_config.quantsim_config import QuantSimConfigurator
-from aimet_torch._base.nn.modules.custom import MatMul
+from aimet_torch._base.nn.modules.custom import MatMul, Cast
 from aimet_torch.onnx_utils import (
     OnnxSaver,
     OnnxExportApiArgs,
@@ -277,6 +277,9 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                                  Note that the mode default_data_type=QuantizationDataType.float is only supported with
                                  default_output_bw=16 or 32 and default_param_bw=16 or 32.
         """
+        if isinstance(dummy_input, torch.Tensor):
+            dummy_input = (dummy_input,)
+
         # Perform sanity checks on inputs
         validate_quantsim_inputs(quant_scheme, rounding_mode, default_output_bw, default_param_bw,
                                  default_data_type)
@@ -312,15 +315,35 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         self._percentile_value = 100 # default percentile value
         self._excluded_layer_names = []
 
-        # Add quantization layers
-        inout_tensor_shapes = utils.get_inout_tensor_shape_per_module(self.model, dummy_input)
-        num_inout_tensors = {
-            module: (len(input_tensor_shapes), len(output_tensor_shapes))
-            for module, (input_tensor_shapes, output_tensor_shapes)
-            in inout_tensor_shapes.items()
-        }
-        inout_tensors_dtypes_for_cast_ops = utils.get_inout_tensors_dtypes_for_cast_modules(self.model, dummy_input)
+        inout_tensor_shapes = {}
+        num_inout_tensors = {}
+        inout_tensors_dtypes_for_cast_ops = {}
 
+        def record_metadata(module, inputs, outputs):
+            if isinstance(outputs, torch.Tensor):
+                outputs = (outputs,)
+
+            inout_tensor_shapes[module] = (
+                [inp.shape if isinstance(inp, torch.Tensor) else None for inp in inputs],
+                [out.shape if isinstance(out, torch.Tensor) else None for out in outputs],
+            )
+            num_inout_tensors[module] = (len(inputs), len(outputs))
+
+            if isinstance(module, Cast):
+                input, = inputs
+                output, = outputs
+                inout_tensors_dtypes_for_cast_ops[module] = (input.dtype, output.dtype)
+
+        handles = []
+        try:
+            for module in self.model.modules():
+                handles.append(module.register_forward_hook(record_metadata))
+            self.model(*dummy_input)
+        finally:
+            for handle in handles:
+                handle.remove()
+
+        # Add quantization layers
         self._add_quantization_wrappers(self.model, num_inout_tensors, default_data_type)
         self._set_tensor_quantizers_for_consts(inout_tensor_shapes)
 

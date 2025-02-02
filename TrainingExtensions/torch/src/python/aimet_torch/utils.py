@@ -768,39 +768,6 @@ def find_num_inout_tensors_per_module(model: torch.nn.Module, input_tensor) -> D
     return num_inout_map
 
 
-def get_inout_tensor_shape_per_module(model: torch.nn.Module, input_tensor) -> Dict:
-    """
-    Returns a map of module -> list of tensor shape of inout tensors, for all the children modules of the
-    provided module
-
-    :param model: Torch module to find children modules for
-    :param input_tensor: Input tensor to use to run forward pass for the model. If model needs more than one input
-                         tensor, pass a tuple
-    :return: map of module -> (list of tensor shape of input tensors, list of tensor shape of output tensors)
-    """
-
-    inout_tensor_shape_map = {}
-
-    def record_tensor_shape(module, inputs, outputs):
-        inputs = inputs if isinstance(inputs, (List, Tuple)) else [inputs]
-        outputs = outputs if isinstance(outputs, (List, Tuple)) else [outputs]
-        input_tensor_shape_list = []
-        output_tensor_shape_list = []
-
-        for input_tensor in inputs:
-            input_tensor_shape = input_tensor.shape if isinstance(input_tensor, torch.Tensor) else None
-            input_tensor_shape_list.append(input_tensor_shape)
-
-        for output_tensor in outputs:
-            output_tensor_shape = output_tensor.shape if isinstance(output_tensor, torch.Tensor) else None
-            output_tensor_shape_list.append(output_tensor_shape)
-
-        inout_tensor_shape_map[module] = (input_tensor_shape_list, output_tensor_shape_list)
-
-    run_hook_for_layers_with_given_input(model, input_tensor, record_tensor_shape, leaf_node_only=False)
-    return inout_tensor_shape_map
-
-
 def get_reused_modules(model: torch.nn.Module, model_input: Union[torch.Tensor, Tuple]) -> \
         List[Tuple[str, torch.nn.Module]]:
     """
@@ -1072,38 +1039,6 @@ def cache_intermediate_datasets(
         handle.remove()
 
     return cached_data
-
-
-def get_inout_tensors_dtypes_for_cast_modules(model: torch.nn.Module, input_tensor: Union[torch.Tensor, Tuple[torch.Tensor]]) -> Dict:
-    """
-    Get the datatype of input and output tensor of Cast modules in a Pytorch Model.
-
-    :param model: Pytorch Model
-    :param input_tensor: Input tensor to run forward pass for the model.
-                         A tuple of tensors should be passed if model has multiple inputs
-    :return: map of module -> (data type of input tensor, data type of output tensor)
-    """
-    inout_dtypes_map = {}
-
-    def record_dtypes(module, inputs, outputs):
-
-        # pylint: disable=protected-access
-        if isinstance(module, Cast):
-            input_dtype = None
-
-            if isinstance(inputs, (list, tuple)):
-                input_dtype = inputs[0].dtype
-
-            elif isinstance(inputs, torch.Tensor):
-                input_dtype = inputs.dtype
-
-            else:
-                raise ValueError
-
-            inout_dtypes_map[module] = (input_dtype, outputs.dtype)
-
-    run_hook_for_layers_with_given_input(model, input_tensor, record_dtypes)
-    return inout_dtypes_map
 
 
 def get_propagated_encoding_dict(encoding_dict: List[Dict[str, any]]) -> List[Dict[str, any]]:
