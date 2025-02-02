@@ -223,7 +223,6 @@ def test_freeze_encodings():
     assert wrapper.param_quantizers[0].quant_mode == int(libpymo.TensorQuantizerOpMode.quantizeDequantize)
 
 
-# pylint: disable=too-many-locals
 def test_per_channel_qc_quantizer_conv2d():
     """ Tests Conv2D Per Channel """
     tf.keras.backend.clear_session()
@@ -322,7 +321,6 @@ def test_per_channel_qc_quantizer_conv2d():
                                                                   [6.3530, 5.5846]]]]), rtol=0.01)
 
 
-# pylint: disable=too-many-locals
 def test_per_channel_qc_quantizer_conv2d_transpose():
     """ Tests Conv2DTranspose for Per Channel"""
     tf.keras.backend.clear_session()

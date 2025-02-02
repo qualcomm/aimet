@@ -66,7 +66,6 @@ from .models.mobilenet import MobileNetV2, MobileNetV1
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
-# pylint: disable=too-many-lines
 
 def mobilenetv1(pretrained=False, **_):
     """Constructs a MobileNetV1 model.
@@ -147,7 +146,7 @@ def get_network_dict():
     return network_dict
 
 
-def get_model(share_weights=False, upsample=False):     # pylint: disable=too-many-statements
+def get_model(share_weights=False, upsample=False):
     """ Return a network dict for the model """
     block0 = [{'conv1_1': [3, 64, 3, 1, 1]},
               {'conv1_2': [64, 64, 3, 1, 1]}, {'pool1_stage1': [2, 2, 0]},
@@ -274,7 +273,7 @@ def get_model(share_weights=False, upsample=False):     # pylint: disable=too-ma
 ###############################################################################
 
 
-class AnotherSingleResidual(nn.Module):     # pylint: disable=too-many-instance-attributes
+class AnotherSingleResidual(nn.Module):
     """ A model with a single residual connection.
         Use this model for unit testing purposes. """
 
@@ -331,7 +330,7 @@ class AnotherSingleResidual(nn.Module):     # pylint: disable=too-many-instance-
         return x
 
 
-class SingleResidualScenario4(nn.Module):       # pylint: disable=too-many-instance-attributes
+class SingleResidualScenario4(nn.Module):
     """ A model with a single residual connection.
         Use this model for unit testing purposes. """
 
@@ -376,7 +375,7 @@ class SingleResidualScenario4(nn.Module):       # pylint: disable=too-many-insta
         return x
 
 
-class DualResidual(nn.Module):      # pylint: disable=too-many-instance-attributes
+class DualResidual(nn.Module):
     """ A model with a two residual connections.
         Use this model for unit testing purposes. """
 
@@ -480,9 +479,9 @@ pretrained_settings = {
 }
 
 
-class BNInceptionModule(nn.Module):     # pylint: disable=too-many-instance-attributes
+class BNInceptionModule(nn.Module):
     """ BNInception submodule class """
-    def __init__(self, in_dim, dim1x1, dimr3x3, dim3x3,     # pylint: disable=too-many-arguments
+    def __init__(self, in_dim, dim1x1, dimr3x3, dim3x3,
                  dimdr3x3, dimd3x3, dimp, pool='avg'):
         """
             pool: 'avg' or 'max'
@@ -522,7 +521,7 @@ class BNInceptionModule(nn.Module):     # pylint: disable=too-many-instance-attr
             in_dim, dimp, kernel_size=1, stride=1)
         self.bnincept_pool_proj_bn = nn.BatchNorm2d(dimp, momentum=0.1)
 
-    def forward(self, *inputs):     # pylint: disable=too-many-locals
+    def forward(self, *inputs):
         out_1x1 = self.bnincept_1x1(inputs[0])
         out_1x1_bn = self.bnincept_1x1_bn(out_1x1)
         _ = self.relu(out_1x1_bn)
@@ -551,7 +550,7 @@ class BNInceptionModule(nn.Module):     # pylint: disable=too-many-instance-attr
         return output
 
 
-class BNInceptionStrideModule(nn.Module):       # pylint: disable=too-many-instance-attributes
+class BNInceptionStrideModule(nn.Module):
     """ BNInception Stride Module class """
     def __init__(self, in_dim, dimr3x3, dim3x3, dimdr3x3, dimd3x3):
         super(BNInceptionStrideModule, self).__init__()
@@ -597,7 +596,7 @@ class BNInceptionStrideModule(nn.Module):       # pylint: disable=too-many-insta
         return output
 
 
-class BNInception(nn.Module):       # pylint: disable=too-many-instance-attributes
+class BNInception(nn.Module):
     """ BNInception class """
     def __init__(self, num_classes=1000, reduction=True):
         super(BNInception, self).__init__()
@@ -713,11 +712,11 @@ def bninception(num_classes=1000, pretrained='imagenet'):
         assert num_classes == settings['num_classes'], \
             "num_classes should be {}, but is {}".format(settings['num_classes'], num_classes)
         # model.load_state_dict(model_zoo.load_url(settings['url']))
-        model.input_space = settings['input_space']     # pylint: disable=attribute-defined-outside-init
-        model.input_size = settings['input_size']       # pylint: disable=attribute-defined-outside-init
-        model.input_range = settings['input_range']     # pylint: disable=attribute-defined-outside-init
-        model.mean = settings['mean']                   # pylint: disable=attribute-defined-outside-init
-        model.std = settings['std']                     # pylint: disable=attribute-defined-outside-init
+        model.input_space = settings['input_space']
+        model.input_size = settings['input_size']
+        model.input_range = settings['input_range']
+        model.mean = settings['mean']
+        model.std = settings['std']
     return model
 
 # ########################################################################################################
@@ -752,7 +751,7 @@ def load_model_vgg16(local_path):
     return model
 
 
-class TestTrainingExtensionsWinnow(unittest.TestCase):      # pylint: disable=too-many-public-methods
+class TestTrainingExtensionsWinnow(unittest.TestCase):
     """ Unit test cases for winnowing. """
 
     def test_winnowing_partial(self):
@@ -1369,7 +1368,7 @@ class TestTrainingExtensionsWinnow(unittest.TestCase):      # pylint: disable=to
             winnowed_model(torch.rand(input_shape).cuda())
         self.assertEqual(0, 0)
 
-    def test_inception_model_winnowing_multiple_modules(self):      # pylint: disable=too-many-locals
+    def test_inception_model_winnowing_multiple_modules(self):
         """ Test winnowing multiple modules on inception model """
         # These modules are included as a hack to allow tests using inception model to pass,
         # as the model uses functionals instead of modules.
@@ -1771,8 +1770,6 @@ class TestTrainingExtensionsWinnow(unittest.TestCase):      # pylint: disable=to
         self.assertTrue(new_model.conv1.in_channels == 3)
         self.assertTrue(new_model.conv1.out_channels == 31)
 
-    # pylint: disable=too-many-locals
-    # pylint: disable=protected-access
     def test_winnowing_with_downsample(self):
         """ Test winnowing a model that has a downsample layer already inserted from a previous winnow pass """
         model = SingleResidual()

@@ -235,7 +235,7 @@ def create_stand_alone_supervised_classification_evaluator(model, loss_fn, use_c
     evaluator = create_supervised_classification_evaluator(model, loss_fn, use_cuda)
 
     @evaluator.on(Events.EPOCH_COMPLETED)
-    def print_evaluation_results(engine):       # pylint: disable=unused-variable
+    def print_evaluation_results(engine):
         metrics = engine.state.metrics
         logger.info('Validation Results - Top 1 accuracy: {:.2%} Top 5 accuracy: {:.2%}  Avg loss: {:.2f}'
                     .format(metrics['top_1_accuracy'], metrics['top_5_accuracy'], metrics['loss']))

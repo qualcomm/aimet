@@ -79,7 +79,6 @@ def enforce_target_dtype_bitwidth_config():
         qsim_config.ENFORCE_TARGET_DTYPE_BITWIDTH_CONFIG = enforce_target_dtype_bitwidth_config
 
 
-# pylint: disable=protected-access
 # From https://github.com/quic/aimet/blob/b9cb122b57f591b8e62bb2bf48bb178151148011/TrainingExtensions/torch/test/python/test_quantsim_config.py#L76
 class TestQuantsimConfig:
     """ Class containing unit tests for quantsim config feature """

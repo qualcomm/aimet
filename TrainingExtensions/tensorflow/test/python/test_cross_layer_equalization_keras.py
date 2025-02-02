@@ -253,7 +253,6 @@ class TestTrainingExtensionsCrossLayerScaling:
         with pytest.raises(NotImplementedError):
             _ = GraphSearchUtils.convert_layer_group_to_cls_sets(layer_group)
 
-    # pylint: disable=too-many-locals
     def test_scale_cls_set_with_conv_layer(self):
         """
         Test scaling logic for cls set consisting of two convolution layers

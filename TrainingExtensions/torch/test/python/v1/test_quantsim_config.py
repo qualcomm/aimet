@@ -76,7 +76,6 @@ class ModelWithBertCustomLayerNormGelu(torch.nn.Module):
         return x
 
 
-# pylint: disable=protected-access
 class TestQuantsimConfig:
     """ Class containing unit tests for quantsim config feature """
 

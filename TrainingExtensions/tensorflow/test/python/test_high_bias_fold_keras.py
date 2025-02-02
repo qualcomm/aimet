@@ -44,7 +44,6 @@ from aimet_tensorflow.keras.cross_layer_equalization import HighBiasFold, ClsSet
 class TestHighBiasFold:
     """Test methods for High bias folding"""
 
-    # pylint: disable=too-many-locals
     def test_high_bias_fold_for_standard_conv(self):
         """
         Test high bias folding for standard convolution - batch norm - relu - convolution case
@@ -120,7 +119,6 @@ class TestHighBiasFold:
         # Bias value of current layer after folding should be different the value before folding
         assert not np.allclose(bias2_before_folding, bias2_after_folding)
 
-    # pylint: disable=too-many-locals
     def test_high_bias_fold_for_depthwise_separable_conv(self):
         """
         Test high bias folding for depthwise separable convolution case

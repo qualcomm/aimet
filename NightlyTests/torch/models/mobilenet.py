@@ -164,7 +164,6 @@ class InvertedResidual(nn.Module):
                 nn.BatchNorm2d(oup),
             )
 
-    # pylint: disable=W0221
     def forward(self, x):
         if self.use_res_connect:
             return x + self.conv(x)
@@ -218,7 +217,6 @@ class MobileNetV2(nn.Module):
 
         self._initialize_weights()
 
-    # pylint: disable=W0221
     def forward(self, x):
         x = self.features(x)
         x = x.mean(3).mean(2)
@@ -284,7 +282,7 @@ class MockMobileNetV2(nn.Module):
 
         self._initialize_weights()
 
-    # pylint: disable=W0221
+    # pylint: disable=arguments-differ
     def forward(self, x):
         x = self.features(x)
         x = x.mean(3).mean(2)

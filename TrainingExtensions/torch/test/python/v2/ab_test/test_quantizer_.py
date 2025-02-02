@@ -223,11 +223,11 @@ class FakeMultiOutputOp(torch.autograd.Function):
         return g.op('aimet_torch::FakeMultiOutputOp', inp, outputs=5)
 
     @staticmethod
-    def forward(ctx, x):  # pylint: disable=arguments-differ
+    def forward(ctx, x):
         return x * 2, x * 4, x * 8, x * 16, x * 32
 
     @staticmethod
-    def backward(ctx, _grad):  # pylint: disable=arguments-differ
+    def backward(ctx, _grad):
         raise NotImplementedError()
 
 
@@ -328,7 +328,6 @@ class CustomOpV2(torch.nn.Module):
 class Clamp(torch.nn.Module):
     """ Custom module for a functional clamp"""
 
-    # pylint:disable=arguments-differ
     @staticmethod
     def forward(x: torch.Tensor) -> torch.Tensor:
         """

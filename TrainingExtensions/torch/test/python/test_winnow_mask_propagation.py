@@ -50,7 +50,7 @@ from aimet_torch.utils import get_layer_name
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
 
-class SingleResidual(nn.Module):        # pylint: disable=too-many-instance-attributes
+class SingleResidual(nn.Module):
     """ A model with a single residual connection.
         Use this model for unit testing purposes. """
 
@@ -106,7 +106,7 @@ class SingleResidual(nn.Module):        # pylint: disable=too-many-instance-attr
         return x
 
 
-class SingleConcat(nn.Module):      # pylint: disable=too-many-instance-attributes
+class SingleConcat(nn.Module):
     """ A model with a single Concat. """
 
     def __init__(self, num_classes=10):
@@ -159,7 +159,7 @@ class SingleConcat(nn.Module):      # pylint: disable=too-many-instance-attribut
         return x
 
 
-class SingleChunk(nn.Module):       # pylint: disable=too-many-instance-attributes
+class SingleChunk(nn.Module):
     """ A model with a single Concat. """
     def __init__(self, num_classes=10):
         super(SingleChunk, self).__init__()

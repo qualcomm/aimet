@@ -60,7 +60,6 @@ class TestConnectedGraph(unittest.TestCase):
 
     def test_single_residual(self):
         """ Test building ConnectedGraph on single residual model """
-        # pylint: disable=protected-access
         model = test_models.SingleResidual()
         model.eval()
         inp_shape = (1, 3, 32, 32)
@@ -80,7 +79,6 @@ class TestConnectedGraph(unittest.TestCase):
 
     def test_multi_input(self):
         """ Test building ConnectedGraph on a model with multiple inputs """
-        # pylint: disable=protected-access
         model = test_models.MultiInput()
         model.eval()
         inp_shape_1 = (1, 3, 32, 32)
@@ -138,7 +136,6 @@ class TestConnectedGraph(unittest.TestCase):
 
     def test_dropouts(self):
         """ Test building ConnectedGraph on a model with dropouts """
-        # pylint: disable=protected-access
         model = test_models.ModelWithDropouts()
         model.eval()
         inp_shape = (1, 3, 32, 32)
@@ -155,7 +152,6 @@ class TestConnectedGraph(unittest.TestCase):
         self.assertEqual(model.dropout2, dropout_2_op.get_module())
 
     def test_sequential(self):
-        # pylint: disable=protected-access
         """ Test building ConnectedGraph on a model constructed with nn.Sequential Module """
         model = test_models.SequentialModel()
         model.eval()
@@ -167,7 +163,6 @@ class TestConnectedGraph(unittest.TestCase):
 
     def test_hierarchical_model(self):
         """ Test building ConnectedGraph on model which multi-level aggregation of nn.Modules  """
-        # pylint: disable=protected-access
         model = test_models.HierarchicalModel()
         model.eval()
         conv_shape = (1, 64, 32, 32)
@@ -488,7 +483,6 @@ class TestConnectedGraph(unittest.TestCase):
 
     def test_dict_input(self):
         """ Test building ConnectedGraph on a model with multiple inputs """
-        # pylint: disable=protected-access
         model = test_models.DictInputModel()
         model.eval()
         inp_shape_1 = (1, 3, 32, 32)
@@ -520,7 +514,6 @@ class TestConnectedGraph(unittest.TestCase):
         self.assertEqual(model.fc, output_ops[0].get_module())
 
     def test_nested_sequential(self):
-        # pylint: disable=protected-access
         """ Test building ConnectedGraph on a model constructed with nested nn.Sequential Module """
         model = test_models.NestedSequentialModel()
         model.eval()

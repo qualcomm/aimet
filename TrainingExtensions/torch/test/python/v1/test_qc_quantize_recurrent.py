@@ -66,7 +66,6 @@ class TestCase():
         self.sequence_lens = sequence_lens
 
 
-# pylint: disable=too-many-public-methods
 class TestQcQuantizeRecurrentOp(unittest.TestCase):
     """
     Test cases for Quantize Recurrent Custom Op

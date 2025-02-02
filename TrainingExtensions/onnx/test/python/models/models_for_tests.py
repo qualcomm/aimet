@@ -60,7 +60,6 @@ from .mobilenet import MockMobileNetV1, MockMobileNetV11
 
 class Add(torch.nn.Module):
     """ Add module for a functional add"""
-    # pylint:disable=arguments-differ
     def forward(self, x: Any, y: Any) -> Any:
         """
         Forward-pass routine for add op
@@ -73,7 +72,6 @@ class Add(torch.nn.Module):
 
 class Multiply(torch.nn.Module):
     """ Multiply module for a functional multiply"""
-    # pylint:disable=arguments-differ
     def forward(self, x: Any, y: Any) -> Any:
         """
         Forward-pass routine for multiply op
@@ -571,7 +569,6 @@ class TransposedConvModel(torch.nn.Module):
         self.conv2 = torch.nn.ConvTranspose2d(10, 20, 3)
         self.bn2 = torch.nn.BatchNorm2d(20)
 
-    # pylint: disable=arguments-differ
     def forward(self, x):
         # Regular case - conv followed by bn
         x = self.conv1(x)
@@ -600,7 +597,6 @@ class TransposedConvModelWithoutBN(torch.nn.Module):
         self.relu1 = torch.nn.ReLU()
         self.conv2 = torch.nn.ConvTranspose2d(10, 10, 3)
 
-    # pylint: disable=arguments-differ
     def forward(self, x):
         # Regular case - conv followed by bn
         x = self.conv1(x)
@@ -671,7 +667,6 @@ class SingleLayerRNNModel(nn.Module):
         super(SingleLayerRNNModel, self).__init__()
         self.rnn = torch.nn.RNN(input_size=3, hidden_size=5, num_layers=1)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx=None):
         return self.rnn(x, hx)
 
@@ -685,7 +680,6 @@ class SingleLayerBidirectionalLstmModel(nn.Module):
         super(SingleLayerBidirectionalLstmModel, self).__init__()
         self.lstm = torch.nn.LSTM(input_size=3, hidden_size=5, num_layers=1, bidirectional=True)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx=None):
         return self.lstm(x, hx)
 
@@ -699,7 +693,6 @@ class TwoLayerBidirectionalLSTMModel(nn.Module):
         super(TwoLayerBidirectionalLSTMModel, self).__init__()
         self.recurrent = torch.nn.LSTM(input_size=3, hidden_size=5, num_layers=2, bidirectional=True)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx=None):
         return self.recurrent(x, hx)
 
@@ -713,7 +706,6 @@ class TwoLayerBidirectionaRNNModel(nn.Module):
         super(TwoLayerBidirectionaRNNModel, self).__init__()
         self.recurrent = torch.nn.RNN(input_size=3, hidden_size=5, num_layers=2, bidirectional=True)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx=None):
         return self.recurrent(x, hx)
 
@@ -727,7 +719,6 @@ class TwoLayerBidirectionalGRUModel(nn.Module):
         super(TwoLayerBidirectionalGRUModel, self).__init__()
         self.recurrent = torch.nn.GRU(input_size=3, hidden_size=5, num_layers=2, bidirectional=True)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx=None):
         return self.recurrent(x, hx)
 
@@ -741,7 +732,6 @@ class MultiLayerRNNModel(nn.Module):
         super(MultiLayerRNNModel, self).__init__()
         self.rnn = torch.nn.RNN(input_size=3, hidden_size=5, num_layers=2)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx=None):
         return self.rnn(x, hx)
 
@@ -755,7 +745,6 @@ class RNNCellModel(nn.Module):
         super(RNNCellModel, self).__init__()
         self.rnn_cell = torch.nn.RNNCell(input_size=3, hidden_size=5)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx0=None):
         output = []
         for i in range(x.shape[0]):
@@ -773,7 +762,6 @@ class LSTMModel(nn.Module):
         super(LSTMModel, self).__init__()
         self.rnn = torch.nn.LSTM(input_size=3, hidden_size=5, num_layers=1)
 
-    # pylint: disable=arguments-differ
     def forward(self, x, hx_cx=None):
         return self.rnn(x, hx_cx)
 
@@ -1005,7 +993,6 @@ class RoiModel(torch.nn.Module):
         return self.roi(*inputs)
 
 
-# pylint: disable=no-member
 def build_dummy_model():
     """BUild dummy ONNX model for testing"""
     op = OperatorSetIdProto()
@@ -1763,7 +1750,6 @@ def multi_input_with_constant_model():
     return model_onnx
 
 
-# pylint: disable=no-member
 def build_dummy_model_with_dynamic_input():
     """ Build dummy ONNX model for testing. The batch-size dimension of the input is dynamic. """
     op = OperatorSetIdProto()

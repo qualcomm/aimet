@@ -125,7 +125,6 @@ def simple_subclassing():
     Simple subclassing model (Two layer MLP)
     """
 
-    # pylint: disable-msg=too-many-ancestors
     class SimpleSubclassing(tf.keras.Model):
         """
         Two layer MLP implemented by subclassing
@@ -150,7 +149,6 @@ def multi_input_subclassing():
     """
     Multi input subclassing model
     """
-    # pylint: disable-msg=too-many-ancestors
     class MultiInputSubclassing(tf.keras.Model):
         """
         Multi input network implemented by subclassing
@@ -179,7 +177,6 @@ def residual_subclassing():
     """
     Residual connection subclassing model
     """
-    # pylint: disable-msg=too-many-ancestors
     class Residual(tf.keras.Model):
         """The Residual block"""
 

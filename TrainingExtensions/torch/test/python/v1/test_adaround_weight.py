@@ -547,7 +547,7 @@ class TestAdaround:
         out_rounding_to_nearest = quant_module(dummy_input)
 
         # replace the tensor quantizer
-        Adaround._replace_quantization_layer(sim.model, 'conv1')  # pylint: disable=protected-access
+        Adaround._replace_quantization_layer(sim.model, 'conv1')
         quant_module = sim.model.conv1
         out_soft_quant = quant_module(dummy_input)
 

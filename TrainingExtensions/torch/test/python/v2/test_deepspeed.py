@@ -72,7 +72,6 @@ from aimet_torch.v2.seq_mse import  apply_seq_mse, SeqMseParams
 
 class Net(nn.Module):
     """ Mnist Model """
-    # pylint: disable=too-many-instance-attributes
 
     def __init__(self):
         """ Constructor """

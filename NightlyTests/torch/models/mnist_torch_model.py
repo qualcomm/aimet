@@ -110,7 +110,6 @@ class DataLoaderMnist:
 
 class Net(nn.Module):
     """ Mnist Model """
-    # pylint: disable=too-many-instance-attributes
 
     def __init__(self):
         """ Constructor """

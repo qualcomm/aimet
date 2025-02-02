@@ -164,14 +164,12 @@ class InvertedResidual(nn.Module):
                 nn.BatchNorm2d(oup),
             )
 
-    # pylint: disable=W0221
     def forward(self, x):
         if self.use_res_connect:
             return x + self.conv(x)
         return self.conv(x)
 
 
-# pylint: disable=too-many-locals
 class MobileNetV2(nn.Module):
     """ MobileNetV2 def"""
     def __init__(self, n_class=1000, input_size=224, width_mult=1., dropout=0.0):
@@ -218,7 +216,6 @@ class MobileNetV2(nn.Module):
 
         self._initialize_weights()
 
-    # pylint: disable=W0221
     def forward(self, x):
         x = self.features(x)
         x = x.mean(3).mean(2)
@@ -241,7 +238,6 @@ class MobileNetV2(nn.Module):
                 m.bias.data.zero_()
 
 
-# pylint: disable=too-many-locals
 class MockMobileNetV2(nn.Module):
     """ MobileNetV2 def"""
     def __init__(self, n_class=1000, input_size=224, width_mult=1., dropout=0.0):
@@ -284,7 +280,6 @@ class MockMobileNetV2(nn.Module):
 
         self._initialize_weights()
 
-    # pylint: disable=W0221
     def forward(self, x):
         x = self.features(x)
         x = x.mean(3).mean(2)

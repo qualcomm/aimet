@@ -49,12 +49,11 @@ import torch
 from transformers import BertTokenizer
 from models import mnist_torch_model
 from aimet_common.utils import AimetLogger
-import subprocess
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
 eval_scores_csv_file = sys.argv[1]
-use_cuda = eval(sys.argv[2]) # pylint: disable=eval-used
+use_cuda = eval(sys.argv[2])
 
 # ##############################################################################################
 # Dependency #1
