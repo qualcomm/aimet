@@ -259,7 +259,7 @@ class ChannelPruningCostCalculator(CostCalculator):
     def __init__(self, pruner: InputChannelPruner):
         self._pruner = pruner
 
-    def calculate_compressed_cost(self, layer_db: LayerDatabase,
+    def calculate_compressed_cost(self, layer_db: LayerDatabase, # pylint: disable=arguments-differ
                                   layer_ratio_list: List[LayerCompRatioPair], cost_metric: CostMetric) -> Cost:
         """
         Calculate compressed cost of a model given a list of layer-compression-ratio pairs
