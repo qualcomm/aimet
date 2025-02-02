@@ -35,8 +35,8 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
+import itertools
 import json
-import os
 import tempfile
 from pathlib import Path
 
@@ -53,7 +53,6 @@ from aimet_common.defs import QuantScheme
 from aimet_torch.v1.quantsim import QuantizationSimModel
 
 from models.imagenet_dataloader import ImageNetDataLoader
-from aimet_torch.utils import IterFirstX
 from models.supervised_classification_pipeline import create_stand_alone_supervised_classification_evaluator,\
     create_supervised_classification_trainer
 from aimet_torch.bn_reestimation import reestimate_bn_stats
@@ -108,7 +107,7 @@ def model_eval(model, early_stopping_iterations):
     data_loader = _get_data_loader()
     if early_stopping_iterations is not None:
         # wrapper around validation data loader to run only 'X' iterations to save time
-        val_loader = IterFirstX(data_loader.val_loader, early_stopping_iterations)
+        val_loader = itertools.islice(data_loader.val_loader, early_stopping_iterations)
     else:
         # iterate over entire validation data set
         val_loader = data_loader.val_loader

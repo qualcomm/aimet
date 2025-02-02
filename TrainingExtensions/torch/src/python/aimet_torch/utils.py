@@ -81,19 +81,6 @@ DROPOUT_TYPES = (torch.nn.Dropout, torch.nn.Dropout2d, torch.nn.Dropout3d)
 # list of modules which need to be treated as a leaf module
 modules_to_treat_as_leaf = []
 
-class IterFirstX:
-    """ Iterator for the first x samples in a given data-loader """
-
-    def __init__(self, data_loader, num_samples):
-        self.data_loader = data_loader
-        self.num_samples = num_samples
-
-    def __iter__(self):
-        for i, batch in enumerate(self.data_loader):
-            if i >= self.num_samples:
-                break
-            yield batch
-
 
 class StopForwardException(Exception):
     """

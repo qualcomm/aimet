@@ -37,8 +37,10 @@
 
 """ Code to perform bias correction for layers """
 
+import itertools
 from typing import Callable, Tuple, List, Union, Dict
 import copy
+
 import torch
 import torch.nn
 import numpy as np
@@ -248,14 +250,13 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
     n_batches_bias_correction = int(np.ceil(num_bias_correct_samples / batch_size))
     n_batches_quantization = int(np.ceil(num_quant_samples / batch_size))
 
-    data_loader_n_samples_bias_corr = utils.IterFirstX(data_loader, n_batches_bias_correction)
-    data_loader_n_samples_quant = utils.IterFirstX(data_loader, n_batches_quantization)
-
     # TODO: Remove wrapper function
     # Create a wrapping function for data loader for quantization
     def pass_data_through_model(model, early_stopping_iterations=None, use_cuda=False):
         # pylint: disable=unused-argument
         # forward pass for given number of batches for model
+        data_loader_n_samples_quant = itertools.islice(data_loader, n_batches_quantization)
+
         for (images_in_one_batch, *_) in data_loader_n_samples_quant:
             forward_pass(model, images_in_one_batch)
 
@@ -333,6 +334,8 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
                     # Get output from quantized model and reference model
                     reference_outputs = []
                     quantized_outputs = []
+                    data_loader_n_samples_bias_corr = itertools.islice(data_loader, n_batches_bias_correction)
+
                     for images_in_one_batch, *_ in data_loader_n_samples_bias_corr:
                         reference_output_batch = get_output_data(reference_layer, model_copy, images_in_one_batch)
                         quantized_model_output_batch = get_output_data(quantize_layer, model, images_in_one_batch)
