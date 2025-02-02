@@ -47,7 +47,7 @@ import torch.nn.functional as functional
 
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantizationDataType
-from aimet_torch.utils import to_numpy, create_fake_data_loader, CachedDataset
+from aimet_torch.utils import create_fake_data_loader, CachedDataset
 from aimet_torch.v1.utils import compute_encoding_for_given_bitwidth, create_encoding_from_dict
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper, QuantScheme
@@ -102,7 +102,7 @@ class TestAdaroundOptimizer(unittest.TestCase):
                 after_opt = adaround_wrapper.alpha
 
                 # parameter should be different before and after optimization
-                self.assertFalse(np.array_equal(to_numpy(before_opt), to_numpy(after_opt)))
+                self.assertFalse(np.array_equal(before_opt.cpu().detach().numpy(), after_opt.cpu().detach().numpy()))
 
                 # alpha's gradient should not be None
                 self.assertTrue(adaround_wrapper.alpha.grad is not None)

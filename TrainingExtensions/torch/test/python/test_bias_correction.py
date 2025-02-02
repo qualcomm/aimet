@@ -50,7 +50,7 @@ from .models.test_models import TransposedConvModel
 from aimet_common.defs import QuantScheme
 
 from aimet_torch import bias_correction
-from aimet_torch.utils import to_numpy, create_fake_data_loader
+from aimet_torch.utils import create_fake_data_loader
 from aimet_torch.cross_layer_equalization import get_ordered_list_of_conv_modules
 from aimet_torch.bias_correction import find_all_conv_bn_with_activation
 from aimet_torch import quantsim as qsim
@@ -102,7 +102,7 @@ class TestTrainingExtensionBnFold:
             conv2_input = conv1_output
             conv2_output = model.conv2(functional.relu(functional.max_pool2d(conv2_input, 2)))
             # compare the output from conv2 layer
-            assert (np.allclose(to_numpy(conv2_output), np.asarray(conv2_output_data)[batch * batch_size: (batch + 1) *
+            assert (np.allclose(conv2_output.cpu().detach().numpy(), np.asarray(conv2_output_data)[batch * batch_size: (batch + 1) *
                                                                                                           batch_size, :, :, :]))
 
     def test_get_ordering_of_nodes_in_model(self):

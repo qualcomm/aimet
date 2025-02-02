@@ -370,32 +370,6 @@ def run_hook_for_layers_with_given_input(model: torch.nn.Module,
             h.remove()
 
 
-def to_numpy(tensor: torch.Tensor):
-    """
-     Helper function that turns the given tensor into a numpy array
-    :param tensor       : torch.Tensor
-    :return             : float or np.array
-    """
-
-    if isinstance(tensor, np.ndarray):
-        return tensor
-
-    # if tensor is allocated on GPU, first copy to CPU
-    # then detach from the current graph and convert to numpy array
-    if hasattr(tensor, 'is_cuda'):
-        if tensor.is_cuda:
-            return tensor.cpu().detach().numpy()
-
-    # if tensor is on CPU only
-    if hasattr(tensor, 'detach'):
-        return tensor.detach().numpy()
-
-    if hasattr(tensor, 'numpy'):
-        return tensor.numpy()
-
-    return np.array(tensor)
-
-
 def create_fake_data_loader(dataset_size: int, batch_size: int, image_size=(1, 28, 28)):
     """
     Helper function to create fake data loader which is default image size (1, 28, 28)

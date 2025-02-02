@@ -106,21 +106,6 @@ class ReShape(nn.Module):
         return x.view(self.shape)
 
 
-def to_numpy(tensor):
-    """ Converts a PyTorch Tensor to a Numpy array"""
-    if isinstance(tensor, np.ndarray):
-        return tensor
-    if hasattr(tensor, 'is_cuda'):
-        if tensor.is_cuda:
-            return tensor.cpu().detach().numpy()
-    if hasattr(tensor, 'detach'):
-        return tensor.detach().numpy()
-    if hasattr(tensor, 'numpy'):
-        return tensor.numpy()
-
-    return np.array(tensor)
-
-
 def zero_out_input_channels(module, input_channels_to_prune):
     """
     :param module: module

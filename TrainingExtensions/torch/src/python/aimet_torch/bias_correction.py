@@ -126,7 +126,7 @@ def get_output_data(layer: torch.nn.Module, model: torch.nn.Module, images_in_on
         """
         hook to collect output data
         """
-        out_data = utils.to_numpy(out_data)
+        out_data = out_data.detach().cpu().numpy()
         orig_layer_out_data.append(out_data)
         raise StopForwardException
 

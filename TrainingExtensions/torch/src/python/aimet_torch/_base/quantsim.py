@@ -854,14 +854,10 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         :param path: Path to save file
         :param filename_prefix: Filename to use for saved file
         """
-
-        def to_numpy(tensor):
-            return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
-
         # Save state dict in safetensors file
         unwrapped_model = self.get_original_model(self.model)
         data = unwrapped_model.state_dict()
-        data = {k: to_numpy(v) for k, v in data.items()}
+        data = {k: v.detach().cpu().numpy() for k, v in data.items()}
         metadata = self.model.mpp_meta if hasattr(self.model, 'mpp_meta') else {}
 
         file_path = os.path.join(path, filename_prefix + '.safetensors')

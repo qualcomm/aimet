@@ -291,25 +291,25 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
 
         module_data = utils.ModuleData(model, model.conv1)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
-        self.assertTrue(np.array_equal(utils.to_numpy(inp), utils.to_numpy(model_input)))
+        self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
         self.assertEqual(out, None)
 
         module_data = utils.ModuleData(model, model.conv1)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
         conv1_out = model.conv1(model_input)
-        self.assertTrue(np.array_equal(utils.to_numpy(out), utils.to_numpy(conv1_out)))
+        self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv1_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
 
         module_data = utils.ModuleData(model, model.conv1)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=True)
         conv1_out = model.conv1(model_input)
-        self.assertTrue(np.array_equal(utils.to_numpy(out), utils.to_numpy(conv1_out)))
-        self.assertTrue(np.array_equal(utils.to_numpy(inp), utils.to_numpy(model_input)))
+        self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv1_out.cpu().detach().numpy()))
+        self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
 
         module_data = utils.ModuleData(model, model.fc)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
         fc_out = model(model_input)
-        self.assertTrue(np.array_equal(utils.to_numpy(out), utils.to_numpy(fc_out)))
+        self.assertTrue(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
 
     def test_collect_inp_out_data_cpu(self):
@@ -334,25 +334,25 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
 
         module_data = utils.ModuleData(model, model.conv1, forward_fn)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
-        self.assertTrue(np.array_equal(utils.to_numpy(inp), utils.to_numpy(model_input[0])))
+        self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input[0].cpu().detach().numpy()))
         self.assertEqual(out, None)
 
         module_data = utils.ModuleData(model, model.conv1, forward_fn)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
         conv1_out = model.conv1(model_input[0])
-        self.assertTrue(np.array_equal(utils.to_numpy(out), utils.to_numpy(conv1_out)))
+        self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv1_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
 
         module_data = utils.ModuleData(model, model.conv3, forward_fn)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=True)
         conv3_out = model.conv3(model_input[1])
-        self.assertTrue(np.array_equal(utils.to_numpy(out), utils.to_numpy(conv3_out)))
-        self.assertTrue(np.array_equal(utils.to_numpy(inp), utils.to_numpy(model_input[1])))
+        self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv3_out.cpu().detach().numpy()))
+        self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input[1].cpu().detach().numpy()))
 
         module_data = utils.ModuleData(model, model.fc, forward_fn)
         inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
         fc_out = model(*model_input)
-        self.assertTrue(np.array_equal(utils.to_numpy(out), utils.to_numpy(fc_out)))
+        self.assertTrue(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
 
     def test_collect_inp_out_data_multi_input_cpu(self):
@@ -398,11 +398,11 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
             module_data = utils.ModuleData(model, model.fc)
             inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
             fc_out = model(model_input)
-            self.assertFalse(np.array_equal(utils.to_numpy(out), utils.to_numpy(fc_out)))
+            self.assertFalse(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
 
             module_data = utils.ModuleData(model, model.conv1)
             inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
-            self.assertTrue(np.array_equal(utils.to_numpy(inp), utils.to_numpy(model_input)))
+            self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
 
     @pytest.mark.cuda
     def test_collect_inp_out_data_quantsim_model_gpu(self):
@@ -417,11 +417,11 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
             module_data = utils.ModuleData(model, model.fc)
             inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
             fc_out = model(model_input)
-            self.assertFalse(np.array_equal(utils.to_numpy(out), utils.to_numpy(fc_out)))
+            self.assertFalse(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
 
             module_data = utils.ModuleData(model, model.conv1)
             inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
-            self.assertTrue(np.array_equal(utils.to_numpy(inp), utils.to_numpy(model_input)))
+            self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
 
     def test_cached_dataset(self):
         """ Test cache data loader splitting into train and validation """

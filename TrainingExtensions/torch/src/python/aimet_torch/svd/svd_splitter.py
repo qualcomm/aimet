@@ -42,7 +42,6 @@ import math
 import numpy as np
 import torch
 
-from aimet_torch.winnow.winnow_utils import to_numpy
 from aimet_common.utils import AimetLogger
 from aimet_common.svd_pruner import SpatialSvdPruner, WeightSvdPruner
 
@@ -63,7 +62,7 @@ class SpatialSvdModuleSplitter:
         assert isinstance(module, torch.nn.Conv2d)
         assert module.dilation == (1, 1)
 
-        weight_tensor = to_numpy(module.weight)  # n c h w
+        weight_tensor = module.weight.detach().cpu().numpy()  # n c h w
         out_channels, in_channels, height, width = weight_tensor.shape
 
         h, v = SpatialSvdPruner.lingalg_spatial_svd(weight_tensor, rank, in_channels, out_channels,

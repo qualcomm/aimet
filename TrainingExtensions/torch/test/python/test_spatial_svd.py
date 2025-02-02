@@ -45,7 +45,6 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 
 from aimet_torch.utils import create_rand_tensors_given_shapes, get_device
-from aimet_torch.winnow.winnow_utils import to_numpy
 from .models import mnist_torch_model
 from aimet_torch.svd.svd_splitter import SpatialSvdModuleSplitter
 from aimet_torch.svd.svd_pruner import SpatialSvdPruner
@@ -115,9 +114,9 @@ class TestSpatialSvdLayerSplit(unittest.TestCase):
 
         first_layer, second_layer = SpatialSvdModuleSplitter.split_module(module=layer, rank=100)
         seq_layers = torch.nn.Sequential(first_layer, second_layer)
-        new_output = to_numpy(seq_layers.forward(torch.FloatTensor(input_data)))
+        new_output = seq_layers.forward(torch.FloatTensor(input_data)).cpu().detach().numpy()
 
-        output_data = to_numpy(output_data)
+        output_data = output_data.cpu().detach().numpy()
 
         assert np.allclose(new_output, output_data, atol=1e-5)
 

@@ -215,7 +215,7 @@ class DataSubSampler:
             """
             hook to collect input data
             """
-            inp_data = utils.to_numpy(inp_data[0])
+            inp_data = inp_data[0].detach().cpu().numpy()
             pruned_layer_inp_data.append(inp_data)
             raise StopForwardException
 
@@ -223,7 +223,7 @@ class DataSubSampler:
             """
             hook to collect output data
             """
-            out_data = utils.to_numpy(out_data)
+            out_data = out_data.detach().cpu().numpy()
             orig_layer_out_data.append(out_data)
             raise StopForwardException
 

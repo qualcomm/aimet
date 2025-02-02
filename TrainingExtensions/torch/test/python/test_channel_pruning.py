@@ -56,7 +56,7 @@ from aimet_torch.data_subsampler import DataSubSampler
 from aimet_torch.channel_pruning.weight_reconstruction import WeightReconstructor
 from aimet_torch.channel_pruning.channel_pruner import InputChannelPruner
 from .models.mnist_torch_model import Net as mnist_model
-from aimet_torch.utils import to_numpy, create_fake_data_loader, get_layer_name, get_layer_by_name,\
+from aimet_torch.utils import create_fake_data_loader, get_layer_name, get_layer_by_name,\
     create_rand_tensors_given_shapes, get_device
 from aimet_torch.layer_database import Layer, LayerDatabase
 
@@ -304,13 +304,13 @@ class TestTrainingExtensionsChannelPruning(unittest.TestCase):
             conv2_input = conv1_output
             conv2_output = orig_model.conv2(functional.relu(functional.max_pool2d(conv2_input, 2)))
             # compare the output from conv2 layer
-            self.assertTrue(np.array_equal(to_numpy(conv2_output),
+            self.assertTrue(np.array_equal(conv2_output.cpu().detach().numpy(),
                                            conv2_output_data[batch * batch_size: (batch + 1) * batch_size, :, :, :]))
 
             conv1_output_copy = comp_model.conv1(images_in_one_batch.cuda())
             conv2_input_copy = functional.relu(functional.max_pool2d(conv1_output_copy, 2))
             # compare the inputs of conv2 layer
-            self.assertTrue(np.array_equal(to_numpy(conv2_input_copy),
+            self.assertTrue(np.array_equal(conv2_input_copy.cpu().detach().numpy(),
                                            conv2_input_data[batch * batch_size: (batch + 1) * batch_size, :, :, :]))
 
     @unittest.mock.patch('numpy.random.choice')
@@ -403,14 +403,14 @@ class TestTrainingExtensionsChannelPruning(unittest.TestCase):
         reshaped_outputs = outputs.reshape([outputs.shape[0], np.prod(outputs.shape[1:4])])
 
         WeightReconstructor.reconstruct_params_for_conv2d(layer=layer, input_data=inputs,
-                                                          output_data=to_numpy(reshaped_outputs))
+                                                          output_data=reshaped_outputs.cpu().detach().numpy())
 
         new_outputs = functional.conv2d(torch.FloatTensor(inputs), layer.weight,
                                         bias=layer.bias, stride=layer.stride,
                                         padding=layer.padding)
 
         # if data is increased, choose tolerance wisely
-        self.assertTrue(np.allclose(to_numpy(outputs), to_numpy(new_outputs), atol=1e-5))
+        self.assertTrue(np.allclose(outputs.cpu().detach().numpy(), new_outputs.cpu().detach().numpy(), atol=1e-5))
 
     def test_data_sub_sampling_and_reconstruction(self):
         """Test end to end data sub sampling and reconstruction for MNIST conv2 layer"""
@@ -440,11 +440,11 @@ class TestTrainingExtensionsChannelPruning(unittest.TestCase):
         # if you increase the data (data set size, number of batches or samples per image),
         # reduce the absolute tolerance
 
-        self.assertTrue(np.allclose(to_numpy(comp_model.conv2.weight.data),
-                                    to_numpy(orig_model.conv2.weight.data), atol=1e-0))
+        self.assertTrue(np.allclose(comp_model.conv2.weight.data.cpu().detach().numpy(),
+                                    orig_model.conv2.weight.data.cpu().detach().numpy(), atol=1e-0))
 
-        self.assertTrue(np.allclose(to_numpy(comp_model.conv2.bias.data),
-                                    to_numpy(orig_model.conv2.bias.data), atol=1e-0))
+        self.assertTrue(np.allclose(comp_model.conv2.bias.data.cpu().detach().numpy(),
+                                    orig_model.conv2.bias.data.cpu().detach().numpy(), atol=1e-0))
 
     def test_data_sub_sample_and_reconstruction_with_zero_channels(self):
         """Test end to end data sub sampling and reconstruction for MNIST conv2 layer"""
@@ -477,7 +477,7 @@ class TestTrainingExtensionsChannelPruning(unittest.TestCase):
         self.assertEqual(comp_model.conv2.weight.data.shape, orig_model.conv2.weight.data.shape)
         self.assertEqual(comp_model.conv2.bias.data.shape, orig_model.conv2.bias.data.shape)
         # make sure they are not same
-        self.assertFalse(np.allclose(to_numpy(before_reconstruction), to_numpy(after_reconstruction)))
+        self.assertFalse(np.allclose(before_reconstruction.cpu().detach().numpy(), after_reconstruction.cpu().detach().numpy()))
 
     def test_data_sub_sampling_and_reconstruction_without_bias(self):
         """Test end to end data sub sampling and reconstruction for MNIST conv2 layer (without bias)"""
@@ -522,7 +522,7 @@ class TestTrainingExtensionsChannelPruning(unittest.TestCase):
         self.assertEqual(new_bias, None)
         # if you increase the data (data set size, number of batches or samples per image),
         # reduce the absolute tolerance
-        self.assertTrue(np.allclose(to_numpy(new_weight), to_numpy(orig_weight), atol=1e-0))
+        self.assertTrue(np.allclose(new_weight.cpu().detach().numpy(), orig_weight.cpu().detach().numpy(), atol=1e-0))
 
     def test_select_inp_channels(self):
 
