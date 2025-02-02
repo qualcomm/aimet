@@ -138,11 +138,9 @@ def get_block_outputs(fp_block: torch.nn.ModuleList, quant_block: torch.nn.Modul
     fp_block.to(device)
     quant_block.to(device)
 
-    fp_iterator = iter(cached_fp_dataset)
-    quant_iterator = iter(cached_quant_dataset)
-    for idx in range(len(cached_fp_dataset)): # pylint: disable=consider-using-enumerate
-        fp_inputs = change_tensor_device_placement(next(fp_iterator), device)
-        quant_inputs = change_tensor_device_placement(next(quant_iterator), device)
+    for idx, (fp_inputs, quant_inputs) in enumerate(zip(cached_fp_dataset, cached_quant_dataset)):
+        fp_inputs = change_tensor_device_placement(fp_inputs, device)
+        quant_inputs = change_tensor_device_placement(quant_inputs, device)
 
         with in_eval_mode(fp_block), in_eval_mode(quant_block), torch.no_grad():
             fp_outputs = forward_fn(fp_block, fp_inputs)

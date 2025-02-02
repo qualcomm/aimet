@@ -241,6 +241,10 @@ class CachedDataset(Dataset):
 
         return batch
 
+    def __iter__(self):
+        for i in range(self.__len__()):
+            yield self.__getitem__(i)
+
     def _cache_model_inputs(self, data_loader):
         """
         Function to cache number of batches individually in separate file at provided path location
