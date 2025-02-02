@@ -43,15 +43,15 @@ from packaging import version
 
 if version.parse(tf.version.VERSION) >= version.parse("2.10"):
     # Ignore pylint errors as keras module is not available in TF 2.4
-    from keras import backend # pylint: disable=import-error
-    from keras import constraints # pylint: disable=import-error
-    from keras import initializers # pylint: disable=import-error
-    from keras import regularizers # pylint: disable=import-error
-    from keras.engine.base_layer import Layer # pylint: disable=import-error
-    from keras.engine.input_spec import InputSpec # pylint: disable=import-error
-    from keras.layers import Dense # pylint: disable=import-error
-    from keras.layers.rnn import LSTMCell # pylint: disable=import-error
-    from keras.layers.rnn.rnn_utils import caching_device # pylint: disable=import-error
+    from keras import backend
+    from keras import constraints
+    from keras import initializers
+    from keras import regularizers
+    from keras.engine.base_layer import Layer
+    from keras.engine.input_spec import InputSpec
+    from keras.layers import Dense
+    from keras.layers.rnn import LSTMCell
+    from keras.layers.rnn.rnn_utils import caching_device
 else:
     from tensorflow.python.keras import backend # pylint: disable=ungrouped-imports
     from tensorflow.python.keras import constraints # pylint: disable=ungrouped-imports

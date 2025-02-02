@@ -45,8 +45,8 @@ from packaging import version
 
 if version.parse(tf.version.VERSION) >= version.parse("2.10"):
     # Ignore pylint errors as keras module is not available in TF 2.4
-    from keras.layers.core.tf_op_layer import TFOpLambda # pylint: disable=import-error
-    from keras.engine.functional import Functional # pylint: disable=import-error
+    from keras.layers.core.tf_op_layer import TFOpLambda
+    from keras.engine.functional import Functional
 else:
     # Ignore pylint errors due to conditional imports
     from tensorflow.python.keras.engine.functional import Functional # pylint: disable=ungrouped-imports

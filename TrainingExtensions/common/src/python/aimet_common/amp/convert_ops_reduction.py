@@ -45,7 +45,7 @@ import math
 import abc
 import json
 try:
-    import cvxpy as cp  # pylint: disable=import-error
+    import cvxpy as cp
 except ImportError:
     print("Unable to import cvxpy")
 import networkx as nx

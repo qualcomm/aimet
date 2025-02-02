@@ -50,8 +50,8 @@ from torch.nn.modules.adaptive import _ASMoutput
 from torch.nn.utils.rnn import PackedSequence
 from torch.utils._pytree import tree_map
 
-from ..base import BaseQuantizationMixin # pylint: disable=import-error
-from ..modules import custom # pylint: disable=import-error
+from ..base import BaseQuantizationMixin
+from ..modules import custom
 
 
 class FakeQuantMeta(abc.ABCMeta):

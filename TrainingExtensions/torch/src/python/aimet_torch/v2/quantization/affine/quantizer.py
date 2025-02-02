@@ -54,7 +54,7 @@ from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine.backends import quantize, quantize_dequantize, torch_builtins, _derive_qmin_qmax
 from aimet_torch.v2.utils import ste_round
 from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
-from ._utils import _GridMixin, _register_signature # pylint: disable=import-error
+from ._utils import _GridMixin, _register_signature
 
 
 __all__ = ['AffineQuantizerBase', 'MinMaxQuantizer', 'Quantize', 'QuantizeDequantize',

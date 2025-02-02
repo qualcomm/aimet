@@ -34,7 +34,6 @@
 # =============================================================================
 
 """ Mapping information for AIMET and backend"""
-# pylint: disable=import-error, no-name-in-module
 import torch
 from aimet_common.libpymo import QnnDatatype
 from aimet_common.defs import QuantizationDataType

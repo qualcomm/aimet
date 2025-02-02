@@ -46,7 +46,7 @@ from aimet_common.defs import EncodingType
 from aimet_torch.v2.utils import docstring
 from aimet_torch.v2.quantization.base import EncodingBase
 from aimet_torch.v2.quantization.affine.backends import quantize, dequantize, _derive_qmin_qmax
-from ._utils import _GridMixin, _register_signature # pylint: disable=import-error
+from ._utils import _GridMixin, _register_signature
 
 
 __all__ = ["AffineEncoding", "VectorEncoding", "GroupedBlockEncoding"]

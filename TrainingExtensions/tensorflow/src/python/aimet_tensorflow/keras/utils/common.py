@@ -96,7 +96,7 @@ def is_lambda_operator(layer: tf.keras.layers.Layer) -> bool:
     return False
 
 
-# pylint: disable=import-error,import-outside-toplevel
+# pylint: disable=import-outside-toplevel
 def is_a_tf_op_lambda_layer(layer: tf.keras.layers.Layer) -> bool:
     """
     Check if a layer is a TFOpLambda layer. These occur typically when a user is using built in TensorFlow operations
@@ -649,7 +649,6 @@ def set_keras_backend_version_to_v2(func_to_run_before_setting_back_to_v2: Calla
     def wrap(*args, **kwargs):
         func_to_run_before_setting_back_to_v2(*args, **kwargs)
         if version.parse(tf.version.VERSION) >= version.parse("2.10"):
-            # pylint: disable=import-error
             from keras.engine.functional import Functional
             from keras.engine import base_layer
             from keras.engine import base_layer_v1

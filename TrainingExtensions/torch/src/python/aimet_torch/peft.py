@@ -45,8 +45,6 @@ import torch
 from safetensors.torch import save_file
 from safetensors import safe_open
 
-# pylint: disable=import-error
-# pylint: disable=no-name-in-module
 from peft.tuners.lora.layer import LoraLayer as PeftLoraLayer
 from peft.tuners.lora.layer import Conv2d as PeftConv2d
 

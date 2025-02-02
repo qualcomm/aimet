@@ -51,7 +51,6 @@ if version.parse(tf.version.VERSION) < version.parse("2.10"):
     from tensorflow.python.keras.layers.multi_head_attention import MultiHeadAttention, _build_proj_equation, _get_output_shape
 else:
     from tensorflow.keras.layers import MultiHeadAttention
-    # pylint: disable=import-error
     from keras.layers.attention.multi_head_attention import _build_proj_equation, _get_output_shape
 
 # Disable pylint warning since there is a conditional import above
