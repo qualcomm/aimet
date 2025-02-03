@@ -36,8 +36,8 @@
 # =============================================================================
 """ v1 lazy quant wrapper / quantizer """
 
-from aimet_torch.utils import get_v1_quant_scheme_for_initialization
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, LazyQuantizer
+from aimet_torch.v1.utils import get_v1_quant_scheme_for_initialization
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, StaticGridQuantWrapper, tensor_quantizer_factory
 from aimet_torch.v1.tensor_quantizer import TensorQuantizer, StaticGridPerChannelQuantizer
 

@@ -1117,22 +1117,6 @@ def get_propagated_encoding_dict(encoding_dict: List[Dict[str, any]]) -> List[Di
     return [{"bitwidth": encoding_dict[0]["bitwidth"], "dtype": encoding_dict[0]["dtype"]}]
 
 
-def get_v1_quant_scheme_for_initialization(quant_scheme: QuantScheme) -> QuantScheme:
-    """
-    Convert v1 quant scheme into v1 quant scheme for initialization
-
-    :param quant_scheme: v1 quant scheme from quantsim init parameter
-    :return: v1 quant scheme for initialization
-    """
-    if quant_scheme == QuantScheme.training_range_learning_with_tf_init:
-        return QuantScheme.post_training_tf
-
-    if quant_scheme == QuantScheme.training_range_learning_with_tf_enhanced_init:
-        return QuantScheme.post_training_tf_enhanced
-
-    return quant_scheme
-
-
 def _deleted_module_import_error(name: str, since: str, v1_legacy_api: str = None) -> ImportError:
     msg = f"{name} module is deleted since aimet_torch=={since}."
 

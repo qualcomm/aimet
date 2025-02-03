@@ -51,7 +51,7 @@ from aimet_torch.v1.qc_quantize_op import QcQuantizeStandAloneBase, QcQuantizeWr
 from aimet_torch.v1.tensor_quantizer import initialize_learned_grid_quantizer_attributes
 from aimet_torch.v1.qc_quantize_op import get_encoding_by_quantizer as _get_encoding_by_quantizer
 from aimet_torch import utils
-from aimet_torch.v1.utils import create_encoding_dict
+from aimet_torch.v1.utils import create_encoding_dict, get_v1_quant_scheme_for_initialization
 from aimet_torch.onnx_utils import OnnxSaver, OnnxExportApiArgs
 from aimet_torch.v1.qc_quantize_recurrent import QcQuantizeRecurrent
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
@@ -382,7 +382,7 @@ class QuantizationSimModel(_QuantizationSimModelBase):
         if issubclass(quantizer_wrapper_type, LazyQuantizeWrapper):
             quant_scheme_for_initialization = self._quant_scheme
         else:
-            quant_scheme_for_initialization = utils.get_v1_quant_scheme_for_initialization(self._quant_scheme)
+            quant_scheme_for_initialization = get_v1_quant_scheme_for_initialization(self._quant_scheme)
 
         # TODO add quant_scheme_for_initialization for FP8 case
         quantized_module = quantizer_wrapper_type(module_to_quantize, self._default_param_bw, self._default_output_bw,

@@ -232,3 +232,19 @@ def validate_is_symmetric_flag(quantizer: TensorQuantizer, encoding_dict: Dict, 
 
     # In case of partial encodings, use is_symmetric from encodings provided to compute full encoding
     _validate_is_symmetric_flag(quantizer, encoding_dict, strict=strict)
+
+
+def get_v1_quant_scheme_for_initialization(quant_scheme: QuantScheme) -> QuantScheme:
+    """
+    Convert v1 quant scheme into v1 quant scheme for initialization
+
+    :param quant_scheme: v1 quant scheme from quantsim init parameter
+    :return: v1 quant scheme for initialization
+    """
+    if quant_scheme == QuantScheme.training_range_learning_with_tf_init:
+        return QuantScheme.post_training_tf
+
+    if quant_scheme == QuantScheme.training_range_learning_with_tf_enhanced_init:
+        return QuantScheme.post_training_tf_enhanced
+
+    return quant_scheme
