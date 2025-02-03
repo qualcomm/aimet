@@ -61,7 +61,7 @@ from typing import (
 )
 
 import torch
-from torch.utils._pytree import tree_flatten
+from torch.utils._pytree import tree_flatten, tree_map
 import onnx
 from packaging import version  # pylint: disable=wrong-import-order
 from safetensors.numpy import save_file as save_safetensor_file
@@ -320,14 +320,14 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         inout_tensors_dtypes_for_cast_ops = {}
 
         def record_metadata(module, inputs, outputs):
-            if isinstance(outputs, torch.Tensor):
-                outputs = (outputs,)
+            input_shapes = tree_map(lambda x: x.shape if isinstance(x, torch.Tensor) else None, inputs)
+            output_shapes = tree_map(lambda x: x.shape if isinstance(x, torch.Tensor) else None, outputs)
 
-            inout_tensor_shapes[module] = (
-                [inp.shape if isinstance(inp, torch.Tensor) else None for inp in inputs],
-                [out.shape if isinstance(out, torch.Tensor) else None for out in outputs],
-            )
-            num_inout_tensors[module] = (len(inputs), len(outputs))
+            if output_shapes is None or isinstance(output_shapes, torch.Size):
+                output_shapes = (output_shapes,)
+
+            inout_tensor_shapes[module] = (input_shapes, output_shapes)
+            num_inout_tensors[module] = (len(input_shapes), len(output_shapes))
 
             if isinstance(module, Cast):
                 input, = inputs
