@@ -248,7 +248,7 @@ class _QuantizationSimModelInterface(ABC):
 
 
 class _QuantizationSimModelBase(_QuantizationSimModelInterface):
-    # pylint: disable=too-many-arguments, too-many-instance-attributes, too-many-locals, too-many-public-methods
+    # pylint: disable=too-many-arguments, too-many-instance-attributes, too-many-locals, too-many-public-methods, too-many-statements
     def __init__(self, model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tuple],
                  quant_scheme: Union[str, QuantScheme] = QuantScheme.post_training_tf_enhanced,
                  rounding_mode: str = 'nearest', default_output_bw: int = 8, default_param_bw: int = 8,
@@ -330,9 +330,9 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             num_inout_tensors[module] = (len(input_shapes), len(output_shapes))
 
             if isinstance(module, Cast):
-                input, = inputs
-                output, = outputs
-                inout_tensors_dtypes_for_cast_ops[module] = (input.dtype, output.dtype)
+                inp, = inputs
+                out, = outputs
+                inout_tensors_dtypes_for_cast_ops[module] = (inp.dtype, out.dtype)
 
         handles = []
         try:
