@@ -440,42 +440,6 @@ def match_model_settings(model_to_match: torch.nn.Module, model_to_set: torch.nn
         pass
 
 
-def load_pytorch_model(model_name: str, path: str, filename: str, load_state_dict: bool = False) -> torch.nn.Module:
-    """
-    Load the pytorch model from the given path and filename.
-    NOTE: The model can only be saved by saving the state dict. Attempting to serialize the entire model will result
-    in a mismatch between class types of the model defined and the class type that is imported programatically.
-
-    :param model_name: Name of model
-    :param path: Path where the pytorch model definition file is saved
-    :param filename: Filename of the pytorch model definition
-    :param load_state_dict: If True, load state dict with the given path and filename. The state dict file is expected
-        to end in '.pth'
-    :return: Imported pytorch model
-    """
-
-    model_path = os.path.join(path, filename + '.py')
-    if not os.path.exists(model_path):
-        logger.error('Unable to find model file at path %s', model_path)
-        raise AssertionError('Unable to find model file at path ' + model_path)
-
-    # Import model's module and instantiate model
-    spec = importlib.util.spec_from_file_location(filename, model_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[filename] = module
-    spec.loader.exec_module(module)
-    model = getattr(module, model_name)()
-
-    # Load state dict if necessary
-    if load_state_dict:
-        state_dict_path = os.path.join(path, filename + '.pth')
-        if not os.path.exists(state_dict_path):
-            logger.error('Unable to find state dict file at path %s', state_dict_path)
-            raise AssertionError('Unable to find state dict file at path ' + state_dict_path)
-        model.load_state_dict(torch.load(state_dict_path))
-
-    return model
-
 def is_leaf_module(module):
 
     """Utility function to determine if the given module is a leaf module - that is, does not have children modules
@@ -971,68 +935,6 @@ def place_model(model: torch.nn.Module, device: torch.device):
         yield
     finally:
         model.to(device=original_device)
-
-
-def load_torch_model_using_safetensors(model_name: str, path: str, filename: str) -> torch.nn.Module:
-    """
-    Load the pytorch model from the given path and filename.
-    NOTE: The model can only be saved by saving the state dict. Attempting to serialize the entire model will result
-    in a mismatch between class types of the model defined and the class type that is imported programatically.
-
-    :param model_name: Name of model
-    :param path: Path where the pytorch model definition file is saved
-    :param filename: Filename of the pytorch model definition and the safetensors weight file
-
-    :return: Imported pytorch model with embeded metadata
-    """
-
-    model_path = os.path.join(path, filename + '.py')
-    if not os.path.exists(model_path):
-        logger.error('Unable to find model file at path %s', model_path)
-        raise AssertionError('Unable to find model file at path ' + model_path)
-
-    # Import model's module and instantiate model
-    spec = importlib.util.spec_from_file_location(filename, model_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[filename] = module
-    spec.loader.exec_module(module)
-    model = getattr(module, model_name)()
-
-    # Load state dict using safetensors file
-    state_dict_path = os.path.join(path, filename + '.safetensors')
-    if not os.path.exists(state_dict_path):
-        logger.error('Unable to find state dict file at path %s', state_dict_path)
-        raise AssertionError('Unable to find state dict file at path ' + state_dict_path)
-    state_dict, meta_data = _get_metadata_and_state_dict(state_dict_path)
-    model.load_state_dict(state_dict, strict=False)
-
-    # Sets the MPP meta data extracted from safetensors file into the model as an atribute
-    # so that it can be extracted and saved at the time of weights export.
-    setattr(model, 'mpp_meta', meta_data)
-    return model
-
-
-def _get_metadata_and_state_dict(safetensor_file_path: str) -> [dict, dict]:
-    """
-    Extracts the state dict from a numpy format safetensors as well as metadata.
-    Converts the state_dict from numpy aray to torch tensors.
-
-    :param safetensor_file_path: Path of the safetensor file.
-    :return: state dict in torch.Tensor format and metadata
-    """
-
-    with open(safetensor_file_path, "rb") as f:
-        data = f.read()
-
-    # Get the header length to extract the metadata
-    header_length = int.from_bytes(data[:8], "little", signed=False)
-    meta_data = json.loads(data[8:8 + header_length].decode()).get('__metadata__', {})
-
-    # Load the state dict and convert it to torch tensor
-    state_dict = load_safetensor(data)
-    state_dict = {k: torch.from_numpy(v) for k, v in state_dict.items()}
-
-    return state_dict, meta_data
 
 
 def _get_default_api() -> Union[Literal["v1"], Literal["v2"]]:
