@@ -541,19 +541,6 @@ def is_leaf_module(module):
            isinstance(module, CustomSparseConv3DLayer)
 
 
-def get_input_shape_batch_size(data_loader):
-    """
-    Gets input shape of image and batch size from data loader
-    :param data_loader: Iterates over data set
-    :return: returns batch size and shape of one image
-    """
-    for _, (images_in_one_batch, *_) in enumerate(data_loader):
-        # finding shape of a batch
-        input_shape = torch.Tensor.size(images_in_one_batch)
-
-        return input_shape[0], (1, *input_shape[1:])
-
-
 def has_hooks(module: torch.nn.Module):
     """ Returns True if the module uses hooks. """
     # pylint: disable=protected-access
