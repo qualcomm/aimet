@@ -1301,7 +1301,10 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             if valid_encodings:
                 encoding = valid_encodings[0]
                 for activation_tensor in propagate_tensors:
-                    activation_encodings_onnx[activation_tensor] = utils.get_propagated_encoding_dict(encoding)
+                    activation_encodings_onnx[activation_tensor] = [{
+                        "bitwidth": encoding[0]["bitwidth"],
+                        "dtype":    encoding[0]["dtype"]
+                    }]
 
 
     @classmethod
