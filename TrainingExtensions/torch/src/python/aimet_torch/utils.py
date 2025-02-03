@@ -667,27 +667,27 @@ def replace_modules_with_instances_of_new_type(model: torch.nn.Module, modules_t
             replace_modules_with_instances_of_new_type(module_ref, modules_to_replace_list, new_type)
 
 
-def create_rand_tensors_given_shapes(input_shape: Union[Tuple, List[Tuple]], device: torch.device) \
-        -> List[torch.Tensor]:
+def create_rand_tensors_given_shapes(input_shape, device: torch.device):
     """
-    Given shapes of some tensors, create one or more random tensors and return them as a list of tensors. Note that
-    tensor shapes must expressed as Tuples. A collection of tensor shapes may be represented as List or nested List of
-    tuples.
-    :param input_shape: Shapes of tensors to create (expressed as a Tuple, a List of Tuples, or a nested List of Tuples)
+    Given shapes of some tensors, create one or more random tensors and return them as a list of tensors
+
+    :param input_shape: Shapes of tensors to create (possibly nested) tuple of integers
     :param device: Device to create tensors on
     :return: Created list of tensors
     """
-    if isinstance(input_shape, List):
+    try:
+        input_shapes = [torch.Size(input_shape)]
+    except TypeError:
         input_shapes = input_shape
-    else:
-        input_shapes = [input_shape]
 
     rand_tensors = []
     for shape in input_shapes:
-        if isinstance(shape, List):
-            rand_tensors.append(create_rand_tensors_given_shapes(shape, device))
-        else:
-            rand_tensors.append(torch.rand(shape).to(device))
+        try:
+            t = torch.rand(torch.Size(shape), device=device)
+        except TypeError:
+            t = create_rand_tensors_given_shapes(shape, device)
+
+        rand_tensors.append(t)
 
     return rand_tensors
 
