@@ -130,14 +130,16 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
     @pytest.mark.cuda
     def test_create_rand_tensors_given_shapes(self):
         shape_1 = (1, 32)
-        shape_2 = (3, 3)
+        shape_2 = [3, 3]
         rand_tensors = utils.create_rand_tensors_given_shapes([shape_1, shape_2], device=torch.device('cpu'))
         self.assertEqual(2, len(rand_tensors))
-        self.assertEqual(shape_1, rand_tensors[0].shape)
-        self.assertEqual(shape_2, rand_tensors[1].shape)
+        self.assertEqual(shape_1, tuple(rand_tensors[0].shape))
+        self.assertEqual(shape_2, list(rand_tensors[1].shape))
         self.assertEqual(torch.device('cpu'), rand_tensors[0].device)
 
-        rand_tensors = utils.create_rand_tensors_given_shapes([shape_1, shape_2], device=torch.device('cuda:0'))
+        rand_tensors = utils.create_rand_tensors_given_shapes((shape_1, shape_2), device=torch.device('cuda:0'))
+        self.assertEqual(shape_1, tuple(rand_tensors[0].shape))
+        self.assertEqual(shape_2, list(rand_tensors[1].shape))
         self.assertEqual(torch.device('cuda:0'), rand_tensors[0].device)
 
     @pytest.mark.cuda
