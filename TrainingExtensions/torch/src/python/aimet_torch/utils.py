@@ -36,18 +36,14 @@
 # pylint: disable = too-many-lines
 """ Utilities that are used for different AIMET PyTorch features """
 
-import importlib
 import itertools
-import json
 from typing import List, Tuple, Union, Dict, Callable, Any, Iterable, Optional, TextIO, Literal, Mapping
 import contextlib
 import os
 import pickle
-import sys
 import logging
 import warnings
 
-from safetensors.numpy import load as load_safetensor
 import torch.nn
 import torch
 from torch.utils.data import DataLoader, Dataset
