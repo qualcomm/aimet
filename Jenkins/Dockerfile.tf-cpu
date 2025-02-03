@@ -159,7 +159,7 @@ RUN python3 -m pip --no-cache-dir install \
         pybind11 \
         pydot \
         pyDOE2 \
-        pylint<3 \
+        "pylint<3" \
         pymoo \
         pytest \
         pytest-cov \
