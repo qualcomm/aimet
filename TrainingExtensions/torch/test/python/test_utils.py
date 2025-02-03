@@ -618,45 +618,6 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
 
         assert not utils.is_torch_nn_module(CustomModule())
 
-    @pytest.mark.cuda
-    def test_match_model_settings(self):
-        """ test match_model_settings utility """
-        class NoParamsModel(torch.nn.Module):
-            def __init__(self):
-                super(NoParamsModel, self).__init__()
-                self.relu1 = torch.nn.ReLU()
-                self.relu2 = torch.nn.ReLU()
-
-            def forward(self, inp):
-                x = self.relu1(inp)
-                x = self.relu2(inp)
-                return x
-
-        model1 = SingleResidual()
-        model1.to('cpu')
-        model1.train()
-
-        model2 = SingleResidual()
-        model2.to('cuda:0')
-        model2.eval()
-
-        assert not model2.training
-        assert utils.get_device(model1) != utils.get_device(model2)
-
-        utils.match_model_settings(model1, model2)
-
-        assert model2.training
-        assert utils.get_device(model1) == utils.get_device(model2)
-
-        model1 = NoParamsModel()
-        model1.train()
-        model2 = NoParamsModel()
-        model2.eval()
-
-        assert not model2.training
-        utils.match_model_settings(model1, model2)
-        assert model2.training
-
     def test_disable_all_quantizers(self):
         model = TinyModel().to(device="cpu")
         dummy_input = torch.rand(1, 3, 32, 32)

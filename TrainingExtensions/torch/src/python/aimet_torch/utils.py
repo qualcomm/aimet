@@ -424,22 +424,6 @@ def get_device(model):
     return next(model.parameters()).device
 
 
-def match_model_settings(model_to_match: torch.nn.Module, model_to_set: torch.nn.Module):
-    """
-    Match training and device settings of the model_to_set with those of model_to_match.
-
-    :param model_to_match: Model to match settings for
-    :param model_to_set: Model to set
-    """
-    model_to_set.train(model_to_match.training)
-    try:
-        if get_device(model_to_set) != get_device(model_to_match):
-            model_to_set.to(get_device(model_to_match))
-    except StopIteration:
-        # If there are no parameters in the model, get_device will have nothing to iterate over
-        pass
-
-
 def is_leaf_module(module):
 
     """Utility function to determine if the given module is a leaf module - that is, does not have children modules
