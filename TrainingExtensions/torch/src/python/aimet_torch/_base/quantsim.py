@@ -338,7 +338,8 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         try:
             for module in self.model.modules():
                 handles.append(module.register_forward_hook(record_metadata))
-            self.model(*dummy_input)
+            with utils.in_eval_mode(self.model), torch.no_grad():
+                self.model(*dummy_input)
         finally:
             for handle in handles:
                 handle.remove()
