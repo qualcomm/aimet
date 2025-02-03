@@ -49,8 +49,8 @@ from aimet_common.connected_graph.operation import determine_preceding_op_input_
     determine_succeeding_op_output_product_index_in_multi_output_op
 from aimet_common.polyslice import PolySlice
 from aimet_torch.winnow.winnow_utils import UpsampleLayer, DownsampleLayer
-from aimet_torch.utils import get_one_positions_in_binary_mask, is_leaf_module
-from aimet_torch.winnow.winnow_utils import reduce_tensor
+from aimet_torch.utils import is_leaf_module
+from aimet_torch.winnow.winnow_utils import reduce_tensor, get_one_positions_in_binary_mask
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Winnow)
 

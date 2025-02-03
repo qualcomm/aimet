@@ -566,17 +566,6 @@ def has_hooks(module: torch.nn.Module):
            _global_forward_hooks or\
            _global_forward_pre_hooks
 
-def get_one_positions_in_binary_mask(mask):
-    """
-    Return the indices of one positions in a binary mask.
-
-    :param mask: a mask that contains either 0s or 1s
-    :return:
-    """
-
-    mask_one_positions = [i for i in range(len(mask)) if mask[i] == 1]
-    return mask_one_positions
-
 
 def get_ordered_list_of_modules(model: torch.nn.Module,
                                 dummy_input: Union[torch.Tensor, List[torch.Tensor], Tuple],

@@ -194,3 +194,14 @@ def reduce_tensor(tensor: torch.Tensor, reduction: PolySlice):
         else:
             result = torch.index_select(result, dim, torch.tensor(to_keep)) # pylint: disable=not-callable
     return result
+
+
+def get_one_positions_in_binary_mask(mask):
+    """
+    Return the indices of one positions in a binary mask.
+
+    :param mask: a mask that contains either 0s or 1s
+    :return:
+    """
+    mask_one_positions = [i for i in range(len(mask)) if mask[i] == 1]
+    return mask_one_positions
