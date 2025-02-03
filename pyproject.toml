@@ -30,6 +30,15 @@ test = [
   "transformers",
 ]
 docs = [
+  "furo",
+  "nbsphinx",
+  "sphinx",
+  "sphinx-autodoc-typehints",
+  "sphinx-copybutton",
+  "sphinx-design",
+  "sphinx-jinja",
+  "sphinx-rtd-theme",
+  "sphinx-tabs",
 ]
 
 [tool.scikit-build]

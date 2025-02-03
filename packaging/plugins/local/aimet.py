@@ -34,13 +34,23 @@ def get_aimet_variant() -> str:
     enable_tensorflow = is_cmake_option_enabled("ENABLE_TENSORFLOW")
     enable_onnx = is_cmake_option_enabled("ENABLE_ONNX")
 
-    variant = ""
-    if enable_tensorflow:
-        variant += "tf-"
-    if enable_torch:
-        variant += "torch-"
-    if enable_onnx:
+    if enable_torch and enable_tensorflow and enable_onnx:
+        variant = "tf-torch-"
+    elif enable_tensorflow:
+        variant = "tf-"
+    elif enable_torch:
+        variant = "torch-"
+    elif enable_onnx:
         variant = "onnx-"
+    else:
+        raise RuntimeError("\n".join([
+            "Only one or all of ENABLE_{TORCH, TENSORFLOW, ONNX} should set to ON."
+            "Your passed:"
+            f"  * ENABLE_TORCH:      {'ON' if enable_torch else 'OFF'}",
+            f"  * ENABLE_ONNX:       {'ON' if enable_onnx else 'OFF'}",
+            f"  * ENABLE_TENSORFLOW: {'ON' if enable_onnx else 'OFF'}",
+        ]))
+
     variant += "gpu" if enable_cuda else "cpu"
     return variant
 
