@@ -41,7 +41,6 @@ import sys
 from contextlib import contextmanager
 import functools
 import json
-import importlib.util
 import logging
 import logging.config
 import logging.handlers
