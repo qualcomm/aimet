@@ -54,6 +54,7 @@ from safetensors.numpy import load as load_safetensor
 import torch.nn
 import torch
 from torch.utils.data import DataLoader, Dataset
+from torch.utils._pytree import tree_map
 from torch.nn.modules.module import (
     _global_backward_hooks,
     _global_forward_pre_hooks,
@@ -132,7 +133,8 @@ class ModuleData:
                 dtype = module.weight.dtype
                 # Cast input to dtype only if it is a floating point tensor (float, half, bfloat16, etc.).
                 # If input is a non-float tensor (e.g. long, bool), leave the input uncasted.
-                return nested_map(inp, lambda x: x.to(dtype) if x.is_floating_point() else x)
+                return tree_map(lambda x: x.to(dtype) if isinstance(x, torch.Tensor) and x.is_floating_point() else x,
+                                inp)
             return inp
 
         handles = [mod.register_forward_pre_hook(adjust_input_dtype) for mod in self._model.modules()]
@@ -720,30 +722,8 @@ def change_tensor_device_placement(input_data: Union[torch.Tensor, List, Tuple],
     :param device: device
     :return: tensor_data with modified device placement
     """
-    return nested_map(input_data, lambda x: x.to(device=device))
-
-
-def nested_map(data, fn: Callable[[torch.Tensor], torch.Tensor]):
-    """
-    Apply a function to a nested tuple, list, or dict of tensors.
-    :param data: Tensor, or a nested tuple, list, or dict of tensors.
-    :param fn: Function to apply to the tensors
-    :return: Nested structure of tensors with function applied
-    """
-    if isinstance(data, torch.Tensor):
-        return fn(data)
-
-    if isinstance(data, (tuple, list)):
-        cls = tuple if isinstance(data, tuple) else list
-        return cls(nested_map(x, fn) for x in data)
-
-    if isinstance(data, dict):
-        return {
-            key: nested_map(value, fn) for key, value in data.items()
-        }
-
-    logger.debug('unexpected input type=%s, expecting torch.Tensor, tuple, list, or dict. skipping..', type(data))
-    return data
+    return tree_map(lambda x: x.to(device) if isinstance(x, torch.Tensor) else x,
+                    input_data)
 
 
 def find_num_inout_tensors_per_module(model: torch.nn.Module, input_tensor) -> Dict:
