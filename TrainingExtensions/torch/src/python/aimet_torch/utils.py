@@ -49,7 +49,6 @@ import functools
 import logging
 import warnings
 
-import numpy as np
 from safetensors.numpy import load as load_safetensor
 import torch.nn
 import torch
