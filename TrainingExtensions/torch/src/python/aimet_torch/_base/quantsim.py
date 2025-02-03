@@ -277,7 +277,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                                  Note that the mode default_data_type=QuantizationDataType.float is only supported with
                                  default_output_bw=16 or 32 and default_param_bw=16 or 32.
         """
-        if isinstance(dummy_input, torch.Tensor):
+        if not isinstance(dummy_input, (tuple, list)):
             dummy_input = (dummy_input,)
 
         # Perform sanity checks on inputs
