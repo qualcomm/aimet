@@ -4,9 +4,9 @@
 Quantization-aware training
 ###########################
 
-Quantization-aware training (QAT) finds better-optimized solutions than post-training quantization  (PTQ)
-by fine-tuning the model parameters in the presence of quantization noise. This higher accuracy comes at
-the usual cost of neural network training, including longer training times and the need for labeled data
+Quantization-aware training (QAT) finds better optimized solutions than post-training quantization (PTQ)
+by fine-tuning the model parameters in the presence of quantization noise. This higher accuracy comes with
+the usual costs of neural network training, including longer training times and the need for labeled data
 and hyperparameter search.
 
 QAT modes
@@ -14,36 +14,42 @@ QAT modes
 
 There are two versions of QAT: without range learning and with range learning.
 
-#. Without range learning:
-    * In QAT without range Learning, encoding values for activation quantizers are found once during
-      calibration and are not updated again.
+Without range learning
+      In QAT without range Learning, encoding values for activation quantizers are found once during calibration and are not updated again.
 
-#. With range learning:
-    * In QAT with range Learning, encoding values for activation quantizers are set during calibration and can
-      be updated during training, resulting in better scale and offset quantization parameters.
+With range learning
+      In QAT with range Learning, encoding values for activation quantizers are set during calibration and are updated during training, yielding better scale and offset quantization parameters.
 
-In both versions, parameter quantizer encoding values continue to be updated with the parameters themselves
-during training.
+In both versions, parameter quantizer encoding values are updated in sync with the parameters during training.
 
 QAT recommendations
 ===================
 
-Here are some guidelines that can improve performance and speed convergence with QAT:
+These guidelines can improve performance and speed convergence with QAT.
 
 Initialization
-    - It often helps to first apply PTQ techniques before applying QAT, especially if there is large drop in INT8 performance from the FP32 baseline.
+    - Apply PTQ techniques before applying QAT, especially if there is large drop in INT8 performance from the FP32 baseline.
 
 Hyper-parameters
-    - Number of epochs: 15-20 epochs are usually sufficient for convergence
+    - Number of epochs: 15-20 epochs are usually sufficient for convergence.
     - Learning rate: Comparable (or one order higher) to FP32 model's final learning rate at convergence.
       Results in AIMET are with learning of the order 1e-6.
-    - Learning rate schedule: Divide learning rate by 10 every 5-10 epochs
+    - Learning rate schedule: Divide learning rate by 10 every 5-10 epochs.
 
 Workflow
 ========
 
-Setup
------
+Prerequisites
+-------------
+
+You need a PyTorch or TensorFlow model. ONNX does not support QAT.
+
+.. _quantsim-qat-setup:
+
+Step 1: Setup
+-------------
+
+Set up the model, data loader, and training callback.
 
 .. tab-set::
     :sync-group: platform
@@ -51,7 +57,6 @@ Setup
     .. tab-item:: PyTorch
         :sync: torch
 
-        Setup the model, data loader, and training loops for training.
 
         .. literalinclude:: ../snippets/torch/apply_qat.py
             :language: python
@@ -66,8 +71,17 @@ Setup
             :start-after: # pylint: disable=missing-docstring
             :end-before: # End of dataset
 
-Compute the initial quantization parameters
--------------------------------------------
+    .. tab-item:: ONNX
+        :sync: ONNX
+
+        Not supported.
+
+.. _quantsim-qat-encodings:
+
+Step 2: Computing the initial quantization parameters
+-----------------------------------------------------
+
+Compute the quantization parameters and calculate quantized accuracy.
 
 .. tab-set::
     :sync-group: platform
@@ -100,8 +114,18 @@ Compute the initial quantization parameters
 
                 Quantized accuracy (W8A8): 0.6583
 
-Fine-tune quantized model
--------------------------
+    .. tab-item:: ONNX
+        :sync: ONNX
+
+        Not supported.
+
+
+.. _quantsim-qat-calibrate:
+
+Step 3: Calibrate the quantized model
+-------------------------------------
+
+Train the model to fine-tune the parameters.
 
 .. tab-set::
     :sync-group: platform
@@ -122,10 +146,15 @@ Fine-tune quantized model
             :start-after: # Step 2
             :end-before: # End of step 2
 
-Evaluation
-----------
+    .. tab-item:: ONNX
+        :sync: ONNX
 
-Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
+        Not supported.
+
+Step 4: Evaluating the model
+----------------------------
+
+Evaluate the :class:`QuantizationSimModel` to determine the improvement in accuracy.
 
 .. tab-set::
     :sync-group: platform
@@ -158,12 +187,15 @@ Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
 
                 Model accuracy after QAT: 0.6910
 
-Export
-------
+    .. tab-item:: ONNX
+        :sync: ONNX
 
-After fine-tuning the model's quantized accuracy with QAT, export a version of the model with quantization
-operations removed and an encodings JSON file with quantization scale and offset parameters for the
-model's activation and weight tensors.
+        Not supported.
+
+Step 5: Exporting the model
+---------------------------
+
+Export the calibrated model to remove quantization operations and create the JSON encodings file containing quantization scale and offset parameters for the model's activation and weight tensors.
 
 .. tab-set::
     :sync-group: platform
@@ -183,8 +215,19 @@ model's activation and weight tensors.
             :start-after: # Step 4
             :end-before: # End of step 4
 
+    .. tab-item:: ONNX
+        :sync: ONNX
+
+        Not supported.
+
 Multi-GPU support
 =================
+
+To use QAT with multi-GPU support, do the following. The instructions are the same as above except:
+
+- Multi-GPU is supported only in PyTorch.
+- There is an additional step to parallelize the model.
+- It is important not to parallelize the model until after computing encodings.
 
 .. tab-set::
     :sync-group: platform
@@ -192,19 +235,41 @@ Multi-GPU support
     .. tab-item:: PyTorch
         :sync: torch
 
-        For using multi-GPU with QAT,
+        .. important::
 
-        1. Create a :class:`QuantizationSimModel` for your pre-trained PyTorch model (Not in DataParallel mode)
-        2. Perform :func:`QuantizationSimModel.compute_encodings` (NOTE: Do not use a forward function that moves the model to multi-gpu and back)
-        3. Move :class:`QuantizationSimModel` to DataParallel.
+            Do not invoke DataParallel or multi-GPU mode until after you compute the encodings (quantization parameters).
 
-        .. code-block:: python
+        **Step 1: Setup**
 
-            # "sim" here refers to QuantizationSimModel object.
-            sim.model = torch.nn.DataParallel(sim.model)
+        Create a :class:`QuantizationSimModel` for your pre-trained PyTorch model per :ref:`Step 1 <quantsim-qat-setup>`. Do not use DataParallel mode.
 
-        4. Perform eval and/or training.
-        5. Export for on-target inference.
+        **Step 2: Compute encodings**
+
+        Compute quantization encodings for the model per :ref:`Step 2 <quantsim-qat-encodings>`. Do not use a forward function that moves the model to multi-gpu and back.
+
+        **Step 2.5 (additional step)**
+
+        Move :class:`QuantizationSimModel` to DataParallel as follows.
+
+            .. code-block:: python
+
+                # "sim" here refers to the QuantizationSimModel object.
+                sim.model = torch.nn.DataParallel(sim.model)
+
+        **Steps 3 - 5**
+
+        Evaluate, train, and export the model per :ref:`steps 3 - 5 <quantsim-qat-calibrate>`.
+
+    .. tab-item:: TensorFlow
+        :sync: tf
+
+        Not supported.
+
+    .. tab-item:: ONNX
+        :sync: ONNX
+
+        Not supported.
+
 
 API
 ===
@@ -243,3 +308,9 @@ API
         .. autoclass:: aimet_common.defs.QuantScheme
             :members:
             :no-index:
+
+    .. tab-item:: ONNX
+        :sync: ONNX
+
+        Not supported.
+

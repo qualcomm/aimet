@@ -4,19 +4,23 @@
 Calibration
 ###########
 
-Calibration involves determining the appropriate scale and offset parameters for the quantizers added
-to your model graph. While quantization parameters for weights can be precomputed, activation quantization
-requires passing small, representative data samples through the model to gather range statistics and
-identify the appropriate scale and offset parameters.
+Calibration is the process of determining the appropriate scale and offset parameters for the quantizers added
+to your model graph. Quantization parameters for weights can be precomputed. Computing quantization parameters for activation
+require passing small, representative data samples through the model to gather range statistics.
 
 Workflow
 ========
 
-In this example, we will load a pretrained MobileNetV2 model. Similarly, you can use any pretrained model
-you prefer.
+Use the following procedure to calibrate your model.
 
-QuantSim creation
------------------
+Prerequisites
+-------------
+
+Load your trained model.
+
+.. note::
+
+    The examples below use a pretrained MobileNetV2 model. Substitute your model.
 
 .. tab-set::
     :sync-group: platform
@@ -27,16 +31,17 @@ QuantSim creation
         .. important::
 
             aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x. If you are
-            using low-level components of :class:`QuantizationSimModel`, please see :doc:`Migrate to aimet_torch 2 <../apiref/torch/migration_guide>`.
+            using low-level components of :class:`QuantizationSimModel`, see the :doc:`aimet_torch 1 to aimet_torch 2 Migration Guide<../apiref/torch/migration_guide>`.
 
         .. literalinclude:: ../snippets/torch/apply_quantsim.py
            :language: python
            :start-after: # PyTorch imports
            :end-before: # End of PyTorch imports
 
-        To perform quantization simulation with :mod:`aimet_torch`, your model definition should adhere to specific guidelines. For
-        example, :func:`torch.nn.functional` defined in forward pass should be changed to equivalent
-        :class:`torch.nn.Module`. For more details on model definition guidelines, please refer: :ref:`PyTorch model guidelines <torch-model-guidelines>`.
+        To perform quantization simulation with :mod:`aimet_torch`, your model definition must conform to
+        the guidelines at :ref:`PyTorch model guidelines <torch-model-guidelines>`.
+        For example, :func:`torch.nn.functional` defined in the forward pass should be changed to the equivalent
+        :class:`torch.nn.Module`.
 
         .. literalinclude:: ../snippets/torch/apply_quantsim.py
            :language: python
@@ -51,9 +56,9 @@ QuantSim creation
             :start-after: # pylint: skip-file
             :end-before: # End of imports
 
-        To perform quantization simulation with :mod:`aimet_tensorflow`, your model definition must follow specific guidelines.
-        For instance, models defined using subclassing APIs should be converted to functional APIs. For more
-        details on model definition guidelines, please refer: :ref:`TensorFlow model guidelines <tensorflow-model-guidelines>`.
+        To perform quantization simulation with :mod:`aimet_torch`, your model definition must conform to
+        the guidelines at :ref:`TensorFlow model guidelines <tensorflow-model-guidelines>`.
+        For example, models defined using subclassing APIs should be converted to functional APIs.
 
         .. literalinclude:: ../snippets/tensorflow/apply_quantsim.py
             :language: python
@@ -75,15 +80,20 @@ QuantSim creation
 
         .. note::
 
-            It's recommended to apply ONNX simplification before invoking AIMET functionalities.
+            We recommend that you apply ONNX simplification before invoking AIMET API functions.
 
         .. literalinclude:: ../snippets/onnx/apply_quantsim.py
             :language: python
             :start-after: # Prepare model with onnx-simplifier
             :end-before:  # End of prepare model
 
-Now we use AIMET to create a :class:`QuantizationSimModel`. This basically means that AIMET will insert
-fake quantization operations in the model graph and will configure them.
+
+
+Step 1: Creating a QuantSim model
+---------------------------------
+
+Use AIMET to create a :class:`QuantizationSimModel`. AIMET inserts
+fake quantization operations in the model graph and configures them.
 
 .. tab-set::
     :sync-group: platform
@@ -113,18 +123,17 @@ fake quantization operations in the model graph and will configure them.
             :end-before:  # End of creating QuantSim object
 
 
-Calibration callback
---------------------
+Step 2: Creating a calibration callback
+---------------------------------------
 
-Even though AIMET has added 'quantizer' operations to the model graph, the :class:`QuantizationSimModel` object is not ready to be used
-yet. Before we can use the :class:`QuantizationSimModel` for inference or training, we need to find appropriate scale/offset
-quantization parameters for each 'quantizer' node.
+Before you can use the :class:`QuantizationSimModel` for inference or training, you must compute
+scale and offset quantization parameters for each 'quantizer' node.
 
-So we create a routine to pass small, representative data samples through the model. This should be
-fairly simple - use the existing train or validation data loader to extract some samples and pass them
+Create a routine to pass small, representative data samples through the model. A quick way to do this
+is to use the existing train or validation data loader to extract samples and pass them
 to the model.
 
-In practice, for computing encodings we only need 500-1000 representative data samples.
+500 to 1000 representative data samples are sufficient to compute the quantization parameters.
 
 .. tab-set::
     :sync-group: platform
@@ -168,13 +177,12 @@ In practice, for computing encodings we only need 500-1000 representative data s
             :start-after: # Calibration callback
             :end-before:  # End of calibration callback
 
-Compute encodings
-~~~~~~~~~~~~~~~~~
+Step 3: Computing encodings
+---------------------------
 
-Now we call :func:`QuantizationSimModel.compute_encodings` to use the above callback to pass small, representative
-data through the quantized model. By doing so, the quantizers in the quantized model will observe the inputs
-and initialize their quantization encodings according to the observed input statistics. Encodings here
-refer to scale/offset quantization parameters.
+Next, call :func:`QuantizationSimModel.compute_encodings` to use the callback to pass representative
+data through the quantized model. The quantizers in the quantized model use the observed inputs
+to initialize their quantization encodings. "Encodings" refers to the scale and offset quantization parameters.
 
 .. tab-set::
     :sync-group: platform
@@ -203,10 +211,10 @@ refer to scale/offset quantization parameters.
             :start-after: # Compute quantization encodings
             :end-before:  # End of computing quantization encodings
 
-Evaluation
-----------
+Step 4: Evaluation
+------------------
 
-Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
+Next, evaluate the :class:`QuantizationSimModel` to compute quantized accuracy.
 
 .. tab-set::
     :sync-group: platform
@@ -247,11 +255,11 @@ Next, we evaluate the :class:`QuantizationSimModel` to get quantized accuracy.
 
                 Quantized accuracy (W8A16): 0.7173
 
-Export
-------
+Step 5: Exporting the model
+---------------------------
 
 Lastly, export a version of the model with quantization operations removed and an encodings JSON
-file with quantization scale and offset parameters for the model's activation and weight tensors.
+file containing quantization scale and offset parameters.
 
 .. tab-set::
     :sync-group: platform
@@ -331,8 +339,8 @@ API
 
         .. note::
 
-            - It is recommended to use onnx-simplifier before creating quantsim model.
-            - Since ONNX Runtime will be used for optimized inference only, ONNX framework will support Post Training Quantization schemes i.e. TF or TF-enhanced to compute the encodings.
+            - We recommend you use onnx-simplifier before creating the QuantSim model.
+            - Since ONNX Runtime is used for optimized inference only, ONNX framework supports Post Training Quantization schemes (such as TF or TF-enhanced) to compute the encodings.
 
         .. autofunction:: aimet_onnx.quantsim.load_encodings_to_sim
             :noindex:
