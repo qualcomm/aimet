@@ -46,7 +46,7 @@ from torch.utils.data import Dataset, DataLoader
 from aimet_onnx.utils import make_dummy_input
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.layer_output_utils import LayerOutput, LayerOutputUtil
-from models.models_for_tests import build_dummy_model_with_dynamic_input
+from .models.models_for_tests import build_dummy_model_with_dynamic_input
 
 
 # Fetch appropriate execution providers depending on availability

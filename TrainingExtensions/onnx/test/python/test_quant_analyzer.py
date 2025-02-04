@@ -50,7 +50,7 @@ from aimet_common.defs import QuantScheme
 from aimet_onnx.batch_norm_fold import fold_all_batch_norms_to_weight
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.quant_analyzer import QuantAnalyzer
-from models import models_for_tests
+from .models import models_for_tests
 
 def calibrate(session: ort.InferenceSession, dummy_input: Dict[str, np.ndarray]):
     """

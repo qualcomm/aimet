@@ -40,7 +40,7 @@ import torch
 from aimet_common.connected_graph.connectedgraph_utils import get_all_input_ops, get_all_ops_with_constant_inputs
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE, OPS_WITH_PARAMS
 from aimet_onnx.utils import ParamUtils
-from models import models_for_tests
+from .models import models_for_tests
 
 
 class TestConnectedGraph:

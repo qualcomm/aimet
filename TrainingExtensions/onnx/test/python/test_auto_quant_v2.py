@@ -55,7 +55,7 @@ from aimet_onnx.auto_quant_v2 import AutoQuant, PtqResult
 
 from aimet_common.defs import QuantScheme, QuantizationDataType
 
-from models.models_for_tests import conv_relu_model
+from .models.models_for_tests import conv_relu_model
 
 
 @pytest.fixture(scope="function")

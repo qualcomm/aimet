@@ -59,12 +59,12 @@ from aimet_onnx.sequential_mse.seq_mse import SequentialMse
 from aimet_common.defs import QuantScheme
 from aimet_onnx.quantsim import QuantizationSimModel
 
-from models.test_models import single_linear_layer_model
-from models.test_models import single_conv_layer_model
-from models.test_models import model_with_split
-from models.test_models import single_residual_model
-from models.test_models_onnx import model_with_multiple_inputs
-from models.test_models_onnx import model_with_multiple_outputs
+from .models.test_models import single_linear_layer_model
+from .models.test_models import single_conv_layer_model
+from .models.test_models import model_with_split
+from .models.test_models import single_residual_model
+from .models.test_models_onnx import model_with_multiple_inputs
+from .models.test_models_onnx import model_with_multiple_outputs
 
 
 torch.manual_seed(42)

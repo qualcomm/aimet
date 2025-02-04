@@ -49,8 +49,7 @@ from onnxsim import simplify
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_common import libquant_info
 from aimet_onnx.adaround.adaround_weight import Adaround, AdaroundParameters, AdaroundSupportedModules
-import models.models_for_tests as test_models
-from models import models_for_tests
+from .models import models_for_tests
 
 
 class TestAdaround:
@@ -63,7 +62,7 @@ class TestAdaround:
             pytest.skip("Cuda not available")
         np.random.seed(0)
         torch.manual_seed(0)
-        model = test_models.single_residual_model()
+        model = models_for_tests.single_residual_model()
         data_loader = dataloader(input_shape=(1, 3, 32, 32))
         dummy_input = {'input': np.random.rand(1, 3, 32, 32).astype(np.float32)}
         sess = build_session(model, None)
@@ -96,7 +95,7 @@ class TestAdaround:
 
         np.random.seed(0)
         torch.manual_seed(0)
-        model = test_models.custom_add_model()
+        model = models_for_tests.custom_add_model()
         data_loader = dataloader(input_shape=(1, 3, 64, 64))
         dummy_input = {'input': np.random.rand(1, 3, 64, 64).astype(np.float32)}
         sess = build_session(model, [onnx_library])
@@ -245,7 +244,7 @@ class TestAdaround:
             pytest.skip("Cuda not available")
         np.random.seed(0)
         torch.manual_seed(0)
-        model = test_models.single_residual_model()
+        model = models_for_tests.single_residual_model()
         data_loader = dataloader(input_shape=(1, 3, 32, 32))
         dummy_input = {'input': np.random.rand(1, 3, 32, 32).astype(np.float32)}
         sess = build_session(model, None)

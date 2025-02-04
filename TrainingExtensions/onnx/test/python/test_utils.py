@@ -42,7 +42,7 @@ import aimet_onnx.utils as utils
 from aimet_onnx.utils import ParamUtils
 from aimet_onnx.adaround.utils import ModelData, read_attributes_for_op
 
-from models import models_for_tests
+from .models import models_for_tests
 
 
 class TestUtils:

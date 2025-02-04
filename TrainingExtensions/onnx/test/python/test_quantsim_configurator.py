@@ -40,7 +40,7 @@ import pytest
 from aimet_common.defs import QuantizationDataType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_onnx.quantsim import QuantizationSimModel
-from models import models_for_tests
+from .models import models_for_tests
 
 
 class TestQuantSimConfig:

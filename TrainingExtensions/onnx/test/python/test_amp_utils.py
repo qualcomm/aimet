@@ -41,7 +41,7 @@ from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.amp.utils import find_layer_database_for_mac_calculation, create_mac_dict, find_bit_ops_reduction, \
     calculate_running_bit_ops, find_param_name_to_parent_name_dict, get_quantizer_to_op_type_dict
 from aimet_onnx.amp.quantizer_groups import QuantizerGroup
-from models.test_models import single_residual_model
+from .models.test_models import single_residual_model
 
 
 class TestAMPUtils:

@@ -58,7 +58,7 @@ from aimet_onnx.auto_quant_v2 import AutoQuantWithAutoMixedPrecision as AutoQuan
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.auto_quant_v2 import PtqResult
 
-from models.test_models import conv_relu_model
+from .models.test_models import conv_relu_model
 
 
 _W4A8 = (

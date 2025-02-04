@@ -39,7 +39,7 @@ from aimet_common.defs import QuantizationDataType
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.amp.quantizer_groups import find_op_groups, find_quantizer_group
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
-from models.test_models import model_small_mnist, model_with_split, single_residual_model, concat_model, linear_layer_model
+from .models.test_models import model_small_mnist, model_with_split, single_residual_model, concat_model, linear_layer_model
 
 
 class TestQuantizerGroups:

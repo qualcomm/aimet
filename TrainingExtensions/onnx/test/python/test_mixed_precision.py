@@ -54,7 +54,7 @@ from aimet_common.defs import QuantizationDataType, CallbackFunc
 from aimet_common.amp.mixed_precision_algo import interpolation_search, brute_force_search, binary_search
 from aimet_common.amp.utils import calculate_starting_bit_ops
 
-from models.test_models import single_residual_model
+from .models.test_models import single_residual_model
 
 INPUT_SHAPE = (1, 3, 32, 32)
 

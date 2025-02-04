@@ -48,7 +48,7 @@ from aimet_onnx.cross_layer_equalization import get_ordered_list_of_conv_modules
 from aimet_onnx.utils import ParamUtils, replace_relu6_with_relu
 from aimet_onnx.batch_norm_fold import fold_all_batch_norms_to_weight
 
-from models import models_for_tests
+from .models import models_for_tests
 
 
 class TestCLS:

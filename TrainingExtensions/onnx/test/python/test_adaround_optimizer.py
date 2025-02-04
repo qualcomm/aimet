@@ -47,7 +47,7 @@ from aimet_onnx.adaround.adaround_loss import AdaroundHyperParameters
 from aimet_onnx.adaround.adaround_optimizer import AdaroundOptimizer
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.adaround.utils import ModelData
-import models.models_for_tests as test_models
+from .models import models_for_tests as test_models
 from aimet_onnx.utils import CachedDataset
 
 
