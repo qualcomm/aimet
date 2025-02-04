@@ -17,6 +17,7 @@ RUN apt update && \
         libeigen3-dev \
         libz-dev \
         make \
+        pandoc \
         pkg-config \
         sudo \
     && rm -rf /var/lib/apt/lists/* \

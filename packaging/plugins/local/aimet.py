@@ -58,7 +58,12 @@ def get_aimet_variant() -> str:
 def get_aimet_dependencies() -> list[str]:
     """Read dependencies form the corresponded files and return them as a list (!) of strings"""
     aimet_variant = get_aimet_variant()
-    deps_path = pathlib.Path("packaging", "dependencies", "fast-release" if aimet_variant in ("torch-gpu",) else "", aimet_variant)
+
+    if aimet_variant in ("torch-gpu", "tf-torch-cpu"):
+        deps_path = pathlib.Path("packaging", "dependencies", "fast-release", aimet_variant)
+    else:
+        deps_path = pathlib.Path("packaging", "dependencies", aimet_variant)
+
     deps_files = [*deps_path.glob("reqs_pip_*.txt")]
     print(f"CMAKE_ARGS='{os.environ.get('CMAKE_ARGS', '')}'")
     print(f"Read dependencies for variant '{get_aimet_variant()}' from the following files: {deps_files}")
