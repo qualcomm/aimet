@@ -201,7 +201,8 @@ jobs:
               python3 -m pylint --rcfile=.pylintrc $AIMET_PACKAGES
       - name: Run unit tests
         run: |
-          TEST_DIR=""
+          TEST_DIR="./ModelOptimizations/DlQuantization/test ./ModelOptimizations/DlEqualization/test"
+
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               TEST_DIR="$TEST_DIR ./TrainingExtensions/tensorflow/test"
           elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
