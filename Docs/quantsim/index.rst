@@ -196,8 +196,10 @@ Following is a typical workflow for using AIMET QuantSim to simulate on-target q
    500-1,000 samples are usually sufficient to compute optimal quantization parameters.
 
 #. AIMET returns a :class:`QuantizationSimModel` model that can be used as a drop-in replacement for the
-   original model in your evaluation pipeline. Running this simulation model through the evaluation
-   pipeline yields a quantized accuracy metric that closely simulates on-target accuracy.
+   original model in your evaluation pipeline. 
+   
+#. Run the :class:`QuantizationSimModel` simulation model through the evaluation
+   pipeline to yield a quantized accuracy metric that closely matches on-target accuracy.
 
 #. Call :func:`QuantizationSimModel.export` on the QuantSim object to save a copy of the model with
    quantization operations removed, along with an encodings file containing quantization scale and offset

@@ -43,57 +43,37 @@ Precisions supported by AIMET for inference on target runtimes like |qnn|_ are:
 Quantization workflow
 =====================
 
-The following sections represent a recommended workflow for quantizing a model to improve its efficiency. Unless you have a reason to do otherwise, we recommend you proceed with these steps in order.
+We recommend the following workflow for quantizing a model to improve its efficiency. Unless you have a reason to do otherwise, we recommend you try these actions, listed in ascending order of effort:
 
-1. Simulating a quantized model
--------------------------------
+1. Convert the model to 16-bit floating point (FP16) precision.
+2. Quantize the model to W16A16.
+3. Apply quantization techniques, including post-training quantization (PTQ) and quantization-aware training (QAT).
 
-We recommend using Quantization simulation (QuantSim) to simulate your quantized model and compute baseline accuracy. See the :doc:`../quantsim/index`.
+The following sections break these broad actions down into discrete procedures for taking these actions.
 
-2. Selecting on-target metrics
-------------------------------
+Step 1: Trying FP16 precision (no quantization)
+-----------------------------------------------
 
-Once you have achieved acceptable off-target quantized accuracy using QuantSim, consider the following
-on-target metrics. Decide which are important to your application:
+We recommend that you start by converting the FP32 model to FP16 precision without quantization. For instructions on how to compile FP16 models for target runtimes, see |qnn_docs|_ or |qai_hub_docs|_.
 
-- Latency
-- Memory size
+If performance is unacceptable at FP16, the next step is to quantize the model.
 
-If goals for either of the on-target metrics are not met for your use case, consider lowering the model's precision.
-To decide which precision to use for inference on target runtimes, start with the highest available precision (For example FP16) and test descending precisions if necessary. Each decrease in precision requires additional engineering effort, including model evaluation and training.
+Step 2: Trying W16A16 quantization
+----------------------------------
 
-The figure below illustrates the recommended quantization workflow and the steps required to deploy the quantized model on the target device.
+Quantize the model weights and activations to 16-bit integer (W16A16). Do the following:
 
-.. figure:: ../images/quantization_workflow_4.png
+1. Ensure that the FP32 model adheres to model-specific guidelines. For instance, in PyTorch QuantSim can only quantize math operations performed by :class:`torch.nn.Module` objects, while :class:`torch.nn.functional` calls will be incorrectly ignored. See framework-specific pages to learn more about such model guidelines.
+2. Once the model conforms to guidelines, create a quantization simulation (QuantSim) version of your model with the bit-width set to 16 bits for both weights and activations (W16A16). See :ref:`<quantsim-workflow>`.
+3. Ensure that the original FP32 model and the quantized model (QuantSim object) perform similarly during the forward pass, especially when custom quantizers are included in the model. 
+4. Compute the off-target quantized accuracy metric for the quantized model and verify that it agrees with the FP32 model. If it does not, you can help improve AIMET by reporting an issue to |aimet|_.
 
-   Recommended quantization workflow
+Step 3. Applying PTQ or QAT
+---------------------------
 
-The following sections describe the these processes.
+If the off-target (simulated) quantized accuracy metric does not meet expectations, use PTQ or QAT techniques to improve the accuracy for the implemented precision. We suggest starting with with weights at INT8 precision and activations at INT16 precision (W8A16). 
 
-3. Trying FP16 precision (No quantization)
-------------------------------------------
-
-We recommend that you start by converting an FP32 model to FP16 precision without quantization. For details on how to compile FP16 models for target runtimes, see |qnn_docs|_ or |qai_hub_docs|_.
-
-4. Verifying W16A16 quantization
---------------------------------
-
-Before using a quantized integer format, ensure that the FP32 model and the quantized model (QuantSim object) perform similarly during the forward pass, especially when custom quantizers are included in the model.
-
-.. note::
-
-  Ensure that the FP32 model adheres to model-specific guidelines. For instance, in PyTorch QuantSim can only quantize math operations performed by :class:`torch.nn.Module` objects, while :class:`torch.nn.functional` calls will be incorrectly ignored. Refer to framework-specific pages to learn more about such model guidelines.
-
-Once the model conforms to guidelines, create a QuantSim with the bit-width set to 16 bits for both weights and activations (W16A16). 
-
-Then, obtain the off-target quantized accuracy metric for the quantized model and verify that it agrees with the FP32 model. If it does not, you can help improve AIMET by reporting an issue to |aimet|_.
-
-5. Applying PTQ or QAT
-----------------------
-
-If any of the metrics are not acceptable with higher precision, begin with weights at INT8 precision and activations at INT16 precision. 
-
-If the off-target quantized accuracy metric does not meet expectations, use PTQ or QAT techniques to improve the quantized accuracy for the implemented precision. The decision to use PTQ or QAT should be based on your quantized accuracy and runtime needs.
+The decision to use PTQ or QAT should balance your requirements for runtime accuracy vs performance. We usually recommend starting with PTQ. See :ref:`featureguide-index` (PTQ) and :ref:`quantsim-qat` (QAT).
 
 .. image:: ../images/quantization_workflow_5.png
 
