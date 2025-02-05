@@ -72,7 +72,7 @@ jobs:
                  "VER_TORCH":      "2.1.2",
                  "VER_ONNX":       "",
                  "VER_CUDA":       "",
-                 "ENABLE_TESTS":   "OFF",
+                 "ENABLE_TESTS":   "ON",
                  "BUILD_TARGETS":  "all"
               },
               {
@@ -83,7 +83,7 @@ jobs:
                  "VER_TORCH":      "2.1.2",
                  "VER_ONNX":       "",
                  "VER_CUDA":       "12.1.1",
-                 "ENABLE_TESTS":   "OFF",
+                 "ENABLE_TESTS":   "ON",
                  "BUILD_TARGETS":  "all"
               }
             ]')
@@ -101,7 +101,7 @@ jobs:
                  "VER_TORCH":      "",
                  "VER_ONNX":       "",
                  "VER_CUDA":       "",
-                 "ENABLE_TESTS":   "OFF",
+                 "ENABLE_TESTS":   "ON",
                  "BUILD_TARGETS":  "all"
               },
               {
@@ -112,7 +112,7 @@ jobs:
                  "VER_TORCH":      "",
                  "VER_ONNX":       "",
                  "VER_CUDA":       "11.8.0",
-                 "ENABLE_TESTS":   "OFF",
+                 "ENABLE_TESTS":   "ON",
                  "BUILD_TARGETS":  "all"
               }
             ]')
@@ -129,7 +129,7 @@ jobs:
                  "VER_TENSORFLOW": "",
                  "VER_TORCH":      "",
                  "VER_ONNX":       "1.16.2",
-                 "ENABLE_TESTS":   "OFF",
+                 "ENABLE_TESTS":   "ON",
                  "BUILD_TARGETS":  "all"
               },
               {
@@ -140,7 +140,7 @@ jobs:
                  "VER_TORCH":      "",
                  "VER_ONNX":       "1.16.2",
                  "VER_CUDA":       "11.8.0",
-                 "ENABLE_TESTS":   "OFF",
+                 "ENABLE_TESTS":   "ON",
                  "BUILD_TARGETS":  "all"
               }
             ]')
@@ -273,7 +273,11 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: "${{ matrix.id }}"
-          path: "wheelhouse/aimet*.whl"
+          path: |
+            wheelhouse/aimet*.whl
+            build/bin/MoDlCompressionTest
+            build/bin/MoDlEqualizationTest
+            build/bin/MoDlQuantizationTest
           if-no-files-found: error
           retention-days: 1d
       - name: Upload AIMET documentation
@@ -287,7 +291,7 @@ jobs:
 
   test:
     name: Run AIMET unit tests
-    # if: matrix.id != 'tf-torch-cpu' NOTE: Unfortunately, GitHub doesn't support accessing ${{ matrix }}
+    # if: matrix.ENABLE_TESTS == 'ON' NOTE: Unfortunately, GitHub doesn't support accessing ${{ matrix }}
     #                                       in a job-level if condition. As a petty workaround, we insert
     #                                       this condition in every step in this job.
     #                                       (See also https://github.com/actions/runner/issues/1985)
@@ -302,22 +306,22 @@ jobs:
     container:
       image: "ubuntu:22.04"
     steps:
-      - if: matrix.id != 'tf-torch-cpu'
+      - if: matrix.ENABLE_TESTS == 'ON'
         run: |
           apt update -qq
           apt install --no-install-recommends -y git curl g++ ca-certificates
           curl -sSL 'https://pki.qualcomm.com/{qc_root_g2_cert.crt,ssl_v3_cert.crt,ssl_v4_cert.crt}' > qualcomm.crt
           update-ca-certificates
-          rm -rf wheelhouse
-      - if: matrix.id != 'tf-torch-cpu'
+          rm -rf download
+      - if: matrix.ENABLE_TESTS == 'ON'
         uses: actions/checkout@v4
-      - if: matrix.id != 'tf-torch-cpu'
+      - if: matrix.ENABLE_TESTS == 'ON'
         uses: actions/download-artifact@v3
         with:
           name: "${{ matrix.id }}"
-          path: "wheelhouse"
+          path: "downloads"
       - name: Try to load python virtual environment from the cache
-        if: matrix.id != 'tf-torch-cpu'
+        if: matrix.ENABLE_TESTS == 'ON'
         uses: actions/cache@v4
         id: cache
         with:
@@ -339,9 +343,9 @@ jobs:
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find wheelhouse -name '*.whl')[test]"
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find downloads -name '*.whl')[test]"
       - name: Run pylint
-        if: matrix.id != 'tf-torch-cpu'
+        if: matrix.ENABLE_TESTS == 'ON'
         run: |
           CONDA_PYTHONPATH="./.conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages"
           AIMET_PACKAGES=$(find $CONDA_PYTHONPATH -regex ".*/aimet_\(common\|torch\|tensorflow\|onnx\)" | tr "\n" " ")
@@ -349,22 +353,37 @@ jobs:
           ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
               python3 -m pylint --rcfile=.pylintrc $AIMET_PACKAGES
       - name: Run unit tests
-        if: matrix.id != 'tf-torch-cpu'
+        if: matrix.ENABLE_TESTS == 'ON'
+        env:
+          CTEST_TARGETS: |
+            downloads/build/bin/MoDlCompressionTest
+            downloads/build/bin/MoDlEqualizationTest
+            downloads/build/bin/MoDlQuantizationTest
         run: |
-          TEST_DIR="./ModelOptimizations/DlQuantization/test ./ModelOptimizations/DlEqualization/test"
+          set -x
+
+          for target in $CTEST_TARGETS; do
+              chmod +x $target
+              # NOTE: Set LD_LIBRARY_PATH for dynamic linking with libpython3.so
+              #       since ubuntu:22.04 docker image doesn't have built-in libpython3.so
+              LD_LIBRARY_PATH=".conda/envs/${{ matrix.id }}/lib" \
+                  ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" $target
+          done
+
+          PYTEST_TARGETS="./ModelOptimizations/DlQuantization/test ./ModelOptimizations/DlEqualization/test"
 
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
-              TEST_DIR="$TEST_DIR ./TrainingExtensions/tensorflow/test"
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/tensorflow/test"
           elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
-              TEST_DIR="$TEST_DIR ./TrainingExtensions/onnx/test"
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/onnx/test"
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
-              TEST_DIR="$TEST_DIR ./TrainingExtensions/torch/test"
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
           fi
-          TEST_ARGS=""
+          PYTEST_ARGS=""
           if [ "${{ matrix.VER_CUDA }}" == "" ] ; then
-              TEST_ARGS="$TEST_ARGS -m \"not cuda\""
+              PYTEST_ARGS="$PYTEST_ARGS -m \"not cuda\""
           fi
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $TEST_ARGS  $TEST_DIR
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $PYTEST_ARGS  $PYTEST_TARGETS
 
   docker-push-latest:
     needs: [docker-tag, variants, test]
