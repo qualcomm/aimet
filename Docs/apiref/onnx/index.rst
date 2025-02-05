@@ -18,6 +18,9 @@ aimet_onnx API
     aimet_onnx.auto_quant_v2 <autoquant>
     aimet_onnx.layer_output_utils <layer_output_generation>
 
+..
+  # start-after
+
 AIMET quantization for ONNX models provides the following functionality.
 
 - :ref:`aimet_onnx.quantsim <apiref-onnx-quantsim>`

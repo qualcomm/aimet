@@ -18,6 +18,9 @@ aimet_tensorflow API
     aimet_tensorflow.model_preparer <model_preparer>
     aimet_tensorflow.compress <compress>
 
+..
+  # start-after
+
 AIMET quantization for TensorFlow models provides the following functionality.
 
 - :ref:`aimet_tensorflow.quantsim <apiref-tensorflow-quantsim>`

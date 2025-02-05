@@ -4,26 +4,43 @@
 AIMET API
 #########
 
-.. toctree::
-    :hidden:
+.. tab-set::
+    :sync-group: platform
 
-    aimet_torch <torch/index>
-    aimet_tensorflow <tensorflow/index>
-    aimet_onnx <onnx/index>
+    .. tab-item:: PyTorch
+        :sync: torch
 
-:ref:`aimet_torch <apiref-torch-index>`
-=======================================
+        .. container:: tab-heading
 
-AIMET APIs for PyTorch framework.
+            **aimet_torch**
 
+        .. include:: ../apiref/torch/index.rst
+            :start-after: # start-after
+            :end-before: # end-before
 
-:ref:`aimet_tensorflow <apiref-tensorflow-index>`
-=================================================
+        .. container:: tab-heading
 
-AIMET APIs for TensorFlow framework.
+            **aimet_torch.v1**
 
+        .. include:: ../apiref/torch/index.rst
+            :start-after: # start-after-v1
 
-:ref:`aimet_onnx <apiref-ONNX-index>`
-=====================================
+    .. tab-item:: TensorFlow
+        :sync: tf
 
-AIMET APIs for ONNX framework.
+        .. container:: tab-heading
+
+            **aimet_tensorflow**
+
+        .. include:: ../apiref/tensorflow/index.rst
+            :start-after: # start-after
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. container:: tab-heading
+
+            **aimet_onnx**
+
+        .. include:: ../apiref/onnx/index.rst
+            :start-after: # start-after
