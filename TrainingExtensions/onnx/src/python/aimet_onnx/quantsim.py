@@ -490,15 +490,17 @@ class QuantizationSimModel:
         Gets quantization axes for per-channel and blockwise quantization
 
         :param op: Connected graph op
-        return: axis
+        :return: (channel axis, block axis)
         """
         if op.type in ['Conv']:
             return 0, 1
         if op.type in ['ConvTranspose']:
             return 1, 0
-        if op.type in ['Gemm', 'MatMul'] and op.transposed_params:
-            return 0, 1
-        if op.type in ['Gemm', 'MatMul']:
+        if op.type in ['Gemm']:
+            if op.transposed_params:
+                return 0, 1
+            return 1, 0
+        if op.type in ['MatMul']:
             return -1, -2
         return None, None
 
