@@ -541,7 +541,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             f"{preceding_op.name}__to__{split_op.name}", preceding_op.outputs[0].shape
         )
         new_product.producer = preceding_op
-        preceding_op.outputs[0] = new_product
+        preceding_op.outputs = [new_product]
         preceding_op.outputs[0].consumers.append(split_op)
 
     def get_op_from_module_name(self, name: str) -> typing.Union[Op, None]:

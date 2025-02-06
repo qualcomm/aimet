@@ -777,7 +777,7 @@ def test_mha_as_leaf_module(replace_with_q_mha):
             assert cg_0_op_name in ops_from_cg_1
             cg_1_op = ops_from_cg_0[cg_0_op_name]
             assert len(cg_0_op.inputs) == len(cg_1_op.inputs)
-            assert cg_0_op.outputs[0] == cg_1_op.outputs[0]
+            assert cg_0_op.outputs == cg_1_op.outputs
             for idx, input_tensor in enumerate(cg_0_op.inputs):
                 if input_tensor.is_parm:
                     assert input_tensor.is_const == cg_1_op.inputs[idx].is_const

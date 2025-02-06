@@ -224,7 +224,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
             while queue:
                 current_op = queue.pop()
                 if current_op.outputs:
-                    output_ops = op.output_ops
+                    output_ops = current_op.output_ops
                     for output_op in output_ops:
                         if output_op.get_module() is not None and output_op.get_module() in \
                                 self._module_to_quantsim_wrapper_dict:
