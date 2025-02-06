@@ -196,7 +196,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 product.add_consumer(op)
                 product.tensor_dict[op] = inp # TODO: Delete Product.tensor_dict attribute
 
-            for idx, output in enumerate(node.output):
+            for output in node.output:
                 product = self._products[output]
                 op.outputs.append(product)
                 product.producer = op

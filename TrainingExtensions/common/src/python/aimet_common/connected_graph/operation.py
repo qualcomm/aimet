@@ -174,7 +174,7 @@ class Op:    # pylint: disable=too-many-public-methods
         return [inp.producer for inp in self._inputs if inp.producer]
 
     @property
-    @deprecated(f"Use the Op.outputs list instead.")
+    @deprecated("Use the Op.outputs list instead.")
     def output(self):
         """ Returns the output of an operation. """
         if self.outputs:
@@ -182,7 +182,7 @@ class Op:    # pylint: disable=too-many-public-methods
         return None
 
     @output.setter
-    @deprecated(f"Use the Op.outputs list instead.")
+    @deprecated("Use the Op.outputs list instead.")
     def output(self, product: Product):
         """ Sets a product as the output of an Operation. """
         if product:

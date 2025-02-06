@@ -1007,7 +1007,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                         new_op.inputs[input_idx]._consumers[consumer_idx] = new_op
             # Op will not have output products if it is a terminating op in the model
             if op.output_products:
-                new_op.outputs.append(op.output_products[0])
+                new_op.outputs = [op.output_products[0]]
                 new_op.outputs[0].producer = new_op
             new_ops_dict[new_op.name] = new_op
         self._ops = new_ops_dict
