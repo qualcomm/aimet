@@ -2787,3 +2787,27 @@ def model_with_split_matmul():
     )
     onnx.checker.check_model(model, True)
     return model
+
+def model_with_4d_matmul_weight():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name="SplitMatMulModel",
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[5, 6000, 32])],
+            outputs=[
+                helper.make_tensor_value_info('matmul_output', TensorProto.FLOAT, shape=[5, 6000, 60]),
+            ],
+            initializer=[
+                numpy_helper.from_array(np.random.randn(5, 32, 60).astype('float32'), name='matmul_weight'),
+            ],
+            nodes=[
+                helper.make_node(
+                    "MatMul",
+                    inputs=["model_input", "matmul_weight"],
+                    outputs=["matmul_output"],
+                    name="matmul"
+                )
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model

@@ -1437,6 +1437,44 @@ class TestQuantSim:
         assert sim.qc_quantize_op_dict['matmul.output'].encodings[0].max not in (1.0, 2.0)
         assert sim.qc_quantize_op_dict['matmul.output'].encodings[0].min != 0.0
 
+    def test_matmul_3d_weight(self, tmp_path):
+        quantsim_config = {
+            "defaults":
+                {
+                    "ops":
+                        {
+                            "is_output_quantized": "True"
+                        },
+                    "params":
+                        {
+                            "is_quantized": "True",
+                            "is_symmetric": "True"
+                        },
+                    "per_channel_quantization": "True",
+                    "strict_symmetric": "False",
+                    "unsigned_symmetric": "False"
+                },
+            "params": {},
+            "op_type": {},
+            "supergroups": [],
+            "model_input": {},
+            "model_output": {}
+        }
+        config_name = os.path.join(tmp_path, 'quantsim_config.json')
+        with open(config_name, 'w') as f:
+            json.dump(quantsim_config, f)
+        model = models_for_tests.model_with_4d_matmul_weight()
+        sim = QuantizationSimModel(model, config_file=config_name)
+        sim.compute_encodings(lambda sess, _: sess.run(None, make_dummy_input(model)), None)
+
+        quantizer = sim.qc_quantize_op_dict["matmul_weight"]
+        assert len(quantizer.get_encodings()) == model.graph.initializer[0].dims[-1]
+
+        block_size = 8
+        quantizer._enable_blockwise_quantization(block_size)
+        sim.compute_encodings(lambda sess, _: sess.run(None, make_dummy_input(model)), None)
+        assert len(quantizer.get_encodings()) == model.graph.initializer[0].dims[-1] * model.graph.initializer[0].dims[-2] // block_size
+
 
 class TestEncodingPropagation:
 
