@@ -54,7 +54,8 @@ class TestConnectedGraph:
                                        models_for_tests.elementwise_op_model().model,
                                        models_for_tests.instance_norm_model().model,
                                        models_for_tests.layernorm_model(),
-                                       models_for_tests.matmul_with_constant_first_input()
+                                       models_for_tests.matmul_with_constant_first_input(),
+                                       models_for_tests.model_with_split_matmul(),
                                        ))
     def test_model_representation(self, model):
         """
@@ -69,6 +70,12 @@ class TestConnectedGraph:
         assert ops.keys() == nodes
         products = cg.get_all_products()
         assert products.keys() == tensors
+
+        """
+        All ops should appear in cg.ordered_ops
+        """
+        for op in ops.values():
+            assert op in cg.ordered_ops
 
         for _, product in products.items():
             for node in model.graph.node:
@@ -120,8 +127,8 @@ class TestConnectedGraph:
             When: A tensor is output[0] of a node
             Then: The tensor's product should be the corresponding op's output
             """
-            if node.output:
-                assert op.output is products[node.output[0]]
+            for idx, output in enumerate(op.outputs):
+                assert output is products[node.output[idx]]
 
     def test_single_residual_model(self):
         model = models_for_tests.single_residual_model()

@@ -40,7 +40,7 @@
     For example, Conv2d, Fc, Add. """
 
 from aimet_common.connected_graph.product import Product
-from aimet_common.utils import AimetLogger
+from aimet_common.utils import AimetLogger, deprecated
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Winnow)
@@ -111,7 +111,7 @@ class Op:    # pylint: disable=too-many-public-methods
         self._is_anonymous = is_anonymous
         self._type = op_type
         self._inputs = []
-        self._output = None
+        self.outputs = []
         self._op_info = OpInformation()
 
     def __repr__(self):
@@ -174,21 +174,26 @@ class Op:    # pylint: disable=too-many-public-methods
         return [inp.producer for inp in self._inputs if inp.producer]
 
     @property
+    @deprecated(f"Use the Op.outputs list instead.")
     def output(self):
         """ Returns the output of an operation. """
-        return self._output
+        if self.outputs:
+            return self.outputs[0]
+        return None
 
     @output.setter
+    @deprecated(f"Use the Op.outputs list instead.")
     def output(self, product: Product):
         """ Sets a product as the output of an Operation. """
-        self._output = product
+        if product:
+            self.outputs = [product]
+        else:
+            self.outputs = []
 
     @property
     def output_ops(self):
         """ Returns all the inputs of an Operation. """
-        if self.output:
-            return self.output.consumers
-        return []
+        return [consumer for output in self.outputs for consumer in output.consumers]
 
     @property
     def groups(self):
@@ -272,7 +277,7 @@ def determine_succeeding_op_output_product_index_in_multi_output_op(succeeding_o
     """
     succeeding_op_dotted_name = succeeding_op.dotted_name
 
-    for index, out in enumerate(multi_output_op.output.consumers):
+    for index, out in enumerate(multi_output_op.output_ops):
         if out.dotted_name == succeeding_op_dotted_name:
             logger.debug("Succeeding Op: %s, product index: %s, multi output Op: %s",
                          succeeding_op_dotted_name, index, multi_output_op.dotted_name)

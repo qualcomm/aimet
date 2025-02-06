@@ -105,9 +105,9 @@ def get_module_act_func_pair(model: ModelProto) -> Dict[str, str]:
 
         module_act_func_pair[op.name] = None
 
-        if op.output and op.output.consumers:
+        if op.output_ops:
             # Get the next op
-            next_op = op.output.consumers[0]
+            next_op = op.output_ops[0]
             # Get the appropriate activation function
             if next_op.type in ActivationTypes:
                 module_act_func_pair[op.name] = next_op.type

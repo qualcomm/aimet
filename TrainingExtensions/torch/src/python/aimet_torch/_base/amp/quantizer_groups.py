@@ -232,9 +232,8 @@ def find_output_quantizer_groups(op: Op, parent_child_op_groups: Dict, map_for_s
     :param parent_child_op_groups: parent child relationships in graph
     :param map_for_skipped_ops: map to find first skipped parents of skipped ops
     """
-    output = op.output
-    if output:
-        consumers = output.consumers
+    if op.outputs:
+        consumers = op.output_ops
         for consumer in consumers:
             if consumer.type in ops_not_to_traverse:
                 continue
@@ -268,7 +267,7 @@ def find_op_groups(graph: ConnectedGraph) -> Dict:
         if not op.input_ops:
             parent_child_op_groups['input_ops'].append(op.dotted_name)
         # Add output op as child to put output of model as a quantizer group
-        if op.output is None:
+        if not op.outputs:
             parent_child_op_groups['output_ops'].append(op.dotted_name)
     for op in graph.get_all_ops().values():
         if op.type in ops_to_skip or op.type in ops_not_to_traverse:

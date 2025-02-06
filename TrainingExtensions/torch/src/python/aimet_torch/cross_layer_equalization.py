@@ -135,10 +135,9 @@ class GraphSearchUtils:
                 layer_groups.append(current_group)
             current_group = []
 
-        if op.output:
-            for consumer in op.output.consumers:
-                GraphSearchUtils.find_downstream_layer_groups_to_scale(consumer, layer_groups,
-                                                                       current_group, visited_nodes)
+        for consumer in op.output_ops:
+            GraphSearchUtils.find_downstream_layer_groups_to_scale(consumer, layer_groups,
+                                                                   current_group, visited_nodes)
 
         # Reached a leaf.. See if the current group has something to grab
         if (len(current_group) > 1) and (current_group not in layer_groups):
@@ -272,8 +271,8 @@ class GraphSearchUtils:
         for op in connected_graph.get_all_ops().values():
 
             if op.model_module and op.model_module.get_module() is module:
-                assert len(op.output.consumers) == 1
-                is_relu_activation = isinstance(op.output.consumers[0].model_module.get_module(),
+                assert len(op.output_ops) == 1
+                is_relu_activation = isinstance(op.output_ops[0].model_module.get_module(),
                                                 (torch.nn.ReLU, torch.nn.PReLU))
                 return is_relu_activation
 

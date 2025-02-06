@@ -112,8 +112,8 @@ class MaskPropagator:
                 input_shape = current_op.inputs[0].shape
                 if input_shape:
                     current_op.num_in_channels = input_shape[api_channel_index_dict[self._model_api]]
-            if current_op.output:
-                output_shape = current_op.output.shape
+            if current_op.outputs:
+                output_shape = current_op.outputs[0].shape
                 if output_shape:
                     current_op.num_out_channels = output_shape[api_channel_index_dict[self._model_api]]
             self._op_to_mask_dict[current_op] = Mask(current_op, self._model_api)
@@ -487,8 +487,8 @@ class MaskPropagator:
         :param product: The product through which masks are considered to be propagated.
         """
 
-        if skip_op.output:
-            skip_consumer_op = skip_op.output.consumers[0]
+        if skip_op.outputs:
+            skip_consumer_op = skip_op.output_ops[0]
 
             producer = product.producer
             producer_mask = self._op_to_mask_dict[producer]
@@ -555,15 +555,15 @@ class MaskPropagator:
         # could be made based the module above the Conv Op. For this reason, we shouldn't adjust
         # the Conv Op's masks. From Add and Concat Ops, the masks are not propagated to Split Op
         # as this considered as a special-Op to special-Op.
-        for consumer in op.output.consumers:
+        for consumer in op.output_ops:
             while consumer in self._op_to_mask_dict and \
                     isinstance(self._op_to_mask_dict[consumer].internal_connectivity, DirectInternalConnectivity):
                 self._op_to_mask_dict[consumer].set_input_channel_mask(0, input_mask)
-                if not consumer.output:
+                if not consumer.outputs:
                     break
                 self._op_to_mask_dict[consumer].set_output_channel_mask(0, input_mask)
                 logger.debug("Masks adjusted for: %s, %s", consumer.dotted_name, consumer.type)
-                consumer = consumer.output.consumers[0]
+                consumer = consumer.output_ops[0]
 
     def _validate_and_adjust_add_op_masks(self, op: Op, model_api: ModelApi):
         """
@@ -608,7 +608,7 @@ class MaskPropagator:
         # This step is essential so that for the Conv Op, only the previous Op's
         # output mask is checked to make the local decision (whether a DownSampleLayer
         # need to be prepended to the Conv.
-        downstream_op = op.output.consumers[0]
+        downstream_op = op.output_ops[0]
         self._adjust_downstream_op_masks(downstream_op, modified_mask, model_api)
 
     def _adjust_downstream_op_masks(self, downstream_op: Op, modified_mask: List[int], model_api: ModelApi):
@@ -627,15 +627,15 @@ class MaskPropagator:
                 num_out_masks = len(downstream_out_masks)
                 for index in range(num_out_masks):
                     downstream_op_mask.set_output_channel_mask(index, modified_mask)
-                    self._adjust_downstream_op_masks(downstream_op.output.consumers[index], modified_mask, model_api)
+                    self._adjust_downstream_op_masks(downstream_op.output_ops[index], modified_mask, model_api)
             elif not isinstance(self._op_to_mask_dict[downstream_op].internal_connectivity,
                                 StopInternalConnectivity):
                 # Downstream Op has single input and single output.
                 downstream_op_mask.set_input_channel_mask(0, modified_mask)
                 downstream_op_mask.set_output_channel_mask(0, modified_mask)
                 logger.debug("Masks adjusted for: %s", downstream_op.dotted_name)
-                if downstream_op.output:
-                    self._adjust_downstream_op_masks(downstream_op.output.consumers[0], modified_mask, model_api)
+                if downstream_op.output_ops:
+                    self._adjust_downstream_op_masks(downstream_op.output_ops[0], modified_mask, model_api)
             else:
                 # Stop propagating downstream if we hit a stop connectivity op
                 return

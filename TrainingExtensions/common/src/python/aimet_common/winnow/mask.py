@@ -455,7 +455,7 @@ class Mask:
         self._op_type = op.type
         self._dotted_name = op.dotted_name
         self._op_input_ops = op.input_ops
-        self._op_output = op.output
+        self._op_output = op.outputs[0] if op.outputs else None # TODO: Support multiple outputs here
         self._model_api = model_api
         self._input_channel_masks = [[] for _ in range(len(self._op_input_ops))]
         if self._op_output:

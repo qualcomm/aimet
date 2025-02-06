@@ -198,9 +198,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
             for idx, output in enumerate(node.output):
                 product = self._products[output]
-                # TODO: Make Op.output list of products to support multi-output ops
-                if idx == 0: # For backwards compatibility, op.output is always first product
-                    op.output = product
+                op.outputs.append(product)
                 product.producer = op
 
         # TODO: Move this process outside of ConnectedGraph altogether

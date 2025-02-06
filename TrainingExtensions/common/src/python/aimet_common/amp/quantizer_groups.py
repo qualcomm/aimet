@@ -293,9 +293,8 @@ def find_valid_ops(connected_graph, op_not_to_traverse: List) -> Set:
     while q:
         op = q.pop()
         valid_ops.add(op.dotted_name)
-        if op.output:
-            for consumer in op.output.consumers:
-                if consumer.type not in op_not_to_traverse and consumer.dotted_name not in valid_ops:
-                    q.append(consumer)
+        for consumer in op.output_ops:
+            if consumer.type not in op_not_to_traverse and consumer.dotted_name not in valid_ops:
+                q.append(consumer)
 
     return valid_ops

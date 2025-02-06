@@ -195,10 +195,8 @@ def _find_parent_child_op_groups(op: Op, parent_child_op_groups: Dict, map_for_s
     :param parent_child_op_groups: parent child op groups dict
     :param map_for_skipped_ops: map to find first skipped parents of skipped ops
     """
-    output = op.output
-
-    if output:
-        consumers = output.consumers
+    if op.outputs:
+        consumers = op.output_ops
         for consumer in consumers:
             dotted_name = op.dotted_name
             if consumer.type in ops_not_to_traverse:

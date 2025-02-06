@@ -2738,3 +2738,52 @@ def custom_op_model():
         opset_imports=[helper.make_operatorsetid('ai.onnx.contrib', 1)]
     )
     return model
+
+def model_with_split_matmul():
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name="SplitMatMulModel",
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[1, 128, 8, 750])],
+            outputs=[
+                helper.make_tensor_value_info('matmul_output', TensorProto.FLOAT, shape=[1, 15, 60, 6000]),
+                helper.make_tensor_value_info('split_output_0', TensorProto.FLOAT, shape=[1, 32, 8, 750]),
+                helper.make_tensor_value_info('split_output_1', TensorProto.FLOAT, shape=[1, 32, 8, 750]),
+                helper.make_tensor_value_info('split_output_3', TensorProto.FLOAT, shape=[1, 32, 8, 750])
+            ],
+            initializer=[
+                numpy_helper.from_array(np.random.randn(128, 128, 1, 1).astype('float32'), name='conv_weight'),
+                numpy_helper.from_array(np.array([32, 32, 32, 32]), name="split_input"),
+                numpy_helper.from_array(np.array([1, 1, 32, 6000]), name="reshape_input"),
+                numpy_helper.from_array(np.random.randn(1, 15, 60, 32).astype('float32'), name='matmul_weight'),
+            ],
+            nodes=[
+                helper.make_node(
+                    "Conv",
+                    inputs=["model_input", "conv_weight"],
+                    outputs=["conv_output"],
+                    name="conv"
+                ),
+                helper.make_node(
+                    "Split",
+                    inputs=["conv_output", "split_input"],
+                    outputs=["split_output_0", "split_output_1", "split_output_2", "split_output_3"],
+                    name="split",
+                    axis=1
+                ),
+                helper.make_node(
+                    "Reshape",
+                    inputs=["split_output_2", "reshape_input"],
+                    outputs=["reshape_output"],
+                    name="reshape"
+                ),
+                helper.make_node(
+                    "MatMul",
+                    inputs=["matmul_weight", "reshape_output"],
+                    outputs=["matmul_output"],
+                    name="matmul"
+                )
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model

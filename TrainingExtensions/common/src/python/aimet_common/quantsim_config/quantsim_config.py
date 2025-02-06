@@ -588,8 +588,8 @@ def get_all_ops_in_neighborhood(op: Op, direction: str, neighborhood=None, split
                     # Neighborhood ops include input of split, as well as all other consumers of split
                     get_all_ops_in_neighborhood(input_op, 'input', neighborhood, split_type)
                     get_all_ops_in_neighborhood(input_op, 'output', neighborhood, split_type)
-    elif op.output:
-        output_ops = [consumer for consumer in op.output.consumers]  # pylint: disable=unnecessary-comprehension
+    elif op.outputs:
+        output_ops = op.output_ops # pylint: disable=unnecessary-comprehension
         for output_op in output_ops:
             if output_op not in neighborhood:
                 neighborhood[output_op] = 'input'

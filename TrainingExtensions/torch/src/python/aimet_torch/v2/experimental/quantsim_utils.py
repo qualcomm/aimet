@@ -135,7 +135,7 @@ def _propagate_output_encodings(sim: QuantizationSimModel,
         if qmodule:
             # There exists a qmodule associated with the graph node ``producer``
             # In this case, set the output quantizer of the producer to ``qtzr``
-            outputs = getattr(producer, 'output_products', [producer.output])
+            outputs = getattr(producer, 'output_products', [producer.outputs[0]])
             i = outputs.index(x)
             if isinstance(qmodule, custom.Split):
                 # torch.split is an output-variadic operation whose number of outputs

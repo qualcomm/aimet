@@ -206,7 +206,7 @@ class ReduceConvertOps(BaseReduceConvertOps):
             if not op.input_ops:
                 parent_child_op_groups['input_ops'].append(op.dotted_name)
             # Add output op as child to put output of model as a quantizer group
-            if op.output is None:
+            if not op.outputs:
                 parent_child_op_groups['output_ops'].append(op.dotted_name)
         for op in graph.get_all_ops().values():
             if op.type in ops_to_skip_local or op.type in ops_not_to_traverse:

@@ -1007,8 +1007,8 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                         new_op.inputs[input_idx]._consumers[consumer_idx] = new_op
             # Op will not have output products if it is a terminating op in the model
             if op.output_products:
-                new_op._output = op.output_products[0]
-                new_op.output.producer = new_op
+                new_op.outputs.append(op.output_products[0])
+                new_op.outputs[0].producer = new_op
             new_ops_dict[new_op.name] = new_op
         self._ops = new_ops_dict
 
@@ -1023,7 +1023,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             producer = product.producer
             # Input products have no producer
             if producer:
-                producer.output = None
+                producer.outputs = []
                 producer_name = producer.name
             else:
                 # Input products don't have the #x in their name so we can directly take the product name
@@ -1036,8 +1036,8 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 new_product.is_parm = product.is_parm
                 new_product._consumers = [consumer]
                 new_product_dict[new_product.name] = new_product
-                if producer and not producer.output:
-                    producer.output = new_product
+                if producer and not producer.outputs:
+                    producer.outputs = [new_product]
                 consumer_input_index = consumer.inputs.index(product)
                 consumer.inputs[consumer_input_index] = new_product
 
@@ -1140,14 +1140,14 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 op.dotted_name = self._module_to_name[op_module]
                 _fill_groups_info(op, op_module)
 
-            if op.output:
-                if op.output.shape is None:
-                    op.output.shape = op.output_shape
+            if op.outputs:
+                if op.outputs[0].shape is None:
+                    op.outputs[0].shape = op.output_shape
                 elif op.output_shape is None:
-                    op.output_shape = op.output.shape
-                elif op.output.shape != op.output_shape:
+                    op.output_shape = op.outputs[0].shape
+                elif op.outputs[0].shape != op.output_shape:
                     logger.debug('Mismatch between existing shape %s for product %s and output shape %s for '
-                                 'output of op %s', op.output.shape, op.output.name, op.output_shape,
+                                 'output of op %s', op.outputs[0].shape, op.outputs[0].name, op.output_shape,
                                  op.name)
 
     def _determine_split_behavior_for_op_and_insert_split_op_in_connected_graph(self, op: Op,
@@ -1239,7 +1239,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # 1. Create a new Product for Split Op's output.
         split_op_product = self._create_split_op_output_product(preceding_op, split_op)
         producer_to_product_name_map[split_op_product.name].append(split_op_product)
-        split_op.output = split_op_product
+        split_op.outputs = [split_op_product]
 
         # 2.This product has multiple consumers. Add the consumers to the Product.
         # Get the consumers from the op's multiple products.
@@ -1253,7 +1253,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # since a Split is being inserted in the connected graph.
         # Save the preceding Op's output Product shape.
         # This is needed to create the new product from the preceding Op to the newly being inserted Split Op.
-        new_product_shape = preceding_op.output.shape
+        new_product_shape = preceding_op.outputs[0].shape
 
         # Since the preceding Op was behaving like a Split Op, it  would have 2 products with the preceding Op as the
         # producer. Delete these products from the product dictionary.
@@ -1272,12 +1272,12 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         new_product_name = preceding_op.name + '__to__' + split_op.name
         new_product = self._add_product(new_product_name, new_product_shape)
         new_product.producer = preceding_op
-        preceding_op.output = new_product
-        preceding_op.output.consumers.append(split_op)
+        preceding_op.outputs = [new_product]
+        preceding_op.outputs[0].consumers.append(split_op)
 
         # 4. Set the Split Op's input to point to current Op's output.
         # new_name = preceding_op.name + '__to__' + split_op.name
-        split_op.inputs.append(preceding_op.output)
+        split_op.inputs.append(preceding_op.outputs[0])
 
     def _create_split_op_output_product(self, preceding_op: Op, split_op: Op) -> Product:
         """
@@ -1287,7 +1287,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :return: Output product of the split op
         """
         split_op_product_name = split_op.name + '__to__' + 'multiple_ops'
-        split_op_product_shape = preceding_op.output.shape
+        split_op_product_shape = preceding_op.outputs[0].shape
         split_op_product = self._add_product(split_op_product_name, split_op_product_shape)
         split_op_product.producer = split_op
         return split_op_product

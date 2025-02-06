@@ -198,20 +198,20 @@ def get_dummy_connected_graph():
     prod_1_3 = Product('op1_to_op3', None)
     prod_1_3.producer = op1
     prod_1_3.add_consumer(op3)
-    op1.output = prod_1_3
+    op1.outputs = [prod_1_3]
     op3.add_input(prod_1_3)
 
     prod_2_3 = Product('op2_to_op3', None)
     prod_2_3.producer = op2
     prod_2_3.add_consumer(op3)
-    op2.output = prod_2_3
+    op2.outputs = [prod_2_3]
     op3.add_input(prod_2_3)
 
     prod_3_out = Product('op3_to_multiple_ops', None)
     prod_3_out.producer = op3
     prod_3_out.add_consumer(op4)
     prod_3_out.add_consumer(op5)
-    op3.output = prod_3_out
+    op3.outputs = [prod_3_out]
     op4.add_input(prod_3_out)
     op5.add_input(prod_3_out)
 

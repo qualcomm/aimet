@@ -90,10 +90,10 @@ def get_module_act_func_pair(model: torch.nn.Module, model_input: Union[Tuple[to
         if cur_module:
             module_act_func_pair[cur_module] = None
 
-            if op.output:
-                assert op.output.consumers, 'op output should have at least one consumer op.'
+            if op.outputs:
+                assert op.output_ops, 'op output should have at least one consumer op.'
                 # Get the next op
-                next_op = op.output.consumers[0]
+                next_op = op.output_ops[0]
                 # Get module associated with next op
                 next_module = next_op.get_module()
 

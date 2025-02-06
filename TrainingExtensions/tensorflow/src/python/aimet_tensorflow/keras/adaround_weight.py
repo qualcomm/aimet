@@ -225,10 +225,10 @@ class Adaround:
                         # If the activation is not passthrough, it is built into the layer. Use None for the associated
                         # activation since running forward pass on the layer will already include the activation.
                         continue
-                if op.output:
-                    assert op.output.consumers, 'op output should have at least one consumer op.'
+                if op.outputs:
+                    assert op.output_ops, 'op output should have at least one consumer op.'
                     # Get the next op
-                    next_op = op.output.consumers[0]
+                    next_op = op.output_ops[0]
                     # Get module associated with next op
                     next_module = next_op.get_module()
 

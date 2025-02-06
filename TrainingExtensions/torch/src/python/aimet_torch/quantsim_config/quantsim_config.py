@@ -223,8 +223,8 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
             queue = [op]
             while queue:
                 current_op = queue.pop()
-                if current_op.output:
-                    output_ops = [consumer for consumer in current_op.output.consumers]  # pylint: disable=unnecessary-comprehension
+                if current_op.outputs:
+                    output_ops = op.output_ops
                     for output_op in output_ops:
                         if output_op.get_module() is not None and output_op.get_module() in \
                                 self._module_to_quantsim_wrapper_dict:

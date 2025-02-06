@@ -138,10 +138,9 @@ class GraphSearchUtils:
                 layer_groups.append(current_group)
             current_group = []
 
-        if op.output:
-            for consumer in op.output.consumers:
-                GraphSearchUtils.find_downstream_layer_groups_to_scale(consumer, layer_groups,
-                                                                       current_group, visited_nodes)
+        for consumer in op.output_ops:
+            GraphSearchUtils.find_downstream_layer_groups_to_scale(consumer, layer_groups,
+                                                                   current_group, visited_nodes)
 
         # Reached a leaf.. See if the current group has something to grab
         if (len(current_group) > 1) and (current_group not in layer_groups):

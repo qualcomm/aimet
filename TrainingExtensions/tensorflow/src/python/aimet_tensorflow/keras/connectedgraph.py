@@ -294,7 +294,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
         product.add_consumer(consumer_op)
         consumer_op.add_input(product)
-        producer_op.output = product
+        producer_op.outputs = [product]
 
     def _fill_op_params(self):
         """
@@ -431,7 +431,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
         # 1. Create a new Product for Split Op's output.
         split_op_product = self._create_split_op_output_product(preceding_op, split_op)
-        split_op.output = split_op_product
+        split_op.outputs = [split_op_product]
 
         # 2.This product has multiple consumers. Add the consumers to the Product.
         # Get the consumers from the op's multiple products.
@@ -442,7 +442,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         self._create_product_linking_preceding_op_to_split_op(preceding_op, split_op)
 
         # 4. Set the Split Op's input to point to current Op's output.
-        split_op.inputs.append(preceding_op.output)
+        split_op.inputs.append(preceding_op.outputs[0])
 
     def _create_split_op_output_product(self, preceding_op: Op, split_op: Op) -> Product:
         """
@@ -452,7 +452,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         :return: Output product of the split op
         """
         split_op_product_name = f"{split_op.name}__to__multiple_ops"
-        split_op_product_shape = preceding_op.output.shape
+        split_op_product_shape = preceding_op.outputs[0].shape
         split_op_product = self._add_product(
             split_op_product_name, split_op_product_shape
         )
@@ -538,11 +538,11 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 logger.debug("Insert Split Op: Step 3. Deleted product: %s", deleted_product)
 
         new_product = self._add_product(
-            f"{preceding_op.name}__to__{split_op.name}", preceding_op.output.shape
+            f"{preceding_op.name}__to__{split_op.name}", preceding_op.outputs[0].shape
         )
         new_product.producer = preceding_op
-        preceding_op.output = new_product
-        preceding_op.output.consumers.append(split_op)
+        preceding_op.outputs[0] = new_product
+        preceding_op.outputs[0].consumers.append(split_op)
 
     def get_op_from_module_name(self, name: str) -> typing.Union[Op, None]:
         """

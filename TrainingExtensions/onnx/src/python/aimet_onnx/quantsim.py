@@ -589,9 +589,9 @@ class QuantizationSimModel:
                     input_quantizers.append(self.qc_quantize_op_dict[input_name])
 
         # Capture output quantizers of the op
-        cg_product = op.output
-        if cg_product.name in self.qc_quantize_op_dict:
-            output_quantizers.append(self.qc_quantize_op_dict[cg_product.name])
+        for cg_product in op.outputs:
+            if cg_product.name in self.qc_quantize_op_dict:
+                output_quantizers.append(self.qc_quantize_op_dict[cg_product.name])
 
         # Capture param quantizers of the op
         for param_name, (_, param_type) in op.parameters.items():
@@ -909,7 +909,7 @@ class QuantizationSimModel:
             if out_qtzr:
                 # There exists output quantizer associated with the graph node ``producer``
                 # In this case, set the output quantizer of the producer to ``src_qtzr`
-                outputs = [producer.output]
+                outputs = producer.outputs
                 i = outputs.index(x)
                 _set_qtzr(dst_qtzr=out_qtzr[i], src_qtzr=src_qtzr)
 

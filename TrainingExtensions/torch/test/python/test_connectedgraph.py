@@ -507,8 +507,8 @@ class TestConnectedGraph(unittest.TestCase):
         input_ops = get_all_input_ops(conn_graph)
         self.assertEqual(2, len(input_ops))
 
-        self.assertTrue(model.conv1 is input_ops[0].output.consumers[0].get_module())
-        self.assertTrue(model.conv3 is input_ops[1].output.consumers[0].get_module())
+        self.assertTrue(model.conv1 is input_ops[0].output_ops[0].get_module())
+        self.assertTrue(model.conv3 is input_ops[1].output_ops[0].get_module())
         output_ops = get_all_output_ops(conn_graph)
         self.assertEqual(1, len(output_ops))
         self.assertEqual(model.fc, output_ops[0].get_module())
