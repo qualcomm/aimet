@@ -318,7 +318,26 @@ class EncodingAnalyzer(Generic[_Statistics], ABC):
         pass
 
 
-_MINIMUM_SCALE = torch.finfo(torch.float32).eps
+def _get_minimum_scale(num_steps: int):
+    """
+    Return the minimum scale given the number of steps in the quantization grid.
+
+    We define the minimum scale as the smallest scale
+    that can represent input range [-0.005, 0.005] without clipping error
+
+    Following this rule, the minimum scale in practice will be:
+
+      | dtype | minimum scale |
+      |-------|---------------|
+      |  int4 |    6.67e-04   |
+      |  int8 |    3.92e-05   | (note: float16.eps =  9.7e-04)
+      | int16 |    1.52e-07   | (note: float32.eps = 1.19e-07)
+      | int32 |    2.33e-12   | (note: float64.eps = 2.22e-16)
+
+    """
+    _MINIMUM_RANGE_TO_REPRESENT = (-0.005, 0.005)
+    _min, _max = _MINIMUM_RANGE_TO_REPRESENT
+    return (_max - _min) / num_steps
 
 
 class MinMaxEncodingAnalyzer(EncodingAnalyzer[_MinMaxRange]):
@@ -355,13 +374,15 @@ class MinMaxEncodingAnalyzer(EncodingAnalyzer[_MinMaxRange]):
         if stats.min is None or stats.max is None:
             raise StatisticsNotFoundError('No statistics present to compute encodings.')
 
+        minimum_scale = _get_minimum_scale(num_steps)
+
         # enforces that 0 is within the min/max
         min_with_zero = torch.clamp(stats.min, max=0)
         max_with_zero = torch.clamp(stats.max, min=0)
 
          # adjusts any min/max pairing that are too close
         tensor_diff = (max_with_zero - min_with_zero) / num_steps
-        adjustment_step = _MINIMUM_SCALE * (tensor_diff < _MINIMUM_SCALE)
+        adjustment_step = minimum_scale * (tensor_diff < minimum_scale)
 
         if is_symmetric:
             updated_max = max_with_zero + math.floor(num_steps / 2) * adjustment_step
@@ -393,6 +414,7 @@ def _flag_extreme_min_max(curr_min, curr_max):
         warnings.warn('Extreme values detected within input! This may skew the associated encodings')
 
 def adjust_min_max(curr_min, curr_max, num_steps, is_symmetric):
+    minimum_scale = _get_minimum_scale(num_steps)
 
     # ensure that 0 is in the range
     curr_min = torch.minimum(curr_min, torch.zeros_like(curr_min))
@@ -406,10 +428,10 @@ def adjust_min_max(curr_min, curr_max, num_steps, is_symmetric):
     tensor_threshold = (curr_max - curr_min) / num_steps
 
     if is_symmetric:
-        curr_min[tensor_threshold < _MINIMUM_SCALE] -= _MINIMUM_SCALE * math.ceil(num_steps / 2)
-        curr_max[tensor_threshold < _MINIMUM_SCALE] += _MINIMUM_SCALE * math.floor(num_steps / 2)
+        curr_min[tensor_threshold < minimum_scale] -= minimum_scale * math.ceil(num_steps / 2)
+        curr_max[tensor_threshold < minimum_scale] += minimum_scale * math.floor(num_steps / 2)
     else:
-        curr_max[tensor_threshold < _MINIMUM_SCALE] += _MINIMUM_SCALE * num_steps
+        curr_max[tensor_threshold < minimum_scale] += minimum_scale * num_steps
 
     if is_symmetric:
         num_pos_steps = math.floor(num_steps / 2)
@@ -599,12 +621,13 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
                max_enc.view(self.observer.shape)
 
     def _pick_test_candidates(self, stats, num_steps, symmetric):
+        minimum_scale = _get_minimum_scale(num_steps)
         # min/max.shape = (num_histograms, )
         min_vals = torch.stack([stat.min for stat in stats])
         max_vals = torch.stack([stat.max for stat in stats])
         min_vals = torch.min(min_vals, torch.zeros_like(min_vals))
         max_vals = torch.max(max_vals, torch.zeros_like(max_vals))
-        max_vals = torch.max(max_vals, min_vals + _MINIMUM_SCALE * num_steps)
+        max_vals = torch.max(max_vals, min_vals + minimum_scale * num_steps)
         if symmetric:
             return self._pick_test_candidates_symmetric(min_vals, max_vals, num_steps)
         return self._pick_test_candidates_asymmetric(min_vals, max_vals, num_steps)
@@ -638,6 +661,7 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
         """
         Selects the set of deltas over which to search for the optimal symmetric encodings
         """
+        minimum_scale = _get_minimum_scale(num_steps)
         tensor_kwargs = {"device": min_vals.device, "dtype": torch.float32}
         max_delta = 2 * torch.max(max_vals, -min_vals).to(torch.float32) / num_steps
         test_offsets = torch.full((1, ), (-num_steps) // 2, **tensor_kwargs)
@@ -646,7 +670,7 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
         test_deltas = max_delta[:, None] * search_space[None, :] / (num_deltas - 1)
         # test_deltas.shape = (num_histograms, num_deltas, 1)
         # test_offsets.shape = (1, 1, 1)
-        min_delta = torch.Tensor([_MINIMUM_SCALE]).to(**tensor_kwargs)
+        min_delta = torch.Tensor([minimum_scale]).to(**tensor_kwargs)
         test_deltas = torch.max(test_deltas, min_delta)
         return test_deltas[:, :, None], test_offsets[:, None, None]
 
@@ -655,6 +679,8 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
         """
         Clamps delta/offset encodings such that represented range falls within the observed min/max range of inputs
         """
+        minimum_scale = _get_minimum_scale(num_steps)
+
         # test_min shape = (num_histograms, num_deltas, num_offsets)
         test_min = test_deltas[:, :, None] * test_offsets[:, None, :]
         test_max = test_min + test_deltas[:, :, None] * num_steps
@@ -664,8 +690,7 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
         # Recompute delta/offset with clamped min/max
         # Returned delta/offset shapes = (num_histograms, num_deltas, num_offsets)
         test_deltas = (test_max - test_min) / num_steps
-        min_delta = torch.Tensor([_MINIMUM_SCALE]).to(device=test_deltas.device,
-                                                                           dtype=test_deltas.dtype)
+        min_delta = torch.tensor([minimum_scale], device=test_deltas.device, dtype=test_deltas.dtype)
         test_deltas = torch.max(test_deltas, min_delta)
         test_offsets = torch.round(test_min / test_deltas)
         return test_deltas, test_offsets
