@@ -177,6 +177,8 @@ class Op:    # pylint: disable=too-many-public-methods
     @deprecated("Use the Op.outputs list instead.")
     def output(self):
         """ Returns the output of an operation. """
+        if len(self.outputs) > 1:
+            raise RuntimeError(f"{self} has more than one output, cannot use legacy output property.")
         if self.outputs:
             return self.outputs[0]
         return None
@@ -185,6 +187,8 @@ class Op:    # pylint: disable=too-many-public-methods
     @deprecated("Use the Op.outputs list instead.")
     def output(self, product: Product):
         """ Sets a product as the output of an Operation. """
+        if len(self.outputs) > 1:
+            raise RuntimeError(f"{self} has more than one output, cannot use legacy output property.")
         if product:
             self.outputs = [product]
         else:
