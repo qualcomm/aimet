@@ -39,7 +39,7 @@ import torch
 from peft import PeftMixedModel, PeftModel
 from peft import LoraConfig, get_peft_model
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.lora_v3.peft_utils import freeze_base_model_activation_quantizers, freeze_base_model_param_quantizers
+from aimet_torch.lora.peft_utils import freeze_base_model_activation_quantizers, freeze_base_model_param_quantizers
 
 
 class DummyModel(torch.nn.Module):
