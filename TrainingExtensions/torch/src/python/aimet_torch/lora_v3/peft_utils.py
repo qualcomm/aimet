@@ -38,15 +38,15 @@
 """ Implementation for handling LoRA adapters added using PEFT """
 # pylint: disable=import-error
 # pylint: disable=no-name-in-module
-from aimet_torch.v2.experimental import lora as qlora
-from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.nn import BaseQuantizationMixin
+from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch.v2.nn import BaseQuantizationMixin, lora as qlora
 
-def _get_lora_layer(sim: QuantizationSimModel):
+
+def _get_lora_layer_except_base_layer(sim: QuantizationSimModel):
     part_of_lora_layer_except_base = set()
-    for _, module in sim.model.named_modules():
-        if isinstance(module, BaseQuantizationMixin) and isinstance(module, (qlora.QuantizedLinear, qlora.QuantizedConv)):
-            for _, m in module.named_modules():
+    for module in sim.model.modules():
+        if isinstance(module, (qlora.QuantizedLinear, qlora.QuantizedConv)):
+            for m in module.modules():
                 if isinstance(m, BaseQuantizationMixin) and m != module.base_layer:
                     part_of_lora_layer_except_base.add(m)
     return part_of_lora_layer_except_base
@@ -68,12 +68,12 @@ def freeze_base_model_param_quantizers(sim: QuantizationSimModel):
     :param sim: QuantSim model
     """
     def _freeze(module):
-        for _, param_quantizer in module.param_quantizers.items():
+        for param_quantizer in module.param_quantizers.values():
             if param_quantizer:
                 _freeze_quantizer(param_quantizer)
 
-    part_of_lora_layer_except_base = _get_lora_layer(sim)
-    for _, module in sim.model.named_modules():
+    part_of_lora_layer_except_base = _get_lora_layer_except_base_layer(sim)
+    for module in sim.model.modules():
         if isinstance(module, BaseQuantizationMixin) and module not in part_of_lora_layer_except_base:
             _freeze(module)
 
@@ -90,8 +90,8 @@ def freeze_base_model_activation_quantizers(sim: QuantizationSimModel):
             if output_quantizer:
                 _freeze_quantizer(output_quantizer)
 
-    part_of_lora_layer_except_base = _get_lora_layer(sim)
-    for _, module in sim.model.named_modules():
+    part_of_lora_layer_except_base = _get_lora_layer_except_base_layer(sim)
+    for module in sim.model.modules():
         if isinstance(module, BaseQuantizationMixin) and module not in part_of_lora_layer_except_base:
             _freeze(module)
 

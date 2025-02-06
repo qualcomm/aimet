@@ -49,8 +49,8 @@ except ImportError:
 else:
     import torch
     from torch import nn
-    from aimet_torch.v2.nn import QuantizationMixin, custom
-    from aimet_torch.v2.nn.true_quant import _dispatch
+    from .true_quant import QuantizationMixin, _dispatch
+    from .modules.custom import QuantizedAdd, QuantizedMultiply
 
 
     class _TensorDict(torch.nn.ParameterDict): # pylint: disable=abstract-method
@@ -86,10 +86,10 @@ else:
             self.scaling = _TensorDict(self.scaling)
 
             self.mul = nn.ModuleDict({
-                adapter_name: custom.QuantizedMultiply() for adapter_name in self.lora_A.keys()
+                adapter_name: QuantizedMultiply() for adapter_name in self.lora_A.keys()
             })
             self.add = nn.ModuleDict({
-                adapter_name: custom.QuantizedAdd() for adapter_name in self.lora_A.keys()
+                adapter_name: QuantizedAdd() for adapter_name in self.lora_A.keys()
             })
 
         def _mul(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

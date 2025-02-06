@@ -73,35 +73,16 @@ class TestLoraAdapterPeft:
         model = two_adapter_model()
         dummy_inputs = torch.randn(10, 10)
         sim = QuantizationSimModel(model, dummy_input=dummy_inputs)
+        print(sim)
         def forward_pass(model, forward_pass_callback=None):
             return model(dummy_inputs)
 
         sim.compute_encodings(forward_pass, None)
         qc_lora = sim.model.base_model.model.linear
 
-        # _get_lora_layer(sim)
-        # freeze_base_model(sim)
         assert not _is_frozen(qc_lora.base_layer.param_quantizers['weight'])
-        #
         freeze_base_model_param_quantizers(sim)
         freeze_base_model_activation_quantizers(sim)
-
-        print(qc_lora.base_layer.param_quantizers['weight']._allow_overwrite,
-              qc_lora.base_layer.param_quantizers['weight'].requires_grad_ == True)
-
-        print(qc_lora.lora_A['default'].param_quantizers['weight']._allow_overwrite,
-              qc_lora.lora_A['default'].param_quantizers['weight'].requires_grad_ == True)
-
-        print(qc_lora.lora_A['default_new'].param_quantizers['weight']._allow_overwrite,
-              qc_lora.lora_A['default_new'].param_quantizers['weight'].requires_grad_ == True)
-
-        print(qc_lora.lora_B['default'].param_quantizers['weight']._allow_overwrite,
-              qc_lora.lora_B['default'].param_quantizers['weight'].requires_grad_ == True)
-
-        print(qc_lora.lora_B['default_new'].param_quantizers['weight']._allow_overwrite,
-              qc_lora.lora_B['default_new'].param_quantizers['weight'].requires_grad_ == True)
-
-        print()
 
         assert _is_frozen(qc_lora.base_layer.param_quantizers['weight'])
         assert not _is_frozen(qc_lora.lora_A['default'].param_quantizers['weight'])
@@ -122,8 +103,6 @@ class TestLoraAdapterPeft:
             return model(dummy_inputs)
 
         sim.compute_encodings(forward_pass, None)
-
-        # Change bitwidth for lora layers
 
         # Export lora model
         with tempfile.TemporaryDirectory() as tmpdir:

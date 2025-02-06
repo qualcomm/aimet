@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2024-25, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -43,6 +43,7 @@ from .fake_quant import *
 from .true_quant import *
 from .base import *
 from .modules import custom
+from . import lora
 
 
 @contextlib.contextmanager

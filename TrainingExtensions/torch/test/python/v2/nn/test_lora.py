@@ -48,7 +48,7 @@ import aimet_torch.v2 as aimet
 from aimet_torch.v2.quantization import affine
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.experimental import lora as qlora
+from aimet_torch.v2.nn import lora as qlora
 
 
 class TestQuantizedLinear:
