@@ -237,16 +237,22 @@ def find_quantizer_group(sim: QuantizationSimModel) -> Tuple[Dict, List[Quantize
     op_to_param_dict = _get_op_to_param_name_dict(sim)
 
     quantizer_groups = []
+
     _add_input_quantizer_group(op_to_param_dict, sim, quantizer_groups)
+
     for parent, children in parent_child_op_groups.items():
         activation_quantizers = []
+        parameter_quantizers = []
         if parent in op_name_to_quantizer_dict:
             activation_quantizers.append(op_name_to_quantizer_dict[parent])
-        parameter_quantizers = []
         for child in children:
             if child and child in op_to_param_dict:
                 parameter_quantizers.append(op_to_param_dict[child])
-
+            child_cg_op = connected_graph.get_op_from_module_name(child)
+            for inp_prod in child_cg_op.inputs:
+                if inp_prod.is_const and inp_prod.name in sim.qc_quantize_op_dict and \
+                        sim.qc_quantize_op_dict[inp_prod.name].enabled:
+                    activation_quantizers.append(inp_prod.name)
         if activation_quantizers or parameter_quantizers:
             _add_quantizer_group(quantizer_groups, tuple(activation_quantizers), tuple(parameter_quantizers))
 
