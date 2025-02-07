@@ -46,7 +46,7 @@ import torch
 import warnings
 from torch import nn
 from torch.optim import SGD, RMSprop, Adagrad, Adam, AdamW
-from aimet_torch.v2.quantization.encoding_analyzer import MinMaxEncodingAnalyzer
+from aimet_torch.v2.quantization.encoding_analyzer import MinMaxEncodingAnalyzer, _get_minimum_scale
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase, Quantize, \
     QuantizeDequantize, GroupedBlockQuantizeDequantize
 from aimet_torch.v2.quantization import affine
@@ -1197,35 +1197,52 @@ def get_qtzn_grid(bitwidth, signed):
         qmin = 0
         qmax = 2 ** bitwidth - 1
 
-    return torch.arange(qmin, qmax+1, dtype=torch.long)
+    return torch.tensor([qmin, qmin+1, qmax-1, qmax], dtype=torch.long)
 
 
-FLOAT32_EPS = torch.tensor(torch.finfo(torch.float32).eps)
 FLOAT32_TINY = torch.tensor(torch.finfo(torch.float32).tiny)
 
 
-@pytest.mark.parametrize('tiny_scale', [FLOAT32_EPS, FLOAT32_TINY])
-@pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])
+"""
+Supported dtypes for QuantizeDequantize
+|          | int4 | int8 | int16 | int32 |
+|----------|------|------|-------|-------|
+|  float16 |  V   |  V   |   V   |       |
+| bfloat16 |  V   |  V   |   V   |       |
+|  float32 |  V   |  V   |   V   |   V   |
+"""
 @pytest.mark.parametrize('symmetric', [True, False])
-@pytest.mark.parametrize('bitwidth', [4, 8, 16])
-def test_sub_float32_quantize_dequantize(dtype, bitwidth, symmetric, tiny_scale):
+@pytest.mark.parametrize(
+    'dtype,          bitwidth', [
+    (torch.float16,  4,     ),
+    (torch.float16,  8,     ),
+    (torch.float16,  16,    ),
+    (torch.bfloat16, 4,     ),
+    (torch.bfloat16, 8,     ),
+    (torch.bfloat16, 16,    ),
+    (torch.float32,  4,     ),
+    (torch.float32,  8,     ),
+    (torch.float32,  16,    ),
+    (torch.float32,  32,    ),
+])
+def test_sub_float32_quantize_dequantize(dtype, bitwidth, symmetric):
     """
     Given: Input of range [0, 2**bw) * tiny_scale
     """
-    min_scale = FLOAT32_EPS
+    min_scale = torch.tensor(_get_minimum_scale(2**bitwidth - 1))
     x_int = get_qtzn_grid(bitwidth, signed=symmetric)
-    x = (x_int * tiny_scale).to(dtype)
+    x = (x_int * FLOAT32_TINY).to(dtype)
 
     """
     When: Compute encodings of QuantizeDequantize
-    Then: qtzr.get_scale() should be no smaller than torch.finfo(float32).eps
+    Then: qtzr.get_scale() should be no smaller than the allowed minimum scale
     """
     qtzr = QuantizeDequantize((), bitwidth, symmetric).to(dtype)
 
     with qtzr.compute_encodings():
         _ = qtzr(x)
 
-    assert torch.allclose(qtzr.get_scale(dtype=torch.float32), min_scale)
+    assert torch.allclose(qtzr.get_scale(dtype=torch.float32), min_scale, rtol=0.01)
     assert torch.allclose(qtzr.get_offset(dtype=torch.float32), torch.zeros([]))
 
     """
@@ -1245,39 +1262,43 @@ def test_sub_float32_quantize_dequantize(dtype, bitwidth, symmetric, tiny_scale)
     assert torch.allclose(out, x, atol=float(min_scale)/2)
 
 
-@pytest.mark.parametrize('tiny_scale', [FLOAT32_EPS, FLOAT32_TINY])
+"""
+Supported dtypes for Quantize
+|          | int4 | int8 | int16 | int32 |
+|----------|------|------|-------|-------|
+|  float16 |  V   |  V   |       |       |
+| bfloat16 |  V   |  V   |       |       |
+|  float32 |  V   |  V   |   V   |       |
+"""
+@pytest.mark.parametrize('symmetric', [True, False])
 @pytest.mark.parametrize(
-    'dtype,          bitwidth,  symmetric', [
-    (torch.float16,  4,         True),
-    (torch.float16,  8,         True),
-    (torch.float16,  12,        True),
-    (torch.float16,  4,         False),
-    (torch.float16,  8,         False),
-    (torch.float16,  11,        False),
-    (torch.bfloat16, 4,         True),
-    (torch.bfloat16, 8,         True),
-    (torch.bfloat16, 9,         True),
-    (torch.bfloat16, 4,         False),
-    (torch.bfloat16, 8,         False),
+    'dtype,          bitwidth', [
+    (torch.float16,  4,     ),
+    (torch.float16,  8,     ),
+    (torch.bfloat16, 4,     ),
+    (torch.bfloat16, 8,     ),
+    (torch.float32,  4,     ),
+    (torch.float32,  8,     ),
+    (torch.float32,  16,    ),
 ])
-def test_sub_float32_quantize(dtype, bitwidth, symmetric, tiny_scale):
+def test_sub_float32_quantize(dtype, bitwidth, symmetric):
     """
     Given: Input of range [0, 2**bw) * tiny_scale
     """
-    min_scale = FLOAT32_EPS
+    min_scale = torch.tensor(_get_minimum_scale(2**bitwidth - 1))
     x_int = get_qtzn_grid(bitwidth, signed=symmetric)
-    x = (x_int * tiny_scale).to(dtype)
+    x = (x_int * FLOAT32_TINY).to(dtype)
 
     """
     When: Compute encodings of QuantizeDequantize
-    Then: qtzr.get_scale() should be no smaller than torch.finfo(float32).eps
+    Then: qtzr.get_scale() should be no smaller than the allowed minimum scale
     """
     qtzr = Quantize((), bitwidth, symmetric).to(dtype)
 
     with qtzr.compute_encodings():
         _ = qtzr(x)
 
-    assert torch.allclose(qtzr.get_scale(dtype=torch.float32), min_scale)
+    assert torch.allclose(qtzr.get_scale(dtype=torch.float32), min_scale, rtol=0.01)
     assert torch.allclose(qtzr.get_offset(dtype=torch.float32), torch.zeros([]))
 
     """
