@@ -1075,3 +1075,28 @@ def test_code_example(module_cls):
     except SyntaxError as e:
         err = SyntaxError(f"The following code example is ill-formed:\n\n{src_code}")
         raise err from e
+
+
+@torch.no_grad()
+def test_subclassing():
+    """
+    When: Define a trivial subclass of an existing quantized module
+    Then: The subclass should work normally
+
+    NOTE: This test was added to prevent malicious OOP/MRO issues
+          which caused an infinite recursion error in the child classes of
+          qunatized modules.
+    """
+
+    # Trivial subclass. Should behave same as parent
+    class MyQuantizedLinear(QuantizedLinear):
+        ...
+
+    qlinear = QuantizedLinear(10, 10)
+    my_qlinear = MyQuantizedLinear(10, 10) # Shouldn't run into infinite recursion error
+    x = torch.randn(10, 10)
+
+    my_qlinear.weight.copy_(qlinear.weight)
+    my_qlinear.bias.copy_(qlinear.bias)
+
+    assert torch.equal(qlinear(x), my_qlinear(x))
