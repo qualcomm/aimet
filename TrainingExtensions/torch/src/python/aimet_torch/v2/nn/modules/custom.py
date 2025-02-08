@@ -52,15 +52,6 @@ from ..true_quant import (
 )
 
 
-def _binary_quant_init(self):
-    super(type(self), self).__quant_init__()
-    self.input_quantizers = nn.ModuleList([None, None])
-
-
-def _ternary_quant_init(self):
-    super(type(self), self).__quant_init__()
-    self.input_quantizers = nn.ModuleList([None, None, None])
-
 
 @QuantizationMixin.implements(Sin)
 class QuantizedSin(_DispatchMixin, QuantizationMixin, Sin):
@@ -95,35 +86,35 @@ class QuantizedRSqrt(_DispatchMixin, QuantizationMixin, RSqrt):
 @QuantizationMixin.implements(MatMul)
 class QuantizedMatMul(_DispatchMixin, QuantizationMixin, MatMul):
     """ Quantized MatMul """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.matmul
 
 
 @QuantizationMixin.implements(Add)
 class QuantizedAdd(_DispatchMixin, QuantizationMixin, Add):
     """ Quantized Add """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.add
 
 
 @QuantizationMixin.implements(Multiply)
 class QuantizedMultiply(_DispatchMixin, QuantizationMixin, Multiply):
     """ Quantized Multiply """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.mul
 
 
 @QuantizationMixin.implements(Subtract)
 class QuantizedSubtract(_DispatchMixin, QuantizationMixin, Subtract):
     """ Quantized Subtract """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.sub
 
 
 @QuantizationMixin.implements(Divide)
 class QuantizedDivide(_DispatchMixin, QuantizationMixin, Divide):
     """ Quantized Divide """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.div
 
 
@@ -296,7 +287,7 @@ class QuantizedSqrt(_DispatchMixin, QuantizationMixin, Sqrt):
 @QuantizationMixin.implements(Bmm)
 class QuantizedBmm(_DispatchMixin, QuantizationMixin, Bmm):
     """ Quantized Bmm """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.bmm
 
 
@@ -476,14 +467,14 @@ class QuantizedNeg(_DispatchMixin, QuantizationMixin, Neg):
 @QuantizationMixin.implements(Baddbmm)
 class QuantizedBaddbmm(_DispatchMixin, QuantizationMixin, Baddbmm):
     """ Quantized Baddbmm """
-    __quant_init__ = _ternary_quant_init
+    __quant_init__ = QuantizationMixin.__ternary__
     _builtin_torch_fn = torch.baddbmm
 
 
 @QuantizationMixin.implements(Addmm)
 class QuantizedAddmm(_DispatchMixin, QuantizationMixin, Addmm):
     """ Quantized Addmm """
-    __quant_init__ = _ternary_quant_init
+    __quant_init__ = QuantizationMixin.__ternary__
     _builtin_torch_fn = torch.addmm
 
 
@@ -630,7 +621,7 @@ class QuantizedNormalize(_DispatchMixin, QuantizationMixin, Normalize):
 @QuantizationMixin.implements(GridSample)
 class QuantizedGridSample(_DispatchMixin, QuantizationMixin, GridSample):
     """ Quantized GridSample """
-    __quant_init__ = _binary_quant_init
+    __quant_init__ = QuantizationMixin.__binary__
     _builtin_torch_fn = torch.nn.functional.grid_sample
 
 
