@@ -16,7 +16,7 @@ Encoding Format Specification
 =============================
 
 The encodings from Quantization simulation can be exported for usage on run-time. The encoding file uses a JSON syntax.
-The file format is usable with both PyTorch and TensorFlow models, that maps tensor names with the encodings.
+The file format is usable with both PyTorch, TensorFlow, and ONNX models, that maps tensor names with the encodings.
 
 1. Versioning
 =============
@@ -403,3 +403,173 @@ The field is auto-populated and should not require a manual edit from users. It 
 
 The intended usage of ``quantizer_args`` is to provide debugging information for customers who may need to perform
 post-quantization tasks, which could benefit from knowledge of how the encoding information was obtained.
+
+5. Version 1.0.0
+================
+Changes from 0.6.1:
+
+* Activation and parameter encodings are now no longer dictionaries mapping tensor names to encoding dictionaries, but instead are lists of encoding dictionaries where the tensor names are another entry in the encoding dictionary.
+* Fields present in the encoding dictionary have been reworked or removed for conciseness. Refer to the table below for details on which fields are present for each encoding type.
+* Notably, per channel encodings are now contained in a single encoding dictionary instead of a list of encodings with length num_channels. Instead, ``scale`` and ``offset`` fields are now 1-D arrays of length num_channels.
+* Encodings for per-block quantization and Low Power Blockwise Quantization are now supported.
+
+5.1. Encoding specification
+---------------------------
+
+.. list-table:: Top level structure
+   :header-rows: 1
+
+   * - Key
+     - Value type
+     - Description
+   * - version
+     - string
+     - Encoding file version
+   * - activation_encodings
+     - list of Encoding dictionaries
+     - Encodings for each activation tensor
+   * - param_encodings
+     - list of Encoding dictionaries
+     - Encodings for each param tensor
+   * - quantizer_args
+     - dict
+     - Arguments used to instantiate QuantizationSimModel (refer to Quantizer Args structure for details)
+   * - excluded_layers
+     - list
+     - List of excluded layers
+
+The below table describes how the Encoding dictionary looks for different quantization types: Per Tensor, Per Channel, Per Block, and Low Power Blockwise Quantization (LPBQ).
+Certain keys will only be present for certain quantization types, as indicated in the table.
+
+.. list-table:: Encoding dictionary structure
+   :header-rows: 1
+
+   * - Key
+     - Value type
+     - Description
+     - Per Tensor
+     - Per Channel
+     - Per Block
+     - LPBQ
+   * - name
+     - string
+     - Tensor name
+     - X
+     - X
+     - X
+     - X
+   * - enc_type
+     - string
+     - Encoding type (refer to EncodingType for valid strings)
+     - X
+     - X
+     - X
+     - X
+   * - dtype
+     - string
+     - Data type (refer to DataType for valid strings)
+     - X
+     - X
+     - X
+     - X
+   * - block_size
+     - uint32
+     - Block size
+     -
+     -
+     - X (INT only)
+     - X
+   * - bw
+     - uint8
+     - Encoding bw (>=4 and <= 32)
+     - X
+     - X
+     - X
+     - X
+   * - is_sym
+     - bool
+     - True if encoding is symmetric, False otherwise
+     - X
+     - X
+     - X
+     - X
+   * - scale
+     - fp32[]
+     - Flattened array of scales
+     - X (INT only)
+     - X (INT only)
+     - X (INT only)
+     - X
+   * - offset
+     - int32[]
+     - Flattened array of offsets
+     - X (INT only)
+     - X (INT only)
+     - X (INT only)
+     - X
+   * - compressed_bw
+     - uint8
+     - Compressed bw
+     -
+     -
+     -
+     - X
+   * - per_block_int_scale
+     - uint16[]
+     - Flattened array of scales per block
+     -
+     -
+     -
+     - X
+
+.. list-table:: Encoding type
+   :header-rows: 1
+
+   * - Enum
+     - Description
+   * - PER_TENSOR
+     - Denotes Per Tensor quantization
+   * - PER_CHANNEL
+     - Denotes Per Channel quantization
+   * - PER_BLOCK
+     - Denotes Per Block quantization
+   * - LPBQ
+     - Denotes LPBQ quantization
+
+.. list-table:: Data type
+   :header-rows: 1
+
+   * - Enum
+     - Description
+   * - INT
+     - Denotes integer quantization
+   * - FP
+     - Denotes floating point quantization
+
+.. list-table:: Quantizer Args structure
+   :header-rows: 1
+
+   * - Key
+     - Value type
+     - Description
+   * - activation_bitwidth
+     - uint8
+     - Indicates the bit-width set for all activation encodings
+   * - dtype
+     - string
+     - Indicates if computation occurred in floating point or integer precision
+   * - is_symmetric
+     - bool
+     - If set to true, it indicates that parameter encodings were computed symmetrically
+   * - param_bitwidth
+     - uint8
+     - Indicates the bit-width set for all parameter encodings
+   * - per_channel_quantization
+     - bool
+     - If set to True, then quantization encodings were computed for each channel axis of the tensor
+   * - quant_scheme
+     - string
+     - Indicates the quantization algorithm used, which may be one of post_training_tf or post_training_tf_enhanced
+
+* For Per Channel quantization, the channel axis is defined to be the output channel dimension. For Per Block quantization, the channel axis is the output channel dimension while the block axis is the input channel dimension.
+* For Per Tensor quantization, scales and offsets will be a 1-D array of length 1. For Per Channel quantization, the length will be the the number of output channels. For Per Block quantization, the length will be ``number of output channels`` x ``number of input channels / block size``
