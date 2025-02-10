@@ -73,8 +73,13 @@ def _copy_quantizers(source, target):
 class LinearLinearPair(torch.nn.Module):
     def __init__(self):
         super(LinearLinearPair, self).__init__()
-        self.l1 = torch.nn.Linear(2, 3)
-        self.l2 = torch.nn.Linear(3, 4)
+        self.l1 = torch.nn.Linear(1, 2)
+        self.l1.weight.data.fill_(0.5)
+        self.l1.bias.data.fill_(0.5)
+        self.l2 = torch.nn.Linear(2, 1)
+        #self.l2.weight.data.fill_(1.5)
+        self.l2.weight.data = torch.tensor([[150., 6.]])
+        self.l2.bias.data.fill_(10)
 
     def forward(self, input):
         x = self.l1(input)
@@ -114,26 +119,36 @@ class LinearLinearPair(torch.nn.Module):
 
 def test_linear_linear_pair():
     model = LinearLinearPair().eval()
-    inp = torch.rand(1, 2)
+    #inp = torch.rand(1, 1)
+    inp = torch.ones(1, 1)
     out = model(inp)
     sim = QuantizationSimModel(model, inp)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model 
-    breakpoint()
     # Replace with let module
-    new_module1 = LETLinear(2,3)
-    new_module1.update_wt(sim.model.l1.weight, sim.model.l1.bias)
-    #_copy_quantizers(sim.model.l1, new_module1)
+    new_module1 = LETLinear(sim.model.l1.weight.shape[1], sim.model.l1.weight.shape[0])
+    new_module1.load_state_dict(sim.model.l1.state_dict())
+    # new_module1.weight = copy.deepcopy(sim.model.l1.weight)
+    # new_module1.bias = copy.deepcopy(sim.model.l1.bias)
+    new_module1.update_quantizers(sim.model.l1)
 
-    new_module2 = LETLinear(sim.model.l2)
-    #_copy_quantizers(sim.model.l2, new_module2)
+    new_module2 = LETLinear(sim.model.l2.weight.shape[1],sim.model.l2.weight.shape[0])
+    new_module2.load_state_dict(sim.model.l2.state_dict())
+    # load_state_dict not copying the quantizers from sim to nw module
+    # when calling forward in the sim model with let module with the updated weight the o/p is incorrect (l2.wt[0] is not getting updated)
+    # new_module2.weight = copy.deepcopy(sim.model.l2.weight)
+    # new_module2.bias = copy.deepcopy(sim.model.l2.bias)
+    new_module2.update_quantizers(sim.model.l2)
 
     setattr(sim.model, 'l1', new_module1)
     setattr(sim.model, 'l2',  new_module2)
-
+    
+    #breakpoint()
     # forward pass through toy model with let module
+    sim.model.l1.prev_scale = torch.tensor([2])
+    sim.model.l2.foll_scale = torch.tensor([2])
     out_without_scale = sim.model(inp) 
-
+    breakpoint()
     # # No scale and shift has been set so out1 should be similar to out2
     # assert torch.allclose(sim_out, out_without_scale, atol=0.01)
 

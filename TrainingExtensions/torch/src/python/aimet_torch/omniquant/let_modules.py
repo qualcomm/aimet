@@ -91,6 +91,11 @@ class LETModule():
         self.foll_shift = None
         self.foll_prep_fn = torch.nn.Identity()
 
+    def update_quantizers(self, source):
+        self.input_quantizers = copy.deepcopy(source.input_quantizers)
+        self.output_quantizers = copy.deepcopy(source.output_quantizers)
+        self.param_quantizers = copy.deepcopy(source.param_quantizers)
+
 class QuantizedLETConv(LETModule, torch.nn.Conv2d):
     def __quant_init__(self):
         super().__quant_init__()
@@ -104,22 +109,21 @@ class QuantizedLETConv(LETModule, torch.nn.Conv2d):
     def fold(elf):
         pass
 
-class LETLinear(QuantizedLinear):
+class LETLinear(QuantizedLinear, LETModule):
     def __quant_init__(self):
         #QuantizedLinear.__quant_init__()
         print("xxxx")
         super().__quant_init__()
-        #LETModule.__init__(self)
+        LETModule.__init__(self)
 
-    def update_wt(self, w, b):
-        breakpoint()
-        pass
 
     def forward(self, input: Tensor) -> Tensor:
         weight = self.weight
         bias = self.bias
+        print("&&&&&&&&", self.weight)
+        
         if self.prev_scale is not None:
-            prev_scale = self.prev_scale(self.prev_scale)
+            prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 if self.prev_shift is not None:
                     prev_shift = self.prev_prep_fn(self.prev_shift)
@@ -136,13 +140,25 @@ class LETLinear(QuantizedLinear):
                     bias = bias + torch.matmul(weight, foll_shift)
 
             weight = weight * foll_scale.unsqueeze(0)
+        
 
         '''
         if self.param_quantizers.weight:
             w = self.param_quantizers["weight"](w)
         '''
-        
-        out = QuantizedLinear(input)
+        print("1", input, self.weight, self.bias)
+        print("2",input, weight, bias)
+        # self.weight = nn.Parameter(weight)
+        # self.bias = nn.Parameter(bias)
+        self.weight.data.copy_(weight)
+        self.bias.data.copy_(bias)
+        print("3", input, self.weight, self.bias)
+        print("4",input, weight, bias)
+        # TODO, does weight need to be assigned back to self.weight (or is it pointer like?)
+        #breakpoint()
+        out = super().forward(input)
+        out1 = F.linear(input, self.weight, self.bias)
+        breakpoint()
         
         '''
         if self.output_quantizers[0]:
