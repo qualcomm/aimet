@@ -3528,7 +3528,7 @@ class TestQuantizationSimLearnedGrid:
             optimizer.step()
             optimizer.zero_grad()
 
-    @pytest.mark.parametrize("hw_version", ['V69', 'V73', 'V75', 'V79'])
+    @pytest.mark.parametrize("hw_version", ['V69', 'V73', 'V75', 'V79', 'V81'])
     @pytest.mark.parametrize("quant_scheme", [QuantScheme.post_training_tf,
                                               QuantScheme.training_range_learning_with_tf_init])
     def test_exception_for_embedding(self, hw_version, quant_scheme):
@@ -3573,7 +3573,7 @@ class TestQuantizationSimLearnedGrid:
         weight_quantizer = qembedding.param_quantizers["weight"]
         assert weight_quantizer.min.numel() == weight_quantizer.max.numel() == 1
 
-        if sim._hw_version in {"V73", "V75", "V79"}:
+        if sim._hw_version in {"V73", "V75", "V79", "V81"}:
             assert weight_quantizer.bitwidth == 16
             assert not weight_quantizer.symmetric
         elif sim._hw_version == "V69":

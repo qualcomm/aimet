@@ -565,7 +565,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             original_module = wrapper.get_original_module()
 
             if isinstance(original_module, torch.nn.Embedding):
-                if self._hw_version not in {'V73', 'V75', 'V79'}:
+                if self._hw_version not in {'V73', 'V75', 'V79', 'V81'}:
                     continue
                 weight_quantizer = wrapper.param_quantizers['weight']
                 output_quantizer = wrapper.output_quantizers[0]
@@ -574,7 +574,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 weight_quantizer.use_symmetric_encodings = output_quantizer.use_symmetric_encodings
 
             elif isinstance(original_module, torch.nn.GroupNorm):
-                if self._hw_version not in {'V73', 'V75', 'V79'}:
+                if self._hw_version not in {'V73', 'V75', 'V79', 'V81'}:
                     continue
                 if 'weight' in wrapper.param_quantizers:
                     output_quantizer = wrapper.output_quantizers[0]
@@ -621,7 +621,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                     else:
                         target_quantizer_for_second_input.use_symmetric_encodings = True
                         target_quantizer_for_second_input.bitwidth = 8
-                elif self._hw_version in {'V73', 'V75', 'V79'}:
+                elif self._hw_version in {'V73', 'V75', 'V79', 'V81'}:
                     if target_quantizer_for_first_input is None or target_quantizer_for_second_input is None:
                         logger.warning("The target quantizers could not be found. MatMul exception rule does not apply for layer: %s. "
                                        "If you haven't used model preparer, consider using it.", str(original_module))
