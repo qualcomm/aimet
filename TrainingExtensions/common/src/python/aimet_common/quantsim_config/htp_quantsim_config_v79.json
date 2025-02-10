@@ -1,0 +1,248 @@
+{
+  "defaults":
+  {
+    "hw_version": "V79",
+    "ops":
+    {
+      "is_output_quantized": "True"
+    },
+    "params":
+    {
+      "is_quantized": "True",
+      "is_symmetric": "True"
+    },
+    "per_channel_quantization": "True",
+    "strict_symmetric": "False",
+    "unsigned_symmetric": "False"
+  },
+
+  "params":
+  {
+    "bias":
+    {
+      "is_quantized": "False"
+    }
+  },
+
+  "op_type":
+  {
+    "Cast":
+    {
+      "is_output_quantized": "False"
+    },
+    "BatchPermutation":
+    {
+      "is_output_quantized": "False"
+    },
+    "ChannelShuffle":
+    {
+      "is_output_quantized": "False"
+    },
+    "CropAndResize":
+    {
+      "is_output_quantized": "False"
+    },
+    "DepthToSpace":
+    {
+      "is_output_quantized": "False"
+    },
+    "Dropout":
+    {
+      "is_output_quantized": "False"
+    },
+    "Expand":
+    {
+      "is_output_quantized": "False"
+    },
+    "Reshape":
+    {
+      "is_output_quantized": "False"
+    },
+    "Upsample":
+    {
+      "is_output_quantized": "False"
+    },
+    "SpaceToDepth":
+    {
+      "is_output_quantized": "False"
+    },
+    "BatchToSpace":
+    {
+      "is_output_quantized": "False"
+    },
+    "SpaceToBatch":
+    {
+      "is_output_quantized": "False"
+    },
+    "NonMaxSuppression":
+    {
+      "is_output_quantized": "False"
+    },
+    "Gather":
+    {
+      "is_output_quantized": "False",
+      "per_channel_quantization": "False"
+    },
+    "GatherND":
+    {
+      "is_output_quantized": "False"
+    },
+    "Gemm":
+    {
+      "per_channel_quantization": "False"
+    },
+    "GroupNorm":
+    {
+      "per_channel_quantization": "False",
+      "params": {
+        "bias":
+        {
+          "is_quantized": "True"
+        }
+      }
+    },
+    "LayerNorm":
+    {
+      "per_channel_quantization": "False",
+      "params": {
+        "weight": {
+          "is_symmetric": "False"
+        }
+      }
+    },
+    "BatchNormalization":
+    {
+      "per_channel_quantization": "False",
+      "params": {
+        "running_mean": {
+          "is_quantized": "False"
+        },
+        "running_var": {
+          "is_quantized": "False"
+        }
+      }
+    },
+    "InstanceNormalization":
+    {
+      "per_channel_quantization": "False"
+    },
+    "MatMul":
+    {
+      "per_channel_quantization": "False"
+    },
+    "MaxPool":
+    {
+      "is_output_quantized": "False"
+    },
+    "MaxRoiPool":
+    {
+      "is_output_quantized": "False"
+    },
+    "Mean":
+    {
+      "is_output_quantized": "False"
+    },
+    "NonZero":
+    {
+      "is_output_quantized": "False"
+    },
+    "Pad":
+    {
+      "is_output_quantized": "False"
+    },
+    "ReduceMax":
+    {
+      "is_output_quantized": "False"
+    },
+    "ReduceMin":
+    {
+      "is_output_quantized": "False"
+    },
+    "ScatterElements":
+    {
+      "is_output_quantized": "False"
+    },
+    "Sigmoid":
+    {
+      "encoding_constraints":
+      {
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Softmax":
+    {
+      "encoding_constraints":
+      {
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+    "Slice":
+    {
+      "is_output_quantized": "False"
+    },
+    "Split":
+    {
+      "is_output_quantized": "False"
+    },
+    "Squeeze":
+    {
+      "is_output_quantized": "False"
+    },
+    "Tile":
+    {
+      "is_output_quantized": "False"
+    },
+    "TopK":
+    {
+      "is_output_quantized": "False"
+    },
+    "Transpose":
+    {
+      "is_output_quantized": "False"
+    }
+  },
+
+  "supergroups":
+  [
+    {
+      "op_list": ["Add", "Relu"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization","HardSwish"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization","PRelu"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization", "Relu"]
+    },
+	{
+      "op_list": ["Conv", "Clip"]
+	},
+    {
+      "op_list": ["Conv", "HardSwish"]
+    },
+    {
+      "op_list": ["Conv", "PRelu"]
+    },
+    {
+      "op_list": ["Conv", "Relu"]
+    },
+    {
+      "op_list": ["ConvTranspose", "Relu"]
+    },
+    {
+      "op_list": ["Gemm", "Relu"]
+    }
+  ],
+
+  "model_input":
+  {
+    "is_input_quantized": "True"
+  },
+
+  "model_output":
+  {}
+}
