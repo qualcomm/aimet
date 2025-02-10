@@ -32,7 +32,6 @@ A change in major revision indicates substantial change to the format, updates t
 
 2. Version 0.6.1
 ================
-Adds a new field called ``quantizer_args`` to all exported encodings files.
 
 2.1. Encoding specification
 ---------------------------
@@ -116,6 +115,9 @@ post-quantization tasks, which could benefit from knowledge of how the encoding 
 ================
 .. note::
     Encoding version 1.0.0 is only supported for ``aimet_torch`` and ``aimet_onnx``.
+
+.. note::
+    The default encoding version is ``0.6.1``. To export with ``1.0.0``, add ``from aimet_common import quantsim`` and ``quantsim.encoding_version = '1.0.0'`` prior to sim.export().
 
 Changes from 0.6.1:
 
