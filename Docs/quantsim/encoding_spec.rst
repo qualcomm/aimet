@@ -16,7 +16,7 @@ Encoding Format Specification
 =============================
 
 The encodings from Quantization simulation can be exported for usage on run-time. The encoding file uses a JSON syntax.
-The file format is usable with both PyTorch, TensorFlow, and ONNX models, that maps tensor names with the encodings.
+The file format is usable with both PyTorch, TensorFlow, and ONNX models that maps tensor names with the encodings.
 
 1. Versioning
 =============
@@ -28,305 +28,13 @@ Encoding format will follow ``XX.YY.ZZ`` versioning format as describe below,
 * ``YY`` = Minor Revision
 * ``ZZ`` = Patching version
 
-Change in major revision should indicate substantial change to the format, updates to minor version indicates additional information element being added to encoding format and might require update to fully consume the encodings.  The patching version shall be updated to indicate minor updates to quantization simulation e.g. bug fix etc.
+A change in major revision indicates substantial change to the format, updates to minor version indicates additional information element being added to encoding format and might require update to fully consume the encodings.  The patching version shall be updated to indicate minor updates to quantization simulation e.g. bug fix etc.
 
-2. Version 0.4.0 (up to)
-========================
-
-The encoding format as defined below is backward compatible and shall applicable to all exported encoding up to version 0.4. In case, where versioning information is missing the encoding is assumed to follow version 0.4 format.
-
-2.1. Encoding specification
----------------------------
-
-.. code-block::
-
-   “version”: “string”
-   “activation_encodings”:
-   {
-       <tensor_name>: [Encoding, …]
-   }
-   “param_encodings”
-   {
-       <tensor_name>: [Encoding, …]
-   }
-
-Where,
-
-* ``"version”`` is set to “0.4.0”
-* ``<tensor_name>`` is a string representing the tensor in onnx or tensorflow graph.
-
-Encoding is as defined below,
-
-.. code-block::
-
-   Encoding:{
-      bitwidth: integer
-      is_symmetric: string
-      max: float
-      min: float
-      offset: integer
-      scale: float
-   }
-
-Where,
-
-
-* ``bitwidth``\ : constraints >=4 and <=32
-* ``is_symmetric``\ : allowed choices ``True``, ``False``
-
-if a tensor is assigned **more than one** Encoding then the encoding is at per channel basis.\
-
-2.2. Encoding file example for PyTorch
---------------------------------------
-
-On PyTorch, the tensor names shall be derived from the ONNX named model representation as depicted below on a sample model.
-
-
-.. image:: ../../images/mapping_between_onnx_tensor_names_and_encodings.png
-   :target: ../../images/mapping_between_onnx_tensor_names_and_encodings.png
-   :alt: Mapping between ONNX tensor names and encodings
-
-
-Given below is the sample format with keys and values for encodings JSON output file on PyTorch.
-
-.. code-block::
-
-   {
-       “version”: “0.4.0”
-       "activation_encodings": {
-           "20":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 2.6086959838867188,
-                   "min": -2.109158515930176,
-                   "offset": -114.0,
-                   "scale": 0.018501389771699905
-               }
-           ],
-           "21":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 2.558866932988167,
-                   "min": -0.12636379897594452,
-                   "offset": -12.0,
-                   "scale": 0.010530316270887852
-               }
-           ],
-       },
-       "param_encodings": {
-           "conv2.weight":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 0.06318144500255585,
-                   "min": -0.06268782913684845,
-                   "offset": -127.0,
-                   "scale": 0.0004936049808748066
-               }
-           ],
-           "fc1.weight":
-            [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 0.05589814856648445,
-                   "min": -0.05546144023537636,
-                   "offset": -127.0,
-                   "scale": 0.0004367042565718293
-               }
-           ],
-       }
-   }
-
-2.3. Encoding file example for TensorFlow
------------------------------------------
-
-Given below is a sample format with the keys and values for encodings on TensorFlow graph (in JSON format).
-
-.. code-block::
-
-   {
-       “version”: “0.4.0”
-       "activation_encodings": {
-           "conv2d/Relu:0":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 2.184721499681473,
-                   "min": -0.10788747668266296,
-                   "offset": 11,
-                   "scale": 0.0089906234367221
-               }
-           ],
-           "conv2d_1/Relu:0":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 2.1020304188132286,
-                   "min": -0.10380396991968155,
-                   "offset": 11,
-                   "scale": 0.008650330936207491
-               }
-           ],
-       },
-       "param_encodings": {
-           "conv2d/Conv2D/ReadVariableOp:0":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 0.1462666392326355,
-                   "min": -0.1451239287853241,
-                   "offset": 126,
-                   "scale": 0.0011427081098743512
-               }
-           ],
-           "conv2d_1/Conv2D/ReadVariableOp:0":
-           [
-               {
-                   "bitwidth": 8,
-                   "is_symmetric": “False”,
-                   "max": 0.08333279937505722,
-                   "min": -0.08268175274133682,
-                   "offset": 126,
-                   "scale": 0.0006510374592799766
-               }
-           ]
-       }
-   }
-
-3. Version 0.5.0
-================
-
-3.1. Encoding Specification
----------------------------
-
-
-.. code-block::
-
-   “version”: “string”
-   “activation_encodings”:
-   {
-       <tensor_name>: [Encoding, …]
-   }
-   “param_encodings”
-   {
-       <tensor_name>: [Encoding, …]
-   }
-
-Where,
-
-
-* ``"version”`` is set to “0.5.0”
-* ``<tensor_name>`` is a string representing the tensor in onnx or tensorflow graph.
-
-``‘Encoding’`` structure shall include an encoding field ``“dtype”`` to specify the datatype used for simulating the tensor.
-
-.. code-block::
-
-   Encoding:{
-       dtype: string
-       bitwidth: integer
-       is_symmetric: string
-       max: float
-       min: float
-       offset: integer
-       scale: float
-   }
-
-Where,
-
-
-* ``dtype``\ : allowed choices “int”, “float”
-* ``bitwidth``\ : constraints >=4 and <=32
-* ``is_symmetric``\ : allowed choices “True”, “False”
-
-when ``dtype`` is set to ``‘float’``\ , Encoding shall have the following fields
-
-.. code-block::
-
-   Encoding:{
-       dtype: string
-       bitwidth: integer
-   }
-
-``bitwidth`` defines the precision of the tensor being generated by the producer and consumed by the
-downstream consumer(s).
-
-3.2. Encoding file example for PyTorch
---------------------------------------
-
-Given below is a snippet of the sample format with change highlighted.
-
-.. code-block::
-
-   {
-       “version”: “0.5.0”
-       "activation_encodings": {
-           "20":
-           [
-               {
-                   “dtype”: “int”
-                   "bitwidth": 8,
-                    ...
-               }
-           ],
-            ...
-       },
-       "param_encodings": {
-           "conv2.weight":
-           [
-               {
-                   “dtype”: “int”
-                   "bitwidth": 8,
-                   ...
-               }
-           ],
-            ...
-      }
-   }
-
-3.3. Encoding file example for TensorFlow
------------------------------------------
-
-Given below is a snippet of the sample format with change highlighted.
-
-.. code-block::
-
-   {
-       “version”: “0.5.0”
-       "activation_encodings": {
-           "conv2d/Relu:0":
-           [
-               {
-                   “dtype”: “float”
-                   "bitwidth": 16,
-           ],
-            ...
-       },
-       "param_encodings": {
-           "conv2d/Conv2D/ReadVariableOp:0":
-           [
-               {
-                   “dtype”: “float”
-                   "bitwidth": 16,
-               }
-           ],
-            ...
-   }
-
-4. Version 0.6.1
+2. Version 0.6.1
 ================
 Adds a new field called ``quantizer_args`` to all exported encodings files.
 
-4.1. Encoding specification
+2.1. Encoding specification
 ---------------------------
 
 
@@ -404,8 +112,11 @@ The field is auto-populated and should not require a manual edit from users. It 
 The intended usage of ``quantizer_args`` is to provide debugging information for customers who may need to perform
 post-quantization tasks, which could benefit from knowledge of how the encoding information was obtained.
 
-5. Version 1.0.0
+3. Version 1.0.0
 ================
+.. note::
+    Encoding version 1.0.0 is only supported for ``aimet_torch`` and ``aimet_onnx``.
+
 Changes from 0.6.1:
 
 * Activation and parameter encodings are now no longer dictionaries mapping tensor names to encoding dictionaries, but instead are lists of encoding dictionaries where the tensor names are another entry in the encoding dictionary.
@@ -413,7 +124,7 @@ Changes from 0.6.1:
 * Notably, per channel encodings are now contained in a single encoding dictionary instead of a list of encodings with length num_channels. Instead, ``scale`` and ``offset`` fields are now 1-D arrays of length num_channels.
 * Encodings for per-block quantization and Low Power Blockwise Quantization are now supported.
 
-5.1. Encoding specification
+3.1. Encoding specification
 ---------------------------
 
 .. list-table:: Top level structure
