@@ -272,14 +272,18 @@ def set_matmul_second_input_producer_to_8bit_symmetric(sim: 'QuantizationSimMode
 
 
 class QuantizedMaskAdd(torch.nn.Module):
+    # pylint: disable=missing-class-docstring
     def __init__(self):
         super().__init__()
         self.nullrequant = QuantizationMixin.from_module(custom.NullRequant())
         self.add = QuantizationMixin.from_module(custom.Add())
 
+    # pylint: disable=redefined-builtin
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        # Get shape from input to avoid graph optimization in 
-        # `torch.onnx.utils._optimize_graph` for multiple Reshape ops when sim.export()
+        """
+        Get shape from input to avoid graph optimization in
+        `torch.onnx.utils._optimize_graph` for multiple Reshape ops when sim.export()
+        """
         bsz, _, seq_len, ctx_len = input.shape
         return self.add(input, self.nullrequant(mask, [bsz, -1, seq_len, ctx_len]))
 
@@ -289,6 +293,7 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
     Apply adaptive quantized attention mask to sim model of LLMs.
     :param sim: Quantsim model to apply adaptive attention mask for
     """
+    # pylint: disable=too-many-locals, disable=protected-access
     model_name = sim.connected_graph._model_name # pylint: disable=protected-access
     quant_modules = {name: module for name, module in sim.model.named_modules()
                      if isinstance(module, BaseQuantizationMixin)}
@@ -347,8 +352,8 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
                     mask_add_act_mins.append(prev_module.output_quantizers[0].min)
                     mask_maxs.append(prev_module.input_quantizers[1].max)
                 else:
-                    logger.warning(f"The quantizers for {prev_op_name} may remain uninitialized "
-                                   "only if sim model is about to use `load_encodings`")
+                    logger.warning("The quantizers for %s may remain uninitialized "
+                                   "only if sim model is about to use `load_encodings`", str(prev_op_name))
     if mask_add_names:
         mask_add_act_global_min = min(mask_add_act_mins)
         for name, mask_add_act_min, mask_max in zip(mask_add_names, mask_add_act_mins, mask_maxs):
