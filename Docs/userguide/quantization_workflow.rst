@@ -13,7 +13,12 @@ We recommend the following workflow for quantizing a model to improve its effici
 General guidelines
 ==================
 
-Preparing a model for deployment on a target device involves a tradeoff between model accuracy and on-device performance. 
+Preparing a model for deployment on a target device involves a tradeoff between model *accuracy* and on-device *performance*. 
+
+Accuracy is how "correct" the model response is, typically a fraction of responses correct as measured by an evaluation function.
+
+Performance, in an AIMET context, is the ability of a given device to run a model without overtaxing the device compute and memory resources. To evaluate performance improvements, we recommend measuring latency reduction and memory size reduction.
+
 
 The following procedure follows a strategy of reducing model precision (usually through parameter quantization) only as much as needed to achieve acceptable performance. This reduces the engineering effort required to restore the accuracy lost during quantization. Sometimes this is straightforward. For models with large numbers (billions) of parameters, though, more finesse is required to find this balance, requiring much engineering effort to locate sensitive model layers, fine-tune quantized parameters, and so on. 
 
@@ -47,9 +52,9 @@ Add quantization/dequantization (QDQ) nodes to the model using QuantSim. Set wei
 
 Do the following:
 
-1. Ensure that the FP32 model adheres to model-specific guidelines. For instance, in PyTorch QuantSim can only quantize math operations performed by :class:`torch.nn.Module` objects, while :class:`torch.nn.functional` calls will be incorrectly ignored. See framework-specific pages to learn more about such model guidelines.
+1. Ensure that the FP32 model adheres to framework-specific guidelines. For instance, in PyTorch QuantSim can only quantize math operations performed by :class:`torch.nn.Module` objects, while :class:`torch.nn.functional` calls will be incorrectly ignored. See framework-specific pages to learn more about such model guidelines.
 2. Once the model conforms to guidelines, create a quantization simulation (QuantSim) version of your model with the bit-width set to 16 bits for both weights and activations (W16A16). See :ref:`<quantsim-workflow>`.
-3. Ensure that the original FP32 model and the quantized model (QuantSim object) perform similarly during the forward pass, especially when custom quantizers are included in the model.
+3. Ensure that the original FP32 model and the quantized model (QuantSim object) perform similarly during the forward pass.
 4. Compute the off-target quantized accuracy metric for the quantized model and verify that it agrees (approximately) with the FP32 model. If it does not, there might be a problem with the quantization nodes. You can help improve AIMET by reporting an issue to |aimet|_.
 
 Step 3. Reducing precision
