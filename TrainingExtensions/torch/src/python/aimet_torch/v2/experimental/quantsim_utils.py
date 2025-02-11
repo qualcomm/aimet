@@ -38,11 +38,10 @@
 
 from typing import overload, Callable, Type
 import torch
-import inspect
-import re
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.product import Product
+from aimet_torch.amp.quantizer_groups import ops_to_skip
 from aimet_torch.meta.connectedgraph import Op
 from aimet_torch.v2._builder import _V2LazyQuantizer
 from aimet_torch.v2.nn import BaseQuantizationMixin, custom
@@ -61,6 +60,8 @@ _MATH_INVARIANT_OPS = (
     torch.nn.ChannelShuffle,
     torch.nn.Identity
 )
+
+MASK_ADD_PREV_OPS = ['Div', 'MatMul']
 
 
 def _is_math_invariant_op(module: torch.nn.Module):
@@ -297,34 +298,56 @@ def apply_requant_mask(sim: 'QuantizationSimModel'):
         original_module = connected_graph._name_to_module[f'{model_name}.{name}']
         return connected_graph._module_to_op_dict[original_module]
 
-    model_input_names = list(inspect.signature(sim.model.forward).parameters)
+    def get_prev_valid_op(op: Op):
+        if len(op.input_ops) == 1:
+            if op.input_ops[0].type in ops_to_skip:
+                return get_prev_valid_op(op.input_ops[0])
+
+        if len(op.input_ops) > 1:
+            if op.input_ops[0].type in ops_to_skip:
+                logger.warning(
+                "Multiple input ops exist, traversal to find closest producer is performed based on the first input")
+                return get_prev_valid_op(op.input_ops[0])
+
+        if not op.input_ops:
+            logger.warning("No input exists for navigation for traversal, aborting..")
+            return None
+
+        return op.input_ops[0]
+
     mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
     for name, module in quant_modules.items():
-        if isinstance(module, custom.Add):
-            add_op = get_connected_graph_op(sim.connected_graph, model_name, name)
-            if add_op.inputs[1].is_model_input and \
-                model_input_names[int(re.findall(r'\d+', add_op.inputs[1].name)[0])] == 'attention_mask':
+        if isinstance(module, torch.nn.Softmax):
+            softmax_op = get_connected_graph_op(sim.connected_graph, model_name, name)
+            prev_op = get_prev_valid_op(softmax_op)
+            prefix = f'{model_name}.'
+            prev_op_name = prev_op.dotted_name
+            if prev_op_name.startswith(prefix):
+                prev_op_name = prev_op_name[len(prefix):]
+            prev_module = None if prev_op is None else quant_modules.get(prev_op_name, None)
+            if prev_module is not None and isinstance(prev_module, custom.Add) and \
+                prev_op.inputs[1].is_model_input and prev_op.input_ops[0].type in MASK_ADD_PREV_OPS:
                 q_mask_add = QuantizedMaskAdd()
-                q_mask_add.nullrequant.input_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[1].bitwidth,
+                q_mask_add.nullrequant.input_quantizers[0] = _V2LazyQuantizer(prev_module.input_quantizers[1].bitwidth,
                                                                sim._rounding_mode,
                                                                sim._quant_scheme,
-                                                               module.input_quantizers[1].symmetric,
+                                                               prev_module.input_quantizers[1].symmetric,
                                                                enabled_by_default=True
                                                                ).realize()
-                q_mask_add.nullrequant.output_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[1].bitwidth,
+                q_mask_add.nullrequant.output_quantizers[0] = _V2LazyQuantizer(prev_module.input_quantizers[1].bitwidth,
                                                                sim._rounding_mode,
                                                                sim._quant_scheme,
-                                                               module.input_quantizers[1].symmetric,
+                                                               prev_module.input_quantizers[1].symmetric,
                                                                enabled_by_default=True
                                                                ).realize()
-                q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
-                setattr(sim.model, name, q_mask_add)
-                if module.input_quantizers[1].is_initialized() and module.output_quantizers[0].is_initialized():
-                    mask_add_names.append(name)
-                    mask_add_act_mins.append(module.output_quantizers[0].min)
-                    mask_maxs.append(module.input_quantizers[1].max)
+                q_mask_add.add.output_quantizers[0] = prev_module.output_quantizers[0]
+                setattr(sim.model, prev_op_name, q_mask_add)
+                if prev_module.input_quantizers[1].is_initialized() and prev_module.output_quantizers[0].is_initialized():
+                    mask_add_names.append(prev_op_name)
+                    mask_add_act_mins.append(prev_module.output_quantizers[0].min)
+                    mask_maxs.append(prev_module.input_quantizers[1].max)
                 else:
-                    logger.warning(f"The quantizers for {name} may remain uninitialized "
+                    logger.warning(f"The quantizers for {prev_op_name} may remain uninitialized "
                                    "only if sim model is about to use `load_encodings`")
     if mask_add_names:
         mask_add_act_global_min = min(mask_add_act_mins)
