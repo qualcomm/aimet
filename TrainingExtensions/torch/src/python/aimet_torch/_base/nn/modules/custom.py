@@ -882,11 +882,11 @@ class ScatterElements(torch.nn.Module):
 
         if self.reduce:
             if isinstance(src, torch.Tensor):
-                return x.scatter_reduce_(self.dim, index, src, self.reduce)
+                return x.scatter_reduce(self.dim, index, src, self.reduce)
             # If src is a single float value
-            return x.scatter_(self.dim, index, src, reduce=self.reduce)
+            return x.scatter(self.dim, index, src, reduce=self.reduce)
 
-        return x.scatter_(self.dim, index, src)
+        return x.scatter(self.dim, index, src)
 
 
 class OneHot(torch.nn.Module):

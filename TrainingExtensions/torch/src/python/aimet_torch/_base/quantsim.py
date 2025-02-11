@@ -694,6 +694,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         module_name = '.'.join(module_names)
         return utils.get_named_module(self.model, module_name)
 
+    @torch.no_grad()
     def export(self, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple], # pylint: disable=arguments-differ
                onnx_export_args: Optional[Union[OnnxExportApiArgs, Dict]] = None, propagate_encodings: bool = False,
                export_to_torchscript: bool = False, use_embedded_encodings: bool = False, export_model: bool = True,
