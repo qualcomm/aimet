@@ -4,19 +4,17 @@
 
 .. _quantsim-encoding-spec:
 
+#############################
+Encoding Format Specification
+#############################
+
 AIMET Quantization Simulation determines scale/offset values for activation and parameter tensors in the
 model. This scale/offset information is also referred to as 'quantization encoding'. When a model is
 exported using :func:`QuantizationSimModel.export` API, an encoding file is also exported that contains
 quantization encodings for the model. This encoding file can then be used by a target runtime like |qnn|
 when running the model on-target.
 
-The following specification describes the format of this encoding file produced by AIMET.
-
-Encoding Format Specification
-=============================
-
-The encodings from Quantization simulation can be exported for usage on run-time. The encoding file uses a JSON syntax.
-The file format is usable with both PyTorch, TensorFlow, and ONNX models that maps tensor names with the encodings.
+The encoding file uses a JSON syntax. The file format is usable with model exports from ``aimet_torch``, ``aimet_tensorflow``, and ``aimet_onnx``.
 
 1. Versioning
 =============

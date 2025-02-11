@@ -204,3 +204,10 @@ Following is a typical workflow for using AIMET QuantSim to simulate on-target q
 #. Call :func:`QuantizationSimModel.export` on the QuantSim object to save a copy of the model with
    quantization operations removed, along with an encodings file containing quantization scale and offset
    parameters for each activation and weight tensor in the model.
+
+Exported Encodings
+==================
+An encodings file containing quantization parameters for tensors in the model is produced when calling :func:`QuantizationSimModel.export`.
+The file, in conjunction with the exported model, can be used by a target runtime like |qnn| to run the quantized model on target.
+
+See the :ref:`Encoding Format Specification <quantsim-encoding-spec>` page for a description on the specification and file format.
