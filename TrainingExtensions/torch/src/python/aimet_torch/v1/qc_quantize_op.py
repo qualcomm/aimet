@@ -471,9 +471,8 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
 
         if isinstance(tensor, utils.dtypes_to_ignore_for_quantization) or \
                 tensor.dtype in utils.torch_dtypes_to_ignore_for_quantization or \
-                (tensor_quantizer.is_const and torch.numel(tensor) == 1) or \
                 not tensor_quantizer.enabled:
-            # If the tensor is unquantizable or if it's a  scalar-constant, disable the quantizer explicitly
+            # If the tensor is unquantizable, disable the quantizer explicitly
             tensor_quantizer.enabled = False
             return False
         return True
@@ -875,7 +874,10 @@ class StaticGridQuantWrapper(QcQuantizeWrapper):
                     f"but got {type(input_tensor)}"
                 )
 
-            if not self.should_perform_quant_dequant(input_tensor, tensor_quantizers[index]):
+            input_type = type(input_tensor)
+            if issubclass(input_type, float):
+                input_tensor = torch.tensor(input_tensor)
+            elif not self.should_perform_quant_dequant(input_tensor, tensor_quantizers[index]):
                 return input_tensor
 
             if self._mode is QcQuantizeOpMode.ANALYSIS and not tensor_quantizers[index].is_encoding_frozen:
@@ -902,6 +904,9 @@ class StaticGridQuantWrapper(QcQuantizeWrapper):
 
             else:
                 output = input_tensor
+
+            if issubclass(input_type, float):
+                output = output.item()
 
             return output
 
@@ -1153,7 +1158,10 @@ class LearnedGridQuantWrapper(QcQuantizeWrapper):
                     inner_outputs.append(inner_quantization(inner_input, index))
                 return inner_outputs
 
-            if not self.should_perform_quant_dequant(input_tensor, tensor_quantizers[index]):
+            input_type = type(input_tensor)
+            if issubclass(input_type, float):
+                input_tensor = torch.tensor(input_tensor)
+            elif not self.should_perform_quant_dequant(input_tensor, tensor_quantizers[index]):
                 return input_tensor
 
             if not isinstance(input_tensor, torch.Tensor):
@@ -1164,7 +1172,12 @@ class LearnedGridQuantWrapper(QcQuantizeWrapper):
 
             encoding_min = getattr(self, type_of_quantizer + str(index) + '_encoding_min')
             encoding_max = getattr(self, type_of_quantizer + str(index) + '_encoding_max')
-            return tensor_quantizers[index].quantize_dequantize(input_tensor, encoding_min, encoding_max)
+            out = tensor_quantizers[index].quantize_dequantize(input_tensor, encoding_min, encoding_max)
+
+            if issubclass(input_type, float):
+                out = out.item()
+
+            return out
 
         quantized_tensors = []
         for index, tensor_to_quantize in enumerate(tensors_to_quantize):

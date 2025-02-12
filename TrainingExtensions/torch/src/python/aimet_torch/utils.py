@@ -72,9 +72,9 @@ from aimet_torch._base.nn.modules.custom import CustomSparseConv3DLayer
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 
-dtypes_to_ignore_for_quantization = (int, float, bool, str, tuple, type(None))
+dtypes_to_ignore_for_quantization = (int, bool, str, tuple, type(None))
 torch_dtypes_to_ignore_for_quantization = [torch.int, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool, torch.uint8]
-allowed_output_types = (torch.Tensor, *dtypes_to_ignore_for_quantization)
+allowed_output_types = (torch.Tensor, float, *dtypes_to_ignore_for_quantization)
 DROPOUT_TYPES = (torch.nn.Dropout, torch.nn.Dropout2d, torch.nn.Dropout3d)
 
 # list of modules which need to be treated as a leaf module

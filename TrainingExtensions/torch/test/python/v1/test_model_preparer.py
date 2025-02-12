@@ -1868,13 +1868,13 @@ class TestFX:
                 super(SampleModel, self).__init__()
 
             def forward(self, x):
-                x = torch.mul(x, 1.5)
-                x = torch.mul(2, x)
-                x = x * 3
-                x = 4 * x
-                x = torch.tensor(5.0) + x
-                x = 6 + x
-                x = 7.1 - x
+                x = torch.mul(x, 1.5)     # module_mul
+                x = torch.mul(2, x)       # module_mul_1
+                x = x * 3                 # module_mul_2
+                x = 4 * x                 # module_mul_3
+                x = torch.tensor(5.0) + x # module_add
+                x = 6 + x                 # module_add_1
+                x = 7.1 - x               # module_sub
                 return x
 
         model = SampleModel()
@@ -1886,20 +1886,34 @@ class TestFX:
                                           rounding_mode='nearest', default_output_bw=8,
                                           default_param_bw=8, in_place=False, config_file=None)
         qsim_model.compute_encodings(forward_pass_callback=evaluate, forward_pass_callback_args=dummy_inp)
-        print(qsim_model)
 
-        for wrapper_name, wrapper in qsim_model.quant_wrappers():
-            # Verify first layer input and output quantizer enabled flag
-            if wrapper_name == "module_mul":
-                assert wrapper.input_quantizers[0].enabled == True
-                assert wrapper.input_quantizers[1].enabled == False
-                assert wrapper.output_quantizers[0].enabled == True
-            else:
-                # Verify rest of layer input and output quantizer enabled flag
-                for inp_quant in wrapper.input_quantizers:
-                    assert inp_quant.enabled == False
-                for out_quant in wrapper.output_quantizers:
-                    assert out_quant.enabled == True
+        assert     qsim_model.model.module_mul.input_quantizers[0].enabled
+        assert     qsim_model.model.module_mul.input_quantizers[1].enabled
+        assert     qsim_model.model.module_mul.output_quantizers[0].enabled
+
+        assert not qsim_model.model.module_mul_1.input_quantizers[0].enabled
+        assert not qsim_model.model.module_mul_1.input_quantizers[1].enabled
+        assert     qsim_model.model.module_mul_1.output_quantizers[0].enabled
+
+        assert not qsim_model.model.module_mul_2.input_quantizers[0].enabled
+        assert not qsim_model.model.module_mul_2.input_quantizers[1].enabled
+        assert     qsim_model.model.module_mul_2.output_quantizers[0].enabled
+
+        assert not qsim_model.model.module_mul_3.input_quantizers[0].enabled
+        assert not qsim_model.model.module_mul_3.input_quantizers[1].enabled
+        assert     qsim_model.model.module_mul_3.output_quantizers[0].enabled
+
+        assert     qsim_model.model.module_add.input_quantizers[0].enabled
+        assert not qsim_model.model.module_add.input_quantizers[1].enabled
+        assert     qsim_model.model.module_add.output_quantizers[0].enabled
+
+        assert not qsim_model.model.module_add_1.input_quantizers[0].enabled
+        assert not qsim_model.model.module_add_1.input_quantizers[1].enabled
+        assert     qsim_model.model.module_add_1.output_quantizers[0].enabled
+
+        assert     qsim_model.model.module_sub.input_quantizers[0].enabled
+        assert not qsim_model.model.module_sub.input_quantizers[1].enabled
+        assert     qsim_model.model.module_sub.output_quantizers[0].enabled
 
     def test_prepare_custom_functional_conv(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -1161,25 +1161,29 @@ class TestQuantizationSimStaticGrad:
         model = ModelWithConstantQuantization()
         dummy_input = torch.rand(1, 2)
         sim = QuantizationSimModel(model, dummy_input)
+
+        assert     sim.model.relu.input_quantizers[0].enabled
+        assert     sim.model.relu.output_quantizers[0].enabled
+
         assert not sim.model.add.input_quantizers[0].enabled
-        assert sim.model.add.input_quantizers[1].enabled
-        assert sim.model.add2.input_quantizers[0].enabled
+        assert     sim.model.add.input_quantizers[1].enabled
+        assert     sim.model.add.output_quantizers[0].enabled
+
+        assert     sim.model.add2.input_quantizers[0].enabled
         assert not sim.model.add2.input_quantizers[1].enabled
+        assert     sim.model.add2.output_quantizers[0].enabled
+
         assert not sim.model.add3.input_quantizers[0].enabled
-        assert sim.model.add3.input_quantizers[1].enabled
+        assert     sim.model.add3.input_quantizers[1].enabled
+        assert     sim.model.add3.output_quantizers[0].enabled
 
         sim.compute_encodings(lambda m, _: m(dummy_input), None)
-        # As add and add2 use constants with numel 1, we expect the quantizers to not have any encoding stats and thus
-        # be disabled after compute encodings.
-        assert not sim.model.add.input_quantizers[1].enabled
-        assert not sim.model.add2.input_quantizers[1].enabled
-        assert sim.model.add3.input_quantizers[1].enabled
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             sim.export(tmp_dir, 'model_with_constant_quantization', dummy_input)
             with open(os.path.join(tmp_dir, "model_with_constant_quantization.encodings"), "r") as encodings_file:
                 activation_encoding_tensors = set(json.load(encodings_file)['activation_encodings'].keys())
-                assert len(activation_encoding_tensors) == 6
+                assert len(activation_encoding_tensors) == 8
 
     # -------------------------------------------
     def test_input_and_output_quantization(self):
