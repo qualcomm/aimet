@@ -119,8 +119,10 @@ def _convert_to_qmodel(model: torch.nn.Module):
                 except UnknownModuleError:
                     pass
 
-                if not qmodule and not tuple(module.children()):
-                    exceptions[e.module_cls] = e
+                if type(module).forward != torch.nn.Module.forward: # We don't complain if the user has no intent of
+                                                                    # running forward with this module
+                    if not qmodule and not tuple(module.children()):
+                        exceptions[e.module_cls] = e
 
         for name, child in module.named_children():
             setattr(module, name, _convert_to_qmodule(child))
