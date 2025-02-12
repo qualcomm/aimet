@@ -345,6 +345,7 @@ class ParamUtils:
         if len(node.input) >= param_index + 1:
             param_name = node.input[param_index]
             return ParamUtils.get_param_by_name(model, param_name)
+        return None
 
     @staticmethod
     def get_param_by_name(model: ModelProto, param_name: str):
