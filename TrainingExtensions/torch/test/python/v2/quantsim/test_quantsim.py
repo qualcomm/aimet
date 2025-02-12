@@ -1112,6 +1112,35 @@ class TestQuantsim:
         assert sim.model.attn.softmax.output_quantizers[0].symmetric
         assert sim.model.k.output_quantizers[0].symmetric
 
+    def test_trivial_leaf_module(self):
+        """
+        Given: Trivial module that user has no intent of running forward with.
+        """
+        class Trivial(torch.nn.Module):
+            # NOTE: This module will ALWAYS fail when forward is called,
+            #       but it's ok since the user has no intent to do so
+            pass
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self._trivial = Trivial()
+                self.linear = torch.nn.Linear(10, 10)
+
+            def forward(self, x):
+                return self.linear(x)
+
+        """
+        When: Create quantsim
+        Then: Quantsim shouldn't complain about not defining quantized definition for trivial modules 
+        """
+        sim = QuantizationSimModel(Model(), torch.randn(10, 10))
+        assert isinstance(sim.model._trivial, Trivial)
+        assert isinstance(sim.model.linear, QuantizedLinear)
+        assert isinstance(sim.model.linear.param_quantizers['weight'], QuantizeDequantize)
+        assert isinstance(sim.model.linear.input_quantizers[0], QuantizeDequantize)
+        assert isinstance(sim.model.linear.output_quantizers[0], QuantizeDequantize)
+
     def test_already_quantized_model(self):
         """
         Given: The model already consists of quantized modules
