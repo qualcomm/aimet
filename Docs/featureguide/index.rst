@@ -64,6 +64,11 @@ Analysis tools to automatically identify sensitive areas and hotspots in your pr
 :ref:`Compression <featureguide-compression-index>`
 ===================================================
 
+Workflows to perform LoRa (Low-Rank Adaptation) on quantized large models.
+
+:ref:`QLoRa <featureguide-quantized-lora-index>`
+===================================================
+
 Reduces pre-trained model’s Multiply-accumulate(MAC) and memory costs with a minimal drop in accuracy.
 AIMET supports various compression techniques like Weight SVD, Spatial SVD and Channel pruning.
 
