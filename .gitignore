@@ -30,5 +30,6 @@ unit_test_results
 
 # Other generated files
 *.swp
+*.DS_Store
 packaging/setup_cfg.py
 package_info.py
