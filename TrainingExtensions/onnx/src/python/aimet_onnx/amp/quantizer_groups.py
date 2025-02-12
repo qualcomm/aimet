@@ -271,8 +271,9 @@ def _add_quantizer_group(quantizer_groups: List[QuantizerGroup], activation_quan
     """
     quantizer_group = QuantizerGroup(parameter_quantizers=parameter_quantizers,
                                      activation_quantizers=activation_quantizers)
-    quantizer_groups.append(quantizer_group)
-    logger.info('Quantizer Group added: %s', quantizer_group)
+    if quantizer_group not in quantizer_groups:
+        quantizer_groups.append(quantizer_group)
+        logger.info('Quantizer Group added: %s', quantizer_group)
 
 
 def _add_input_quantizer_group(op_to_param_dict: Dict, sim: QuantizationSimModel, quantizer_groups: List):
