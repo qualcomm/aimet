@@ -606,8 +606,9 @@ class QuantizationSimModel:
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to GroupNorm op.
         """
+        # pylint:disable = too-many-branches
         for op in self.connected_graph.get_all_ops().values():
-            input_quantizers, output_quantizers, param_quantizers = self.get_op_quantizers(op)
+            _, output_quantizers, param_quantizers = self.get_op_quantizers(op)
 
             if op.type == 'GroupNormalization':
                 if self._hw_version not in {'V73', 'V75', 'V79'}:
