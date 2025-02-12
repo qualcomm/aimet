@@ -9,12 +9,18 @@ Context
 
 The QWA-LoRa workflow involves determining the appropriate weight and activation encodings for the base model before
 performing some epochs of LoRa training. Finally, the weight and activations for the updated LoRa layers are calibrated.
+This is expressed in the block diagram below.
+
+.. image:: ../../images/qwa_lora_block_diagram.png
+    :width: 900px
 
 Workflow
 ========
 
 Setup
 -----
+
+In this section, we instantiate the base model, LoRa adapters, and dataset using Huggingface APIs.
 
 .. tab-set::
     :sync-group: platform
