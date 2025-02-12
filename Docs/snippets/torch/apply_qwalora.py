@@ -38,7 +38,11 @@
 
 # [setup]
 from functools import partial
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from itertools import chain
+
+from torch.utils.data import DataLoader
+from transformers import AutoModelForCausalLM, AutoTokenizer, default_data_collator
+from datasets import load_dataset
 
 model_id = "facebook/opt-350m"
 peft_model_id = "ybelkada/opt-350m-lora"
@@ -53,8 +57,25 @@ model.load_adapter(peft_model_id)
 model.forward = partial(model.forward, use_cache=False, return_dict=False)
 
 # Load train and test splits of dataset
-train_dataloader = None
-test_dataloader = None
+def tokenize(examples):
+    seq_length = 512
+    examples = tokenizer(examples["text"])
+    concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+    total_length = len(concatenated_examples[list(examples.keys())[0]])
+    if total_length >= seq_length:
+        total_length = (total_length // seq_length) * seq_length
+    result = {
+        k: [t[i : i + seq_length] for i in range(0, total_length, seq_length)]
+        for k, t in concatenated_examples.items()
+    }
+    result["labels"] = result["input_ids"].copy()
+    return result
+
+train_dataset = load_dataset(path='wikitext', name='wikitext-2-raw-v1', split='train').map(tokenize, batched=True, remove_columns=['text'])
+test_dataset = load_dataset(path='wikitext', name='wikitext-2-raw-v1', split='test').map(tokenize, batched=True, remove_columns=['text'])
+
+train_dataloader = DataLoader(train_dataset, batch_size=1, collate_fn=default_data_collator)
+test_dataloader = DataLoader(test_dataset, batch_size=1, collate_fn=default_data_collator)
 
 # [create_quantsim]
 import torch
