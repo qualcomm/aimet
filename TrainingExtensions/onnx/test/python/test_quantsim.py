@@ -883,7 +883,7 @@ class TestQuantSim:
             def callback(session, dummy_input):
                 session.run(None, dummy_input)
 
-            dummy_input = {'model_input': np.random.rand(1, 12, 8, 8).astype(np.float32)}
+            dummy_input = make_dummy_input(model)
             sim.compute_encodings(callback, dummy_input)
             sim.export(tempdir, 'conv_matmul_groupnorm_model')
 
@@ -944,13 +944,13 @@ class TestQuantSim:
             def callback(session, dummy_input):
                 session.run(None, dummy_input)
 
-            dummy_tensor = {'model_input': np.random.rand(1, 12, 8, 8).astype(np.float32)}
+            dummy_tensor = make_dummy_input(model)
             sim.compute_encodings(callback, dummy_tensor)
             sim.export(tempdir, 'conv_matmul_groupnorm_model')
 
             with open(os.path.join(tempdir, 'conv_matmul_groupnorm_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                matmul_second_input = encoding_data['param_encodings']['matmul_0.weight'][0]
+                matmul_second_input = encoding_data['activation_encodings']['matmul_0.weight'][0]
 
                 # matmul's second input encoding should be of 8 bitwidth and symmetric
                 assert matmul_second_input['bitwidth'] == 8
@@ -995,22 +995,22 @@ class TestQuantSim:
             with open(os.path.join(tempdir, 'quantsim_config.json'), 'w') as f:
                 json.dump(quantsim_config, f)
 
-            sim = QuantizationSimModel(model, default_param_bw=16, default_activation_bw=8,
+            sim = QuantizationSimModel(model, default_param_bw=8, default_activation_bw=16,
                                        path=tempdir, config_file=os.path.join(tempdir, 'quantsim_config.json'))
 
             def callback(session, dummy_input):
                 session.run(None, dummy_input)
 
-            dummy_tensor = {'model_input': np.random.rand(1, 12, 8, 8).astype(np.float32)}
+            dummy_tensor = make_dummy_input(model)
             sim.compute_encodings(callback, dummy_tensor)
             sim.export(tempdir, 'conv_matmul_groupnorm_model')
 
             with open(os.path.join(tempdir, 'conv_matmul_groupnorm_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                matmul_first_input = encoding_data['activation_encodings']['/conv_0/output_0'][0]
+                matmul_second_input = encoding_data['activation_encodings']['matmul_0.weight'][0]
 
                 # if matmul's second input is 16bw then first input should also be 16bw
-                assert matmul_first_input['bitwidth'] == 16
+                assert matmul_second_input['is_symmetric']
 
     def test_matmul_v73_exception_rule_matmul_branch(self, tmpdir):
         model = models_for_tests.add_matmul_model()
@@ -1760,6 +1760,48 @@ class TestEncodingPropagation:
             assert sim.qc_quantize_op_dict["model_input"].enabled
             assert sim.qc_quantize_op_dict["model_input"].use_symmetric_encodings
             assert sim.qc_quantize_op_dict["matmul.weight"].enabled
+
+    def test_matmul_with_constant_second_input(self):
+        model = models_for_tests.weight_matmul_model()
+        quantsim_config = {
+            "defaults":
+                {
+                    "hw_version": "V69",
+                    "ops":
+                        {
+                            "is_output_quantized": "True"
+                        },
+                    "params":
+                        {
+                            "is_quantized": "True",
+                            "is_symmetric": "False"
+                        },
+                    "per_channel_quantization": "False",
+                    "strict_symmetric": "False",
+                    "unsigned_symmetric": "False"
+                },
+            "params": {},
+            "op_type": {},
+            "supergroups": [],
+            "model_input": {
+                "is_input_quantized": "True"
+            },
+            "model_output": {
+                "is_output_quantized": "True"
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with open(os.path.join(tempdir, 'quantsim_config.json'), 'w') as f:
+                json.dump(quantsim_config, f)
+
+            sim = QuantizationSimModel(model, path=tempdir,
+                                       config_file=os.path.join(tempdir, 'quantsim_config.json'),
+                                       default_activation_bw=16, default_param_bw=4)
+            """
+            Exception rule should not be applied to non-dynamic matmuls
+            """
+            assert sim.qc_quantize_op_dict["weight"].bitwidth == 4
 
     def test_identity_conv_perchannel(self):
         model = models_for_tests.conv_with_weight_identity_input()

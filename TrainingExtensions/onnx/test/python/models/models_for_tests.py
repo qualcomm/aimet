@@ -2187,12 +2187,12 @@ def model_with_exceptional_ops():
     model = helper.make_model(
         graph=helper.make_graph(
             name='MatMul_GroupNorm_Model',
-            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[1, 12, 8, 8])],
+            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[1, 12, 8, 8]),
+                    helper.make_tensor_value_info("matmul_0.weight", TensorProto.FLOAT, shape=[1, 12, 6, 6])],
             outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[1, 12, 6, 6])],
             initializer=[
                 numpy_helper.from_array(np.random.randn(12, 12, 3, 3).astype('float32'), name='conv_0.weight'),
                 numpy_helper.from_array(np.random.randn(12).astype('float32'), name='conv_0.bias'),
-                numpy_helper.from_array(np.random.randn(1, 12, 6, 6).astype('float32'), name='matmul_0.weight'),
                 numpy_helper.from_array(np.random.randn(2).astype('float32'), name='groupnorm_0.scale'),
                 numpy_helper.from_array(np.random.randn(2).astype('float32'), name='groupnorm_0.bias'),
             ],

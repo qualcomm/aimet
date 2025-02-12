@@ -619,6 +619,9 @@ class QuantizationSimModel:
                         param_quantizer.use_symmetric_encodings = output_quantizer.use_symmetric_encodings
 
             elif op.type == 'MatMul':
+                # Apply exception rule only to dynamic matmuls
+                if op.inputs[1].name in self.param_names:
+                    continue
                 target_quantizer_for_first_input = self._get_closest_enabled_quantizer(op.inputs[0])
                 target_quantizer_for_second_input = self._get_closest_enabled_quantizer(op.inputs[1])
 
