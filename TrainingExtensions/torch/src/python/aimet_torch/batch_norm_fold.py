@@ -39,6 +39,7 @@ from .utils import _get_default_api
 
 if _get_default_api() == "v1":
     from .v1.batch_norm_fold import (
+        BatchNormFold,
         fold_all_batch_norms,
         fold_all_batch_norms_to_scale,
         fold_given_batch_norms,
@@ -56,6 +57,7 @@ if _get_default_api() == "v1":
                          v1_legacy_api=_v1_batch_norm_fold.__name__)
 else:
     from .v2.batch_norm_fold import (
+        BatchNormFold,
         fold_all_batch_norms,
         fold_all_batch_norms_to_scale,
         fold_given_batch_norms,
@@ -66,6 +68,7 @@ else:
 
 
 __all__ = [
+    "BatchNormFold",
     "fold_all_batch_norms",
     "fold_all_batch_norms_to_scale",
     "fold_given_batch_norms",
