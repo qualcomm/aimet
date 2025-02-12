@@ -1755,8 +1755,10 @@ class TestEncodingPropagation:
                 json.dump(quantsim_config, f)
 
             sim = QuantizationSimModel(model, path=tempdir,
-                                       config_file=os.path.join(tempdir, 'quantsim_config.json'))
+                                       config_file=os.path.join(tempdir, 'quantsim_config.json'),
+                                       default_activation_bw=16)
             assert sim.qc_quantize_op_dict["model_input"].enabled
+            assert sim.qc_quantize_op_dict["model_input"].use_symmetric_encodings
             assert sim.qc_quantize_op_dict["matmul.weight"].enabled
 
     def test_identity_conv_perchannel(self):

@@ -619,14 +619,8 @@ class QuantizationSimModel:
                         param_quantizer.use_symmetric_encodings = output_quantizer.use_symmetric_encodings
 
             elif op.type == 'MatMul':
-                first_input_quantizer = input_quantizers[0] if input_quantizers else None
-                second_input_quantizer = list(param_quantizers.values())[0] if param_quantizers else None
-
-                first_input_op = op.inputs[0].producer if not first_input_quantizer else None
-                second_input_op = op.inputs[1].producer if not second_input_quantizer else None
-
-                target_quantizer_for_first_input = self._get_target_quantizer(first_input_quantizer, first_input_op)
-                target_quantizer_for_second_input = self._get_target_quantizer(second_input_quantizer, second_input_op)
+                target_quantizer_for_first_input = self._get_closest_enabled_quantizer(op.inputs[0])
+                target_quantizer_for_second_input = self._get_closest_enabled_quantizer(op.inputs[1])
 
                 # According to opdef for Matmul in HTP:
                 # 16bit Weight(second input for dynamic MatMul) must have 16bit Activation(first input for dynamic MatMul).
@@ -636,7 +630,6 @@ class QuantizationSimModel:
                 # Below are the possible combinations for MatMul with 8/16 bitwidth:
                 # If version is V73/V75: {input0->8, input1->8 symm/asymm} {input0->16 , input1->8 symm/asymm} {input0->16, input1->16 symmetric}
                 # If version is lesser than V73: {input0->8, input1->8 symmetric} {input0->16, input1->8 symmetric}
-
                 if self._hw_version in {'V66', 'V68', 'V69'}:
                     if target_quantizer_for_second_input is None:
                         logger.warning("The target quantizer for second input could not be found. MatMul exception rule does not apply for op: %s.", op.name)
@@ -650,47 +643,22 @@ class QuantizationSimModel:
                         target_quantizer_for_second_input.use_symmetric_encodings = True
                         target_quantizer_for_first_input.bitwidth = 16
 
-    def _get_target_quantizer(self, input_quantizer: QcQuantizeOp, input_op: Op) -> QcQuantizeOp:
+    def _get_closest_enabled_quantizer(self, tensor: Product):
         """
-        Returns input quantizer if enabled otherwise returns closest enabled parent output quantizer.
+        Returns closest enabled quantizer to `tensor` traversing upwards
 
-        :param input_quantizer: Input quantizer
-        :param input_op: CG op
-        :return: Target quantizer
+        :param tensor: Tensor for which to find quantizer
         """
-        target_quantizer = None
-        if input_quantizer:
-            if input_quantizer.enabled:
-                target_quantizer = input_quantizer
-        else:
-            target_quantizer = self._get_closest_target_quantizer(input_op)
-        return target_quantizer
-
-    # pylint: disable=inconsistent-return-statements
-    def _get_closest_target_quantizer(self, op: Op) -> QcQuantizeOp:
-        """
-        Returns the closest parent output quantizer.
-
-        :param op: CG op whose output quantizer is to be analyzed
-        :return: Target quantizer
-        """
-        onnx_op = op.get_module()
-
-        if onnx_op is None:
-            return self._get_closest_target_quantizer(op.input_ops[0])
-
-        output_tensor = onnx_op.output[0]
-        target_quantizer = self.qc_quantize_op_dict.get(output_tensor, None)
-
-        if target_quantizer and target_quantizer.enabled:
-            return target_quantizer
-
-        if target_quantizer is None or not target_quantizer.enabled:
-            if len(op.input_ops) == 1:
-                return self._get_closest_target_quantizer(op.input_ops[0])
-            logger.warning("The op: %s with output quantization disabled has no input or more than one input exists. "
-                           "It's ambiguous to find the closest target quantizer in this case", op.name)
+        quantizer = self.qc_quantize_op_dict.get(tensor.name, None)
+        if quantizer and quantizer.enabled:
+            return quantizer
+        if not tensor.producer:
             return None
+        if not tensor.producer.inputs:
+            return None
+        # Assume first input to parent op is the relevant upstream activation
+        upstream_tensor = tensor.producer.inputs[0]
+        return self._get_closest_enabled_quantizer(upstream_tensor)
 
     def save_model_graph(self, filename_prefix: str):
         """
