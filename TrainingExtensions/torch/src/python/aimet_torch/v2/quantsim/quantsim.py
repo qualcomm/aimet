@@ -37,7 +37,7 @@
 """ Top level API for performing quantization simulation of a pytorch model """
 
 import copy
-from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload, List
+from typing import Union, Tuple, Optional, Sequence, TypeVar, Any, Callable, overload, Dict, Type
 import warnings
 import itertools
 import io
@@ -120,27 +120,28 @@ def _convert_to_qmodel(model: torch.nn.Module):
                     pass
 
                 if not qmodule and not tuple(module.children()):
-                    exceptions.append(e)
+                    exceptions[e.module_cls] = e
 
         for name, child in module.named_children():
             setattr(module, name, _convert_to_qmodule(child))
 
         return module
 
-    exceptions: List[UnknownModuleError] = []
+    exceptions: Dict[Type[torch.nn.Module], UnknownModuleError] = {}
     model = _convert_to_qmodule(model)
 
     if not exceptions:
         return model
 
     if len(exceptions) == 1:
-        raise exceptions[0]
+        e = next(iter(exceptions.values()))
+        raise e
 
     # Multiple unknown modules found. Batch all error messages in one exception
-    e = exceptions[0]
+    e = next(iter(exceptions.values()))
     msg = '\n'.join([
         'Quantized module definitions of the following modules are not registered: [',
-        *(f'    {e.module_cls},' for e in exceptions),
+        *(f'    {e.module_cls},' for e in exceptions.values()),
         ']',
     ])
 
@@ -152,7 +153,7 @@ def _convert_to_qmodel(model: torch.nn.Module):
 
         "For example:",
 
-        *(e.generate_code_example() for e in exceptions),
+        *(e.generate_code_example() for e in exceptions.values()),
 
        f"For more details, please refer to the official API reference:\n{e.api_reference_url}"
     ]))
