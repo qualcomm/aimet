@@ -156,7 +156,6 @@ import aimet_torch.v2.quantization as Q
 from aimet_torch.v2.utils import remove_all_quantizers
 
 lora_layers = [module for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
-base_layers = [module for module in quantsim.model.modules() if not isinstance(module, LoraLayer)]
 
 with place_model(model, torch.device("cuda")):
     # Temporarily remove all LoRa layer quantizers, leaving only base model quantizers
