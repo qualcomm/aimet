@@ -769,9 +769,10 @@ class TestQuantSim:
             sim.export(tempdir, 'linear_matmul_add_pattern')
             with open(os.path.join(tempdir, 'linear_matmul_add_pattern.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                # Ensure that the encodings for the second input of Add op (bias) isn't present in JSON file.
-                assert len(encoding_data['activation_encodings']) == 3
+                # Ensure that the encodings for the second input of Add op (bias) and output of MatMul aren't in JSON file.
+                assert len(encoding_data['activation_encodings']) == 2
                 assert len(encoding_data['param_encodings']) == 1
+                assert encoding_data['activation_encodings'].keys() == {"input", "output"}
 
     @pytest.mark.skip("OOM issues from high CPU memory usage, optimize quantsim memory usage before enabling")
     def test_large_model(self):

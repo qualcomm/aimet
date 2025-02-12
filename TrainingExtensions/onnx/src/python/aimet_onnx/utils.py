@@ -342,6 +342,18 @@ class ParamUtils:
         :param node: ONNX node to which the param feeds to
         :param param_index: Index at which param feeds to the ONNX node
         """
+        if len(node.input) >= param_index + 1:
+            param_name = node.input[param_index]
+            return ParamUtils.get_param_by_name(model, param_name)
+
+    @staticmethod
+    def get_param_by_name(model: ModelProto, param_name: str):
+        """
+        Returns the param tensor
+
+        :param model: ONNX model
+        :param param_name: Name of parameter to retrieve
+        """
         def find_param_in_model_initializers(param_name: str, model: ModelProto):
             for param in model.graph.initializer:
                 if param.name == param_name:
@@ -360,13 +372,10 @@ class ParamUtils:
                     return ParamUtils.get_param(model, node, 0)
             return None
 
-        if len(node.input) >= param_index + 1:
-            param_name = node.input[param_index]
-            param = find_param_in_model_initializers(param_name, model)
-            if param is None:
-                param = find_param_in_model_constants(param_name, model)
-            return param
-        return None
+        param = find_param_in_model_initializers(param_name, model)
+        if param is None:
+            param = find_param_in_model_constants(param_name, model)
+        return param
 
 
 def get_product_name_from_quantized_name(quantized_name: str):

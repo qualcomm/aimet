@@ -207,8 +207,6 @@ class QuantizationSimModel:
         self._get_param_names()
         self._get_activations_to_quantize(dummy_input)
 
-        # Disable bias quantization
-        self._disable_bias_quantization()
         self._add_quantization_nodes()
 
         # Apply configurations based on provided config file.
@@ -331,26 +329,7 @@ class QuantizationSimModel:
 
         return True
 
-    def _disable_bias_quantization(self):
-        """
-        Exclude bias params from the quantization.
-        """
-        # TODO: hitameht: we should find better way to find such patterns and corner cases. May be
-        #  belongs to QuantSimConfigurator class.
-        for node in self.model.nodes():
-            if node.op_type == 'Add':
-                if self._check_matmul_add_patten(node):
-                    for inp_name in node.input:
-                        param_name = inp_name
-                        # ensure that the second input of Add op (bias) won't be configured
-                        # with activation precision.
-                        if (param_name in self.model.get_initializer_name_set() and
-                                len(self.model.get_initializer(param_name).dims) == 1 and
-                                param_name in self.activation_names):
-                            self.activation_names.remove(param_name)
-                            self.input_quantizers_name.remove(param_name)
-
-    def _check_matmul_add_patten(self, node: onnx.NodeProto) -> bool:
+    def _is_matmul_bias_add(self, cg_op: Op) -> bool:
         """
         For given node, check if the previous and the current nodes are of type 'MatMul' and 'Add' respectively.
 
@@ -360,15 +339,22 @@ class QuantizationSimModel:
         This utility will find such pattern and help ensure that the second input of Add op (bias) won't be configured
          with activation precision.
 
-        :param node: Onnx node
+        :param cg_op: ConnectedGraph op
         :return: True if the MatMul + Add pattern is found, False otherwise.
         """
-        cg_op = self.connected_graph.get_op_from_module_name(node.name)
-        for inp in cg_op.input_ops:
-            prev_cg_op = inp
-            # Ensure that the MatMul isn't consumed by other op.
-            if prev_cg_op.type == 'MatMul' and cg_op.type == 'Add' and len(prev_cg_op.output_ops) == 1:
-                return True
+        if cg_op.type != "Add":
+            return False
+
+        for inp1, inp2 in itertools.permutations(cg_op.inputs):
+            if not inp1.producer or inp1.producer.type != "MatMul":
+                continue
+            if len(inp1.consumers) > 1:
+                return False
+
+            param = utils.ParamUtils.get_param_by_name(self.model.model, inp2.name)
+            # TODO: Refine this check. Checks that param is static tensor with rank 1
+            return param and len(param.dims) == 1
+
         return False
 
     def _infer_activation_dtypes(self):
@@ -646,6 +632,12 @@ class QuantizationSimModel:
                     elif target_quantizer_for_second_input.bitwidth == 16:
                         target_quantizer_for_second_input.use_symmetric_encodings = True
                         target_quantizer_for_first_input.bitwidth = 16
+
+            elif self._is_matmul_bias_add(op):
+                # Disable intermediate output quantization and bias quantization
+                for inp in op.inputs:
+                    if inp.name in self.qc_quantize_op_dict:
+                        self.qc_quantize_op_dict[inp.name].enabled = False
 
     def _get_closest_enabled_quantizer(self, tensor: Product):
         """
