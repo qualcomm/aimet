@@ -860,7 +860,7 @@ class StaticGridQuantWrapper(QcQuantizeWrapper):
         :return: Quantized output from the wrapped module
         """
 
-        def inner_quantization(input_tensor, index):
+        def inner_quantization(input_tensor, index): # pylint: disable=too-many-branches
             if isinstance(input_tensor, (List, Tuple)):
                 inner_outputs = []
                 for inner_input in input_tensor:
