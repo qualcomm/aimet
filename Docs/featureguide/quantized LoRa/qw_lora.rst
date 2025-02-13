@@ -117,7 +117,7 @@ Step #2 of QW-LoRa
             :start-after: [lora_training]
             :end-before: [qat]
 
-QAT
+PTQ
 -----
 Step #3 of QW-LoRa
 
