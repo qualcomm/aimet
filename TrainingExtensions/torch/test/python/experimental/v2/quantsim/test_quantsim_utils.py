@@ -162,25 +162,44 @@ def test_apply_requant_mask():
                                         config_file=os.path.join(tempdir, 'quantsim_config.json'))
         
     quantsim.compute_encodings(lambda m, _: m(*dummy_input), None)
+
     def get_connected_graph_op(connected_graph, model_name, name):
         # pylint: disable=protected-access
         original_module = connected_graph._name_to_module[f'{model_name}.{name}']
         return connected_graph._module_to_op_dict[original_module]
 
-    model_name = quantsim.connected_graph._model_name
-    model_input_names = list(inspect.signature(quantsim.model.forward).parameters)
+    def is_mask_add(sim, module):
+        if not isinstance(module, custom.Add):
+            return False
+
+        model_name = sim.connected_graph._model_name
+
+        name = None
+        for n, m in sim.model.named_modules():
+            if m is module:
+                name = n
+                break
+        
+        if not name:
+            return False
+
+        add_op = get_connected_graph_op(sim.connected_graph, model_name, name)
+
+        MASK_ADD_PREV_OPS = ['Div', 'MatMul']
+        if add_op.inputs[1].is_model_input and add_op.input_ops[0].type in MASK_ADD_PREV_OPS and \
+            add_op.output_ops[0].type == 'Softmax':
+            return True
+        return False
+
     mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
-    for name, quant_layer in quantsim.named_qmodules():
-        if isinstance(quant_layer, custom.Add):
-            add_op = get_connected_graph_op(quantsim.connected_graph, model_name, name)
-            if add_op.inputs[1].is_model_input and \
-                model_input_names[int(re.findall(r'\d+', add_op.inputs[1].name)[0])] == 'attention_mask':
-                mask_add_names.append(name)
-                mask_add_act_mins.append(quant_layer.output_quantizers[0].min)
-                mask_maxs.append(quant_layer.input_quantizers[1].max)
+    for name, module in quantsim.model.named_modules():
+        if is_mask_add(quantsim, module):
+            mask_add_names.append(name)
+            mask_add_act_mins.append(module.output_quantizers[0].min)
+            mask_maxs.append(module.input_quantizers[1].max)
 
     assert mask_add_names
-    apply_requant_mask(quantsim)
+    apply_requant_mask(quantsim, is_mask_add)
 
     mask_add_act_global_min = min(mask_add_act_mins)
     for name, mask_add_act_min, mask_max in zip(mask_add_names, mask_add_act_mins, mask_maxs):
