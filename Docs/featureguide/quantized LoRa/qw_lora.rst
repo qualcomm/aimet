@@ -34,9 +34,9 @@ In this section, we instantiate the base model, LoRa adapters, and dataset using
         .. literalinclude:: ../../snippets/torch/apply_qwlora.py
             :language: python
             :start-after: [setup]
-            :end-before: [create_quantsim]
+            :end-before: [setup_quantsim]
 
-Create QuantizationSimModel
+Setup QuantizationSimModel
 -----
 
 .. tab-set::
@@ -47,7 +47,7 @@ Create QuantizationSimModel
 
         .. literalinclude:: ../../snippets/torch/apply_qwlora.py
             :language: python
-            :start-after: [create_quantsim]
+            :start-after: [setup_quantsim]
             :end-before: [calibration_callback]
 
 Calibration Callback
@@ -76,10 +76,16 @@ Training Callback
         .. literalinclude:: ../../snippets/torch/apply_qwlora.py
             :language: python
             :start-after: [lora_training_callback]
-            :end-before: [qwa_lora]
+            :end-before: [freeze_base_model_weights]
 
-Run QW-LoRa
+Quantize and Update Base Model Weights
 -----
+Step #1 of QW-LoRa
+
+In this section, we calculate quantization parameters for the base model weights, and use those parameters to update
+the weights. A helper function to do this is provided below if you do not already have a method of doing this.
+
+* Note: you can use any method of calculating weight parameters, as long as the model weights are updated to reflect them.
 
 .. tab-set::
     :sync-group: platform
@@ -89,4 +95,36 @@ Run QW-LoRa
 
         .. literalinclude:: ../../snippets/torch/apply_qwlora.py
             :language: python
-            :start-after: [qwa_lora]
+            :start-after: [freeze_base_model_weights]
+            :end-before: [lora_training]
+
+LoRa Training
+-----
+Step #2 of QW-LoRa
+
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../../snippets/torch/apply_qwlora.py
+            :language: python
+            :start-after: [lora_training]
+            :end-before: [qat]
+
+QAT
+-----
+Step #3 of QW-LoRa
+
+
+.. tab-set::
+    :sync-group: platform
+
+    .. tab-item:: PyTorch
+        :sync: torch
+
+        .. literalinclude:: ../../snippets/torch/apply_qwlora.py
+            :language: python
+            :start-after: [qat]

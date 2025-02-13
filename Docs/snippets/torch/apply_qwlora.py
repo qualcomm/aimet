@@ -77,7 +77,7 @@ test_dataset = load_dataset(path='wikitext', name='wikitext-2-raw-v1', split='te
 train_dataloader = DataLoader(train_dataset, batch_size=1, collate_fn=default_data_collator)
 test_dataloader = DataLoader(test_dataset, batch_size=1, collate_fn=default_data_collator)
 
-# [create_quantsim]
+# [setup_quantsim]
 import torch
 from transformers.models import opt
 
@@ -98,13 +98,6 @@ replace_lora_layers_with_quantizable_layers(model)
 class QuantizedOPTLearnedPositionalEmbedding(QuantizationMixin, opt.modeling_opt.OPTLearnedPositionalEmbedding):
     """ Dummy placeholder - we don't want to quantize OPTLearnedPositionalEmbedding """
     forward = opt.modeling_opt.OPTLearnedPositionalEmbedding.forward
-
-# Create QuantizationSimModel
-quantsim = QuantizationSimModel(model=model,
-                                dummy_input=(dummy_input_ids, dummy_attention_mask),
-                                default_output_bw=16,
-                                default_param_bw=4,
-                                in_place=True)
 
 # [calibration_callback]
 from tqdm import tqdm
@@ -148,38 +141,53 @@ def train_one_epoch(model, dataloader, device=torch.device("cuda")):
         # # Adjust learning weights
         optimizer.step()
 
-# [qwa_lora]
-from aimet_torch.utils import place_model
+# [freeze_base_model_weights]
+from aimet_torch.v2.utils import remove_all_quantizers
+
+# Helper function that will fuse quantization parameters into the weight matrices of the provided module
+# If you have a bespoke approach for calculating weight quantization parameters, then that would replace this step.
+def calculate_and_fuse_encodings_into_weights(model, dummy_input):
+    quantsim = QuantizationSimModel(model=model,
+                                    dummy_input=dummy_input,
+                                    default_output_bw=16,
+                                    default_param_bw=4,
+                                    in_place=False)
+
+    lora_layers = [module for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
+
+    with place_model(model, "cuda"):
+        with remove_all_quantizers(lora_layers):
+            # Only compute encodings for base model
+            calibration_callback = generate_calibration_callback(train_dataloader, max_iterations=20, device=torch.device("cuda"))
+            quantsim.compute_encodings(calibration_callback)
+
+    # returns the original model with QDQ applied to all weights with encodings
+    return QuantizationSimModel.get_original_model(quantsim, qdq_weights=True)
+
+model = calculate_and_fuse_encodings_into_weights(model, (dummy_input_ids, dummy_attention_mask))
+
+# [lora_training]
 from aimet_torch.peft import LoraLayer
-import aimet_torch.v2.quantization as Q
 
-from aimet_torch.v2.utils import remove_all_quantizers, remove_activation_quantizers
+# Configure model so that only LoRa layers are trainable
+model.requires_grad_(False)
+for module_name, module in model.named_modules():
+    if isinstance(module, LoraLayer):
+        module.requires_grad_(True)
 
-lora_layers = [module for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
-base_layers = [module for module in quantsim.model.modules() if not isinstance(module, LoraLayer)]
+# Perform LoRa QAT with base model weight, activation encodings frozen
+train_one_epoch(model, train_dataloader, torch.device("cuda"))
+
+# [qat]
+from aimet_torch.utils import place_model
+
+quantsim = QuantizationSimModel(model=model,
+                                dummy_input=(dummy_input_ids, dummy_attention_mask),
+                                default_output_bw=16,
+                                default_param_bw=4,
+                                in_place=True)
 
 with place_model(model, torch.device("cuda")):
-    # Temporarily remove all LoRa layer quantizers and base model activation quantizers,
-    # leaving only base model weight quantizers
-    with remove_all_quantizers(lora_layers), remove_activation_quantizers(base_layers):
-        # Only compute encodings for base model weights
-        calibration_callback = generate_calibration_callback(dataloader=train_dataloader, max_iterations=20, device=torch.device("cuda"))
-        quantsim.compute_encodings(calibration_callback)
-
-        # prevent quantization encoding getting overwritten by sim.compute_encodings()
-        for module_name, module in model.named_modules():
-            if isinstance(module, Q.base.QuantizerBase):
-                module.allow_overwrite(False)
-
-        # Configure model so that only LoRa layers are trainable
-        model.requires_grad_(False)
-        for module_name, module in model.named_modules():
-            if isinstance(module, LoraLayer):
-                module.requires_grad_(True)
-
-        # Perform LoRa QAT with base model weight, activation encodings frozen
-        train_one_epoch(quantsim.model, train_dataloader, torch.device("cuda"))
-
     # Compute all other encodings
     calibration_callback = generate_calibration_callback(dataloader=train_dataloader, max_iterations=20, device=torch.device("cuda"))
     quantsim.compute_encodings(calibration_callback)
