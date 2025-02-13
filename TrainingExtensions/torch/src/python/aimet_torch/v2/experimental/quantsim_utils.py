@@ -41,7 +41,6 @@ import torch
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.product import Product
-from aimet_torch.amp.quantizer_groups import ops_to_skip
 from aimet_torch.meta.connectedgraph import Op
 from aimet_torch.v2._builder import _V2LazyQuantizer
 from aimet_torch.v2.nn import BaseQuantizationMixin, custom
