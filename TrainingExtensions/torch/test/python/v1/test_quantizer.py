@@ -5387,3 +5387,97 @@ def test_histogram(device):
     prob = torch.tensor([prob for _, prob in q.getStatsHistogram()], device=device)
 
     assert torch.equal(prob * 1025, ground_truth)
+
+
+class ScalarModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.prelu = torch.nn.PReLU()
+        self.linear = torch.nn.Linear(10, 10)
+        self.add1 = aimet_modules.Add()
+        self.add2 = aimet_modules.Add()
+        self.add3 = aimet_modules.Add()
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor):
+        """
+        This model continas 5 scalars, all of which are expected to be quantized
+
+        |     name     |      description     |
+        |--------------|----------------------|
+        | prelu.weight | scalar Parameter     |
+        |     y        | scalar Tensor input  |
+        |     y_out    | scalar Tensor output |
+        |     z        | Python float input   |
+        |     z_out    | Python float output  |
+        """
+
+        assert y.numel() == 1
+
+        x_out = self.linear(x)
+        x_out = self.prelu(x_out)
+
+        y_out = self.add1(y, 1.0)
+        assert y.device == y_out.device # IMPORTANT
+        assert y.dtype == y_out.dtype   # IMPORTANT
+
+        z = 1.0
+        z_out = self.add2(y_out, z)
+        assert y_out.device == z_out.device # IMPORTANT
+        assert y_out.dtype == z_out.dtype   # IMPORTANT
+
+        return self.add3(x_out, z_out)
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('quant_scheme', [QuantScheme.post_training_tf,
+                                          QuantScheme.training_range_learning_with_tf_init])
+def test_scalar_tensors(quant_scheme, device):
+    """
+    Given: Model with various scalar input/output/parameters
+    """
+    model = ScalarModel().to(device)
+    x = torch.randn((10, 10), device=device).detach()
+    y = torch.randn((), device=device).detach()
+
+    """
+    When: Create quantsim and compute_encodings
+    Then: All quantizers that takes scalars should be enabled
+    """
+    sim = QuantizationSimModel(model, (x, y), quant_scheme=quant_scheme)
+    sim.model.to(device)
+
+    sim.compute_encodings(lambda model, _: model(x, y), None)
+
+    assert     sim.model.linear.input_quantizers[0].enabled
+    assert     sim.model.linear.output_quantizers[0].enabled
+    assert     sim.model.linear.param_quantizers['weight'].enabled
+
+    assert not sim.model.prelu.input_quantizers[0].enabled
+    assert     sim.model.prelu.output_quantizers[0].enabled
+    assert     sim.model.prelu.param_quantizers['weight'].enabled # IMPORTANT
+
+    assert     sim.model.add1.input_quantizers[0].enabled # IMPORTANT
+    assert     sim.model.add1.input_quantizers[1].enabled # IMPORTANT
+    assert     sim.model.add1.output_quantizers[0].enabled
+
+    assert not sim.model.add2.input_quantizers[0].enabled
+    assert     sim.model.add2.input_quantizers[1].enabled  # IMPORTANT
+    assert     sim.model.add2.output_quantizers[0].enabled # IMPORTANT
+
+    assert not sim.model.add3.input_quantizers[0].enabled
+    assert not sim.model.add3.input_quantizers[1].enabled
+    assert     sim.model.add3.output_quantizers[0].enabled
+
+    """
+    When: export
+    Then: Should produce expected number of activation & param encodings
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sim.export(tmpdir, 'quant_sim', (x.cpu(), y.cpu()))
+
+        with open(os.path.join(tmpdir, 'quant_sim.encodings')) as f:
+            encodings = json.load(f)
+
+        assert sum(len(entry) for entry in encodings['activation_encodings'].values()) == 9
+        assert sum(len(entry) for entry in encodings['param_encodings'].values()) == 2
