@@ -1,4 +1,4 @@
-name: Fast Release Biweekly Release CI/CD Pipeline
+name: PyPI release pipeline
 
 on:
   workflow_dispatch:
@@ -11,6 +11,10 @@ on:
         description: "Release version to build"
         required: true
         type: string
+      variant-id:
+        description: "Variant id"
+        required: true
+        type: string
       deploy:
         description: "Deploy to official pypi if true"
         required: false
@@ -18,219 +22,366 @@ on:
         default: false
 
 jobs:
-  build-test-pypi-whl:
-    if: github.server_url != 'https://github.com'
-    name: Build AIMET test-pypi wheel
-    runs-on: k8s-gpu
-    env:
-      AIMET_VARIANT: torch-gpu
-      FAST_RELEASE: true
-      VERSION: ${{ inputs.release-version }}
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}torch:fast-release-latest"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
+  variants:
+    name: Populate supported AIMET variants
+    runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.dev_version }}
+      matrix: ${{ steps.final.outputs.value }}
+    steps:
+      - name: Torch variants
+        run: |
+          if [ "${{ inputs.variant-id }}" == "torch-cpu" ] ; then
+            VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+                {
+                   "id":             "torch-cpu",
+                   "runs-on":        "ubuntu-latest",
+                   "VER_PYTHON":     "3.10",
+                   "VER_TENSORFLOW": "",
+                   "VER_TORCH":      "2.1.2",
+                   "VER_ONNX":       "",
+                   "VER_CUDA":       "",
+                   "ENABLE_TESTS":   "ON",
+                   "BUILD_TARGETS":  "all"
+                }
+              ]')
+            elif [ "${{ inputs.variant-id }}" == "torch-gpu" ] ; then
+              VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+                {
+                   "id":             "torch-gpu",
+                   "runs-on":        "k8s-gpu",
+                   "VER_PYTHON":     "3.10",
+                   "VER_TENSORFLOW": "",
+                   "VER_TORCH":      "2.1.2",
+                   "VER_ONNX":       "",
+                   "VER_CUDA":       "12.1.1",
+                   "ENABLE_TESTS":   "ON",
+                   "BUILD_TARGETS":  "all"
+                }
+              ]')
+            elif [ "${{ inputs.variant-id }}" == "onnx-cpu" ] ; then
+              VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+                {
+                   "id":             "onnx-cpu",
+                   "runs-on":        "ubuntu-latest",
+                   "VER_PYTHON":     "3.10",
+                   "VER_TENSORFLOW": "",
+                   "VER_TORCH":      "",
+                   "VER_ONNX":       "1.16.2",
+                   "VER_CUDA":       "",
+                   "ENABLE_TESTS":   "ON",
+                   "BUILD_TARGETS":  "all"
+                }
+              ]')
+            elif [ "${{ inputs.variant-id }}" == "onnx-gpu" ] ; then
+              VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+                {
+                   "id":             "onnx-gpu",
+                   "runs-on":        "k8s-gpu",
+                   "VER_PYTHON":     "3.10",
+                   "VER_TENSORFLOW": "",
+                   "VER_TORCH":      "",
+                   "VER_ONNX":       "1.16.2",
+                   "VER_CUDA":       "11.8.1",
+                   "ENABLE_TESTS":   "ON",
+                   "BUILD_TARGETS":  "all"
+                }
+              ]')  
+            fi
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
+      - name: (Last step) Generate few extra properties for each variant
+        id: final
+        run: |
+          echo "value=$VALUE" >> $GITHUB_OUTPUT
+
+  docker-build-image:
+    name: Docker image ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    needs: [ variants ]
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release-branch }}
- 
-      - name: Install Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install python3 python3-pip -y
-          python3 -m pip install --upgrade pip
-          python3 -m pip install twine
- 
-      - name: Format dev version
-        id: version
-        run: |
-          AVAILABLE_VERSION=$(pip index versions aimet-torch --index-url https://test.pypi.org/simple/ --pre 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.dev\d+' | head -n 1)
-          LATEST_VERSION=$(pip index versions aimet-torch --index-url https://test.pypi.org/simple/ 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -n 1)
-          if [[ $LATEST_VERSION == *${{ env.VERSION }}* ]]; then
-            if [ -z "$AVAILABLE_VERSION" ]; then
-              DEV_VER=${{ env.VERSION }}.dev1;
-            else
-              DEV_VER=${{ env.VERSION }}.dev$(echo $AVAILABLE_VERSION | awk -F. '{print $NF}' | grep -oE '[0-9]+' | awk '{print $1+1}');
-            fi
-          else
-            DEV_VER=${{ env.VERSION }}.dev$(echo $AVAILABLE_VERSION | awk -F. '{print $NF}' | grep -oE '[0-9]+' | awk '{print $1+1}');
-          fi
-          echo "Latest available dev version: $AVAILABLE_VERSION"
-          echo "Formatting Dev Version: $DEV_VER"
-          echo "AVAILABLE_VERSION=$AVAILABLE_VERSION" >> $GITHUB_ENV
-          echo "DEV_VER=$DEV_VER" >> $GITHUB_ENV
-          echo "dev_version=$DEV_VER" >> $GITHUB_OUTPUT
- 
-      - name: Make the Pypi Wheel
-        run: |
-          mkdir -p build/staging/universal
-          cmake -S . -B ./build -DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_TENSORFLOW=OFF -DENABLE_ONNX=OFF -DPIP_INDEX=pypi -DSW_VERSION=${{ env.DEV_VER }} -DCMAKE_INSTALL_PREFIX="build/staging/universal"
-          cmake --build ./build --parallel 4 --target all --target install --target packageaimet --target upload
-          find . -name *.whl
-          echo "Retag the whl file"
-          WHL_PATH=$(pwd)/$(find . -name *.whl -printf '%P\n')
-          echo "WHL_PATH=$(pwd)/$(find . -name *.whl -printf '%P\n')" >> $GITHUB_ENV
-          wheel tags --python-tag=py38 --abi-tag=none --platform-tag=any $WHL_PATH
-          ls -al build/packaging/dist
-  
-      - name: Push to test-pypi
-        run: |
-          twine upload --verbose --repository testpypi --config-file ~/.pypirc build/packaging/dist/*
-
-      - name: Verify the package is available
-        run: |
-          while true; do
-          sleep 10
-            HEAD_VERSION=$(pip index versions aimet-torch --index-url https://test.pypi.org/simple/ --pre 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.dev\d+' | head -n 1)
-            if [[ "$HEAD_VERSION" == "$DEV_VER" ]]; then
-              echo "uploaded $DEV_VER"
-              break
-            else
-              echo "upload pending..."
-              sleep 10
-            fi
-          done
-
-      - uses: actions/upload-artifact@v3
+      - uses: ./.github/actions/docker-build-image
         with:
-          name: aimet-torch-${{ env.DEV_VER }}
-          path: ${{ env.WHL_PATH }}
+          dockerfile: Jenkins/fast-release/Dockerfile.ci
+          docker-login: ${{ secrets.DOCKER_LOGIN }}
+          docker-password: ${{ secrets.DOCKER_CREDENTIALS }}
+          docker-registry: ${{ vars.DOCKER_REGISTRY }}
+          image-name: "${{ vars.DOCKER_IMAGE }}-${{ inputs.variant-id }}"
+          image-tag: ${{ inputs.variant-id }}
+          build-args: |
+            VER_PYTHON=${{ matrix.VER_PYTHON }}
+            VER_CUDA=${{ matrix.VER_CUDA }}
+            VER_TORCH=${{ matrix.VER_TORCH }}
+            VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
+            VER_ONNX=${{ matrix.VER_ONNX }}
+
+  build-wheel:
+    name: Build AIMET wheels
+    runs-on: ${{ matrix.runs-on }}
+    needs: [ variants, docker-build-image ]
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ inputs.variant-id }}:${{ inputs.variant-id }}"
+      credentials:
+        username: ${{ secrets.DOCKER_LOGIN }}
+        password: ${{ secrets.DOCKER_CREDENTIALS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+      - name: "Generate CMAKE_ARGS"
+        run: |
+          set -x
+          CMAKE_ARGS=""
+          CMAKE_ARGS="-DENABLE_CUDA=$([ "${{ matrix.VER_CUDA }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TORCH=$([ "${{ matrix.VER_TORCH }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNX }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TESTS=${{ matrix.ENABLE_TESTS }} $CMAKE_ARGS"
+          echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
+
+          BUILD_TARGETS="${{ matrix.BUILD_TARGETS }}"
+          echo "AIMET_BUILD_TARGETS=$BUILD_TARGETS" >> $GITHUB_ENV
+      - name: "Exclude Torch libraries from dependencies for manylinux"
+        if: matrix.VER_TORCH || matrix.VER_ONNX
+        run: |
+          . /etc/profile.d/conda.sh
+          TORCH_DIR=$(python3 -c 'import torch; print(f"{torch.utils.cmake_prefix_path}/../../lib")')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TORCH_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Exclude CUDA libraries from dependencies for manylinux"
+        if: matrix.VER_CUDA
+        run: |
+          . /etc/profile.d/conda.sh
+          CUBLAS_DIR=$(python3 -c 'import sysconfig ; from pathlib import Path; print(Path(sysconfig.get_config_var("prefix"), "lib"))')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Exclude Tensorflow libraries from dependencies for manylinux"
+        if: matrix.VER_TENSORFLOW
+        run: |
+          . /etc/profile.d/conda.sh
+          TF_DIR=$(python3 -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+          CUBLAS_DIR=$(python3 -c 'import tensorflow as tf; print(f"{tf.sysconfig.get_lib()}/../../../../lib")')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TF_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf --  '--exclude %s ')"
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Build AIMET wheel package"
+        run: |
+          set -x
+          rm -rf build dist
+          . /etc/profile.d/conda.sh
+          export CMAKE_ARGS="$AIMET_CMAKE_ARGS"
+          export SKBUILD_BUILD_TARGETS="$AIMET_BUILD_TARGETS"
+
+          if [ "${{ matrix.id }}" == "tf-torch-cpu" ] ; then
+            # Force-install tensorflow 2.10.1 since aimet isn't compatible with > 2.10
+            # FIXME: Remove this line
+            python3 -m pip install tensorflow-cpu==2.10.1 --no-deps
+            # Required to work around tensorflow-protobuf version mismatch
+            export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+          fi
+
+          python3 -m build --wheel --no-isolation .
+          auditwheel repair --plat manylinux_2_34_x86_64 $MANYLINUX_EXCLUDE_LIBS dist/aimet*.whl
+
+          if [ "${{ matrix.id }}" == "tf-torch-cpu" ] ; then
+            # Unzip aimet*.whl in current directory to upload Docs
+            python3 -m pip install -t wheelhouse --no-deps wheelhouse/aimet*.whl
+          fi
+      - name: Upload AIMET wheel file
+        uses: actions/upload-artifact@v3
+        with:
+          name: "${{ matrix.id }}"
+          path: |
+            wheelhouse/aimet*.whl
+            build/bin/MoDlCompressionTest
+            build/bin/MoDlEqualizationTest
+            build/bin/MoDlQuantizationTest
           if-no-files-found: error
           retention-days: 1d
-
-  pypi-unit-tests:
-    if: github.server_url != 'https://github.com'
-    name: AIMET Pypi Unit Test
-    runs-on: k8s-gpu
-    needs: [build-test-pypi-whl]
+      - name: Upload AIMET documentation
+        if: matrix.id == 'tf-torch-cpu'
+        uses: actions/upload-artifact@v3
+        with:
+          name: Docs
+          path: wheelhouse/Docs/
+          if-no-files-found: error
+          retention-days: 1d
+  test:
+    name: Run AIMET unit tests
+    # if: matrix.ENABLE_TESTS == 'ON' NOTE: Unfortunately, GitHub doesn't support accessing ${{ matrix }}
+    #                                       in a job-level if condition. As a petty workaround, we insert
+    #                                       this condition in every step in this job.
+    #                                       (See also https://github.com/actions/runner/issues/1985)
+    runs-on: ${{ matrix.runs-on }}
+    needs: [ variants, build-wheel ]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     env:
       pytest_github_report: true
       pytest_use_zeros: true
-      BUILD_VERSION: ${{ needs.build-test-pypi-whl.outputs.version }}
-    defaults:
-      run:
-        shell: bash
     container:
-      image: "${{ vars.DOCKER_REGISTRY_TMP }}/nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
+      image: "ubuntu:22.04"
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.release-branch }}
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: aimet-torch-${{ env.BUILD_VERSION }}
-          path: .
-
-      - name: Install Tools
+      - if: matrix.ENABLE_TESTS == 'ON'
         run: |
-          apt-get update
-          apt-get install python3 python3-pip -y
-          python3 -m pip install --upgrade pip
-          python3 -m pip install aimet_torch-*.whl
-          python3 -m pip install bs4 deepspeed onnxruntime peft pytest spconv transformers torch==2.2.2 torchvision==0.17.2
-          python3 -m pip install pytorch-ignite --no-dependencies
-      - name: Run Unit Tests
-        run: pytest TrainingExtensions/torch/test/python/
-
-  pypi-acceptance-tests:
-    if: github.server_url != 'https://github.com'
-    name: AIMET Pypi Acceptance Tests
-    runs-on: k8s-gpu
-    needs: [build-test-pypi-whl]
-    env:
-      pytest_github_report: true
-      pytest_use_zeros: true
-      DEPENDENCY_DATA_PATH: /data
-      BUILD_VERSION: ${{ needs.build-test-pypi-whl.outputs.version }}
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: "${{ vars.DOCKER_REGISTRY_TMP }}/nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
-    steps:
-      - uses: actions/checkout@v4
+          apt update -qq
+          apt install --no-install-recommends -y git curl g++ ca-certificates
+          curl -sSL 'https://pki.qualcomm.com/{qc_root_g2_cert.crt,ssl_v3_cert.crt,ssl_v4_cert.crt}' > qualcomm.crt
+          update-ca-certificates
+          rm -rf download
+      - if: matrix.ENABLE_TESTS == 'ON'
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release-branch }}
-      - uses: actions/download-artifact@v2
+      - if: matrix.ENABLE_TESTS == 'ON'
+        uses: actions/download-artifact@v3
         with:
-          name: aimet-torch-${{ env.BUILD_VERSION }}
-          path: .
-      - name: Install Tools
-        run: | 
-          apt-get update
-          apt-get install python3 python3-pip -y
-          python3 -m pip install --upgrade pip
-          python3 -m pip install aimet_torch-*.whl
-          python3 -m pip install bs4 deepspeed==0.15.2 onnxruntime peft pytest safetensors spconv transformers==4.27.4 torch==2.2.2 torchvision==0.17.2 wget
-          python3 -m pip install pytorch-ignite --no-dependencies
-      - name: Verify Dependency Data
-        run: python3 NightlyTests/torch/dependencies.py NightlyTests/torch/resnet18_eval_scores.csv True
-      - name: Run Acceptance Tests
-        run: pytest NightlyTests/torch/
+          name: "${{ matrix.id }}"
+          path: "downloads"
+      - name: Try to load python virtual environment from the cache
+        if: matrix.ENABLE_TESTS == 'ON'
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: ./.conda
+          key: ${{ matrix.id }}-${{ hashFiles('pyproject.toml', 'packaging/dependencies/**/*.txt', 'packaging/dependencies/plugins/**/*.py') }}
+      - name: Create python virtual environment
+        if: ${{ matrix.id  != 'tf-torch-cpu' && steps.cache.outputs.cache-hit != 'true' }}
+        run: |
+          echo "\
+          torch$([ -n "${{ matrix.VER_TORCH }}" ] && echo "==${{ matrix.VER_TORCH }}")\n\
+          tensorflow-cpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
+          tensorflow-gpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
+          onnx$([ -n "${{ matrix.VER_ONNX }}" ] && echo "==${{ matrix.VER_ONNX }}") \
+          " > /tmp/constraints.txt
 
-  build-pypi-whl:
-    if: github.server_url != 'https://github.com'
-    name: Promote AIMET pypi wheel
-    runs-on: k8s-gpu
-    needs: [build-test-pypi-whl, pypi-unit-tests, pypi-acceptance-tests]
+          export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo "${{ matrix.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
+
+          curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
+          bash ./conda.sh -u -b -p ./.conda
+          sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
+          ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find downloads -name '*.whl')[test]"
+      - name: Run pylint
+        if: matrix.ENABLE_TESTS == 'ON'
+        run: |
+          CONDA_PYTHONPATH="./.conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages"
+          AIMET_PACKAGES=$(find $CONDA_PYTHONPATH -regex ".*/aimet_\(common\|torch\|tensorflow\|onnx\)" | tr "\n" " ")
+
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
+              python3 -m pylint --rcfile=.pylintrc $AIMET_PACKAGES
+      - name: Run unit tests
+        if: matrix.ENABLE_TESTS == 'ON'
+        env:
+          CTEST_TARGETS: |
+            downloads/build/bin/MoDlCompressionTest
+            downloads/build/bin/MoDlEqualizationTest
+            downloads/build/bin/MoDlQuantizationTest
+        run: |
+          set -x
+
+          for target in $CTEST_TARGETS; do
+              chmod +x $target
+              # NOTE: Set LD_LIBRARY_PATH for dynamic linking with libpython3.so
+              #       since ubuntu:22.04 docker image doesn't have built-in libpython3.so
+              LD_LIBRARY_PATH=".conda/envs/${{ matrix.id }}/lib" \
+                  ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" $target
+          done
+
+          PYTEST_TARGETS="./ModelOptimizations/DlQuantization/test ./ModelOptimizations/DlEqualization/test"
+
+          if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/tensorflow/test"
+          elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/onnx/test"
+          elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
+          fi
+          PYTEST_ARGS=""
+          if [ "${{ matrix.VER_CUDA }}" == "" ] ; then
+              PYTEST_ARGS="$PYTEST_ARGS -m \"not cuda\""
+          fi
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $PYTEST_ARGS  $PYTEST_TARGETS
+
+      - name: Run acceptance tests
+        if: matrix.ENABLE_TESTS == 'ON'
+        run: |
+          set -x
+          if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/tensorflow"
+          elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/onnx"
+          elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/torch"
+          fi
+          PYTEST_ARGS=""
+          if [ "${{ matrix.VER_CUDA }}" == "" ] ; then
+              PYTEST_ARGS="$PYTEST_ARGS -m \"not cuda\""
+          fi
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $PYTEST_ARGS  $PYTEST_TARGETS
+
+  publish:
+    name: Publish the wheel packages
+    runs-on: ${{ matrix.runs-on }}
+    needs: [ variants, build-wheel, test ]
     env:
-      AIMET_VARIANT: torch-gpu
-      FAST_RELEASE: true
-      VERSION: ${{ inputs.release-version }}
-      BUILD_VERSION: ${{ needs.build-test-pypi-whl.outputs.version }}
       DEPLOY: ${{ inputs.deploy }}
-    defaults:
-      run:
-        shell: bash
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     container:
-      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}torch:fast-release-latest"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
+      image: "ubuntu:22.04"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
         with:
-          ref: ${{ inputs.release-branch }}
-
-      - name: Make the Pypi Wheel
-        run: |
-          mkdir -p build/staging/universal
-          cmake -S . -B ./build -DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_TENSORFLOW=OFF -DENABLE_ONNX=OFF -DPIP_INDEX=pypi -DSW_VERSION=${{ env.VERSION }} -DCMAKE_INSTALL_PREFIX="build/staging/universal"
-          cmake --build ./build --parallel 4 --target all --target install --target packageaimet --target upload
-          echo "Retag the whl file"
-          WHL_PATH=$(pwd)/$(find . -name *.whl -printf '%P\n')
-          echo "WHL_PATH=$(pwd)/$(find . -name *.whl -printf '%P\n')" >> $GITHUB_ENV
-          wheel tags --python-tag=py38 --abi-tag=none --platform-tag=any $WHL_PATH
-          find . -name *.whl
-
-      - name: Install Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install python3 python3-pip -y
+          name: "${{ matrix.id }}"
+          path: "downloads"
+      - run: |
+          apt-get update
+          apt-get install python3 python3-pip -y
           python3 -m pip install --upgrade pip
           python3 -m pip install twine
-
-      - name: Push to pypi 
+          ls -al downloads/wheelhouse
+      - name: Push to testpypi
         run: |
           case $DEPLOY in
-            (true) 
-                   echo "Deploy variable set to true, deploying. . . "
-                   twine upload --verbose --repository pypi --config-file ~/.pypirc build/packaging/dist/* ;;
-            (false) 
-                   echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc build/packaging/dist/* will not proceed." ;;
+          (true)
+          echo "Deploy variable set to true, deploying. . . "
+          twine upload --verbose --repository testpypi --config-file ~/.pypirc downloads/wheelhouse/*
+          ;;
+          (false)
+          echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."
+          ;;
+          esac
+      - name: Push to pypi
+        run: |          
+          case $DEPLOY in
+          (true)
+          echo "Deploy variable set to true, deploying. . . "
+          twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/*
+          ;;
+          (false)
+          echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."
+          ;;
           esac
 
+  cleanup:
+    needs: [ variants, docker-build-image, build-wheel, publish ]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    steps:
+      - name: Delete temp docker image
+        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ inputs.variant-id }}/manifests/${{ inputs.variant-id }}" || true
