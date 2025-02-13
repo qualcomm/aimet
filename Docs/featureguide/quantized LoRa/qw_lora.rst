@@ -7,7 +7,7 @@ QW-LoRa
 Context
 =======
 
-The QWA-LoRa workflow involves determining the appropriate weight encodings for the base model before
+The QW-LoRa workflow involves determining the appropriate weight encodings for the base model before
 performing some epochs of LoRa training. Finally, the activation encodings for the base model; and weight and
 activation encodings for the updated LoRa layers are calibrated. This is expressed in the block diagram below.
 
@@ -85,7 +85,10 @@ Step #1 of QW-LoRa
 In this section, we calculate quantization parameters for the base model weights, and use those parameters to update
 the weights. A helper function to do this is provided below if you do not already have a method of doing this.
 
-* Note: you can use any method of calculating weight parameters, as long as the model weights are updated to reflect them.
+.. note::
+    The provided helper function applies 4-bit symmetric integer quantization to all model parameters. This function can
+    be updated to suit your quantization requirements. In fact, you can use any method of calculating weight encodings,
+    as long as these encodings are applied directly to the weights.
 
 .. tab-set::
     :sync-group: platform

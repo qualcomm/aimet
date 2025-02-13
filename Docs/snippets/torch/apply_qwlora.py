@@ -142,29 +142,23 @@ def train_one_epoch(model, dataloader, device=torch.device("cuda")):
         optimizer.step()
 
 # [freeze_base_model_weights]
-from aimet_torch.v2.utils import remove_all_quantizers
+import aimet_torch.quantization as Q
 
 # Helper function that will fuse quantization parameters into the weight matrices of the provided module
 # If you have a bespoke approach for calculating weight quantization parameters, then that would replace this step.
-def calculate_and_fuse_encodings_into_weights(model, dummy_input):
-    quantsim = QuantizationSimModel(model=model,
-                                    dummy_input=dummy_input,
-                                    default_output_bw=16,
-                                    default_param_bw=4,
-                                    in_place=False)
+def calculate_and_fuse_encodings_into_weights(model):
+    for name, param in model.named_parameters():
+        # create a new 4-bit symmetric affine quantizer
+        qtzr = Q.affine.QuantizeDequantize(shape=(), bitwidth=4, symmetric=False)
 
-    lora_layers = [module for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
+        # compute encodings for qtzr based on param
+        with qtzr.compute_encodings():
+            _ = qtzr(param)
 
-    with place_model(model, "cuda"):
-        with remove_all_quantizers(lora_layers):
-            # Only compute encodings for base model
-            calibration_callback = generate_calibration_callback(train_dataloader, max_iterations=20, device=torch.device("cuda"))
-            quantsim.compute_encodings(calibration_callback)
+        # Apply QDQ to the param
+        param.data = qtzr(param.data)
 
-    # returns the original model with QDQ applied to all weights with encodings
-    return QuantizationSimModel.get_original_model(quantsim, qdq_weights=True)
-
-model = calculate_and_fuse_encodings_into_weights(model, (dummy_input_ids, dummy_attention_mask))
+calculate_and_fuse_encodings_into_weights(model)
 
 # [lora_training]
 from aimet_torch.peft import LoraLayer

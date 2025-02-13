@@ -16,6 +16,7 @@ Optimization techniques
     Batch norm re-estimation <bn>
     Analysis tools <analysis tools/index>
     Compression <compression/index>
+    Quantized LoRa <quantized LoRa/index>
 
 :ref:`Adaptive rounding <featureguide-adaround>`
 ================================================
