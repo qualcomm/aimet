@@ -37,8 +37,10 @@
 
 """ Utilities for quantization """
 
+from typing import Dict
 import numpy as np
 
+from aimet_common.defs import QuantizationDataType, EncodingType
 from aimet_common.utils import AimetLogger
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -83,3 +85,34 @@ def get_conv_accum_bounds(weights: np.ndarray, quant_bw: int, accum_bw: int):
             _logger.info("Accumulator range potentially exceeded in channel %d", out_chan_index)
 
     return was_accum_range_exceeded, most_accum_range_used
+
+def _convert_encoding_format_0_6_1_to_1_0_0(encodings: Dict[str, Dict]):
+    """
+    Convert encoding dictionary in 0.6.1 format to 1.0.0 format (list of encodings)
+    """
+    new_encodings = []
+    assert isinstance(encodings, dict)
+    for tensor_name, encoding in encodings.items():
+        new_encoding = {'name': tensor_name}
+        new_encoding['bw'] = encoding[0]['bitwidth']
+        if encoding[0]['dtype'] == 'float':
+            new_encoding['dtype'] = QuantizationDataType.float.name.upper()
+            new_encoding['enc_type'] = EncodingType.PER_TENSOR.name
+        else:
+            new_encoding['dtype'] = QuantizationDataType.int.name.upper()
+            new_encoding['is_sym'] = encoding[0]['is_symmetric'] == 'True'
+            if len(encoding) == 1:
+                new_encoding['enc_type'] = EncodingType.PER_TENSOR.name
+            else:
+                new_encoding['enc_type'] = EncodingType.PER_CHANNEL.name
+
+            scale = []
+            offset = []
+            for enc in encoding:
+                scale.append(enc['scale'])
+                offset.append(enc['offset'])
+            new_encoding['scale'] = scale
+            new_encoding['offset'] = offset
+        new_encodings.append(new_encoding)
+
+    return new_encodings
