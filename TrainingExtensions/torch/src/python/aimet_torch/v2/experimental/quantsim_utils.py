@@ -325,25 +325,31 @@ def apply_requant_mask(sim: QuantizationSimModel,
     mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
     for name, module in sim.model.named_modules():
         if condition(module):
+            mask_index = 0
+            if module.input_quantizers[1] is not None and \
+                (not module.input_quantizers[1].is_initialized() or
+                (module.input_quantizers[1].is_initialized() and torch.equal(module.input_quantizers[1].max,
+                                                                             torch.zeros_like(module.input_quantizers[1].max)))):
+                mask_index = 1
             q_mask_add = QuantizedMaskAdd()
-            q_mask_add.nullrequant.input_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[1].bitwidth,
+            q_mask_add.nullrequant.input_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[mask_index].bitwidth,
                                                                           sim._rounding_mode,
                                                                           sim._quant_scheme,
-                                                                          module.input_quantizers[1].symmetric,
+                                                                          module.input_quantizers[mask_index].symmetric,
                                                                           enabled_by_default=True
                                                                           ).realize()
-            q_mask_add.nullrequant.output_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[1].bitwidth,
+            q_mask_add.nullrequant.output_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[mask_index].bitwidth,
                                                                            sim._rounding_mode,
                                                                            sim._quant_scheme,
-                                                                           module.input_quantizers[1].symmetric,
+                                                                           module.input_quantizers[mask_index].symmetric,
                                                                            enabled_by_default=True
                                                                            ).realize()
             q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
             setattr(sim.model, name, q_mask_add)
-            if module.input_quantizers[1].is_initialized() and module.output_quantizers[0].is_initialized():
+            if module.input_quantizers[mask_index].is_initialized() and module.output_quantizers[0].is_initialized():
                 mask_add_names.append(name)
                 mask_add_act_mins.append(module.output_quantizers[0].min)
-                mask_maxs.append(module.input_quantizers[1].max)
+                mask_maxs.append(module.input_quantizers[mask_index].max)
             else:
                 logger.warning("The quantizers for %s may remain uninitialized "
                                 "only if sim model is about to use `load_encodings`", str(name))
