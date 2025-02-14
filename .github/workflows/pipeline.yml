@@ -330,20 +330,13 @@ jobs:
       - name: Create python virtual environment
         if: ${{ matrix.id  != 'tf-torch-cpu' && steps.cache.outputs.cache-hit != 'true' }}
         run: |
-          echo "\
-          torch$([ -n "${{ matrix.VER_TORCH }}" ] && echo "==${{ matrix.VER_TORCH }}")\n\
-          tensorflow-cpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
-          tensorflow-gpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
-          onnx$([ -n "${{ matrix.VER_ONNX }}" ] && echo "==${{ matrix.VER_ONNX }}") \
-          " > /tmp/constraints.txt
-
           export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo "${{ matrix.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
 
           curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find downloads -name '*.whl')[test, v1-deps]"
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find downloads -name '*.whl')[test, v1-deps]"
       - name: Run pylint
         if: matrix.ENABLE_TESTS == 'ON'
         run: |
