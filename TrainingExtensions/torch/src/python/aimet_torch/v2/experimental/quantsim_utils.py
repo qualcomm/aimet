@@ -36,7 +36,7 @@
 # =============================================================================
 """ Experimental quantsim utilities """
 
-from typing import overload, Callable, Type
+from typing import overload, Callable, Sequence, Type
 import torch
 
 from aimet_common.utils import AimetLogger
@@ -285,17 +285,43 @@ class QuantizedMaskAdd(torch.nn.Module):
         return self.add(input, self.nullrequant(mask, [bsz, -1, seq_len, ctx_len]))
 
 
+@overload
+def apply_requant_mask(sim: QuantizationSimModel,
+                       module_list: Sequence[torch.nn.Module]):
+    """
+    Apply adaptive quantized attention mask for given module list.
+    Args:
+      sim: QuantizationSimModel
+      module_list: A Sequence of module that should be considered
+                   a MaskAdd operator
+    """
+
+
+@overload
 def apply_requant_mask(sim: QuantizationSimModel,
                        condition: Callable[[torch.nn.Module], bool]):
     """
-    Apply adaptive quantized attention mask to sim model of LLMs.
+    Apply adaptive quantized attention mask for submodule of sim whose condition(submodule) is True.
     Args:
       sim: QuantizationSimModel
       condition: A function that takes each submodule of sim.model,
                  and return True/False to indicate if the submodule should be
                  considered a MaskAdd operator
     """
+
+
+def apply_requant_mask(sim: QuantizationSimModel,
+                       arg):
+    """
+    Apply adaptive quantized attention mask to sim model of LLMs.
+    """
     # pylint: disable=protected-access
+    if isinstance(arg, Sequence):
+        module_list = arg
+        condition = lambda module: module in module_list
+    else:
+        condition = arg
+
     mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
     for name, module in sim.model.named_modules():
         if condition(module):
