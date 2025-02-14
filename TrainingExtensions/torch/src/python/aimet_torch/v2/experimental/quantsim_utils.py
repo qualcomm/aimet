@@ -286,19 +286,19 @@ class QuantizedMaskAdd(torch.nn.Module):
 
 
 def apply_requant_mask(sim: QuantizationSimModel,
-                       condition: Callable[[QuantizationSimModel, torch.nn.Module], bool]):
+                       condition: Callable[[torch.nn.Module], bool]):
     """
     Apply adaptive quantized attention mask to sim model of LLMs.
     Args:
       sim: QuantizationSimModel
-      condition: A function that takes sim and each submodule of sim.model,
+      condition: A function that takes each submodule of sim.model,
                  and return True/False to indicate if the submodule should be
                  considered a MaskAdd operator
     """
     # pylint: disable=protected-access
     mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
     for name, module in sim.model.named_modules():
-        if condition(sim, module):
+        if condition(module):
             q_mask_add = QuantizedMaskAdd()
             q_mask_add.nullrequant.input_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[1].bitwidth,
                                                                           sim._rounding_mode,
