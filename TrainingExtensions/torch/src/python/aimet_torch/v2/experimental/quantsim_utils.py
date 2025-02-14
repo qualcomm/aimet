@@ -60,8 +60,6 @@ _MATH_INVARIANT_OPS = (
     torch.nn.Identity
 )
 
-MASK_ADD_PREV_OPS = ['Div', 'MatMul']
-
 
 def _is_math_invariant_op(module: torch.nn.Module):
     return isinstance(module, _MATH_INVARIANT_OPS)
