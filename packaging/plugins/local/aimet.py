@@ -75,16 +75,95 @@ def get_version() -> str:
     return pathlib.Path("packaging", "version.txt").read_text(encoding="utf8")
 
 
+def optional_dependencies() -> dict[str, list[str]]:
+    optional_dependencies = {
+        "dev": [
+            # duplicate build-system.requires for editable mode (non-isolated)
+            "scikit-build-core[wheels]>=0.10",
+            # and the rest
+        ],
+        "test": [
+            "beautifulsoup4",
+            "deepspeed",
+            "matplotlib",
+            "onnxruntime",
+            "peft",
+            "pylint<3",
+            "pytest",
+            "pytest-github-report",
+            "pytorch-ignite",
+            "safetensors",
+            "spconv",
+            "transformers",
+        ],
+        "docs": [
+            "furo",
+            "nbsphinx",
+            "pandoc",
+            "sphinx",
+            "sphinx-autodoc-typehints",
+            "sphinx-copybutton",
+            "sphinx-design",
+            "sphinx-jinja",
+            "sphinx-rtd-theme",
+            "sphinx-tabs",
+        ],
+        "v1-deps": [] # This is empty for aimet-onnx and aimet-tensorflow
+    }
+
+    aimet_variant = get_aimet_variant()
+
+    if aimet_variant not in ("torch-gpu", "torch-cpu"):
+        return optional_dependencies
+
+    try:
+        import torch
+    except ImportError:
+        return optional_dependencies
+
+    import sys
+    import sysconfig
+
+    py_impl = sys.implementation
+    assert py_impl.name == "cpython"
+    assert sysconfig.get_platform() == "linux-x86_64"
+
+    major, minor, *_ = py_impl.version
+    platform = f"cp{major}{minor}-cp{major}{minor}-linux_x86_64"
+
+    from packaging import version
+    v = version.parse(torch.__version__)
+    torch_pkg = f"torch-{v.major}.{v.minor}.{v.micro}"
+
+    if aimet_variant == 'torch-gpu':
+        major, minor = torch.version.cuda.split('.')
+        cuda = f"cu{major}{minor}"
+    else:
+        cuda = "cpu"
+
+    torch_pkg += f"%2B{cuda}"
+
+    optional_dependencies.update({
+        "v1-deps": [
+            f"torch@https://download.pytorch.org/whl/{cuda}/{torch_pkg}-{platform}.whl",
+        ]
+    })
+
+    return optional_dependencies
+
+
 def dynamic_metadata(
     field: str,
     settings: dict[str, object] | None = None,
-) -> str:
+) -> str | list[str] | dict[str, list[str]]:
     if settings:
         raise ValueError("No inline configuration is supported")
     if field == "name":
         return f"aimet-{get_aimet_variant()}"
     if field == "dependencies":
         return get_aimet_dependencies()
+    if field == "optional-dependencies":
+        return optional_dependencies()
     if field == "version":
         return get_version()
     raise ValueError(f"Unsupported field '{field}'")

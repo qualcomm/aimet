@@ -7,46 +7,29 @@ build-backend = "scikit_build_core.build"
 [project]
 #name = "aimet"
 requires-python = ">=3.8"
-dynamic = ["name", "dependencies", "version"]
+dynamic = ["name", "dependencies", "version", "optional-dependencies"]
 
 [project.optional-dependencies]
-dev = [
-  # duplicate build-system.requires for editable mode (non-isolated)
-  "scikit-build-core[wheels]>=0.10",
-  # and the rest
-]
-test = [
-  "beautifulsoup4",
-  "deepspeed",
-  "matplotlib",
-  "onnxruntime",
-  "peft",
-  "pylint<3",
-  "pytest",
-  "pytest-github-report",
-  "pytorch-ignite",
-  "safetensors",
-  "spconv",
-  "transformers",
-]
-docs = [
-  "furo",
-  "nbsphinx",
-  "pandoc",
-  "sphinx",
-  "sphinx-autodoc-typehints",
-  "sphinx-copybutton",
-  "sphinx-design",
-  "sphinx-jinja",
-  "sphinx-rtd-theme",
-  "sphinx-tabs",
-]
+# Expected types of extras:
+# dev = [
+#   ...
+# ]
+# test = [
+#   ...
+# ]
+# docs = [
+#   ...
+# ]
+# "v1-deps" = [
+#   "torch==x.y.z" # This will be used only for ``pip install aimet-torch[v1-deps]``
+# ]
 
 [tool.scikit-build]
 experimental = true
 metadata.name = { provider = "aimet", provider-path = "packaging/plugins/local" }
 metadata.dependencies = { provider = "aimet", provider-path = "packaging/plugins/local" }
 metadata.version = { provider="aimet", provider-path = "packaging/plugins/local" }
+metadata.optional-dependencies = { provider="aimet", provider-path = "packaging/plugins/local" }
 build-dir = "build"
 sdist.cmake = false
 logging.level = "DEBUG"

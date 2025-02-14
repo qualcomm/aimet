@@ -343,7 +343,7 @@ jobs:
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find downloads -name '*.whl')[test]"
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install --constraint=/tmp/constraints.txt "$(find downloads -name '*.whl')[test, v1-deps]"
       - name: Run pylint
         if: matrix.ENABLE_TESTS == 'ON'
         run: |
