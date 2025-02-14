@@ -84,6 +84,11 @@ import aimet_torch.quantization as Q
 # If you have a bespoke approach for calculating weight quantization parameters, then that would replace this step.
 def calculate_and_fuse_encodings_into_weights(model):
     for name, param in model.named_parameters():
+        # Skip applying QDQ on lora adapter layers
+        if "lora_A" in name or "lora_B" in name:
+            continue
+
+        print(name, param.shape)
         # create a new 4-bit symmetric affine quantizer
         qtzr = Q.affine.QuantizeDequantize(shape=(), bitwidth=4, symmetric=True)
 
@@ -97,14 +102,17 @@ def calculate_and_fuse_encodings_into_weights(model):
 calculate_and_fuse_encodings_into_weights(model)
 
 # [lora_training]
+from tqdm import tqdm
 import torch
-from aimet_torch.peft import LoraLayer
+from peft.tuners.lora.layer import LoraLayer
+from aimet_torch.utils import place_model
 
 # Configure model so that only LoRa layers are trainable
 model.requires_grad_(False)
 for module_name, module in model.named_modules():
     if isinstance(module, LoraLayer):
-        module.requires_grad_(True)
+        module.lora_A.requires_grad_(True)
+        module.lora_B.requires_grad_(True)
 
 # Function to perform one epoch of training
 def train_one_epoch(model, dataloader, device=torch.device("cuda")):
@@ -132,13 +140,12 @@ def train_one_epoch(model, dataloader, device=torch.device("cuda")):
         optimizer.step()
 
 # Perform LoRa QAT with base model weight, activation encodings frozen
-train_one_epoch(model, train_dataloader, torch.device("cuda"))
+with place_model(model, torch.device("cuda")):
+    train_one_epoch(model, train_dataloader, torch.device("cuda"))
 
 # [ptq]
-from tqdm import tqdm
 from transformers.models import opt
 
-from aimet_torch.utils import place_model
 from aimet_torch.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 from aimet_torch.peft import replace_lora_layers_with_quantizable_layers

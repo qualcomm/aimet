@@ -173,7 +173,8 @@ with place_model(model, torch.device("cuda")):
         model.requires_grad_(False)
         for module_name, module in model.named_modules():
             if isinstance(module, LoraLayer):
-                module.requires_grad_(True)
+                module.lora_A.requires_grad_(True)
+                module.lora_B.requires_grad_(True)
 
         # Perform LoRa QAT with base model weight, activation encodings frozen
         train_one_epoch(quantsim.model, train_dataloader, torch.device("cuda"))
