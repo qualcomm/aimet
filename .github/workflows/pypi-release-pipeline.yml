@@ -33,57 +33,57 @@ jobs:
           if [ "${{ inputs.variant-id }}" == "torch-cpu" ] ; then
             VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
                 {
-                   "id":             "torch-cpu",
-                   "runs-on":        "ubuntu-latest",
-                   "VER_PYTHON":     "3.10",
-                   "VER_TENSORFLOW": "",
-                   "VER_TORCH":      "2.1.2",
-                   "VER_ONNX":       "",
-                   "VER_CUDA":       "",
-                   "ENABLE_TESTS":   "ON",
-                   "BUILD_TARGETS":  "all"
+                   "id":              "torch-cpu",
+                   "runs-on":         "ubuntu-latest",
+                   "VER_PYTHON":      "3.10",
+                   "VER_TENSORFLOW":  "",
+                   "VER_TORCH":       "2.1.2",
+                   "VER_ONNXRUNTIME": "",
+                   "VER_CUDA":        "",
+                   "ENABLE_TESTS":    "ON",
+                   "BUILD_TARGETS":   "all"
                 }
               ]')
             elif [ "${{ inputs.variant-id }}" == "torch-gpu" ] ; then
               VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
                 {
-                   "id":             "torch-gpu",
-                   "runs-on":        "k8s-gpu",
-                   "VER_PYTHON":     "3.10",
-                   "VER_TENSORFLOW": "",
-                   "VER_TORCH":      "2.1.2",
-                   "VER_ONNX":       "",
-                   "VER_CUDA":       "12.1.1",
-                   "ENABLE_TESTS":   "ON",
-                   "BUILD_TARGETS":  "all"
+                   "id":              "torch-gpu",
+                   "runs-on":         "k8s-gpu",
+                   "VER_PYTHON":      "3.10",
+                   "VER_TENSORFLOW":  "",
+                   "VER_TORCH":       "2.1.2",
+                   "VER_ONNXRUNTIME": "",
+                   "VER_CUDA":        "12.1.1",
+                   "ENABLE_TESTS":    "ON",
+                   "BUILD_TARGETS":   "all"
                 }
               ]')
             elif [ "${{ inputs.variant-id }}" == "onnx-cpu" ] ; then
               VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
                 {
-                   "id":             "onnx-cpu",
-                   "runs-on":        "ubuntu-latest",
-                   "VER_PYTHON":     "3.10",
-                   "VER_TENSORFLOW": "",
-                   "VER_TORCH":      "",
-                   "VER_ONNX":       "1.16.2",
-                   "VER_CUDA":       "",
-                   "ENABLE_TESTS":   "ON",
-                   "BUILD_TARGETS":  "all"
+                   "id":              "onnx-cpu",
+                   "runs-on":         "ubuntu-latest",
+                   "VER_PYTHON":      "3.10",
+                   "VER_TENSORFLOW":  "",
+                   "VER_TORCH":       "",
+                   "VER_ONNXRUNTIME": "1.18.1",
+                   "VER_CUDA":        "",
+                   "ENABLE_TESTS":    "ON",
+                   "BUILD_TARGETS":   "all"
                 }
               ]')
             elif [ "${{ inputs.variant-id }}" == "onnx-gpu" ] ; then
               VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
                 {
-                   "id":             "onnx-gpu",
-                   "runs-on":        "k8s-gpu",
-                   "VER_PYTHON":     "3.10",
-                   "VER_TENSORFLOW": "",
-                   "VER_TORCH":      "",
-                   "VER_ONNX":       "1.16.2",
-                   "VER_CUDA":       "11.8.1",
-                   "ENABLE_TESTS":   "ON",
-                   "BUILD_TARGETS":  "all"
+                   "id":              "onnx-gpu",
+                   "runs-on":         "k8s-gpu",
+                   "VER_PYTHON":      "3.10",
+                   "VER_TENSORFLOW":  "",
+                   "VER_TORCH":       "",
+                   "VER_ONNXRUNTIME": "1.18.1",
+                   "VER_CUDA":        "11.8.1",
+                   "ENABLE_TESTS":    "ON",
+                   "BUILD_TARGETS":   "all"
                 }
               ]')  
             fi
@@ -116,7 +116,7 @@ jobs:
             VER_CUDA=${{ matrix.VER_CUDA }}
             VER_TORCH=${{ matrix.VER_TORCH }}
             VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
-            VER_ONNX=${{ matrix.VER_ONNX }}
+            VER_ONNXRUNTIME=${{ matrix.VER_ONNXRUNTIME }}
 
   build-wheel:
     name: Build AIMET wheels
@@ -142,7 +142,7 @@ jobs:
           CMAKE_ARGS=""
           CMAKE_ARGS="-DENABLE_CUDA=$([ "${{ matrix.VER_CUDA }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TORCH=$([ "${{ matrix.VER_TORCH }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
-          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNX }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNXRUNTIME }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TESTS=${{ matrix.ENABLE_TESTS }} $CMAKE_ARGS"
           echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
@@ -150,7 +150,7 @@ jobs:
           BUILD_TARGETS="${{ matrix.BUILD_TARGETS }}"
           echo "AIMET_BUILD_TARGETS=$BUILD_TARGETS" >> $GITHUB_ENV
       - name: "Exclude Torch libraries from dependencies for manylinux"
-        if: matrix.VER_TORCH || matrix.VER_ONNX
+        if: matrix.VER_TORCH || matrix.VER_ONNXRUNTIME
         run: |
           . /etc/profile.d/conda.sh
           TORCH_DIR=$(python3 -c 'import torch; print(f"{torch.utils.cmake_prefix_path}/../../lib")')
@@ -264,7 +264,7 @@ jobs:
           torch$([ -n "${{ matrix.VER_TORCH }}" ] && echo "==${{ matrix.VER_TORCH }}")\n\
           tensorflow-cpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
           tensorflow-gpu$([ -n "${{ matrix.VER_TENSORFLOW }}" ] && echo "==${{ matrix.VER_TENSORFLOW }}")\n\
-          onnx$([ -n "${{ matrix.VER_ONNX }}" ] && echo "==${{ matrix.VER_ONNX }}") \
+          onnx$([ -n "${{ matrix.VER_ONNXRUNTIME }}" ] && echo "==${{ matrix.VER_ONNXRUNTIME }}") \
           " > /tmp/constraints.txt
 
           export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo "${{ matrix.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
@@ -304,7 +304,7 @@ jobs:
 
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/tensorflow/test"
-          elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+          elif [ "${{ matrix.VER_ONNXRUNTIME }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/onnx/test"
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
@@ -321,7 +321,7 @@ jobs:
           set -x
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/tensorflow"
-          elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+          elif [ "${{ matrix.VER_ONNXRUNTIME }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/onnx"
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/torch"

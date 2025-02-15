@@ -38,7 +38,7 @@ ARG VER_PYTHON=3.8
 ARG VER_CUDA=11.7.1
 ARG VER_TORCH=""
 ARG VER_TENSORFLOW=""
-ARG VER_ONNX=""
+ARG VER_ONNXRUNTIME=""
 
 COPY Jenkins/fast-release/environment.devenv.yml /tmp/
 RUN export PATH=$PATH:${CONDA_PREFIX}/bin PIP_NO_CACHE_DIR=1 \
@@ -57,7 +57,7 @@ RUN echo "\
 torch$([ -n "${VER_TORCH}" ] && echo "==${VER_TORCH}")\n\
 tensorflow-cpu$([ -n "${VER_TENSORFLOW}" ] && echo "==${VER_TENSORFLOW}")\n\
 tensorflow-gpu$([ -n "${VER_TENSORFLOW}" ] && echo "==${VER_TENSORFLOW}")\n\
-onnx$([ -n "${VER_ONNX}" ] && echo "==${VER_ONNX}") \
+onnxruntime$([ -n "${VER_ONNXRUNTIME}" ] && echo "==${VER_ONNXRUNTIME}") \
 " > /tmp/constraints.txt
 
 RUN --mount=type=bind,target=/workspace \
@@ -67,7 +67,7 @@ RUN --mount=type=bind,target=/workspace \
     && export CMAKE_ARGS="\
         -DENABLE_TENSORFLOW=$([ -z ${VER_TENSORFLOW} ]; echo $?) \
         -DENABLE_TORCH=$([ -z ${VER_TORCH} ]; echo $?) \
-        -DENABLE_ONNX=$([ -z ${VER_ONNX} ]; echo $?) \
+        -DENABLE_ONNX=$([ -z ${VER_ONNXRUNTIME} ]; echo $?) \
         -DENABLE_CUDA=$([ -z ${VER_CUDA} ]; echo $?) \
        " \
     && ${CONDA} run --name ${CONDA_DEFAULT_ENV} --live-stream \

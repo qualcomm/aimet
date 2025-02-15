@@ -65,26 +65,26 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":             "torch-cpu",
-                 "runs-on":        "ubuntu-latest",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "",
-                 "VER_TORCH":      "2.1.2",
-                 "VER_ONNX":       "",
-                 "VER_CUDA":       "",
-                 "ENABLE_TESTS":   "ON",
-                 "BUILD_TARGETS":  "all"
+                 "id":              "torch-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
               },
               {
-                 "id":             "torch-gpu",
-                 "runs-on":        "k8s-gpu",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "",
-                 "VER_TORCH":      "2.1.2",
-                 "VER_ONNX":       "",
-                 "VER_CUDA":       "12.1.1",
-                 "ENABLE_TESTS":   "ON",
-                 "BUILD_TARGETS":  "all"
+                 "id":              "torch-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "12.1.1",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -94,26 +94,26 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":             "tf-cpu",
-                 "runs-on":        "ubuntu-latest",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "2.10.1",
-                 "VER_TORCH":      "",
-                 "VER_ONNX":       "",
-                 "VER_CUDA":       "",
-                 "ENABLE_TESTS":   "ON",
-                 "BUILD_TARGETS":  "all"
+                 "id":              "tf-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "2.10.1",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
               },
               {
-                 "id":             "tf-gpu",
-                 "runs-on":        "k8s-gpu",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "2.10.1",
-                 "VER_TORCH":      "",
-                 "VER_ONNX":       "",
-                 "VER_CUDA":       "11.8.0",
-                 "ENABLE_TESTS":   "ON",
-                 "BUILD_TARGETS":  "all"
+                 "id":              "tf-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "2.10.1",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "11.8.0",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -123,25 +123,25 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":             "onnx-cpu",
-                 "runs-on":        "ubuntu-latest",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "",
-                 "VER_TORCH":      "",
-                 "VER_ONNX":       "1.16.2",
-                 "ENABLE_TESTS":   "ON",
-                 "BUILD_TARGETS":  "all"
+                 "id":              "onnx-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
               },
               {
-                 "id":             "onnx-gpu",
-                 "runs-on":        "k8s-gpu",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "",
-                 "VER_TORCH":      "",
-                 "VER_ONNX":       "1.16.2",
-                 "VER_CUDA":       "11.8.0",
-                 "ENABLE_TESTS":   "ON",
-                 "BUILD_TARGETS":  "all"
+                 "id":              "onnx-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_CUDA":        "11.8.0",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -150,15 +150,15 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":             "tf-torch-cpu",
-                 "runs-on":        "ubuntu-latest",
-                 "VER_PYTHON":     "3.10",
-                 "VER_TENSORFLOW": "2.12.*",
-                 "VER_TORCH":      "2.1.2",
-                 "VER_ONNX":       "1.*",
-                 "VER_CUDA":       "",
-                 "ENABLE_TESTS":   "OFF",
-                 "BUILD_TARGETS":  "all;doc"
+                 "id":              "tf-torch-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "2.12.*",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "OFF",
+                 "BUILD_TARGETS":   "all;doc"
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -189,7 +189,8 @@ jobs:
             VER_CUDA=${{ matrix.VER_CUDA }}
             VER_TORCH=${{ matrix.VER_TORCH }}
             VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
-            VER_ONNX=${{ matrix.VER_ONNX }}
+            VER_ONNXRUNTIME=${{ matrix.VER_ONNXRUNTIME }}
+            AIMET_VARIANT=${{ matrix.id }}
 
   build-wheel:
     name: Build AIMET wheels
@@ -213,7 +214,7 @@ jobs:
           CMAKE_ARGS=""
           CMAKE_ARGS="-DENABLE_CUDA=$([ "${{ matrix.VER_CUDA }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TORCH=$([ "${{ matrix.VER_TORCH }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
-          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNX }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNXRUNTIME }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TESTS=${{ matrix.ENABLE_TESTS }} $CMAKE_ARGS"
           echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
@@ -221,7 +222,7 @@ jobs:
           BUILD_TARGETS="${{ matrix.BUILD_TARGETS }}"
           echo "AIMET_BUILD_TARGETS=$BUILD_TARGETS" >> $GITHUB_ENV
       - name: "Exclude Torch libraries from dependencies for manylinux"
-        if: matrix.VER_TORCH || matrix.VER_ONNX
+        if: matrix.VER_TORCH || matrix.VER_ONNXRUNTIME
         run: |
           . /etc/profile.d/conda.sh
           TORCH_DIR=$(python3 -c 'import torch; print(f"{torch.utils.cmake_prefix_path}/../../lib")')
@@ -367,7 +368,7 @@ jobs:
 
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/tensorflow/test"
-          elif [ "${{ matrix.VER_ONNX }}" != "" ] ; then
+          elif [ "${{ matrix.VER_ONNXRUNTIME }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/onnx/test"
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
