@@ -94,7 +94,7 @@ class JsonConfigImporter:
         :return: Quantsim configs dictionary
         """
         if not config_file:
-            config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default_config.json')
+            config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default_config_per_channel.json')
             logger.info('No config file provided, defaulting to config file at %s', config_file)
 
         with open(config_file) as configs:
