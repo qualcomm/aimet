@@ -78,6 +78,7 @@ from aimet_torch.v1.quantsim_straight_through_grad import compute_dloss_by_dx
 from aimet_torch._base.nn.modules.custom import DynamicConv2d
 
 from ..models import test_models
+from .._utils import per_tensor_config
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
@@ -678,9 +679,7 @@ class TestQuantizationSimStaticGrad:
 
         net = Net()
         model = net.to(torch.device('cpu'))
-        print(model)
         sim = QuantizationSimModel(model, dummy_input=torch.rand(1, 1, 12, 12))
-        print(sim.model)
         self.verify_quantization_wrappers(model, sim.model)
 
     # -------------------------------------------
@@ -756,9 +755,7 @@ class TestQuantizationSimStaticGrad:
                 return self.layers[2](inputs[0])
 
         model = Net()
-        print(model)
         sim = QuantizationSimModel(model, dummy_input=torch.rand(1, 3, 12, 12))
-        print(sim.model)
 
         self.verify_quantization_wrappers(model, sim.model)
 
@@ -771,7 +768,6 @@ class TestQuantizationSimStaticGrad:
         sim = QuantizationSimModel(model, dummy_input=torch.rand(1, 3, 12, 12))
         layers_to_exclude = [sim.model.layers_deep[1], sim.model.layers_deep[3], sim.model.layers_deep[5]]
         sim.exclude_layers_from_quantization(layers_to_exclude)
-        print(sim.model)
 
         assert isinstance(sim.model.layers[0]._module_to_wrap, nn.Linear)
         assert isinstance(sim.model.layers[1]._module_to_wrap, nn.Linear)
@@ -854,7 +850,7 @@ class TestQuantizationSimStaticGrad:
         sim.compute_encodings(forward_pass, None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-        # save encodings
+            # save encodings
             sim.export(tmpdir, 'two_input_model_fp16', dummy_input)
             encoding_file_path_pytorch = os.path.join(tmpdir, 'two_input_model_fp16' + '_torch' + '.encodings')
             load_encodings_to_sim(sim, encoding_file_path_pytorch)
@@ -894,7 +890,6 @@ class TestQuantizationSimStaticGrad:
 
         # Quantize
         sim.compute_encodings(forward_pass, None)
-        print(sim)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # save encodings
@@ -938,14 +933,13 @@ class TestQuantizationSimStaticGrad:
             sim.export(tmp_dir, 'resnet18', dummy_input)
             with open(os.path.join(tmp_dir, 'resnet18.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                print(encoding_data)
 
             assert len(encoding_data["activation_encodings"]) == 24
             assert len(encoding_data["activation_encodings"][0]['scale']) == 1
 
             param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
             assert "conv1.weight" in param_encodings
-            assert len(param_encodings["conv1.weight"]['scale']) == 1
+            assert len(param_encodings["conv1.weight"]['scale']) == resnet18.conv1.out_channels
 
     def test_export_with_quantizer_args(self):
         """ test export functionality on ResNet18 """
@@ -967,7 +961,7 @@ class TestQuantizationSimStaticGrad:
             quantizer_args = encoding_data["quantizer_args"]
             assert quantizer_args["activation_bitwidth"] == 16
             assert quantizer_args["param_bitwidth"] == 16
-            assert not quantizer_args["per_channel_quantization"]
+            assert quantizer_args["per_channel_quantization"]
             assert quantizer_args["quant_scheme"] == QuantScheme.post_training_tf.name
             assert quantizer_args["dtype"] == "int"
             assert "is_symmetric" in quantizer_args
@@ -1018,11 +1012,11 @@ class TestQuantizationSimStaticGrad:
         # Quantize
         sim.compute_encodings(forward_pass, None)
 
-        sim.model.conv1_a.param_quantizers['weight'].encoding.max = 10
+        for e in sim.model.conv1_a.param_quantizers['weight'].encoding:
+            e.max = 10
         sim.model.conv1_a.output_quantizers[0].encoding.max = 30
 
         with tempfile.TemporaryDirectory() as temp_dir:
-
             # save encodings
             sim.export(temp_dir, 'two_input_model', dummy_input)
 
@@ -1128,10 +1122,6 @@ class TestQuantizationSimStaticGrad:
         assert not sim.model.conv1.output_quantizers[0].encoding
         assert sim.model.conv1.input_quantizers[0].encoding
 
-        print(sim.model.conv1.input_quantizers[0])
-        print(sim.model.conv1.output_quantizers[0])
-
-
     def test_inputs_shared_constant_intermediate_quantization(self):
         """"""
         model = ModelInputsSharedConstantIntermediate()
@@ -1214,9 +1204,6 @@ class TestQuantizationSimStaticGrad:
         assert sim.model.conv1.output_quantizers[0].encoding
         assert sim.model.conv1.input_quantizers[0].encoding
 
-        print(sim.model.conv1.input_quantizers[0])
-        print(sim.model.conv1.output_quantizers[0])
-
     def test_quantizing_models_with_funtional_add_ops(self):
         """
         Testing models with add functional ops
@@ -1258,8 +1245,6 @@ class TestQuantizationSimStaticGrad:
 
         assert sim.model.conv3.input_quantizers[0].enabled
         assert sim.model.conv5.input_quantizers[0].enabled
-
-        print(sim)
 
     def test_quantizing_models_with_module_add_ops(self):
         """
@@ -1305,8 +1290,6 @@ class TestQuantizationSimStaticGrad:
         assert not sim.model.conv3.input_quantizers[0].enabled
         assert sim.model.add1.output_quantizers[0].enabled
 
-        print(sim)
-
     def test_quantizing_models_with_add_followed_by_split(self):
         """
         Testing models with add functional ops followed by a split
@@ -1348,8 +1331,6 @@ class TestQuantizationSimStaticGrad:
         assert sim.model.conv4b.input_quantizers[0].enabled
         assert sim.model.conv5.input_quantizers[0].enabled
 
-        print(sim)
-
     def test_quantizing_models_with_add_followed_by_add(self):
         """
         Testing models with add functional ops followed by a split and then another add.
@@ -1389,8 +1370,6 @@ class TestQuantizationSimStaticGrad:
 
         assert sim.model.conv4a.input_quantizers[0].enabled
         assert sim.model.conv5.input_quantizers[0].enabled
-
-        print(sim)
 
     def test_quantizing_model_with_input_leading_to_add(self):
         class Net(nn.Module):
@@ -1449,8 +1428,6 @@ class TestQuantizationSimStaticGrad:
         assert sim.model.conv3.input_quantizers[0].enabled
         assert sim.model.conv5.input_quantizers[0].enabled
 
-        print(sim)
-
     def test_quantizing_models_with_div_ops(self):
         """
         Testing models with elementwise division functional ops
@@ -1491,8 +1468,6 @@ class TestQuantizationSimStaticGrad:
 
         assert sim.model.conv3.input_quantizers[0].enabled
         assert sim.model.conv5.input_quantizers[0].enabled
-
-        print(sim)
 
     def test_quantizing_models_with_concat_ops(self):
         """
@@ -1535,8 +1510,6 @@ class TestQuantizationSimStaticGrad:
 
         assert sim.model.conv3.input_quantizers[0].enabled
         assert sim.model.conv5.input_quantizers[0].enabled
-
-        print(sim)
 
     def test_no_finetuning_tf(self):
         model = SmallMnist()
@@ -1767,23 +1740,23 @@ class TestQuantizationSimStaticGrad:
 
         # Compute encodings
         sim.compute_encodings(dummy_forward_pass, None)
-        asym_min = sim.model.conv1.param_quantizers['weight'].encoding.min
-        asym_max = sim.model.conv1.param_quantizers['weight'].encoding.max
-        assert 8 == sim.model.conv1.param_quantizers['weight'].encoding.bw
+        asym_min = np.array([e.min for e in sim.model.conv1.param_quantizers['weight'].encoding])
+        asym_max = np.array([e.max for e in sim.model.conv1.param_quantizers['weight'].encoding])
+        assert all(e.bw == 8 for e in sim.model.conv1.param_quantizers['weight'].encoding)
 
         # Check that offset is still symmetric
-        assert sim.model.conv1.param_quantizers['weight'].encoding.offset == -128.0
+        assert all(e.offset == -128 for e in sim.model.conv1.param_quantizers['weight'].encoding)
 
         # Change param quantizer to symmetric and new bitwidth
         sim.model.conv1.param_quantizers['weight'].use_symmetric_encodings = False
         sim.model.conv1.param_quantizers['weight'].bitwidth = 4
         sim.compute_encodings(dummy_forward_pass, None)
-        sym_min = sim.model.conv1.param_quantizers['weight'].encoding.min
-        sym_max = sim.model.conv1.param_quantizers['weight'].encoding.max
-        assert 4 == sim.model.conv1.param_quantizers['weight'].encoding.bw
+        sym_min = np.array([e.min for e in sim.model.conv1.param_quantizers['weight'].encoding])
+        sym_max = np.array([e.max for e in sim.model.conv1.param_quantizers['weight'].encoding])
+        assert all(e.bw == 4 for e in sim.model.conv1.param_quantizers['weight'].encoding)
 
         # Check that offset is not relatively symmetric
-        assert not sim.model.conv1.param_quantizers['weight'].encoding.offset in [-127, -128]
+        assert not any(e.offset in (-127, -128) for e in sim.model.conv1.param_quantizers['weight'].encoding)
 
         # Check that mins and maxes have been recomputed
         assert not np.allclose(asym_min, sym_min)
@@ -1863,7 +1836,7 @@ class TestQuantizationSimStaticGrad:
         encoding.min = -254.0
         encoding.offset = -254.0
         encoding.delta = 2.0
-        sim.model.conv.param_quantizers['weight'].encoding = encoding
+        sim.model.conv.param_quantizers['weight'].encoding = [encoding] * model.conv.out_channels
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             conv_weights = []
@@ -1885,8 +1858,8 @@ class TestQuantizationSimStaticGrad:
             # Check exported weight remains unchanged after quantization,
             # regardless of the rounding method used.
             for conv_weight in conv_weights:
-                delta = sim.model.conv.param_quantizers['weight'].encoding.delta
-                assert torch.allclose(conv_weight, model.conv.weight.data, atol=delta)
+                delta = torch.tensor([e.delta for e in sim.model.conv.param_quantizers['weight'].encoding]).view(-1, 1, 1, 1)
+                assert torch.all((conv_weight - model.conv.weight).abs() < delta)
 
                 default_quant_result = torch.round(conv_weight / delta)
                 conv_weight = conv_weight.to(rounding_dtype)
@@ -1971,7 +1944,6 @@ class TestQuantizationSimStaticGrad:
                                                           ))
             with open(os.path.join(tmp_dir, 'dict_input_output_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                print(encoding_data)
 
             onnx_model = onnx.load(os.path.join(tmp_dir, 'dict_input_output_model.onnx'))
             for inp in onnx_model.graph.input:
@@ -2067,9 +2039,6 @@ class TestQuantizationSimStaticGrad:
                                         'scale' in val[0]]
                 assert len(activation_encodings) == 2
 
-            pretty_data = json.dumps(encodings, indent=2)
-            print(pretty_data)
-
             # verifying the encodings propagation is disabled if output quantizers are disabled.
             sim = QuantizationSimModel(model, dummy_input)
             sim.model.ps.output_quantizers[0].enabled = False
@@ -2116,9 +2085,6 @@ class TestQuantizationSimStaticGrad:
                 # with bitwidth and dtype.
                 encodings = [{key: val} for key, val in encodings.items() if 'scale' in val[0]]
                 assert len(encodings) == 8
-
-            pretty_data = json.dumps(encodings, indent=2)
-            print(pretty_data)
 
     def test_change_quant_scheme_tf_enhanced_to_tf(self):
 
@@ -2333,7 +2299,7 @@ class TestQuantizationSimStaticGrad:
         assert sim.model.add.input_quantizers[0].encoding is not None
         assert sim.model.add.input_quantizers[1].encoding is not None
 
-    def test_save_model_with_embedded_quantization_nodes(self):
+    def test_save_model_with_embedded_quantization_nodes_per_tensor(self):
         """Test export onnx model with embedded torch native quantization nodes"""
 
         for _quant_scheme in [QuantScheme.post_training_tf,
@@ -2346,7 +2312,8 @@ class TestQuantizationSimStaticGrad:
                     model(*dummy_input)
 
             model = ModelWithTwoInputs()
-            sim = QuantizationSimModel(model, dummy_input=dummy_input, quant_scheme = _quant_scheme)
+            sim = QuantizationSimModel(model, dummy_input=dummy_input, quant_scheme=_quant_scheme,
+                                       config_file=per_tensor_config())
 
             # Quantize
             sim.compute_encodings(forward_pass, None)
@@ -2408,10 +2375,7 @@ class TestQuantizationSimStaticGrad:
                     model(*dummy_input)
 
             model = ModelWithTwoInputs()
-
-            sim = QuantizationSimModel(model, dummy_input=dummy_input, quant_scheme = _quant_scheme)
-            for _, wrapper in sim.quant_wrappers():
-                wrapper.enable_per_channel_quantization()
+            sim = QuantizationSimModel(model, dummy_input=dummy_input, quant_scheme=_quant_scheme)
 
             # Quantize
             sim.compute_encodings(forward_pass, None)
@@ -2560,9 +2524,9 @@ class TestQuantizationSimStaticGrad:
                     if 'bias' not in name:
                         assert name in param_encodings_set
 
-    @pytest.mark.parametrize("num_parameters", [1, 8])
-    @pytest.mark.parametrize("config_file", [None, get_path_for_per_channel_config()])
-    def test_export_to_onnx_for_multiple_p_relu_model(self, num_parameters, config_file):
+    @pytest.mark.parametrize("config_file", [None, per_tensor_config()])
+    def test_export_to_onnx_for_multiple_p_relu_model(self, config_file):
+        num_parameters = 8
         model = test_models.MultiplePReluModel(num_parameters)
         dummy_input = torch.randn(4, 3, 28, 28)
 
@@ -2581,10 +2545,10 @@ class TestQuantizationSimStaticGrad:
         for param_name in expected_param_names:
             assert param_name in param_encodings
 
-            if config_file: # Per-channel
-                assert len(param_encodings[param_name]['scale']) == num_parameters
-            else:           # Per-tensor
+            if config_file: # Per-tensor
                 assert len(param_encodings[param_name]['scale']) == 1
+            else:           # Per-channel
+                assert len(param_encodings[param_name]['scale']) == num_parameters
 
     def test_save_encodings_to_json(self):
         model = ModelWithTwoInputsOneToAdd()
@@ -2724,7 +2688,7 @@ class TestQuantizationSimStaticGrad:
                         "offset": -8,
                         "scale": 0.026796795427799225
                     }
-                ],
+                ] * model.conv1.out_channels,
                 "fc2.weight": [
                     {
                         "bitwidth": 4,
@@ -2735,7 +2699,7 @@ class TestQuantizationSimStaticGrad:
                         "offset": -8,
                         "scale": 0.018708012998104095
                     }
-                ]
+                ],
             },
             "quantizer_args": {
                 "activation_bitwidth": 8,
@@ -2988,7 +2952,7 @@ class TestQuantizationSimLearnedGrid:
         loss = output.flatten().sum()
 
         orig_conv1_weight = sim.model.conv1._module_to_wrap.weight.clone().detach()
-        orig_conv1_encoding_max = sim.model.conv1.param_quantizers['weight'].encoding.max
+        orig_conv1_encoding_max = [e.max for e in sim.model.conv1.param_quantizers['weight'].encoding]
         orig_conv2_weight = sim.model.conv2._module_to_wrap.weight.clone().detach()
         loss.backward()
 
@@ -2997,7 +2961,7 @@ class TestQuantizationSimLearnedGrid:
         optimizer.zero_grad()
 
         new_conv1_weight = sim.model.conv1._module_to_wrap.weight.clone().detach()
-        new_conv1_encoding_max = sim.model.conv1.param_quantizers['weight'].encoding.max
+        new_conv1_encoding_max = [e.max for e in sim.model.conv1.param_quantizers['weight'].encoding]
         new_conv2_weight = sim.model.conv2._module_to_wrap.weight.clone().detach()
         assert not torch.equal(orig_conv1_weight, new_conv1_weight)
         assert orig_conv1_encoding_max != new_conv1_encoding_max
@@ -3299,13 +3263,16 @@ class TestQuantizationSimLearnedGrid:
                     continue
 
                 encoding = quantizer.get_effective_encoding()
-                delta = encoding.delta
-                offset = encoding.offset
-                encoding_min = encoding.min
-                encoding_max = encoding.max
+                if isinstance(encoding, libpymo.TfEncoding):
+                    encoding = [encoding]
 
-                assert np.isclose(encoding_min, delta * offset, atol=1e-5)
-                assert np.isclose(encoding_max, encoding_min + delta * 255, atol=1e-5)
+                delta = np.array([e.delta for e in encoding])
+                offset = np.array([e.offset for e in encoding])
+                encoding_min = np.array([e.min for e in encoding])
+                encoding_max = np.array([e.max for e in encoding])
+
+                assert np.allclose(encoding_min, delta * offset, atol=1e-5)
+                assert np.allclose(encoding_max, encoding_min + delta * 255, atol=1e-5)
 
         module_names = ["conv1_a", "maxpool1_a", "relu1_a",
                         "conv1_b", "maxpool1_b", "relu1_b",
@@ -3332,7 +3299,7 @@ class TestQuantizationSimLearnedGrid:
             sim_model(*dummy_input)
 
         sim.compute_encodings(forward_pass, None)
-        assert sim.model.conv1_a.weight_encoding_min == -sim.model.conv1_a.weight_encoding_max
+        assert torch.equal(sim.model.conv1_a.weight_encoding_min, -sim.model.conv1_a.weight_encoding_max)
         assert torch.allclose(sim.model.fc1.weight_encoding_min, -sim.model.fc1.weight_encoding_max)
 
         before_conv1_weight_encoding_min = sim.model.conv1_a.weight_encoding_min.clone().detach()
@@ -3389,7 +3356,6 @@ class TestQuantizationSimLearnedGrid:
         trainable_module.input_quantizers[0].encoding = encodings
 
         # Check if quantizer.encoding is accessible
-        print(trainable_module.input_quantizers[0].encoding)
         assert np.allclose(trainable_module.input0_encoding_min.detach().numpy(), encodings.min)
 
     def test_model_with_two_inputs(self):
@@ -3418,7 +3384,6 @@ class TestQuantizationSimLearnedGrid:
         #                        sim.model.conv1_a.output0_encoding_max.data)
 
         forward_pass(sim.model, None)
-        print(sim)
 
     def test_memory_profiler(self):
         """ test using memory profiler """
@@ -3637,7 +3602,7 @@ class TestQuantizationSimLearnedGrid:
                         "offset": -8,
                         "scale": 0.026796795427799225
                     }
-                ],
+                ] * model.conv1.out_channels,
                 "fc2.weight": [
                     {
                         "bitwidth": 4,
@@ -3648,7 +3613,7 @@ class TestQuantizationSimLearnedGrid:
                         "offset": -8,
                         "scale": 0.018708012998104095
                     }
-                ]
+                ],
             },
             "quantizer_args": {
                 "activation_bitwidth": 8,
@@ -3707,7 +3672,7 @@ class TestQuantizationSimLearnedGrid:
                         "offset": -8,
                         "scale": 0.026796795427799225
                     }
-                ],
+                ] * model.conv1.out_channels,
                 "fc2.weight": [
                     {
                         "bitwidth": 4,
@@ -3718,7 +3683,7 @@ class TestQuantizationSimLearnedGrid:
                         "offset": -8,
                         "scale": 0.018708012998104095
                     }
-                ]
+                ],
             },
             "quantizer_args": {
                 "activation_bitwidth": 8,
@@ -4039,9 +4004,6 @@ class TestQuantizationSimLearnedGrid:
 
         quant_sim.compute_encodings(evaluate, dummy_input)
 
-        print(quant_sim)
-        print(quant_sim.model)
-
         a, b, c, d, e = quant_sim.model(dummy_input)
         with tempfile.TemporaryDirectory() as tmp_dir:
             quant_sim.export(tmp_dir, 'cust_v2_simple', dummy_input,
@@ -4231,7 +4193,6 @@ class TestQuantizationSimLearnedGrid:
         sim = QuantizationSimModel(model, dummy_input=dummy_input, quant_scheme=QuantScheme.post_training_tf,
                                    default_param_bw=8, default_output_bw=8)
         sim.compute_encodings(evaluate, dummy_input)
-        print(sim)
         optimizer = torch.optim.SGD(sim.model.parameters(), lr=0.05, momentum=0.5)
 
         # Test inference
@@ -4257,7 +4218,6 @@ class TestQuantizationSimLearnedGrid:
                                    default_param_bw=16, default_output_bw=16,
                                    default_data_type=QuantizationDataType.float)
         sim.compute_encodings(evaluate, dummy_input)
-        print(sim)
         optimizer = torch.optim.SGD(sim.model.parameters(), lr=0.05, momentum=0.5)
 
         # Test inference
@@ -4311,8 +4271,6 @@ class TestQuantizationSimLearnedGrid:
             return model(dummy_input)
 
         sim.compute_encodings(dummy_forward, None)
-        print(sim.model)
-
         optimizer = torch.optim.SGD(sim.model.parameters(), lr=0.05, momentum=0.5)
         output = dummy_forward(model, None)
         loss = output.sum()
@@ -4482,41 +4440,27 @@ class TestQuantizationSimLearnedGrid:
                                    dummy_input=torch.rand(1, 3, 28, 28))
 
         sim.model.conv2b.output_quantizers[0] = sim.model.conv2a.output_quantizers[0]
-        sim.model.conv2a.register_forward_hook(lambda layer, input, output: print(f"sim.model.conv2a"))
-        sim.model.conv2b.register_forward_hook(lambda layer, input, output: print(f"sim.model.conv2b"))
-
         sim.compute_encodings(dummy_forward, None)
 
         assert sim.model.conv2a.output_quantizers[0].encoding.min == sim.model.conv2b.output_quantizers[0].encoding.min
         assert sim.model.conv2a.output_quantizers[0].encoding.max == sim.model.conv2b.output_quantizers[0].encoding.max
 
         # Couple of forward passes - to see if inference works
-        print(sim)
-
-        sim.model.conv2a.register_forward_hook(lambda layer, input, output: print(f"sim.model.conv2a"))
-        sim.model.conv2b.register_forward_hook(lambda layer, input, output: print(f"sim.model.conv2b"))
-        print("-" * 20)
         dummy_forward(sim.model, None)
-        print("-" * 20)
         dummy_forward(sim.model, None)
-        print("-" * 20)
 
         optimizer = torch.optim.SGD(sim.model.parameters(), lr=0.05, momentum=0.5)
 
         # A couple of forward-backward passes
-        print("Train " + "-" * 20)
-        output = dummy_forward(sim.model, None)
-        output.sum().backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        print("Train " + "-" * 20)
-
         output = dummy_forward(sim.model, None)
         output.sum().backward()
         optimizer.step()
         optimizer.zero_grad()
 
-        print("Done")
+        output = dummy_forward(sim.model, None)
+        output.sum().backward()
+        optimizer.step()
+        optimizer.zero_grad()
 
     def test_gradient_accumulation(self):
         quantsim_config = {

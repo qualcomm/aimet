@@ -541,7 +541,8 @@ class QcQuantizeWrapper(nn.Module): # pylint: disable=too-many-public-methods
 
             if quantizer.enabled:
                 # pylint: disable=protected-access
-                if isinstance(quantizer, StaticGridPerChannelQuantizer) and len(quantizer._cppOp) != len(encoding):
+                if isinstance(quantizer, StaticGridPerChannelQuantizer) and len(quantizer._cppOp) != len(encoding) \
+                        and encoding[0]['dtype'] != "float":
                     assert len(encoding) == 1, (f'Number of Per Channel encodings provided ({len(encoding)}) is '
                                                 f'not same as number of channels ({len(quantizer._cppOp)})')
                     if strict:

@@ -56,6 +56,7 @@ from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.v1.tensor_quantizer import StaticGridPerTensorQuantizer, StaticGridPerChannelQuantizer
 from aimet_torch._base.nn.modules.custom import Add
 from ..models import test_models
+from .._utils import per_tensor_config
 
 class ModelWithBertCustomLayerNormGelu(torch.nn.Module):
     """ Model with PyTorch LayerNorm and gelu """
@@ -2237,34 +2238,11 @@ class TestQuantsimConfig:
                                               "mul1": {"output": {"0": sample_act_enc}}},
                      "param_encodings": {}}
 
-        pcq_config = {
-            "defaults":{
-                "ops":{
-                    "is_output_quantized": "True"
-                },
-                "params":{
-                    "is_quantized": "True",
-                    "is_symmetric": "True"
-                },
-                "strict_symmetric": "False",
-                "per_channel_quantization": "True"
-            },
-            "params": {},
-            "op_type": {},
-            "model_input":{
-                "is_input_quantized": "True"
-            },
-            "supergroups": [],
-            "model_output": {}
-        }
+        ptq_config = per_tensor_config()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pcq_config_file = os.path.join(tmp_dir, 'pcq_quantsim_config.json')
-            with open(pcq_config_file, 'w') as f:
-                json.dump(pcq_config, f)
-
-            for config_file in [None, pcq_config_file]:
-                if config_file is None:
+            for config_file in [None, ptq_config]:
+                if config_file is not None:
                     # PTQ to PCQ case, initial quantizer is PTQ, but the encodings are of PCQ
                     encodings['param_encodings']['conv1.weight'] = [sample_param_enc for i in range(16)]
                 else:
@@ -2278,7 +2256,7 @@ class TestQuantsimConfig:
                     sim = QuantizationSimModel(model, dummy_input, quant_scheme=QuantScheme.post_training_tf, config_file=config_file)
 
                     # Checking Quantizer type before loading encodings to Quantsim
-                    if config_file is None:
+                    if config_file is not None:
                         assert isinstance(sim.model.conv1.param_quantizers['weight'], StaticGridPerTensorQuantizer)
                     else:
                         assert isinstance(sim.model.conv1.param_quantizers['weight'], StaticGridPerChannelQuantizer)
@@ -2289,7 +2267,7 @@ class TestQuantsimConfig:
                     sim.compute_encodings(lambda m, _: m(dummy_input), None)
 
                     # Checking whether the quantizer is modifed to required type after laoding encodings
-                    if config_file is None:
+                    if config_file is not None:
                         assert isinstance(sim.model.conv1.param_quantizers['weight'], StaticGridPerChannelQuantizer)
                     else:
                         assert isinstance(sim.model.conv1.param_quantizers['weight'], StaticGridPerTensorQuantizer)
