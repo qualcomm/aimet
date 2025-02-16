@@ -62,10 +62,12 @@ def seed(request):
 
 @contextlib.contextmanager
 def set_encoding_version(version):
-    old_version = quantsim_common.encoding_version
-    quantsim_common.encoding_version = version
-    yield
-    quantsim_common.encoding_version = old_version
+    try:
+        old_version = quantsim_common.encoding_version
+        quantsim_common.encoding_version = version
+        yield
+    finally:
+        quantsim_common.encoding_version = old_version
 
 
 @pytest.mark.parametrize("qtzr_cls", [Q.affine.Quantize, Q.affine.QuantizeDequantize])
@@ -268,9 +270,11 @@ def test_export_torchvision_models(model_factory, input_shape):
 
 
 @torch.no_grad()
-@pytest.mark.parametrize("model_factory, input_shape", [(resnet18, (1, 3, 224, 224)),
-                                                        (mobilenet_v3_small, (1, 3, 224, 224)),
-                                                        ])
+@pytest.mark.parametrize(
+    "model_factory,      input_shape", [
+    (resnet18,           (1, 3, 224, 224)),
+    (mobilenet_v3_small, (1, 3, 224, 224)),
+])
 @pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0"])
 def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding_version):
     """

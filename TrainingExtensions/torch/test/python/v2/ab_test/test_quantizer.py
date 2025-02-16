@@ -50,9 +50,8 @@ import torch.nn as nn
 from packaging.version import Version
 from torchvision import models
 
-from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
+from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_common import quantsim as common_quantsim
-from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_common.utils import AimetLogger
 from aimet_torch import onnx_utils
 from aimet_torch import utils
@@ -60,9 +59,9 @@ import aimet_torch._base.nn.modules.custom as aimet_modules
 from aimet_torch.model_preparer import prepare_model
 from ..models_.test_models import TwoLayerBidirectionalLSTMModel, SingleLayerRNNModel, \
     ModelWithTwoInputs, SimpleConditional, RoiModel, InputOutputDictModel, Conv3dModel
-from ..models_.models_to_test import ModelWith5Output, QuantizationModuleWith5Output
+from ..models_.models_to_test import ModelWith5Output
 from aimet_torch.onnx_utils import OnnxExportApiArgs
-from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper, StaticGridQuantWrapper
+from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper
 from aimet_torch.v2.quantsim import check_accumulator_overflow, compute_encodings_for_sims
 import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.v2.nn.fake_quant._legacy_impl import _FakeQuantizedUnaryOpMixin
@@ -70,8 +69,8 @@ from aimet_torch.v2.quantization.affine import QuantizeDequantize
 from aimet_torch.v2.quantization.float import FloatQuantizeDequantize
 from aimet_torch.v2.quantsim import QuantizationSimModel, load_encodings_to_sim
 
-from ..models_ import test_models
-from ..models_ import mnist_torch_model
+from ..models_ import test_models, mnist_torch_model
+from ..._utils import per_tensor_config
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
@@ -836,11 +835,11 @@ class TestQuantizationSimStaticGrad:
                 encoding_data = json.load(json_file)
 
         assert len(encoding_data["activation_encodings"]) == 24
-        assert len(encoding_data["activation_encodings"][0]['scale']) == 1
+        assert all(len(enc['scale']) == 1 for enc in encoding_data["activation_encodings"])
 
         param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
         assert "conv1.weight" in param_encodings
-        assert len(param_encodings["conv1.weight"]['scale']) == 1
+        assert len(param_encodings["conv1.weight"]['scale']) == resnet18.conv1.out_channels
 
     def test_export_with_quantizer_args(self):
         """ test export functionality on ResNet18 """
@@ -862,7 +861,7 @@ class TestQuantizationSimStaticGrad:
         quantizer_args = encoding_data["quantizer_args"]
         assert quantizer_args["activation_bitwidth"] == 16
         assert quantizer_args["param_bitwidth"] == 16
-        assert not quantizer_args["per_channel_quantization"]
+        assert quantizer_args["per_channel_quantization"]
         assert quantizer_args["quant_scheme"] == QuantScheme.post_training_tf.name
         assert quantizer_args["dtype"] == "int"
         assert "is_symmetric" in quantizer_args
@@ -932,7 +931,7 @@ class TestQuantizationSimStaticGrad:
                 param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
                 assert 16 == len(encodings['activation_encodings'])
                 assert np.isclose(param_encodings['conv1_a.weight']['scale'][0], 20/255)
-                assert param_encodings['conv1_a.weight']['offset'] == [-128]
+                assert all(offset == -128 for offset in param_encodings['conv1_a.weight']['offset'])
 
             # check the exported model
             loaded_model = torch.load(f'{tmp_dir}/two_input_model.pth')
@@ -1526,7 +1525,7 @@ class TestQuantizationSimStaticGrad:
         assert 8 == sim.model.conv1.param_quantizers['weight'].bitwidth
 
         # Check that offset is still symmetric
-        assert sim.model.conv1.param_quantizers['weight'].get_offset().item() == 0
+        assert torch.all(sim.model.conv1.param_quantizers['weight'].get_offset() == 0)
 
         # Change param quantizer to symmetric and new bitwidth
         sim.model.conv1.param_quantizers['weight'].symmetric = False
@@ -1537,7 +1536,7 @@ class TestQuantizationSimStaticGrad:
         assert 4 == sim.model.conv1.param_quantizers['weight'].bitwidth
 
         # Check that offset is not relatively symmetric
-        assert not sim.model.conv1.param_quantizers['weight'].get_offset().item() == 0
+        assert not torch.all(sim.model.conv1.param_quantizers['weight'].get_offset() == 0)
 
         # Check that mins and maxes have been recomputed
         assert not torch.allclose(asym_min, sym_min)
@@ -2227,9 +2226,9 @@ class TestQuantizationSimStaticGrad:
             onnxsaver_act_names = onnxsaver_encodings['activation_encodings'].keys()
             assert direct_onnx_act_names != onnxsaver_act_names
 
-    @pytest.mark.parametrize("num_parameters", [1, 8])
-    @pytest.mark.parametrize("config_file", [None, get_path_for_per_channel_config()])
-    def test_export_to_onnx_for_multiple_p_relu_model(self, num_parameters, config_file):
+    @pytest.mark.parametrize("config_file", [None, per_tensor_config()])
+    def test_export_to_onnx_for_multiple_p_relu_model(self, config_file):
+        num_parameters = 8
         model = test_models.MultiplePReluModel(num_parameters)
         dummy_input = torch.randn(4, 3, 28, 28)
 
@@ -2248,10 +2247,10 @@ class TestQuantizationSimStaticGrad:
         for param_name in expected_param_names:
             assert param_name in param_encodings
 
-            if config_file: # Per-channel
-                assert len(param_encodings[param_name]['scale']) == num_parameters
-            else:           # Per-tensor
+            if config_file: # Per-tensor
                 assert len(param_encodings[param_name]['scale']) == 1
+            else:           # Per-channel
+                assert len(param_encodings[param_name]['scale']) == num_parameters
 
     def test_save_encodings_to_json(self):
         model = ModelWithTwoInputsOneToAdd()
@@ -2576,7 +2575,7 @@ class TestQuantizationSimLearnedGrid:
         new_conv1_encoding_max = sim.model.conv1.param_quantizers['weight'].get_max()
         new_conv2_weight = sim.model.conv2.weight.clone().detach()
         assert not torch.equal(orig_conv1_weight, new_conv1_weight)
-        assert orig_conv1_encoding_max != new_conv1_encoding_max
+        assert not torch.equal(orig_conv1_encoding_max, new_conv1_encoding_max)
         assert not torch.equal(orig_conv2_weight, new_conv2_weight)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -3498,7 +3497,7 @@ class TestQuantizationSimLearnedGrid:
 
     @pytest.mark.parametrize('quant_scheme', [QuantScheme.training_range_learning_with_tf_init])
                                               # QuantScheme.training_range_learning_with_tf_enhanced_init])
-    @pytest.mark.parametrize('config_file', [None, get_path_for_per_channel_config()])
+    @pytest.mark.parametrize('config_file', [None, per_tensor_config()])
     def test_module_with_list_input(self, quant_scheme, config_file):
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         model = test_models.ModuleWithListInputModel()

@@ -128,7 +128,7 @@ def test_set_blockwise_quantization_for_weights(device):
 
     for conv_layer in conv_layers:
         assert conv_layer.param_quantizers['weight'].is_initialized()
-        assert len(conv_layer.param_quantizers['weight'].shape) == 0
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels, 1, 1, 1)
         assert conv_layer.param_quantizers['weight'].bitwidth == 8
 
     orig_device = get_device(conv_layers[0].param_quantizers['weight'])
@@ -136,14 +136,13 @@ def test_set_blockwise_quantization_for_weights(device):
     assert get_device(conv_layers[0].param_quantizers['weight']) == orig_device
     assert not conv_layers[0].param_quantizers['weight'].is_initialized()
     assert conv_layers[0].param_quantizers['weight'].bitwidth == 4
-    assert tuple(conv_layers[0].param_quantizers['weight'].shape) == (conv_layers[0].weight.shape[0],
-                                                                      conv_layers[0].weight.shape[1] // 4,
-                                                                      1,
-                                                                      1)
+    assert conv_layers[0].param_quantizers['weight'].shape == (conv_layers[0].out_channels,
+                                                               conv_layers[0].in_channels // 4,
+                                                               1, 1)
 
     for conv_layer in conv_layers[1:]:
         assert conv_layer.param_quantizers['weight'].is_initialized()
-        assert len(conv_layer.param_quantizers['weight'].shape) == 0
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels, 1, 1, 1)
         assert conv_layer.param_quantizers['weight'].bitwidth == 8
 
     set_blockwise_quantization_for_weights(qsim, lambda m: m == conv_layers[1], 4, True, [1, 4, -1, -1])
@@ -152,20 +151,19 @@ def test_set_blockwise_quantization_for_weights(device):
         assert get_device(conv_layer.param_quantizers['weight']) == orig_device
         assert not conv_layer.param_quantizers['weight'].is_initialized()
         assert conv_layer.param_quantizers['weight'].bitwidth == 4
-        assert tuple(conv_layer.param_quantizers['weight'].shape) == (conv_layer.weight.shape[0],
-                                                                      conv_layer.weight.shape[1] // 4,
-                                                                      1,
-                                                                      1)
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels,
+                                                               conv_layer.in_channels // 4,
+                                                               1, 1)
 
     for conv_layer in conv_layers[2:]:
         assert conv_layer.param_quantizers['weight'].is_initialized()
-        assert len(conv_layer.param_quantizers['weight'].shape) == 0
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels, 1, 1, 1)
         assert conv_layer.param_quantizers['weight'].bitwidth == 8
 
 
     assert qsim.model.fc.param_quantizers['weight'].is_initialized()
     assert qsim.model.fc.param_quantizers['weight'].bitwidth == 8
-    assert len(qsim.model.fc.param_quantizers['weight'].shape) == 0
+    assert qsim.model.fc.param_quantizers['weight'].shape == ()
 
     with pytest.raises(RuntimeError):
         # This should error out since the first conv's in_channels of 3 is invalid with block size 4
@@ -176,8 +174,8 @@ def test_set_blockwise_quantization_for_weights(device):
     assert get_device(qsim.model.fc.param_quantizers['weight']) == orig_device
     assert not qsim.model.fc.param_quantizers['weight'].is_initialized()
     assert qsim.model.fc.param_quantizers['weight'].bitwidth == 4
-    assert tuple(qsim.model.fc.param_quantizers['weight'].shape) == (qsim.model.fc.weight.shape[0],
-                                                                     qsim.model.fc.weight.shape[1] // 4)
+    assert tuple(qsim.model.fc.param_quantizers['weight'].shape) == (qsim.model.fc.out_features,
+                                                                     qsim.model.fc.in_features // 4)
 
 @pytest.mark.parametrize('device', devices)
 def test_set_grouped_blockwise_quantization_for_weights(device):
@@ -195,7 +193,7 @@ def test_set_grouped_blockwise_quantization_for_weights(device):
     for conv_layer in conv_layers:
         assert isinstance(conv_layer.param_quantizers['weight'], QuantizeDequantize)
         assert conv_layer.param_quantizers['weight'].is_initialized()
-        assert len(conv_layer.param_quantizers['weight'].shape) == 0
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels, 1, 1, 1)
         assert conv_layer.param_quantizers['weight'].bitwidth == 8
 
     orig_device = get_device(conv_layers[0])
@@ -204,17 +202,16 @@ def test_set_grouped_blockwise_quantization_for_weights(device):
     assert isinstance(conv_layers[0].param_quantizers['weight'], GroupedBlockQuantizeDequantize)
     assert not conv_layers[0].param_quantizers['weight'].is_initialized()
     assert conv_layers[0].param_quantizers['weight'].bitwidth == 4
-    assert tuple(conv_layers[0].param_quantizers['weight'].shape) == (conv_layers[0].weight.shape[0],
-                                                                      conv_layers[0].weight.shape[1] // 4,
-                                                                      1,
-                                                                      1)
+    assert conv_layers[0].param_quantizers['weight'].shape == (conv_layers[0].out_channels,
+                                                               conv_layers[0].in_channels // 4,
+                                                               1, 1)
     assert conv_layers[0].param_quantizers['weight'].decompressed_bw == 8
-    assert tuple(conv_layers[0].param_quantizers['weight'].block_grouping) == (1, -1, 1, 1)
+    assert conv_layers[0].param_quantizers['weight'].block_grouping == [1, -1, 1, 1]
 
     for conv_layer in conv_layers[1:]:
         assert isinstance(conv_layer.param_quantizers['weight'], QuantizeDequantize)
         assert conv_layer.param_quantizers['weight'].is_initialized()
-        assert len(conv_layer.param_quantizers['weight'].shape) == 0
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels, 1, 1, 1)
         assert conv_layer.param_quantizers['weight'].bitwidth == 8
 
     set_grouped_blockwise_quantization_for_weights(qsim, lambda m: m == conv_layers[1], 4, True, 8, [1, 4, -1, -1],
@@ -225,22 +222,21 @@ def test_set_grouped_blockwise_quantization_for_weights(device):
         assert isinstance(conv_layer.param_quantizers['weight'], GroupedBlockQuantizeDequantize)
         assert not conv_layer.param_quantizers['weight'].is_initialized()
         assert conv_layer.param_quantizers['weight'].bitwidth == 4
-        assert tuple(conv_layer.param_quantizers['weight'].shape) == (conv_layer.weight.shape[0],
-                                                                      conv_layer.weight.shape[1] // 4,
-                                                                      1,
-                                                                      1)
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels,
+                                                               conv_layer.in_channels // 4,
+                                                               1, 1)
         assert conv_layer.param_quantizers['weight'].decompressed_bw == 8
-        assert tuple(conv_layer.param_quantizers['weight'].block_grouping) == (1, -1, 1, 1)
+        assert conv_layer.param_quantizers['weight'].block_grouping == [1, -1, 1, 1]
 
     for conv_layer in conv_layers[2:]:
         assert conv_layer.param_quantizers['weight'].is_initialized()
-        assert len(conv_layer.param_quantizers['weight'].shape) == 0
+        assert conv_layer.param_quantizers['weight'].shape == (conv_layer.out_channels, 1, 1, 1)
         assert conv_layer.param_quantizers['weight'].bitwidth == 8
 
     assert isinstance(qsim.model.fc.param_quantizers['weight'], QuantizeDequantize)
     assert qsim.model.fc.param_quantizers['weight'].is_initialized()
     assert qsim.model.fc.param_quantizers['weight'].bitwidth == 8
-    assert len(qsim.model.fc.param_quantizers['weight'].shape) == 0
+    assert qsim.model.fc.param_quantizers['weight'].shape == ()
 
     with pytest.raises(RuntimeError):
         # This should error out since the first conv's in_channels of 3 is invalid with block size 4
@@ -252,10 +248,10 @@ def test_set_grouped_blockwise_quantization_for_weights(device):
     assert isinstance(qsim.model.fc.param_quantizers['weight'], GroupedBlockQuantizeDequantize)
     assert not qsim.model.fc.param_quantizers['weight'].is_initialized()
     assert qsim.model.fc.param_quantizers['weight'].bitwidth == 4
-    assert tuple(qsim.model.fc.param_quantizers['weight'].shape) == (qsim.model.fc.weight.shape[0],
-                                                                     qsim.model.fc.weight.shape[1] // 4)
+    assert qsim.model.fc.param_quantizers['weight'].shape == (qsim.model.fc.out_features,
+                                                              qsim.model.fc.in_features // 4)
     assert qsim.model.fc.param_quantizers['weight'].decompressed_bw == 8
-    assert tuple(qsim.model.fc.param_quantizers['weight'].block_grouping) == (1, -1)
+    assert qsim.model.fc.param_quantizers['weight'].block_grouping == [1, -1]
 
 def test_set_grouped_blockwise_with_single_value():
     model = SingleResidualWithAvgPool()

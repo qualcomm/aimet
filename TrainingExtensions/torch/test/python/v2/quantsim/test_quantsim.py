@@ -227,7 +227,9 @@ class TestQuantsim:
                     "input": {"0": sample_encoding}
                 }
             },
-            "param_encodings": {"conv1.weight": [sample_encoding]}
+            "param_encodings": {
+                "conv1.weight": [sample_encoding] * model.conv1.out_channels
+            }
         }
 
         sim = QuantizationSimModel(model, dummy_input, quant_scheme=QuantScheme.post_training_tf)
@@ -298,7 +300,9 @@ class TestQuantsim:
                     "input": {"0": sample_encoding}
                 }
             },
-            "param_encodings": {"conv1.weight": [sample_encoding]}
+            "param_encodings": {
+                "conv1.weight": [sample_encoding] * model.conv1.out_channels
+            }
         }
         encodings2 = {
             "activation_encodings": {
@@ -306,7 +310,9 @@ class TestQuantsim:
                     "input": {"0": sample_encoding2}
                 }
             },
-            "param_encodings": {"conv1.weight": [sample_encoding2]}
+            "param_encodings": {
+                "conv1.weight": [sample_encoding2] * model.conv1.out_channels
+            }
         }
         encodings3 = {
             "activation_encodings": {
@@ -315,7 +321,9 @@ class TestQuantsim:
                     "output": {"0": sample_encoding}
                 }
             },
-            "param_encodings": {"conv1.weight": [sample_encoding]}
+            "param_encodings": {
+                "conv1.weight": [sample_encoding] * model.conv1.out_channels
+            }
         }
 
         """
@@ -414,10 +422,10 @@ class TestQuantsim:
 
         sim.compute_encodings(lambda model, _: model(dummy_input), None)
 
-        assert not torch.isclose(weight_min, sim.model.conv1.param_quantizers['weight'].min)
-        assert not torch.isclose(weight_max, sim.model.conv1.param_quantizers['weight'].max)
-        assert not torch.isclose(input_min, sim.model.conv1.input_quantizers[0].min)
-        assert not torch.isclose(input_max, sim.model.conv1.input_quantizers[0].max)
+        assert not torch.allclose(weight_min, sim.model.conv1.param_quantizers['weight'].min)
+        assert not torch.allclose(weight_max, sim.model.conv1.param_quantizers['weight'].max)
+        assert not torch.allclose(input_min, sim.model.conv1.input_quantizers[0].min)
+        assert not torch.allclose(input_max, sim.model.conv1.input_quantizers[0].max)
 
         weight_min = sim.model.conv1.param_quantizers['weight'].min.clone().detach()
         weight_max = sim.model.conv1.param_quantizers['weight'].max.clone().detach()
@@ -426,10 +434,10 @@ class TestQuantsim:
 
         sim.load_encodings(encodings2)
 
-        assert not torch.isclose(weight_min, sim.model.conv1.param_quantizers['weight'].min)
-        assert not torch.isclose(weight_max, sim.model.conv1.param_quantizers['weight'].max)
-        assert not torch.isclose(input_min, sim.model.conv1.input_quantizers[0].min)
-        assert not torch.isclose(input_max, sim.model.conv1.input_quantizers[0].max)
+        assert not torch.allclose(weight_min, sim.model.conv1.param_quantizers['weight'].min)
+        assert not torch.allclose(weight_max, sim.model.conv1.param_quantizers['weight'].max)
+        assert not torch.allclose(input_min, sim.model.conv1.input_quantizers[0].min)
+        assert not torch.allclose(input_max, sim.model.conv1.input_quantizers[0].max)
 
         """
         When: Call load_encodings with allow_overwrite=False
@@ -555,7 +563,7 @@ class TestQuantsim:
                         "offset": -8,
                         "scale": 0.026796795427799225
                     }
-                ],
+                ] * model.conv1.out_channels,
                 "fc2.weight": [
                     {
                         "bitwidth": 4,

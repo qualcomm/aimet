@@ -485,7 +485,7 @@ class TestQuantsimOnnxExport:
             # regardless of the rounding method used.
             for conv_weight in conv_weights:
                 delta = sim.model.conv.param_quantizers['weight'].get_scale()
-                assert torch.allclose(conv_weight, model.conv.weight.data, atol=delta.item())
+                assert torch.all((conv_weight - model.conv.weight).abs() < delta)
 
                 default_quant_result = torch.round(conv_weight / delta)
                 conv_weight = conv_weight.to(rounding_dtype)

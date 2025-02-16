@@ -364,5 +364,5 @@ class TestSeqMse:
         apply_seq_mse(model, sim, data_loader, params)
 
         # sanity check
-        assert qconv.param_quantizers['weight'].min != -1
-        assert qconv.param_quantizers['weight'].max != 1
+        assert torch.all(qconv.param_quantizers['weight'].min != -1)
+        assert torch.all(qconv.param_quantizers['weight'].max != 1)
