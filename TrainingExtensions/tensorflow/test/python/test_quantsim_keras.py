@@ -235,7 +235,7 @@ def test_quantsim_export_quantizer_args():
         quantizer_args = encoding_data["quantizer_args"]
         assert quantizer_args["activation_bitwidth"] == 16
         assert quantizer_args["param_bitwidth"] == 16
-        assert not quantizer_args["per_channel_quantization"]
+        assert quantizer_args["per_channel_quantization"]
         assert quantizer_args["quant_scheme"] == QuantScheme.post_training_tf_enhanced.name
         assert quantizer_args["dtype"] == "int"
         assert quantizer_args["is_symmetric"]

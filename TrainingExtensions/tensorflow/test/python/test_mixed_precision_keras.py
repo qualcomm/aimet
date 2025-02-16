@@ -461,6 +461,12 @@ class TestAutoMixedPrecision:
         assert len(pareto_front_list) == 2
 
     def test_compare_sqnr_callback(self, sim, data_loader_wrapper):
+        def forward_pass_callback(model, _):
+            for x in data_loader_wrapper():
+                model(x)
+                return
+
+        sim.compute_encodings(forward_pass_callback, None)
 
         # Get the callback function in which reference model is provided
         sqnr_eval_callback = EvalCallbackFactory(data_loader_wrapper).sqnr(sim._model_without_wrappers)
