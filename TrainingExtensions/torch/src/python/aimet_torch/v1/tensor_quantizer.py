@@ -1260,7 +1260,7 @@ class Quantize(torch.autograd.Function):
         quantized_tensor = torch.stack(tuple(quantized_tensors), dim=tensor_quantizer._ch_axis)
         return quantized_tensor
 
-    # pylint:disable = arguments-differ
+    # pylint:disable=arguments-differ, unused-argument
     @staticmethod
     def forward(ctx, tensor: torch.Tensor, tensor_quantizer: TensorQuantizer, round_mode: libpymo.RoundingMode) -> \
             torch.Tensor:

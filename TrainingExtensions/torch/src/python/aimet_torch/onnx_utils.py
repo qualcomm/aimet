@@ -298,11 +298,11 @@ class CustomMarkerFunc(torch.autograd.Function):
                 .setType(inp.type())
 
     @staticmethod
-    def forward(ctx, inp, _identifier, _start, _is_leaf):     # pylint: disable=arguments-differ
+    def forward(ctx, inp, _identifier, _start, _is_leaf): # pylint: disable=arguments-differ, unused-argument
         return inp.clone().detach() # clone prevents export tracing to avoid optimizing out the operation.
 
     @staticmethod
-    def backward(ctx, _grad):                       # pylint: disable=arguments-differ
+    def backward(ctx, _grad): # pylint: disable=arguments-differ
         raise NotImplementedError()
 
 

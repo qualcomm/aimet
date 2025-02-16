@@ -354,8 +354,7 @@ class RoundStraightThrough(torch.autograd.Function):
     """
 
     @staticmethod
-    # pylint: disable=arguments-differ
-    def forward(ctx, *x):
+    def forward(ctx, *x): # pylint:disable=arguments-differ, unused-argument
         return torch.round(*x)
 
     @staticmethod

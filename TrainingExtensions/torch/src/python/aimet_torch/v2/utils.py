@@ -184,7 +184,7 @@ def _patch_param_or_buffer(module: torch.nn.Module,
 
 class _StraightThroughEstimator(torch.autograd.Function): # pylint: disable=abstract-method
     @staticmethod
-    def forward(ctx, op, *args, **kwargs): # pylint: disable=arguments-differ
+    def forward(ctx, op, *args, **kwargs): # pylint:disable=arguments-differ, unused-argument
         return op(*args, **kwargs)
 
     @staticmethod

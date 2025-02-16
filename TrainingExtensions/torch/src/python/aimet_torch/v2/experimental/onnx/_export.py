@@ -189,10 +189,9 @@ def register_symbolic(symbolic_fn):
         class SymbolicHelper(torch.autograd.Function): # pylint: disable=abstract-method
             """Helper class for coupling an arbitrary python function with a onnx symbolic function"""
             @staticmethod
-            def forward(ctx, *args, **kwargs):
+            def forward(ctx, *args, **kwargs): # pylint:disable=arguments-differ, unused-argument
                 return python_fn(*args, **kwargs)
 
-            backward = NotImplemented
             symbolic = staticmethod(symbolic_fn)
 
         @functools.wraps(python_fn)

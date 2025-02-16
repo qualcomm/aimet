@@ -51,6 +51,8 @@ from ..true_quant import (
     _quantize_dequantize_if_applicable,
 )
 
+# NOTE: Disabling due to pylint false alarm in ModuleList
+# pylint: disable=not-callable
 
 
 @QuantizationMixin.implements(Sin)

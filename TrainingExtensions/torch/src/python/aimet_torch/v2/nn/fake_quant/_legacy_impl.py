@@ -53,6 +53,9 @@ from torch.utils._pytree import tree_map
 from ..base import BaseQuantizationMixin
 from ..modules import custom
 
+# NOTE: Disabling due to pylint false alarm in ModuleList
+# pylint: disable=not-callable
+
 
 class FakeQuantMeta(abc.ABCMeta):
     """Sets :meth:`forward` to :meth:`quantized_forward` if only :meth:`quantized_forward` is defined
