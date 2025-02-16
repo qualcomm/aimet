@@ -91,10 +91,13 @@ class AdaroundOptimizer:
         # before and after optimization
         act_sampler = ActivationSampler(module, quant_module, orig_model, quant_model, forward_fn)
         if cached_quant_dataset:
-            inp_data, _ = act_sampler.sample_acts(cached_quant_dataset[0], collect_input=True, collect_output=False)
-            _, out_data = act_sampler.sample_acts(cached_dataset[0], collect_input=False, collect_output=True)
+            args, kwargs = cached_quant_dataset[0]
+            inp_data, _ = act_sampler.sample_acts(args, kwargs, collect_input=True, collect_output=False)
+            args, kwargs = cached_dataset[0]
+            _, out_data = act_sampler.sample_acts(args, kwargs, collect_input=False, collect_output=True)
         else:
-            inp_data, out_data = act_sampler.sample_acts(cached_dataset[0])
+            args, kwargs = cached_dataset[0]
+            inp_data, out_data = act_sampler.sample_acts(args, kwargs)
 
         recons_err_hard, recons_err_soft = cls._compute_recons_metrics(quant_module, act_func, inp_data, out_data)
         logger.debug("Before opt, Recons. error metrics using soft rounding=%f and hard rounding=%f", recons_err_soft,
@@ -160,9 +163,9 @@ class AdaroundOptimizer:
             group['lr'] *= world_size # Scale up learning rate by world_size
 
         # Check if we can cache intermediate activation data.
-        model_inputs = cached_dataset[0]
+        args, kwargs = cached_dataset[0]
         act_sampler = ActivationSampler(module, quant_module, orig_model, quant_model, forward_fn)
-        inp_data, out_data = act_sampler.sample_acts(model_inputs)
+        inp_data, out_data = act_sampler.sample_acts(args, kwargs)
         use_cache_acts_data = cls._can_cache_acts_data(len(cached_dataset), inp_data.shape, out_data.shape,
                                                        inp_data.dtype)
         del inp_data, out_data
@@ -184,8 +187,8 @@ class AdaroundOptimizer:
                 inp_data = all_inp_data[indices].to(device)
                 orig_out_data = all_orig_out_data[indices].to(device)
             else:
-                model_inputs = cached_dataset[np.random.randint(len(cached_dataset))]
-                inp_data, orig_out_data = act_sampler.sample_acts(model_inputs)
+                args, kwargs = cached_dataset[np.random.randint(len(cached_dataset))]
+                inp_data, orig_out_data = act_sampler.sample_acts(args, kwargs)
 
             # Clear alpha's gradients before optimization step
             optimizer.zero_grad()

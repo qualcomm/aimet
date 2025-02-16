@@ -37,10 +37,9 @@
 """ Utilities that are used for different AIMET PyTorch features """
 
 import importlib
-import inspect
 import itertools
 import json
-from typing import List, Tuple, Union, Dict, Callable, Any, Iterable, Optional, TextIO, Literal
+from typing import List, Tuple, Union, Dict, Callable, Any, Iterable, Optional, TextIO, Literal, Mapping
 import contextlib
 import os
 import pickle
@@ -103,7 +102,7 @@ class ModuleData:
         self._module = module
         self._forward_fn = forward_fn or self.default_forward_fn
 
-    def collect_inp_out_data(self, model_input: Union[torch.tensor, List[torch.Tensor], Tuple[torch.Tensor]],
+    def collect_inp_out_data(self, args, kwargs: Mapping[str, Any],
                              collect_input: bool, collect_output: bool) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Collect input and output data depending on the collect_input and collect_output flag
@@ -144,12 +143,13 @@ class ModuleData:
         device = get_device(self._model)
 
         # place the input to appropriate device
-        model_input = change_tensor_device_placement(model_input, device)
+        args = change_tensor_device_placement(args, device)
+        kwargs = change_tensor_device_placement(kwargs, device)
 
         # Custom injected exception is raised when the activations data from desired module is collected.
         try:
             with in_eval_mode(self._model), torch.no_grad():
-                _ = self._forward_fn(self._model, model_input)
+                _ = self._forward_fn(self._model, *args, **kwargs)
         except StopForwardException:
             pass
         finally:
@@ -240,8 +240,10 @@ class CachedDataset(Dataset):
 
         for i, batch in enumerate(data_loader):
             path = os.path.join(self._path, f'model_inputs_{i}')
+            args = (batch,)
+            kwargs = {}
             with open(path, 'wb') as file:
-                pickle.dump(batch, file)
+                pickle.dump((args, kwargs), file)
 
         logger.info('Caching %d batches from data loader at path location: %s', self._num_batches, self._path)
 
@@ -616,7 +618,7 @@ def get_ordered_lists_of_conv_fc(model: torch.nn.Module, input_shapes: Tuple,
     return module_list
 
 
-def change_tensor_device_placement(input_data: Union[torch.Tensor, List, Tuple], device: torch.device):
+def change_tensor_device_placement(input_data, device: torch.device):
     """
     Change the tensor_data's device placement
 
@@ -866,29 +868,6 @@ def get_named_module(model, name):
     return functools.reduce(getattr, name.split("."), model)
 
 
-def add_foward_fn_kwargs_to_inputs(module: torch.nn.Module, *args: Tuple[Any], **kwargs: Dict[str, Any]) -> Tuple[Any]:
-    """
-    flattens input in the format of '*args, **kwargs' to tuple along with adding defaults when value not provided.
-    :param module: torch module corresponding to the input provided
-    :return: input as tuple.
-    """
-    add_args = []
-    parameter_defaults = inspect.signature(module.forward).parameters
-    param_keys = list(parameter_defaults.keys())
-    if param_keys[0] == "self":
-        param_keys = param_keys[1:]
-    for k in param_keys[len(args):]: # capture additional args with either kwargs or defaults
-        if k in kwargs:
-            add_args.append(kwargs[k])
-        else:
-            default = parameter_defaults[k].default
-            if default != inspect.Parameter.empty:
-                add_args.append(default)
-            else:
-                raise ValueError(f'no value provided for kwarg={k}, which has no defaults')
-    return tuple([*args, *add_args])
-
-
 def cache_intermediate_datasets(
         cached_dataset, cache_on_cpu, model, module_name, forward_fn, path=None, incl_kwargs: bool = False):
     """
@@ -902,35 +881,41 @@ def cache_intermediate_datasets(
     :param incl_kwargs: if True, capture kwargs, normalize and attach to inputs.
     :return: Cached data on CPU
     """
-    # pylint: disable=cell-var-from-loop
+    # pylint: disable=cell-var-from-loop, too-many-locals, missing-class-docstring, missing-function-docstring
     cached_data = []
-    module = get_named_module(model, module_name)
-    iterator = iter(cached_dataset)
-    for idx in range(len(cached_dataset)):
-        def fn(_, inputs):
-            if incl_kwargs:
-                module_forward_fn = inspect.currentframe().f_back
-                assert inspect.getframeinfo(module_forward_fn).function == '_call_impl'  # forward function proxy
-                kwargs = module_forward_fn.f_locals['kwargs']
-                if kwargs:
-                    inputs = add_foward_fn_kwargs_to_inputs(module, *inputs, **kwargs)
+    *parent_name, child_name = module_name.split(".")
+    parent = model.get_submodule(".".join(parent_name))
+    orig_child = getattr(parent, child_name)
 
-            inputs = [*inputs]
+    class CachingHelper(torch.nn.Module):
+        def forward(self, *args, **kwargs):
+            if not incl_kwargs:
+                kwargs = {}
+
             if cache_on_cpu:
-                cached_data.append(change_tensor_device_placement(inputs, torch.device('cpu')))
+                cached_data.append(change_tensor_device_placement((args, kwargs), torch.device('cpu')))
             else:
-                save_to_cache(inputs, path, idx)
-            raise StopForwardException
-        handle = module.register_forward_pre_hook(fn)
-        data = next(iterator)
-        try:
-            with in_eval_mode(model), torch.no_grad():
-                _ = forward_fn(model, data)
-        except StopForwardException:
-            pass
-        handle.remove()
+                save_to_cache((args, kwargs), path, idx)
 
-    return cached_data
+            raise StopForwardException
+
+    caching_helper = CachingHelper()
+
+    try:
+        setattr(parent, child_name, caching_helper)
+
+        iterator = iter(cached_dataset)
+        for idx in range(len(cached_dataset)):
+            args, kwargs = next(iterator)
+            try:
+                with in_eval_mode(model), torch.no_grad():
+                    _ = forward_fn(model, *args, **kwargs)
+            except StopForwardException:
+                pass
+
+        return cached_data
+    finally:
+        setattr(parent, child_name, orig_child)
 
 
 def get_propagated_encoding_dict(encoding_dict: List[Dict[str, any]]) -> List[Dict[str, any]]:

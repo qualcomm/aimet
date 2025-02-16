@@ -142,28 +142,33 @@ def get_block_outputs(fp_block: torch.nn.ModuleList, quant_block: torch.nn.Modul
         fp_inputs = change_tensor_device_placement(fp_inputs, device)
         quant_inputs = change_tensor_device_placement(quant_inputs, device)
 
+        fp_args, fp_kwargs = fp_inputs
+        quant_args, quant_kwargs = quant_inputs
+        fp_args = list(fp_args)
+        quant_args = list(quant_args)
+
         with in_eval_mode(fp_block), in_eval_mode(quant_block), torch.no_grad():
-            fp_outputs = forward_fn(fp_block, fp_inputs)
+            fp_outputs = forward_fn(fp_block, *fp_args, **fp_kwargs)
             fp_outputs = fp_outputs[0].cpu() if isinstance(fp_outputs, (tuple, list)) else fp_outputs.cpu()
-            quant_outputs = forward_fn(quant_block, quant_inputs)
+            quant_outputs = forward_fn(quant_block, *quant_args, **quant_kwargs)
             quant_outputs = quant_outputs[0].cpu() if isinstance(quant_outputs, (tuple, list)) else quant_outputs.cpu()
 
             # Check if the next ModuleList needs static inputs or not and assign
             # the outputs (fp32/quant) from current block to be the input (fp32/quant) of next block
             if include_static_inputs == "True":
-                fp_inputs[0], quant_inputs[0] = fp_outputs, quant_outputs
+                fp_args[0], quant_args[0] = fp_outputs, quant_outputs
             else:
-                fp_inputs, quant_inputs = [fp_outputs], [quant_outputs]
+                fp_args, quant_args = [fp_outputs], [quant_outputs]
 
             # Cache the outputs on CPU or disk
             if cache_on_cpu:
-                cached_fp_dataset[idx] = fp_inputs
-                cached_quant_dataset[idx] = quant_inputs
+                cached_fp_dataset[idx] = (fp_args, fp_kwargs)
+                cached_quant_dataset[idx] = (quant_args, quant_kwargs)
             else:
                 fp32_cache_path = working_dir + 'fp32/'
                 quant_cache_path = working_dir + 'quant/'
-                save_to_cache(fp_inputs, fp32_cache_path, idx)
-                save_to_cache(quant_inputs, quant_cache_path, idx)
+                save_to_cache((fp_args, fp_kwargs), fp32_cache_path, idx)
+                save_to_cache((quant_args, quant_kwargs), quant_cache_path, idx)
 
     fp_block.cpu()
     quant_block.cpu()
@@ -214,10 +219,13 @@ class ActivationSampler:
             quant_iterator = iter(cached_quant_dataset)
         for batch_index in range(len(cached_dataset)):
             if cached_quant_dataset:
-                inp_data, _ = self.sample_acts(next(quant_iterator), collect_input=True, collect_output=False)
-                _, out_data = self.sample_acts(next(iterator), collect_input=False, collect_output=True)
+                args, kwargs = next(quant_iterator)
+                inp_data, _ = self.sample_acts(args, kwargs, collect_input=True, collect_output=False)
+                args, kwargs = next(iterator)
+                _, out_data = self.sample_acts(args, kwargs, collect_input=False, collect_output=True)
             else:
-                inp_data, out_data = self.sample_acts(next(iterator))
+                args, kwargs = next(iterator)
+                inp_data, out_data = self.sample_acts(args, kwargs)
 
             # Keep activation data on CPU memory and then append.
             all_inp_data.append(inp_data.cpu())
@@ -230,7 +238,8 @@ class ActivationSampler:
 
         return all_inp_data, all_out_data
 
-    def sample_acts(self, model_inputs: Union[torch.tensor, List, Tuple], collect_input=True, collect_output=True) -> Tuple[torch.Tensor, torch.Tensor]:
+    def sample_acts(self, args, kwargs,
+                    collect_input=True, collect_output=True) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         For given model_inputs, collect input activations data to quant module and
         output activations data from original module.
@@ -244,12 +253,14 @@ class ActivationSampler:
         # (with all preceding weight modules quantized)
         inp_data, out_data = None, None
         if collect_input:
-            inp_data, _ = self._quant_module_collector.collect_inp_out_data(model_inputs,
+            inp_data, _ = self._quant_module_collector.collect_inp_out_data(args,
+                                                                            kwargs,
                                                                             collect_input=True,
                                                                             collect_output=False)
         # Collect output activation data from original module
         if collect_output:
-            _, out_data = self._orig_module_collector.collect_inp_out_data(model_inputs,
+            _, out_data = self._orig_module_collector.collect_inp_out_data(args,
+                                                                           kwargs,
                                                                            collect_input=False,
                                                                            collect_output=True)
         return inp_data, out_data

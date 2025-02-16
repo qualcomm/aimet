@@ -51,13 +51,12 @@ from torchvision import models
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme
 from aimet_common.quantsim import calculate_delta_offset
-from aimet_torch.v1.adaround.adaround_wrapper import AdaroundWrapper
 from aimet_torch.utils import create_fake_data_loader, create_rand_tensors_given_shapes, get_device
 from .models_ import test_models
 from aimet_torch._base.adaround.adaround_optimizer import AdaroundOptimizer
-from aimet_torch.v1.adaround.adaround_weight import AdaroundParameters
+from aimet_torch._base.adaround.adaround_weight import AdaroundParameters
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.adaround import Adaround
+from aimet_torch.v2.adaround import Adaround, AdaroundWrapper
 from aimet_torch.v2.nn import BaseQuantizationMixin
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)

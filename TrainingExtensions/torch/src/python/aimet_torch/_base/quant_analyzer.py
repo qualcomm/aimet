@@ -647,10 +647,12 @@ class QuantAnalyzerBase(ABC):
         batch_index = 0
         for model_inputs in self._unlabeled_dataset_iterable:
             assert isinstance(model_inputs, (torch.Tensor, tuple, list))
-            _, quantized_out_acts = quant_module_collector.collect_inp_out_data(model_inputs,
+            _, quantized_out_acts = quant_module_collector.collect_inp_out_data(args=(model_inputs,),
+                                                                                kwargs={},
                                                                                 collect_input=False,
                                                                                 collect_output=True)
-            _, fp32_out_acts = orig_module_collector.collect_inp_out_data(model_inputs,
+            _, fp32_out_acts = orig_module_collector.collect_inp_out_data(args=(model_inputs,),
+                                                                          kwargs={},
                                                                           collect_input=False,
                                                                           collect_output=True)
             loss += torch.nn.functional.mse_loss(fp32_out_acts, quantized_out_acts).item()

@@ -258,17 +258,37 @@ class AdaroundBase(ABC):
                     quant_sim.model.cpu()
 
                     # Forward function for the ModuleList object
-                    def fwd_mod_ls(mod_ls, x):
+                    def fwd_mod_ls(mod_ls, *args, **kwargs):
                         for mod in mod_ls:
-                            x = params.forward_fn(mod, x)
+                            x = params.forward_fn(mod, *args, **kwargs)
+                            args = (x,)
+                            kwargs = {}
                         return x
 
                     sub_fp_models, sub_sim_models = create_modulelist_for_group_modules(model, quant_sim, grouped_modules)
                     for i, (fp_block, quant_sim_block, static_input) in enumerate(zip(sub_fp_models,
                                                                                       sub_sim_models,
                                                                                       include_static_inputs)):
-                        modules = utils.get_ordered_list_of_modules(fp_block, cached_fp_dataset[0], fwd_mod_ls)
-                        cls._run_adaround_model(modules, fp_block, quant_sim_block,
+                        args, kwargs = cached_fp_dataset[0]
+                        assert not kwargs
+                        assert len(args) == 1
+
+                        # pylint: disable=cell-var-from-loop
+                        names = {module: name for name, module in fp_block.named_modules()}
+                        ordered_modules = []
+                        handles = [
+                            leaf.register_forward_hook(lambda m, *_: ordered_modules.append((names[m], m)))
+                            for mod in fp_block
+                            for leaf in mod.modules()
+                            if utils.is_leaf_module(leaf)
+                        ]
+
+                        fwd_mod_ls(fp_block, *args, **kwargs)
+
+                        for h in handles:
+                            h.remove()
+
+                        cls._run_adaround_model(ordered_modules, fp_block, quant_sim_block,
                                                 module_act_func_pair, opt_params,
                                                 fwd_mod_ls,
                                                 cached_fp_dataset, cached_quant_dataset)
@@ -305,8 +325,8 @@ class AdaroundBase(ABC):
                                                                                        tmp_dir,
                                                                                        incl_kwargs=True)
 
-                            def block_fwd(_model, x):
-                                return _model(*x)
+                            def block_fwd(_model, *args, **kwargs):
+                                return _model(*args, **kwargs)
 
                             cls._run_adaround_model(modules, fp_block, quant_sim_block, module_act_func_pair,
                                                     opt_params,

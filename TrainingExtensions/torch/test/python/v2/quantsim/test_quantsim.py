@@ -43,10 +43,9 @@ import pytest
 import random
 import numpy as np
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
-from aimet_common.defs import QuantizationDataType
+from aimet_common.defs import QuantizationDataType, QuantScheme
 from aimet_torch import onnx_utils
-from aimet_torch.v1.quantsim import load_encodings_to_sim, QuantScheme
-from aimet_torch.v2.quantsim import QuantizationSimModel
+from aimet_torch.v2.quantsim import QuantizationSimModel, load_encodings_to_sim
 from aimet_torch.v2.quantization.encoding_analyzer import PercentileEncodingAnalyzer
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase, GroupedBlockQuantizeDequantize, QuantizeDequantize

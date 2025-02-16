@@ -216,7 +216,10 @@ class SequentialMseBase(ABC):
         for i, (fp_block, quant_sim_block, static_input) in enumerate(zip(sub_fp_models,
                                                                           sub_sim_models,
                                                                           include_static_inputs)):
-            fp32_modules = get_ordered_list_of_modules(fp_block, cached_fp_dataset[0], fwd_func=fwd_fn_modulelist)
+            args, kwargs = cached_fp_dataset[0]
+            assert not kwargs
+            assert len(args) == 1
+            fp32_modules = get_ordered_list_of_modules(fp_block, args[0], fwd_func=fwd_fn_modulelist)
             fp32_modules = [(name, module) for name, module in fp32_modules if isinstance(module, SUPPORTED_MODULES)]
             if modules_to_exclude:
                 fp32_modules = [(name, module) for name, module in fp32_modules if not module in modules_to_exclude]
@@ -312,10 +315,10 @@ class SequentialMseBase(ABC):
 
         iterator = iter(cached_dataset)
         for _ in range(params.num_batches):
-            batch = change_tensor_device_placement(next(iterator), get_device(model))
+            args, kwargs = change_tensor_device_placement(next(iterator), get_device(model))
             try:
                 with in_eval_mode(model), torch.no_grad():
-                    forward_fn(model, batch)
+                    forward_fn(model, *args, **kwargs)
             except StopForwardException:
                 pass
         handle.remove()
