@@ -45,7 +45,7 @@ import aimet_torch.v1.quantsim as v1
 import aimet_torch.v2.quantsim as v2
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
 from .models.test_models import TinyModel
-from aimet_torch.utils import create_fake_data_loader
+from aimet_torch.utils import create_fake_data_loader, CachedDataset
 from aimet_torch._base.adaround.activation_sampler import ActivationSampler
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 
@@ -83,7 +83,7 @@ class TestAdaroundActivationSampler:
     Adaround unit tests
     """
     @pytest.mark.parametrize('sim', [v1.QuantizationSimModel, v2.QuantizationSimModel], indirect=True)
-    def test_activation_sampler_conv(self, sim, model):
+    def test_activation_sampler_conv(self, sim, model, tmpdir):
         """ Test ActivationSampler for a Conv module """
         dataset_size = 100
         batch_size = 10
@@ -95,13 +95,14 @@ class TestAdaroundActivationSampler:
             model(inputs)
 
         act_sampler = ActivationSampler(model.conv1, sim.model.conv1, model, sim.model, forward_fn)
-        quant_inp, orig_out = act_sampler.sample_and_place_all_acts_on_cpu(data_loader)
+        cached_dataset = CachedDataset(data_loader, possible_batches, tmpdir)
+        quant_inp, orig_out = act_sampler.sample_and_place_all_acts_on_cpu(cached_dataset)
 
         assert list(quant_inp.shape) == [batch_size * possible_batches, 3, 32, 32]
         assert list(orig_out.shape) == [batch_size * possible_batches, 32, 18, 18]
 
     @pytest.mark.parametrize('sim', [v1.QuantizationSimModel, v2.QuantizationSimModel], indirect=True)
-    def test_activation_sampler_fully_connected_module(self, sim, model):
+    def test_activation_sampler_fully_connected_module(self, sim, model, tmpdir):
         """ Test ActivationSampler for a fully connected module """
         dataset_size = 100
         batch_size = 10
@@ -113,7 +114,8 @@ class TestAdaroundActivationSampler:
             model(inputs)
 
         act_sampler = ActivationSampler(model.fc, sim.model.fc, model, sim.model, forward_fn)
-        quant_inp, orig_out = act_sampler.sample_and_place_all_acts_on_cpu(data_loader)
+        cached_dataset = CachedDataset(data_loader, possible_batches, tmpdir)
+        quant_inp, orig_out = act_sampler.sample_and_place_all_acts_on_cpu(cached_dataset)
 
         assert list(quant_inp.shape) == [batch_size * possible_batches, 36]
         assert list(orig_out.shape) == [batch_size * possible_batches, 12]

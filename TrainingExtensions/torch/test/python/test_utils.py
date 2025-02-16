@@ -288,29 +288,34 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
         model_input = torch.randn(1, 3, 32, 32).to(device=device)
 
         module_data = utils.ModuleData(model, model.conv1)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=False)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=False, collect_output=False)
         self.assertEqual(inp, None)
         self.assertEqual(out, None)
 
         module_data = utils.ModuleData(model, model.conv1)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=True, collect_output=False)
         self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
         self.assertEqual(out, None)
 
         module_data = utils.ModuleData(model, model.conv1)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=False, collect_output=True)
         conv1_out = model.conv1(model_input)
         self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv1_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
 
         module_data = utils.ModuleData(model, model.conv1)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=True, collect_output=True)
         conv1_out = model.conv1(model_input)
         self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv1_out.cpu().detach().numpy()))
         self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
 
         module_data = utils.ModuleData(model, model.fc)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=False, collect_output=True)
         fc_out = model(model_input)
         self.assertTrue(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
@@ -336,24 +341,28 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
             model(*inputs)
 
         module_data = utils.ModuleData(model, model.conv1, forward_fn)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=True, collect_output=False)
         self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input[0].cpu().detach().numpy()))
         self.assertEqual(out, None)
 
         module_data = utils.ModuleData(model, model.conv1, forward_fn)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=False, collect_output=True)
         conv1_out = model.conv1(model_input[0])
         self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv1_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
 
         module_data = utils.ModuleData(model, model.conv3, forward_fn)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=True, collect_output=True)
         conv3_out = model.conv3(model_input[1])
         self.assertTrue(np.array_equal(out.cpu().detach().numpy(), conv3_out.cpu().detach().numpy()))
         self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input[1].cpu().detach().numpy()))
 
         module_data = utils.ModuleData(model, model.fc, forward_fn)
-        inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                    collect_input=False, collect_output=True)
         fc_out = model(*model_input)
         self.assertTrue(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
         self.assertEqual(inp, None)
@@ -374,7 +383,8 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
         model.eval()
         input_ids = torch.randint(1000, (10, 128))
         module_data = utils.ModuleData(model, model.linear)
-        inp, out = module_data.collect_inp_out_data(input_ids, collect_input=True, collect_output=True)
+        inp, out = module_data.collect_inp_out_data(args=(input_ids,), kwargs={},
+                                                    collect_input=True, collect_output=True)
         assert torch.equal(inp, model.embedding(input_ids.to(device)))
         assert torch.equal(out, model.linear(model.embedding(input_ids.to(device))))
 
@@ -399,12 +409,14 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
             model_input = torch.randn(1, 3, 32, 32).to(device=device)
 
             module_data = utils.ModuleData(model, model.fc)
-            inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
+            inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                        collect_input=False, collect_output=True)
             fc_out = model(model_input)
             self.assertFalse(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
 
             module_data = utils.ModuleData(model, model.conv1)
-            inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
+            inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                        collect_input=True, collect_output=False)
             self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
 
     @pytest.mark.cuda
@@ -418,12 +430,14 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
             model_input = torch.randn(1, 3, 32, 32).to(device=device)
 
             module_data = utils.ModuleData(model, model.fc)
-            inp, out = module_data.collect_inp_out_data(model_input, collect_input=False, collect_output=True)
+            inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                        collect_input=False, collect_output=True)
             fc_out = model(model_input)
             self.assertFalse(np.array_equal(out.cpu().detach().numpy(), fc_out.cpu().detach().numpy()))
 
             module_data = utils.ModuleData(model, model.conv1)
-            inp, out = module_data.collect_inp_out_data(model_input, collect_input=True, collect_output=False)
+            inp, out = module_data.collect_inp_out_data(args=(model_input,), kwargs={},
+                                                        collect_input=True, collect_output=False)
             self.assertTrue(np.array_equal(inp.cpu().detach().numpy(), model_input.cpu().detach().numpy()))
 
     def test_cached_dataset(self):
