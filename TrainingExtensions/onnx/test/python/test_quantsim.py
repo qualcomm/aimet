@@ -216,7 +216,7 @@ class TestQuantSim:
             quantizer_args = encoding_data["quantizer_args"]
             assert quantizer_args["activation_bitwidth"] == 16
             assert quantizer_args["param_bitwidth"] == 16
-            assert not quantizer_args["per_channel_quantization"]
+            assert quantizer_args["per_channel_quantization"]
             assert quantizer_args["quant_scheme"] == QuantScheme.post_training_tf.name
             assert quantizer_args["dtype"] == "int"
             assert "is_symmetric" in quantizer_args
@@ -1309,13 +1309,23 @@ class TestQuantSim:
         set_blockwise_quantization_for_weights(sim, ("MatMul", "Conv", "Gemm"), 8, True, block_size, strict=False)
         sim.compute_encodings(lambda session, _: session.run(None, dummy_input), None)
 
+        initializers = {
+            param.name: param for param in sim.model.graph().initializer
+        }
+
         for name, quantizer in sim.qc_quantize_op_dict.items():
             if not quantizer.enabled:
                 continue
+
+            param = initializers.get(name, None)
+
             if name in bq_weights:
                 assert quantizer.quant_info.usePerChannelMode
                 assert quantizer.quant_info.blockSize == block_size
-                assert len(quantizer.encodings) > 1
+                assert len(quantizer.encodings) == param.dims[0] * param.dims[1] / block_size
+            elif quantizer.quant_info.usePerChannelMode:
+                assert quantizer.quant_info.blockSize == 0
+                assert len(quantizer.encodings) in tuple(param.dims)
             else:
                 assert quantizer.quant_info.blockSize == 0
                 assert len(quantizer.encodings) == 1
@@ -1325,17 +1335,21 @@ class TestQuantSim:
             encodings = json.load(f)
 
         for enc in encodings["param_encodings"]:
-            if enc['name'] not in bq_weights:
+            quantizer = sim.qc_quantize_op_dict[enc['name']]
+            param = initializers[enc['name']]
+            if enc['name'] in bq_weights:
+                assert len(enc['scale']) == param.dims[0] * param.dims[1] / block_size
+                assert enc['enc_type'] == 'PER_BLOCK'
+            elif quantizer.quant_info.usePerChannelMode:
+                assert len(enc['scale']) in tuple(param.dims)
+                assert enc['enc_type'] == 'PER_CHANNEL'
+            else:
                 assert len(enc['scale']) == 1
                 assert enc['enc_type'] == 'PER_TENSOR'
-                continue
-            for param in sim.model.graph().initializer:
-                if param.name == enc['name'] and enc['name'] in bq_weights:
-                    assert len(enc['scale']) == param.dims[0] * param.dims[1] / block_size
-                    assert enc['enc_type'] == 'PER_BLOCK'
 
         for enc in encodings["activation_encodings"]:
             assert len(enc['scale']) == 1
+            assert enc['enc_type'] == 'PER_TENSOR'
 
     def test_model_with_initializers_as_activations(self):
         model = models_for_tests.model_with_initializers_as_activations()
@@ -1499,7 +1513,6 @@ class TestQuantSim:
                 assert len(quantizer.encodings) > 1
             else:
                 assert quantizer.quant_info.blockSize == 0
-                assert len(quantizer.encodings) == 1
 
         with set_encoding_version("1.0.0"):
             sim.export(tmpdir, "tmp_model")
@@ -1509,7 +1522,7 @@ class TestQuantSim:
 
         for enc in encodings["param_encodings"]:
             if enc["name"] not in bq_weights:
-                assert enc["enc_type"] == EncodingType.PER_TENSOR.name
+                assert enc["enc_type"] in (EncodingType.PER_TENSOR.name, EncodingType.PER_CHANNEL.name)
             else:
                 assert enc["enc_type"] == EncodingType.LPBQ.name
                 assert enc["compressed_bw"] == bitwidth
@@ -1987,7 +2000,7 @@ class TestEncodingPropagation:
             new_encoding.bw = 8
             new_encoding.delta = .125
             new_encoding.offset = -128
-            sim.qc_quantize_op_dict['conv3.weight'].load_encodings([new_encoding])
+            sim.qc_quantize_op_dict['conv3.weight'].load_encodings([new_encoding] * 8)
             post_load_out = sim.session.run(None, dummy_tensor)
 
             sim.export(tempdir, 'onnx_sim')

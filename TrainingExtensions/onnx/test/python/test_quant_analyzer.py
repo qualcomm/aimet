@@ -173,7 +173,6 @@ class TestQuantAnalyzer:
         with tempfile.TemporaryDirectory() as tmp_dir:
             layer_wise_eval_score_dict = \
                 quant_analyzer.perform_per_layer_analysis_by_enabling_quantizers(sim, results_dir=tmp_dir)
-            print(layer_wise_eval_score_dict)
             assert type(layer_wise_eval_score_dict) == dict
             assert len(layer_wise_eval_score_dict) == 10
 
@@ -204,7 +203,6 @@ class TestQuantAnalyzer:
         with tempfile.TemporaryDirectory() as tmp_dir:
             layer_wise_eval_score_dict = \
                 quant_analyzer.perform_per_layer_analysis_by_disabling_quantizers(sim, results_dir=tmp_dir)
-            print(layer_wise_eval_score_dict)
             assert type(layer_wise_eval_score_dict) == dict
             assert len(layer_wise_eval_score_dict) == 10
 
@@ -294,9 +292,9 @@ class TestQuantAnalyzer:
             assert os.path.exists(Path(tmp_dir, "activations_pdf"))
             assert os.path.exists(Path(tmp_dir, "weights_pdf"))
             assert len([file for file in os.listdir(os.path.join(tmp_dir, "weights_pdf", "_conv1_Conv")) if
-                        file.endswith(".html")]) == 1
-            print(sim.qc_quantize_op_dict.keys())
-    def test_export_per_layer_stats_histogram_per_channel(self):
+                        file.endswith(".html")]) == 32
+
+    def test_export_per_layer_stats_histogram_per_tensor(self):
         """ test export_per_layer_stats_histogram() for per channel quantization """
         quantsim_config = {
             "defaults": {
@@ -306,7 +304,7 @@ class TestQuantAnalyzer:
                 "params": {
                     "is_quantized": "True"
                 },
-                "per_channel_quantization": "True",
+                "per_channel_quantization": "False",
             },
             "params": {
                 "bias": {
@@ -338,7 +336,7 @@ class TestQuantAnalyzer:
             assert os.path.exists(Path(tmp_dir, "activations_pdf"))
             assert os.path.exists(Path(tmp_dir, "weights_pdf"))
             assert len([file for file in os.listdir(os.path.join(tmp_dir, "activations_pdf"))]) <= len(sim.activation_names)
-            assert len([file for file in os.listdir(os.path.join(tmp_dir, "weights_pdf", "_conv1_Conv")) if file.endswith(".html")]) == 32
+            assert len([file for file in os.listdir(os.path.join(tmp_dir, "weights_pdf", "_conv1_Conv")) if file.endswith(".html")]) == 1
 
 
     def test_export_per_layer_mse_loss(self):
