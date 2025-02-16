@@ -298,4 +298,4 @@ else:
         :return: Newly created QuantizableSparseSequential
         """
         # pylint: disable=protected-access
-        return QuantizableSparseSequential(module._modules)
+        return QuantizableSparseSequential(**module._modules)
