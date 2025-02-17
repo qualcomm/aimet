@@ -1,6 +1,5 @@
 bokeh
 cvxpy
-h5py
 holoviews
 hvplot
 Jinja2>=3.0.3
