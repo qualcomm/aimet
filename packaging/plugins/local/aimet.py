@@ -86,6 +86,8 @@ def optional_dependencies() -> dict[str, list[str]]:
             "beautifulsoup4",
             "deepspeed",
             "matplotlib",
+            "onnxruntime-extensions",
+            "onnxsim",
             "peft",
             "pylint<3",
             "pytest",

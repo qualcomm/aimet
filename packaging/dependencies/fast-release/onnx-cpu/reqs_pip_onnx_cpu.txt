@@ -9,9 +9,6 @@ networkx
 numpy<2
 onnx
 onnxruntime~=1.18.1
-onnxruntime-extensions
-onnxscript
-onnxsim
 osqp
 pandas
 psutil
