@@ -35,7 +35,8 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Custom QcQuantizeOp to quantize weights and activations using ONNXRuntime """
-
+from __future__ import annotations      # Needed to typehint private class _EncodingMismatchInfo
+from dataclasses import dataclass
 from typing import Union, List, Optional, Dict, Tuple
 import numpy as np
 
@@ -317,6 +318,48 @@ class QcQuantizeOp:
 
             self.load_encodings(encoding)
 
+    def _load_encodings_dict(self, encoding_dict: dict):
+        self.bitwidth = encoding_dict['bw']
+        data_type = QuantizationDataType.int if encoding_dict['dtype'] == QuantizationDataType.int.name.upper() else \
+            QuantizationDataType.float
+        self.data_type = data_type
+
+        if data_type == QuantizationDataType.float:
+            return
+
+        if encoding_dict['enc_type'] == EncodingType.LPBQ.name:
+            raise AssertionError(f'Loading LPBQ encodings for tensor name {encoding_dict["name"]} into a non-LPBQ quantizer'
+                                 f' is not yet supported. Ensure QuantizationSimModel is set with proper quantizers before '
+                                 f'loading.')
+
+        is_symmetric, is_strict_symmetric, is_unsigned_symmetric = _get_symmetric_properties(encoding_dict)
+        self.use_symmetric_encodings = is_symmetric
+        if self.use_symmetric_encodings:
+            self.use_strict_symmetric = is_strict_symmetric
+        # is_unsigned_symmetric is a special case since the flag could be enabled but the encoding can be signed
+        # if the observed tensor had negative values.
+        # To err on the side of caution, only set self.use_unsigned_symmetric if we know for sure that the encodings
+        # were unsigned.
+        if self.use_symmetric_encodings and is_unsigned_symmetric:
+            self.use_unsigned_symmetric = is_unsigned_symmetric
+
+        if 'block_size' in encoding_dict and self.quant_info.blockSize != encoding_dict['block_size']:
+            self._enable_blockwise_quantization(encoding_dict['block_size'])
+        libpymo_encodings = []
+        scales = encoding_dict['scale']
+        offsets = encoding_dict['offset']
+        for idx, scale in enumerate(scales):
+            enc = libpymo.TfEncoding()
+            enc.bw = encoding_dict['bw']
+            enc_min = scale * offsets[idx]
+            enc_max = scale * (2 ** encoding_dict['bw'] - 1 + offsets[idx])
+            enc.delta, enc.max, enc.min, enc.offset = (scale, enc_max, enc_min, offsets[idx])
+            libpymo_encodings.append(enc)
+
+        self.load_encodings(libpymo_encodings)
+        self.enabled = True
+
+
     def load_encodings(self, encoding: List[libpymo.TfEncoding]):
         """
         Load pre-existing encodings to the quantizer and sets the op-mode to quantize-dequantize
@@ -585,6 +628,37 @@ class QcQuantizeOp:
         """
         self._encoding_min_max_fixed_vals = fixed_range
 
+    def _fill_mismatching_encoding_settings_info(self, encoding_dict: Optional[dict], encoding_mismatch_info: _EncodingMismatchInfo):
+        # Match enabled state
+        if self.enabled and encoding_dict is None:
+            encoding_mismatch_info.enabled_mismatch = (self.enabled, False)
+        if not self.enabled and encoding_dict is not None:
+            encoding_mismatch_info.enabled_mismatch = (self.enabled, True)
+
+        if encoding_dict is not None:
+            is_symmetric, is_strict_symmetric, is_unsigned_symmetric = _get_symmetric_properties(encoding_dict)
+
+            if self._encoding_type().name != encoding_dict['enc_type']:
+                encoding_mismatch_info.enc_type_mismatch = (self._encoding_type(), encoding_dict['enc_type'])
+            else:
+                if self.bitwidth != encoding_dict['bw']:
+                    encoding_mismatch_info.bitwidth_mismatch = (self.bitwidth, encoding_dict['bw'])
+            if self.data_type.name.upper() != encoding_dict['dtype']:
+                encoding_mismatch_info.dtype_mismatch = (self.data_type.name, encoding_dict['dtype'])
+            if self.use_symmetric_encodings != is_symmetric:
+                encoding_mismatch_info.is_symmetric_mismatch = (self.use_symmetric_encodings, is_symmetric)
+            if self.use_strict_symmetric != is_strict_symmetric:
+                encoding_mismatch_info.is_strict_symmetric_mismatch = (
+                self.use_strict_symmetric, is_strict_symmetric)
+
+            # Unsigned symmetric is a special case because even if the setting is true, the encodings may appear to be
+            # signed symmetric if any observed tensor values were < 0.
+            # In this case, only mark a mismatch if quantizer was set to signed symmetric but an unsigned symmetric
+            # encoding was seen.
+            if self.use_unsigned_symmetric != is_unsigned_symmetric and not self.use_unsigned_symmetric:
+                encoding_mismatch_info.is_unsigned_symmetric_mismatch = (self.use_unsigned_symmetric,
+                                                                         is_unsigned_symmetric)
+
 
 class GroupedBlockQuantizeDequantize(QcQuantizeOp):
     """ Class for performing Grouped Block Quantize Dequantize """
@@ -637,6 +711,65 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
 
         return grouping
 
+    def _load_encodings_dict(self, encoding_dict: dict):
+        # pylint: disable=too-many-locals
+        data_type = QuantizationDataType.int if encoding_dict['dtype'] == QuantizationDataType.int.name.upper() else \
+            QuantizationDataType.float
+        if data_type == QuantizationDataType.float:
+            raise AssertionError(
+                f'Loading float encodings for tensor name {encoding_dict["name"]} into a GroupedBlock quantizer is not yet '
+                f'supported. Ensure QuantizationSimModel is set with proper quantizers before loading.')
+
+        if encoding_dict['enc_type'] != EncodingType.LPBQ.name:
+            raise AssertionError(
+                f'Loading non-LPBQ encodings for tensor name {encoding_dict["name"]} into an LPBQ quantizer is not yet supported.'
+                f' Ensure QuantizationSimModel is set with proper quantizers before loading.')
+
+        is_symmetric, is_strict_symmetric, is_unsigned_symmetric = _get_symmetric_properties(encoding_dict)
+        self.use_symmetric_encodings = is_symmetric
+        if self.use_symmetric_encodings:
+            self.use_strict_symmetric = is_strict_symmetric
+        # is_unsigned_symmetric is a special case since the flag could be enabled but the encoding can be signed
+        # if the observed tensor had negative values.
+        # To err on the side of caution, only set self.use_unsigned_symmetric if we know for sure that the encodings
+        # were unsigned.
+        if self.use_symmetric_encodings and is_unsigned_symmetric:
+            self.use_unsigned_symmetric = is_unsigned_symmetric
+
+        self.data_type = data_type
+        self.decompressed_bw = encoding_dict['bw']
+        self.bitwidth = encoding_dict['compressed_bw']
+        if self.quant_info.blockSize != encoding_dict['block_size']:
+            self._enable_blockwise_quantization(encoding_dict['block_size'])
+
+        libpymo_encodings = []
+        encoding_shape = self._encoding_shape()
+        channel_axis = self.quant_info.channelAxis
+        block_axis = self.quant_info.blockAxis
+
+        if channel_axis < block_axis:
+            per_block_int_scales_np = np.array(encoding_dict['per_block_int_scale']).reshape(
+                encoding_shape[channel_axis], -1)
+            per_channel_scales_np = np.array(encoding_dict['scale']).reshape(encoding_shape[channel_axis], 1)
+        else:
+            per_block_int_scales_np = np.array(encoding_dict['per_block_int_scale']).reshape(-1,
+                                                                                             encoding_shape[channel_axis])
+            per_channel_scales_np = np.array(encoding_dict['scale']).reshape(1, encoding_shape[channel_axis])
+        per_block_scales_np = per_channel_scales_np * per_block_int_scales_np
+        per_block_scales = per_block_scales_np.reshape(-1).tolist()
+        per_block_offsets = [-2 ** (encoding_dict['compressed_bw'] - 1)] * len(per_block_scales)
+
+        for idx, scale in enumerate(per_block_scales):
+            enc = libpymo.TfEncoding()
+            enc.bw = encoding_dict['compressed_bw']
+            enc_min = scale * per_block_offsets[idx]
+            enc_max = scale * (2 ** encoding_dict['compressed_bw'] - 1 + per_block_offsets[idx])
+            enc.delta, enc.max, enc.min, enc.offset = (scale, enc_max, enc_min, per_block_offsets[idx])
+            libpymo_encodings.append(enc)
+
+        self.load_encodings(libpymo_encodings)
+        self.enabled = True
+
     def load_encodings(self, encoding: List[libpymo.TfEncoding]):
         encoding = lpbq_utils.compress_encoding_scales(encoding, self._encoding_shape(), self._block_grouping(),
                                                         scale_bitwidth=self.decompressed_bw - self.bitwidth)
@@ -668,3 +801,66 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         encodings["offset"] = [-2 ** (self.decompressed_bw - 1) for _ in encodings['scale']]
 
         return encodings
+
+    def _fill_mismatching_encoding_settings_info(self, encoding_dict: Optional[dict], encoding_mismatch_info: _EncodingMismatchInfo):
+        super()._fill_mismatching_encoding_settings_info(encoding_dict, encoding_mismatch_info)
+        encoding_mismatch_info.bitwidth_mismatch = None
+        if self.bitwidth != encoding_dict['compressed_bw']:
+            encoding_mismatch_info.bitwidth_mismatch = (self.bitwidth, encoding_dict['compressed_bw'])
+        if self.decompressed_bw != encoding_dict['bw']:
+            # Possibly overwriting above bitwidth mismatch, but leaving as is to simplify mismatch info instead of adding LPBQ specific field.
+            encoding_mismatch_info.bitwidth_mismatch = (self.decompressed_bw, encoding_dict['bw'])
+
+def _get_symmetric_properties(encodings: Dict) -> Tuple[Optional[bool], Optional[bool], Optional[bool]]:
+    """
+    Return symmetric properties of the given encodings. If encodings are float, return None for each.
+
+    :param encodings: Encodings to get symmetric properties for
+    :return: Tuple of is_symmetric, is_strict_symmetric, and is_unsigned symmetric properties
+    """
+    # TODO: Move this function into proper encodings module
+    if encodings['dtype'] == QuantizationDataType.float.name.upper():
+        return None, None, None
+
+    is_symmetric = encodings['is_sym'] is True
+
+    is_strict_symmetric = False
+    if is_symmetric and encodings['offset'][0] == -2**(encodings['bw'] - 1) + 1:
+        is_strict_symmetric = True
+
+    # Note: Even if the original quantizer had is_unsigned_symmetric set to True, if any observed values were negative,
+    # the resulting encodings will look signed. This logic can only perform a best effort check to return True only if
+    # any encoding showed unsigned symmetric properties.
+    is_unsigned_symmetric = is_symmetric and encodings['offset'][0] == 0
+
+    return is_symmetric, is_strict_symmetric, is_unsigned_symmetric
+
+
+# TODO: Move this class into proper encodings module
+@dataclass
+class _EncodingMismatchInfo:
+    """
+    Dataclass tracking information about mismatched quantizer vs. encoding settings.
+    """
+    quantizer_name: str
+    enabled_mismatch: Optional[Tuple] = None
+    dtype_mismatch: Optional[Tuple] = None
+    bitwidth_mismatch: Optional[Tuple] = None
+    is_symmetric_mismatch: Optional[Tuple] = None
+    is_strict_symmetric_mismatch: Optional[Tuple] = None
+    is_unsigned_symmetric_mismatch: Optional[Tuple] = None
+    enc_type_mismatch: Optional[Tuple] = None
+
+    def has_mismatch(self) -> bool:
+        """
+        Returns True if there is a mismatched setting.
+
+        :return: True if there is a mismatched setting, False otherwise
+        """
+        return (self.enabled_mismatch is not None or
+                self.dtype_mismatch is not None or
+                self.bitwidth_mismatch is not None or
+                self.is_symmetric_mismatch is not None or
+                self.is_strict_symmetric_mismatch is not None or
+                self.is_unsigned_symmetric_mismatch is not None or
+                self.enc_type_mismatch is not None)
