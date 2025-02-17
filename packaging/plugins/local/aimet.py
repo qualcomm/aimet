@@ -59,7 +59,7 @@ def get_aimet_dependencies() -> list[str]:
     """Read dependencies form the corresponded files and return them as a list (!) of strings"""
     aimet_variant = get_aimet_variant()
 
-    if aimet_variant in ("torch-gpu", "tf-torch-cpu"):
+    if aimet_variant in ("torch-gpu", "onnx-cpu", "tf-torch-cpu"):
         deps_path = pathlib.Path("packaging", "dependencies", "fast-release", aimet_variant)
     else:
         deps_path = pathlib.Path("packaging", "dependencies", aimet_variant)
