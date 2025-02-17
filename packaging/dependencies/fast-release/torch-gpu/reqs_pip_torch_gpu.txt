@@ -1,6 +1,5 @@
 bokeh
 cvxpy
-dataclasses
 h5py
 holoviews
 hvplot
@@ -19,7 +18,6 @@ PyYAML
 safetensors
 scikit-learn
 scipy
-setuptools
 tensorboard
 torch
 torchvision
