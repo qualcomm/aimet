@@ -43,10 +43,11 @@ import numpy as np
 import torch
 import onnx
 import tempfile
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_common import quantsim as quantsim_common
 import aimet_torch.v2 as aimet
 import aimet_torch.v2.quantization as Q
-from aimet_torch.v2.quantsim import quantsim, QuantizationSimModel
+from aimet_torch.v2.quantsim import QuantizationSimModel
 from torchvision.models import resnet18, mobilenet_v3_small
 from aimet_torch.v2.experimental.onnx._export import export as _export
 from aimet_torch.utils import get_all_quantizers
@@ -208,9 +209,11 @@ def test_dequantize_torch_ort_equal(input_shape, scale_shape, block_size, symmet
 
 
 @torch.no_grad()
-@pytest.mark.parametrize("model_factory, input_shape", [(resnet18, (1, 3, 224, 224)),
-                                                        (mobilenet_v3_small, (1, 3, 224, 224)),
-                                                        ])
+@pytest.mark.parametrize(
+    "model_factory,      input_shape", [
+    (resnet18,           (1, 3, 224, 224)),
+    (mobilenet_v3_small, (1, 3, 224, 224)),
+])
 def test_export_torchvision_models(model_factory, input_shape):
     """
     When: Export quantized torchvision model
@@ -218,7 +221,7 @@ def test_export_torchvision_models(model_factory, input_shape):
     x = torch.randn(input_shape)
     model = model_factory().eval()
     model = prepare_model(model)
-    model = QuantizationSimModel(model, x).model
+    model = QuantizationSimModel(model, x, config_file=get_path_for_per_channel_config()).model
 
     with aimet.nn.compute_encodings(model):
         model(x)
@@ -276,7 +279,7 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
     x = torch.randn(input_shape)
     model = model_factory().eval()
     model = prepare_model(model)
-    sim = QuantizationSimModel(model, x)
+    sim = QuantizationSimModel(model, x, config_file=get_path_for_per_channel_config())
 
     sim.compute_encodings(lambda m, _: m(x), None)
 

@@ -226,20 +226,11 @@ def remove_quantization_nodes_from_onnx_graph(model: onnx.ModelProto):
     """
     tensor_to_encoding_map = {}
     name_to_producer, name_to_consumer = _get_producer_consumer_info_from_onnx_graph(model)
-    node_list = list(model.graph.node)
+    qtzr_nodes = list(node for node in model.graph.node if node.op_type in ONNX_QUANTIZER_OP_TYPES)
 
-    for node in node_list:
-        if node.op_type not in ONNX_QUANTIZER_OP_TYPES:
-            continue
-
+    for node in qtzr_nodes:
         # Get quantizer name in torch model
         encoding = _get_encoding_from_onnx_node(model, node)
-
-        # Remove qdq node from graph
-        model.graph.node.remove(node)
-
-        # Remove scale and offset from onnx graph
-        _remove_constants(model, node.input[1:])
 
         # Connect next node to the prev node of quantizer node
         if node.output[0] in name_to_consumer:
@@ -265,6 +256,13 @@ def remove_quantization_nodes_from_onnx_graph(model: onnx.ModelProto):
 
         else:
             raise ValueError(f"Cannot find prev node and next node for quantization node {node.name}")
+
+    for node in qtzr_nodes:
+        # Remove qdq node from graph
+        model.graph.node.remove(node)
+
+        # Remove scale and offset from onnx graph
+        _remove_constants(model, node.input[1:])
 
     return tensor_to_encoding_map
 
