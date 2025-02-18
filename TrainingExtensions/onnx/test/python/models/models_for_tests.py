@@ -2005,7 +2005,7 @@ def const_param_model():
 def weight_matmul_model(in_features=10, out_features=20):
     seq_len = 10
     matmul_layer = helper.make_node("MatMul", inputs=["input", "weight"], name="matmul", outputs=["output"])
-    weight = numpy_helper.from_array(np.empty((in_features, out_features), dtype=np.float32), name="weight")
+    weight = numpy_helper.from_array(np.random.randn(in_features, out_features).astype(np.float32), name="weight")
     input_tensor = helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, seq_len, in_features])
     output_tensor = helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, seq_len, out_features])
     graph = helper.make_graph([matmul_layer], "matmul_graph", initializer=[weight], inputs=[input_tensor], outputs=[output_tensor])
@@ -2017,7 +2017,7 @@ def weight_gemm_model(in_features, out_features, transposed_weight=False):
     matmul_layer = helper.make_node("Gemm", inputs=["input", "weight"], name="matmul", outputs=["output"],
                                     transB=transposed_weight)
     weight_shape = (in_features, out_features) if not transposed_weight else (out_features, in_features)
-    weight = numpy_helper.from_array(np.empty(weight_shape, dtype=np.float32), name="weight")
+    weight = numpy_helper.from_array(np.random.randn(*weight_shape).astype(np.float32), name="weight")
     input_tensor = helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, in_features])
     output_tensor = helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, out_features])
     graph = helper.make_graph([matmul_layer], "matmul_graph", initializer=[weight], inputs=[input_tensor], outputs=[output_tensor])
@@ -2029,7 +2029,7 @@ def conv_model(weight_shape, input_shape, output_shape, transpose=False, **kwarg
     layer_type = "Conv" if not transpose else "ConvTranspose"
     conv_layer = helper.make_node(layer_type, inputs=["input", "weight"], name="conv", outputs=["output"],
                                   **kwargs)
-    weight = numpy_helper.from_array(np.empty(weight_shape, dtype=np.float32), name="weight")
+    weight = numpy_helper.from_array(np.random.randn(*weight_shape).astype(np.float32), name="weight")
     input_tensor = helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, input_shape)
     output_tensor = helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, output_shape)
     graph = helper.make_graph([conv_layer], "conv_graph", initializer=[weight], inputs=[input_tensor], outputs=[output_tensor])

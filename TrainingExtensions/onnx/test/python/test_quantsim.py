@@ -649,6 +649,8 @@ class TestQuantSim:
                                                                                  strict=False,
                                                                                  symmetric=True), False)])
     def test_load_per_block_and_lpbq_encodings(self, swap_quantizer_func, is_lpbq):
+        torch.manual_seed(0)
+        np.random.seed(0)
         model = single_residual_model()
         model_2 = copy.deepcopy(model)
         model_3 = copy.deepcopy(model)
@@ -710,6 +712,8 @@ class TestQuantSim:
                                                                                  symmetric=True), False)
                                                               ])
     def test_load_per_block_and_lpbq_conv_transpose(self, swap_quantizer_func, is_lpbq):
+        torch.manual_seed(0)
+        np.random.seed(0)
         model = models_for_tests.pointwise_convtranspose1d((1, 64, 32))
         model_2 = copy.deepcopy(model)
         sim = QuantizationSimModel(model)
@@ -747,6 +751,8 @@ class TestQuantSim:
 
     @pytest.mark.parametrize('strict', [False])
     def test_mismatching_lpbq_settings(self, strict):
+        torch.manual_seed(0)
+        np.random.seed(0)
         model = single_residual_model()
         model_2 = copy.deepcopy(model)
         dummy_input = make_dummy_input(model.model)
