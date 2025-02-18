@@ -7,7 +7,7 @@ jsonschema
 matplotlib>=3
 networkx
 numpy<2
-onnx
+onnx~=1.16.1
 onnxruntime~=1.18.1
 osqp
 pandas
