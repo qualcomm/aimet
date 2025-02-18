@@ -54,7 +54,6 @@ from aimet_torch.gptvq.gptvq_optimizer import GPTVQOptimizer
 from aimet_torch.gptvq.utils import get_module_name_to_hessian_tensor
 from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch.save_utils import SaveUtils
-from aimet_torch.utils import get_named_module
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantization.affine.quantizer import QuantizeDequantize
 from aimet_torch.v2.quantization.tensor import QuantizedTensorBase
@@ -203,7 +202,7 @@ class GPTVQ:
         :param module_name_set: Module name set containing candidates of GPTVQ optimization
         """
         for module_name in module_name_set:
-            module = get_named_module(sim.model, module_name)
+            module = sim.model.get_submodule(module_name)
             assert isinstance(module, BaseQuantizationMixin)
 
             param_quantizer = module.param_quantizers["weight"]
@@ -353,7 +352,7 @@ class GPTVQ:
         """
         name_to_quant_module = collections.OrderedDict()
         for name in module_names:
-            quant_module = get_named_module(sim.model, name)
+            quant_module = sim.model.get_submodule(name)
             if name not in module_names_to_exclude:
                 name_to_quant_module[name] = quant_module
         return name_to_quant_module

@@ -57,7 +57,6 @@ from aimet_torch._base.adaround.adaround_optimizer import AdaroundOptimizer
 from aimet_torch._base.adaround.adaround_loss import AdaroundHyperParameters
 from aimet_torch._base.adaround.activation_sampler import create_modulelist_for_group_modules, get_block_inputs, \
     get_block_outputs, create_cached_block_schedule_list
-from aimet_torch.utils import get_named_module
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -315,7 +314,7 @@ class AdaroundBase(ABC):
                                                     params.forward_fn, cached_dataset)
                         else:
                             block_name, fp_block = block_cfg
-                            quant_sim_block: torch.nn.Module = get_named_module(quant_sim.model, block_name)
+                            quant_sim_block: torch.nn.Module = quant_sim.model.get_submodule(block_name)
 
                             cached_fp_dataset, cached_quant_dataset = get_block_inputs(model, quant_sim,
                                                                                        block_name,
@@ -442,7 +441,7 @@ class AdaroundBase(ABC):
         Replace the quantized module's weight tensor quantizer with the Adaround tensor quantizer
         :param quant_module: quant module
         """
-        quant_module = utils.get_named_module(quant_sim_model, module_name)
+        quant_module = quant_sim_model.get_submodule(module_name)
         cls._validate_quant_module_for_adaround(quant_module)
         adaround_layer = cls._get_adaround_wrapper(quant_module)
 
@@ -450,7 +449,7 @@ class AdaroundBase(ABC):
         upper_module = quant_sim_model
         upper_module_name, _, target_module_name = module_name.rpartition('.')
         if upper_module_name:
-            upper_module = utils.get_named_module(quant_sim_model, upper_module_name)
+            upper_module = quant_sim_model.get_submodule(upper_module_name)
 
         # Temporarily replace quant module with wrapped module
         with cls._patch_module_layer(upper_module, target_module_name, adaround_layer):

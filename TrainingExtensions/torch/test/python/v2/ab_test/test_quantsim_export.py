@@ -56,7 +56,6 @@ from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v1.quantsim import OnnxExportApiArgs
 from aimet_torch.v1.qc_quantize_op import QcQuantizeWrapper
 from aimet_common.defs import QuantScheme
-from aimet_torch.utils import get_named_module
 
 from ..models_.models_to_test import (
     SimpleConditional,
@@ -414,7 +413,7 @@ class TestQuantsimOnnxExport:
             if not isinstance(module, QcQuantizeWrapper):
                 continue
             wrapper = module
-            qmodule = get_named_module(sim_v2.model, name)
+            qmodule = sim_v2.model.get_submodule(name)
 
             assert wrapper.input_quantizers[0].enabled == (qmodule.input_quantizers[0] is not None)
             assert wrapper.output_quantizers[0].enabled == (qmodule.output_quantizers[0] is not None)

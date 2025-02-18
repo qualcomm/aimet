@@ -52,7 +52,7 @@ from aimet_torch.v2.quantization import affine
 from aimet_torch.v2.quantization.affine.backends import torch_builtins
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
-from aimet_torch.utils import get_named_module, is_leaf_module
+from aimet_torch.utils import is_leaf_module
 
 
 class STE(torch.autograd.Function):
@@ -180,10 +180,8 @@ class TestQuantsimV2QAT:
         quantized_modules = get_quantized_modules(aimetgrad_qsim.model)
         assert len(quantized_modules) > 0
 
-        for param_name, _ in aimetgrad_qsim.model.named_parameters():
-            aimetgrad_param = get_named_module(aimetgrad_qsim.model, param_name)
-            autograd_param = get_named_module(autograd_qsim.model, param_name)
-
+        for aimetgrad_param, autograd_param in zip(aimetgrad_qsim.model.parameters(),
+                                                   autograd_qsim.model.parameters()):
             if not aimetgrad_param.requires_grad and not autograd_param.requires_grad:
                 continue
 

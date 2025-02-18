@@ -314,7 +314,7 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
         module_name, module = ordered_conv_linear_nodes[0]
         if module not in layers_to_ignore:
             logger.info('Correcting layer %s using Analytical Bias Correction', module_name)
-            quantize_layer = utils.get_named_module(model, module_name)
+            quantize_layer = model.get_submodule(module_name)
             call_analytical_correct_bias(quantize_layer, None, None)
             logger.info('Corrected bias for the layer')
             ordered_conv_linear_nodes.pop(0)
@@ -325,8 +325,8 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams,
             continue
         else:
             # Analytical Bias Correction is only done for Conv layers
-            reference_layer = utils.get_named_module(model_copy, module_name)
-            quantize_layer = utils.get_named_module(model, module_name)
+            reference_layer = model_copy.get_submodule(module_name)
+            quantize_layer = model.get_submodule(module_name)
 
             if module in conv_bn_dict.keys():
                 bn_layer_info = conv_bn_dict[module]

@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 
 # Import AIMET specific modules
 from aimet_common.utils import AimetLogger
-from aimet_torch.utils import CachedDataset, ModuleData, get_named_module, cache_intermediate_datasets,\
+from aimet_torch.utils import CachedDataset, ModuleData, cache_intermediate_datasets,\
     change_tensor_device_placement, in_eval_mode, save_to_cache, get_ordered_list_of_modules
 from aimet_torch._base.quantsim import _QuantizationSimModelInterface, _QuantizedModuleProtocol
 
@@ -65,8 +65,8 @@ def create_modulelist_for_group_modules(model: torch.nn.Module, sim: _Quantizati
         fp_modulelist = torch.nn.ModuleList()
         quant_modulelist = torch.nn.ModuleList()
         for name in modules:
-            fp_modulelist.append(get_named_module(model, name))
-            quant_modulelist.append(get_named_module(sim.model, name))
+            fp_modulelist.append(model.get_submodule(name))
+            quant_modulelist.append(sim.model.get_submodule(name))
         sub_fp_models.append(fp_modulelist)
         sub_sim_models.append(quant_modulelist)
 
@@ -282,7 +282,7 @@ def create_cached_block_schedule_list(model: torch.nn.Module, dummy_input, block
     caching_modules = {module: {'block': None, 'name': name} for name, module in modules}
 
     for name in block_names:
-        parent_module: torch.nn.Module = get_named_module(model, name)
+        parent_module: torch.nn.Module = model.get_submodule(name)
         for _, module in parent_module.named_modules():
             if module in caching_modules:
                 module_name = caching_modules[module]['name']

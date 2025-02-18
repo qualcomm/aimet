@@ -692,7 +692,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             return None
 
         module_name = '.'.join(module_names)
-        return utils.get_named_module(self.model, module_name)
+        return self.model.get_submodule(module_name)
 
     @torch.no_grad()
     def export(self, path: str, filename_prefix: str, dummy_input: Union[torch.Tensor, Tuple], # pylint: disable=arguments-differ

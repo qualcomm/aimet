@@ -44,7 +44,6 @@ import contextlib
 import os
 import pickle
 import sys
-import functools
 import logging
 import warnings
 
@@ -856,16 +855,6 @@ def save_to_cache(tensor, dir_path, idx):
     path = os.path.join(dir_path, f'model_inputs_{idx}')
     with open(path, 'wb') as cache:
         pickle.dump(tensor, cache)
-
-
-def get_named_module(model, name):
-    """
-    Given the name, get the target module in the model
-    :param model: Model that contains the target module
-    :param name: Name of the target module
-    :return:
-    """
-    return functools.reduce(getattr, name.split("."), model)
 
 
 def cache_intermediate_datasets(

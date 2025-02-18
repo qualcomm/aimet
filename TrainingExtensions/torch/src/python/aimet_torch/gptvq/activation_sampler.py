@@ -45,7 +45,6 @@ from aimet_torch.utils import (
     StopForwardException,
     change_tensor_device_placement,
     get_device,
-    get_named_module,
     in_eval_mode,
     get_module_to_name_dict,
 )
@@ -91,7 +90,7 @@ class BlockModuleData:
         handles = []
         for module_name in self._module_names:
             handles.append(
-                get_named_module(self._model, module_name).register_forward_hook(
+                self._model.get_submodule(module_name).register_forward_hook(
                     _hook_to_collect_inp_data
                 )
             )

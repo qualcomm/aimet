@@ -45,7 +45,6 @@ from torch import nn
 import aimet_torch.v2.quantization as Q
 from aimet_torch.gptvq.activation_sampler import ActivationSampler
 from aimet_torch.gptvq.defs import GPTVQParameters
-from aimet_torch.utils import get_named_module
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
 
@@ -386,7 +385,7 @@ def get_module_name_to_hessian_tensor(gptvq_params: GPTVQParameters,
     """
     name_to_hessian = {}
     for module_name in module_names:
-        quant_module = get_named_module(sim.model, module_name)
+        quant_module = sim.model.get_submodule(module_name)
         _, num_cols = get_2d_tensor_shape(quant_module)
         device = quant_module.weight.device
         name_to_hessian[module_name] = torch.zeros((num_cols, num_cols), device=device)
@@ -402,7 +401,7 @@ def get_module_name_to_hessian_tensor(gptvq_params: GPTVQParameters,
                 inp_data = inp_data.unsqueeze(0)
             curr_batch_size = inp_data.shape[0]
 
-            quant_module = get_named_module(sim.model, name)
+            quant_module = sim.model.get_submodule(name)
             update_hessian(quant_module, inp_data, n_samples, curr_batch_size, name_to_hessian[name])
 
         n_samples += curr_batch_size
