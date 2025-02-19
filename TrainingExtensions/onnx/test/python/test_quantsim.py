@@ -238,17 +238,11 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'quant_sim_model.encodings'), 'rb') as json_file:
                 encoding_data = json.load(json_file)
-            activation_keys = list(encoding_data["activation_encodings"].keys())
-            assert activation_keys == ['3', '4', '5', 'input', 'output']
-            for act in activation_keys:
-                act_encodings_keys = list(encoding_data["activation_encodings"][act][0].keys())
-                assert act_encodings_keys == ['bitwidth', 'dtype', 'is_symmetric', 'max', 'min', 'offset', 'scale']
 
-            param_keys = list(encoding_data['param_encodings'].keys())
-            assert param_keys == ['conv_b', 'conv_w', 'fc_b', 'fc_w']
-            for param in param_keys:
-                param_encodings_keys = list(encoding_data["param_encodings"][param][0].keys())
-                assert param_encodings_keys == ['bitwidth', 'dtype', 'is_symmetric', 'max', 'min', 'offset', 'scale']
+            activation_names = {encoding['name'] for encoding in encoding_data['activation_encodings']}
+            param_names = {encoding['name'] for encoding in encoding_data['param_encodings']}
+            assert activation_names == {'3', '4', '5', 'input', 'output'}
+            assert param_names == {'conv_b', 'conv_w', 'fc_b', 'fc_w'}
 
     def test_export_model_1_0_0(self):
         """Test to export encodings and model in 1.0.0 format"""
@@ -312,17 +306,11 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'quant_sim_model.encodings'), 'rb') as json_file:
                 encoding_data = json.load(json_file)
-            activation_keys = list(encoding_data["activation_encodings"].keys())
-            assert activation_keys == ['2', 'input', 'output']
-            for act in activation_keys:
-                act_encodings_keys = list(encoding_data["activation_encodings"][act][0].keys())
-                assert act_encodings_keys == ['bitwidth', 'dtype', 'is_symmetric', 'max', 'min', 'offset', 'scale']
 
-            param_keys = list(encoding_data['param_encodings'].keys())
-            assert param_keys == ['gru_r_w', 'gru_w', 'lstm_r_w', 'lstm_w']
-            for param in param_keys:
-                param_encodings_keys = list(encoding_data["param_encodings"][param][0].keys())
-                assert param_encodings_keys == ['bitwidth', 'dtype', 'is_symmetric', 'max', 'min', 'offset', 'scale']
+            activation_names = {encoding['name'] for encoding in encoding_data['activation_encodings']}
+            param_names = {encoding['name'] for encoding in encoding_data['param_encodings']}
+            assert activation_names == {'2', 'input', 'output'}
+            assert param_names == {'gru_r_w', 'gru_w', 'lstm_r_w', 'lstm_w'}
 
     def test_single_residual(self):
         model = single_residual_model().model
@@ -339,18 +327,9 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'quant_sim_model.encodings'), 'rb') as json_file:
                 encoding_data = json.load(json_file)
-            activation_keys = list(encoding_data["activation_encodings"].keys())
 
-            for act in activation_keys:
-                act_encodings_keys = list(encoding_data["activation_encodings"][act][0].keys())
-                assert act_encodings_keys == ['bitwidth', 'dtype', 'is_symmetric', 'max', 'min', 'offset', 'scale']
-
-            param_keys = list(encoding_data['param_encodings'].keys())
-            for param in param_keys:
-                param_encodings_keys = list(encoding_data["param_encodings"][param][0].keys())
-                assert param_encodings_keys == ['bitwidth', 'dtype', 'is_symmetric', 'max', 'min', 'offset', 'scale']
-
-            assert len(activation_keys + param_keys) == len(sim.qc_quantize_op_dict.keys())
+            assert len(encoding_data['activation_encodings']) + len(encoding_data['param_encodings']) == \
+                   len(sim.qc_quantize_op_dict.keys())
 
     @pytest.mark.cuda
     def test_compare_encodings_cpu_gpu(self):
@@ -474,13 +453,14 @@ class TestQuantSim:
             sim.export(tempdir, 'encodings')
             with open(os.path.join(tempdir, 'encodings.encodings')) as json_file:
                 encoding_data = json.load(json_file)
+                param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
 
             for param_name in sim.param_names:
                 qc_op = sim.qc_quantize_op_dict[param_name]
                 if qc_op.quant_info.usePerChannelMode and qc_op.enabled:
                     num_channels = qc_op.tensor_quantizer_params.tensor_shape[qc_op.tensor_quantizer_params.channel_axis]
                     assert num_channels == len(qc_op.encodings)
-                    assert num_channels == len(encoding_data['param_encodings'][param_name])
+                    assert num_channels == len(param_encodings[param_name]['scale'])
                     for encoding in qc_op.encodings:
                         assert encoding.bw == 8
                         assert encoding.min != encoding.max
@@ -933,7 +913,8 @@ class TestQuantSim:
                 # Ensure that the encodings for the second input of Add op (bias) and output of MatMul aren't in JSON file.
                 assert len(encoding_data['activation_encodings']) == 2
                 assert len(encoding_data['param_encodings']) == 1
-                assert encoding_data['activation_encodings'].keys() == {"input", "output"}
+                activation_names = {encoding['name'] for encoding in encoding_data['activation_encodings']}
+                assert activation_names == {"input", "output"}
 
     @pytest.mark.skip("OOM issues from high CPU memory usage, optimize quantsim memory usage before enabling")
     def test_large_model(self):
@@ -1051,15 +1032,16 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'conv_matmul_groupnorm_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                groupnorm_weight_enc = encoding_data['param_encodings']['groupnorm_0.scale'][0]
-                groupnorm_bias_enc = encoding_data['param_encodings']['groupnorm_0.bias'][0]
+                param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
+                groupnorm_weight_enc = param_encodings['groupnorm_0.scale']
+                groupnorm_bias_enc = param_encodings['groupnorm_0.bias']
 
                 # groupnorm param-encodings should follow output-activation-encoding config
-                assert groupnorm_weight_enc['bitwidth'] == 16
-                assert groupnorm_weight_enc['is_symmetric'] == 'False'
+                assert groupnorm_weight_enc['bw'] == 16
+                assert groupnorm_weight_enc['is_sym'] is False
 
-                assert groupnorm_bias_enc['bitwidth'] == 16
-                assert groupnorm_bias_enc['is_symmetric'] == 'False'
+                assert groupnorm_bias_enc['bw'] == 16
+                assert groupnorm_bias_enc['is_sym'] is False
 
     def test_matmul_v73_lower_exception_rule(self):
         model = models_for_tests.model_with_exceptional_ops()
@@ -1112,11 +1094,12 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'conv_matmul_groupnorm_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                matmul_second_input = encoding_data['activation_encodings']['matmul_0.weight'][0]
+                activation_encodings = {encoding['name']: encoding for encoding in encoding_data['activation_encodings']}
+                matmul_second_input = activation_encodings['matmul_0.weight']
 
                 # matmul's second input encoding should be of 8 bitwidth and symmetric
-                assert matmul_second_input['bitwidth'] == 8
-                assert matmul_second_input['is_symmetric'] == 'True'
+                assert matmul_second_input['bw'] == 8
+                assert matmul_second_input['is_sym'] is True
 
     def test_matmul_v73_higher_exception_rule(self):
         model = models_for_tests.model_with_exceptional_ops()
@@ -1169,10 +1152,11 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'conv_matmul_groupnorm_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                matmul_second_input = encoding_data['activation_encodings']['matmul_0.weight'][0]
+                activation_encodings = {encoding['name']: encoding for encoding in encoding_data['activation_encodings']}
+                matmul_second_input = activation_encodings['matmul_0.weight']
 
                 # if matmul's second input is 16bw then first input should also be 16bw
-                assert matmul_second_input['is_symmetric']
+                assert matmul_second_input['is_sym'] is True
 
     def test_matmul_v73_exception_rule_matmul_branch(self, tmpdir):
         model = models_for_tests.add_matmul_model()
@@ -1340,16 +1324,18 @@ class TestQuantSim:
         with open(os.path.join(tmpdir, "tmp_model.encodings")) as f:
             encodings = json.load(f)
 
-        for key, enc in encodings["param_encodings"].items():
-            if key not in bq_weights:
-                assert len(enc) == 1
+        for enc in encodings["param_encodings"]:
+            if enc['name'] not in bq_weights:
+                assert len(enc['scale']) == 1
+                assert enc['enc_type'] == 'PER_TENSOR'
                 continue
             for param in sim.model.graph().initializer:
-                if param.name == key and key in bq_weights:
-                    assert len(enc) == param.dims[0] * param.dims[1] / block_size
+                if param.name == enc['name'] and enc['name'] in bq_weights:
+                    assert len(enc['scale']) == param.dims[0] * param.dims[1] / block_size
+                    assert enc['enc_type'] == 'PER_BLOCK'
 
-        for key, enc in encodings["activation_encodings"].items():
-            assert len(enc) == 1
+        for enc in encodings["activation_encodings"]:
+            assert len(enc['scale']) == 1
 
     def test_model_with_initializers_as_activations(self):
         model = models_for_tests.model_with_initializers_as_activations()
@@ -1367,8 +1353,9 @@ class TestQuantSim:
                 encoding_data = json.load(json_file)
 
             assert all(x in [i.name for i in model.graph.initializer] for x in ['add_input2', 'mul_input2'])
-            assert encoding_data['activation_encodings']['add_input2']
-            assert encoding_data['activation_encodings']['mul_input2']
+            activation_encodings = {encoding['name']: encoding for encoding in encoding_data['activation_encodings']}
+            assert activation_encodings['add_input2']
+            assert activation_encodings['mul_input2']
 
     def test_gather_exception_rule_for_float_data(self):
         model = models_for_tests.gather_op_model()
@@ -1419,11 +1406,12 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'gather_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                gather_weight_enc = encoding_data['activation_encodings']['gather_weight'][0]
+                activation_encodings = {encoding['name']: encoding for encoding in encoding_data['activation_encodings']}
+                gather_weight_enc = activation_encodings['gather_weight']
 
                 # gather param-encodings should follow output-activation-encoding config
-                assert gather_weight_enc['bitwidth'] == 16
-                assert gather_weight_enc['is_symmetric'] == 'False'
+                assert gather_weight_enc['bw'] == 16
+                assert gather_weight_enc['is_sym'] is False
 
     def test_gather_with_int_data(self):
         model = models_for_tests.gather_op_with_int_data_model()
@@ -1473,7 +1461,8 @@ class TestQuantSim:
 
             with open(os.path.join(tempdir, 'gather_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-                assert 'gather_weight' not in encoding_data['activation_encodings'].keys()
+                activation_encoding_names = {encoding['name'] for encoding in encoding_data['activation_encodings']}
+                assert 'gather_weight' not in activation_encoding_names
 
     @pytest.mark.parametrize("model, block_size", ((models_for_tests.single_residual_model(), 4),
                                                    (test_models.linear_layer_model(), 64)),)
@@ -1876,11 +1865,12 @@ class TestEncodingPropagation:
             with open(os.path.join(tempdir, 'matmul_add_quantsim.encodings')) as json_file:
                 encodings = json.load(json_file)
 
-            add_act_encoding = encodings['activation_encodings']['add_1.output'][0]
-            matmul_act_encoding = encodings['activation_encodings']['matmul_2.output'][0]
+            activation_encodings = {encoding['name']: encoding for encoding in encodings['activation_encodings']}
+            add_act_encoding = activation_encodings['add_1.output']
+            matmul_act_encoding = activation_encodings['matmul_2.output']
 
-            assert round(add_act_encoding['max']) == 100.0
-            assert round(matmul_act_encoding['max']) == 100.0
+            assert round(add_act_encoding['scale'][0] * (255 + add_act_encoding['offset'][0])) == 100.0
+            assert round(matmul_act_encoding['scale'][0] * (255 + matmul_act_encoding['offset'][0])) == 100.0
 
     def test_matmul_with_constant_first_input(self):
         model = models_for_tests.matmul_with_constant_first_input()

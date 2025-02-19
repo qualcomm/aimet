@@ -793,11 +793,13 @@ class TestQuantizationSimStaticGrad:
             with open(f"{tmp_dir}/two_input_model_one_with_add.encodings", "r") as encodings_file:
                 encodings = json.load(encodings_file)
 
-            assert model_input_tensor in encodings['activation_encodings']
-            activation_enc = encodings['activation_encodings'][model_input_tensor]
-            assert isinstance(activation_enc[0]['offset'], int)
-            param_enc = encodings["param_encodings"]["conv1_a.weight"]
-            assert isinstance(param_enc[0]['offset'], int)
+            activation_encodings = {encoding['name']: encoding for encoding in encodings['activation_encodings']}
+            param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+            assert model_input_tensor in activation_encodings
+            activation_enc = activation_encodings[model_input_tensor]
+            assert isinstance(activation_enc['offset'][0], int)
+            param_enc = param_encodings["conv1_a.weight"]
+            assert isinstance(param_enc['offset'][0], int)
 
     def test_export_unified_encoding_format(self):
         """ test export functionality on ResNet18 """
@@ -823,14 +825,12 @@ class TestQuantizationSimStaticGrad:
             with open(f'{tmp_dir}/resnet18.encodings') as json_file:
                 encoding_data = json.load(json_file)
 
-        activation_keys = list(encoding_data["activation_encodings"].keys())
+        assert len(encoding_data["activation_encodings"]) == 24
+        assert len(encoding_data["activation_encodings"][0]['scale']) == 1
 
-        assert len(activation_keys) == 24
-        assert isinstance(encoding_data["activation_encodings"][activation_keys[0]], list)
-
-        param_keys = list(encoding_data["param_encodings"].keys())
-        assert "conv1.weight" in param_keys
-        assert isinstance(encoding_data["param_encodings"]["conv1.weight"], list)
+        param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
+        assert "conv1.weight" in param_encodings
+        assert len(param_encodings["conv1.weight"]['scale']) == 1
 
     def test_export_with_quantizer_args(self):
         """ test export functionality on ResNet18 """
@@ -919,16 +919,10 @@ class TestQuantizationSimStaticGrad:
             with open(os.path.join(tmp_dir, 'two_input_model.encodings'), 'r') as fp:
                 encodings = json.load(fp)
 
-                activation_encodings = encodings['activation_encodings']
-                param_encodings = encodings['param_encodings']
-                assert 16 == len(activation_encodings)
-                assert 7 == len(param_encodings['conv1_a.weight'][0])
-                min = param_encodings['conv1_a.weight'][0]['min']
-                max = param_encodings['conv1_a.weight'][0]['max']
-                scale = (max - min) / 255
-                offset = round(min / scale)
-                assert scale == pytest.approx(20/255)
-                assert offset == -128
+                param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+                assert 16 == len(encodings['activation_encodings'])
+                assert np.isclose(param_encodings['conv1_a.weight']['scale'][0], 20/255)
+                assert param_encodings['conv1_a.weight']['offset'] == [-128]
 
             # check the exported model
             loaded_model = torch.load(f'{tmp_dir}/two_input_model.pth')
@@ -1047,7 +1041,8 @@ class TestQuantizationSimStaticGrad:
                        dummy_input,
                        onnx_export_args=OnnxExportApiArgs(input_names=input_names))
             with open(f"{tmp_dir}/model_inputs_shared_constant_intermediate.encodings", "r") as encodings_file:
-                activation_encoding_tensors = set(json.load(encodings_file)['activation_encodings'].keys())
+                encodings = json.load(encodings_file)
+                activation_encoding_tensors = {encoding['name'] for encoding in encodings['activation_encodings']}
                 assert set(input_names).issubset(activation_encoding_tensors)
 
     @pytest.mark.skip('Disabling input quantizers of constant scalars is not supported yet')
@@ -1658,7 +1653,7 @@ class TestQuantizationSimStaticGrad:
             assert inp.name in ['a', 'b', 'c']
         for exp, act in zip(o_names, onnx_model.graph.output):
             assert exp == act.name
-        for tensor_name in encoding_data["activation_encodings"].keys():
+        for tensor_name in {encoding['name'] for encoding in encoding_data['activation_encodings']}:
             assert tensor_name in o_names
 
     def test_compute_encoding_fp16(self):
@@ -1738,16 +1733,18 @@ class TestQuantizationSimStaticGrad:
         with tempfile.TemporaryDirectory() as tmp_dir:
             sim.export(tmp_dir, 'encodings_propagation_false', dummy_input)
             with open(f'{tmp_dir}/encodings_propagation_false.encodings') as f:
-                encodings = json.load(f)['activation_encodings']
-                encodings = [{key: val} for key, val in encodings.items() if 'scale' in val[0]]
-                assert len(encodings) == 2
+                encodings = json.load(f)
+                assert encodings['version'] == '1.0.0'
+                activation_encodings = [encoding for encoding in encodings['activation_encodings'] if 'scale' in encoding]
+                assert len(activation_encodings) == 2
 
             # Save encodings again - now with propagate encodings flag enabled
             sim.export(tmp_dir, 'encodings_propagation_true', dummy_input, propagate_encodings=True)
             with open(f'{tmp_dir}/encodings_propagation_true.encodings') as f:
-                encodings = json.load(f)['activation_encodings']
-                encodings = [{key: val} for key, val in encodings.items() if 'scale' in val[0]]
-                assert len(encodings) == 2
+                encodings = json.load(f)
+                assert encodings['version'] == '0.6.1'
+                activation_encodings = [{key: val} for key, val in encodings['activation_encodings'].items() if 'scale' in val[0]]
+                assert len(activation_encodings) == 2
 
         # verifying the encodings propagation is disabled if output quantizers are disabled.
         sim = QuantizationSimModel(model, dummy_input,
@@ -1932,7 +1929,9 @@ class TestQuantizationSimStaticGrad:
             sim.export(tmp_dir, 'prelu_model', dummy_input=dummy_input)
             with open(os.path.join(tmp_dir, 'prelu_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-            assert 'prelu.weight' in encoding_data['param_encodings'].keys()
+
+            param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
+            assert 'prelu.weight' in param_encodings.keys()
 
             output = sim.model(copy.deepcopy(dummy_input))
 
@@ -2236,15 +2235,15 @@ class TestQuantizationSimStaticGrad:
             with open(f"{tmp_dir}/{filename_prefix}.encodings") as encodings_file:
                 encodings = json.load(encodings_file)
 
-        param_encodings = encodings["param_encodings"]
+        param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
         expected_param_names = ["act1.weight", "act2.weight", "act3.weight"]
         for param_name in expected_param_names:
             assert param_name in param_encodings
 
             if config_file: # Per-channel
-                assert len(param_encodings[param_name]) == num_parameters
+                assert len(param_encodings[param_name]['scale']) == num_parameters
             else:           # Per-tensor
-                assert len(param_encodings[param_name]) == 1
+                assert len(param_encodings[param_name]['scale']) == 1
 
     def test_save_encodings_to_json(self):
         model = ModelWithTwoInputsOneToAdd()
@@ -2784,19 +2783,9 @@ class TestQuantizationSimLearnedGrid:
             with open(f"{tmp_dir}/results.encodings", "r") as encodings_file:
                 encodings = json.load(encodings_file)
 
-                param_encodings = encodings["param_encodings"]
+                param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
                 for layer in ["conv1_a", "conv2", "fc1"]:
-                    encoding_info = param_encodings[f"{layer}.weight"][0]
-                    encoding_min = encoding_info["min"]
-                    encoding_max = encoding_info["max"]
-                    scale = encoding_info["scale"]
-                    offset = encoding_info["offset"]
-
-                    # Default HTP config is non-strict symmetric when parameter quantization
-                    # Non-strict symmetric should have
-                    # encoding_min == -encoding_max - scale (one more bin)
-                    # offset as -128
-                    assert np.allclose(encoding_min, -encoding_max - scale)
+                    offset = param_encodings[f"{layer}.weight"]['offset'][0]
                     assert offset == -128
 
     def test_model_with_two_inputs(self):
@@ -2890,7 +2879,8 @@ class TestQuantizationSimLearnedGrid:
             sim.export(tmp_dir, 'prelu_model', dummy_input=dummy_input)
             with open(os.path.join(tmp_dir, 'prelu_model.encodings')) as json_file:
                 encoding_data = json.load(json_file)
-            assert 'prelu.weight' in encoding_data['param_encodings'].keys()
+            param_encodings = {encoding['name']: encoding for encoding in encoding_data['param_encodings']}
+            assert 'prelu.weight' in param_encodings.keys()
 
             output = sim.model(copy.deepcopy(dummy_input))
             del sim
@@ -3036,6 +3026,7 @@ class TestQuantizationSimLearnedGrid:
                        propagate_encodings=False)
             with open(f'{tmp_dir}/module_with_5_output.encodings') as json_file:
                 activation_encodings = json.load(json_file)['activation_encodings']
+                activation_encodings = {encoding['name']: encoding for encoding in activation_encodings}
                 assert '7' not in activation_encodings
                 assert set(['8', '9', '10', '11', 't.1']).issubset(activation_encodings.keys())
 

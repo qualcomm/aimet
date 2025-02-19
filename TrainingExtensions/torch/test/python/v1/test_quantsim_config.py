@@ -449,11 +449,12 @@ class TestQuantsimConfig:
 
             with open(os.path.join(tmp_dir, "test_parse_config_file_op_type_per_channel.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
-                assert len(encodings["param_encodings"]["bn1.weight"]) == 1
-                assert len(encodings["param_encodings"]["fc.weight"]) == 1
-                assert len(encodings["param_encodings"]["conv1.weight"]) == 16
-                assert len(encodings["param_encodings"]["conv2.weight"]) == 8
-                assert len(encodings["param_encodings"]["conv3.weight"]) == 8
+                param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+                assert len(param_encodings["bn1.weight"]['scale']) == 1
+                assert len(param_encodings["fc.weight"]['scale']) == 1
+                assert len(param_encodings["conv1.weight"]['scale']) == 16
+                assert len(param_encodings["conv2.weight"]['scale']) == 8
+                assert len(param_encodings["conv3.weight"]['scale']) == 8
 
     def test_hw_version(self):
         """

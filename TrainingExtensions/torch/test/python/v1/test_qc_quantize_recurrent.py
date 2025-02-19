@@ -578,7 +578,7 @@ def test_qc_rnn_learned_grid_mode(tmp_path, learned_grid):
         if node.op_type == 'GRU':
             with open(os.path.join(tmp_path, "gru_learned.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
-                encoding_tensors = set([*encodings['activation_encodings'].keys(), *encodings['param_encodings']])
+                activation_encodings = {encoding['name'] for encoding in encodings['activation_encodings']}
+                param_encodings = {encoding['name'] for encoding in encodings['param_encodings']}
+                encoding_tensors = activation_encodings.union(param_encodings)
                 assert set([*node.input, *node.output]) - encoding_tensors  == {''} # ignore the sequence len tensor
-
-

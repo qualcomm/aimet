@@ -39,6 +39,7 @@ import pytest
 import tempfile
 import torch.nn
 import copy
+import contextlib
 import os
 import json
 import onnx
@@ -46,6 +47,7 @@ from packaging import version
 
 from torchvision.models import resnet18
 
+from aimet_common import quantsim as quantsim_common
 import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.v2.nn import QuantizationMixin
 from aimet_torch.v2.quantization.affine import Quantize, QuantizeDequantize
@@ -65,6 +67,13 @@ from ..models_.models_to_test import (
     BasicConv2d,
 )
 
+
+@contextlib.contextmanager
+def set_encoding_version(version):
+    old_version = quantsim_common.encoding_version
+    quantsim_common.encoding_version = version
+    yield
+    quantsim_common.encoding_version = old_version
 
 class DummyModel(torch.nn.Module):
 
@@ -141,8 +150,8 @@ class TestQuantsimOnnxExport:
         expected_act_keys = {"input", "/relu/Relu_output_0", "/conv2/Conv_output_0", "/add/Add_output_0", "output"}
         expected_param_keys = {"conv1.weight", "conv2.weight"}
 
-        assert set(encoding_dict["activation_encodings"].keys()) == expected_act_keys
-        assert set(encoding_dict["param_encodings"].keys()) == expected_param_keys
+        assert {encoding['name'] for encoding in encoding_dict['activation_encodings']} == expected_act_keys
+        assert {encoding['name'] for encoding in encoding_dict['param_encodings']} == expected_param_keys
 
     # From: https://github.com/quic/aimet/blob/ce3dafe75d81893cdb8b45ba8abf53a672c28187/TrainingExtensions/torch/test/python/test_quantizer.py#L2731
     def test_export_to_onnx_direct(self):
@@ -195,8 +204,8 @@ class TestQuantsimOnnxExport:
             assert len(direct_onnx_encodings['activation_encodings']) == \
                    len(onnxsaver_encodings['activation_encodings'])
             assert len(direct_onnx_encodings['param_encodings']) == len(onnxsaver_encodings['param_encodings'])
-            direct_onnx_act_names = direct_onnx_encodings['activation_encodings'].keys()
-            onnxsaver_act_names = onnxsaver_encodings['activation_encodings'].keys()
+            direct_onnx_act_names = {encoding['name'] for encoding in direct_onnx_encodings['activation_encodings']}
+            onnxsaver_act_names = {encoding['name'] for encoding in onnxsaver_encodings['activation_encodings']}
             assert direct_onnx_act_names != onnxsaver_act_names
 
 
@@ -205,47 +214,48 @@ class TestQuantsimOnnxExport:
         Test encodings are propagated correctly when more than
         one onnx node maps to the same torch module
         """
-        export_args = OnnxExportApiArgs(opset_version=10, input_names=["input"], output_names=["output"])
-        pixel_shuffle = torch.nn.PixelShuffle(2)
-        model = torch.nn.Sequential(pixel_shuffle)
+        with set_encoding_version('0.6.1'):
+            export_args = OnnxExportApiArgs(opset_version=10, input_names=["input"], output_names=["output"])
+            pixel_shuffle = torch.nn.PixelShuffle(2)
+            model = torch.nn.Sequential(pixel_shuffle)
 
-        quantized_pixel_shuffle = QuantizationMixin.from_module(pixel_shuffle)
-        quantized_pixel_shuffle.input_quantizers[0] = QuantizeDequantize((),
-                                                                         bitwidth=8,
-                                                                         symmetric=False,
-                                                                         encoding_analyzer=MinMaxEncodingAnalyzer(()))
-        quantized_pixel_shuffle.output_quantizers[0] = QuantizeDequantize((),
-                                                                          bitwidth=8,
-                                                                          symmetric=False,
-                                                                          encoding_analyzer=MinMaxEncodingAnalyzer(()))
-        sim_model = torch.nn.Sequential(quantized_pixel_shuffle)
-        dummy_input = torch.randn(1, 4, 8, 8)
+            quantized_pixel_shuffle = QuantizationMixin.from_module(pixel_shuffle)
+            quantized_pixel_shuffle.input_quantizers[0] = QuantizeDequantize((),
+                                                                             bitwidth=8,
+                                                                             symmetric=False,
+                                                                             encoding_analyzer=MinMaxEncodingAnalyzer(()))
+            quantized_pixel_shuffle.output_quantizers[0] = QuantizeDequantize((),
+                                                                              bitwidth=8,
+                                                                              symmetric=False,
+                                                                              encoding_analyzer=MinMaxEncodingAnalyzer(()))
+            sim_model = torch.nn.Sequential(quantized_pixel_shuffle)
+            dummy_input = torch.randn(1, 4, 8, 8)
 
-        with aimet_nn.compute_encodings(sim_model):
-            _ = sim_model(dummy_input)
+            with aimet_nn.compute_encodings(sim_model):
+                _ = sim_model(dummy_input)
 
-        # Save encodings
-        with tempfile.TemporaryDirectory() as path:
-            fname_no_prop = "encodings_propagation_false"
-            fname_prop = "encodings_propagation_true"
-            QuantizationSimModel.export_onnx_model_and_encodings(path, fname_no_prop, model, sim_model,
-                                                                 dummy_input=dummy_input,
-                                                                 onnx_export_args=export_args,
-                                                                 propagate_encodings=False)
-            QuantizationSimModel.export_onnx_model_and_encodings(path, fname_prop, model, sim_model,
-                                                                 dummy_input=dummy_input,
-                                                                 onnx_export_args=export_args,
-                                                                 propagate_encodings=True)
-            with open(os.path.join(path, fname_no_prop + ".encodings")) as f:
-                encoding_dict_no_prop = json.load(f)["activation_encodings"]
-            with open(os.path.join(path, fname_prop + ".encodings")) as f:
-                encoding_dict_prop = json.load(f)["activation_encodings"]
+            # Save encodings
+            with tempfile.TemporaryDirectory() as path:
+                fname_no_prop = "encodings_propagation_false"
+                fname_prop = "encodings_propagation_true"
+                QuantizationSimModel.export_onnx_model_and_encodings(path, fname_no_prop, model, sim_model,
+                                                                     dummy_input=dummy_input,
+                                                                     onnx_export_args=export_args,
+                                                                     propagate_encodings=False)
+                QuantizationSimModel.export_onnx_model_and_encodings(path, fname_prop, model, sim_model,
+                                                                     dummy_input=dummy_input,
+                                                                     onnx_export_args=export_args,
+                                                                     propagate_encodings=True)
+                with open(os.path.join(path, fname_no_prop + ".encodings")) as f:
+                    encoding_dict_no_prop = json.load(f)["activation_encodings"]
+                with open(os.path.join(path, fname_prop + ".encodings")) as f:
+                    encoding_dict_prop = json.load(f)["activation_encodings"]
 
-        assert len(encoding_dict_no_prop) == 2
-        assert len(encoding_dict_prop) == 4
+            assert len(encoding_dict_no_prop) == 2
+            assert len(encoding_dict_prop) == 4
 
-        filtered_encoding_dict_prop = [{key: val} for key, val in encoding_dict_prop.items() if 'scale' in val[0]]
-        assert len(filtered_encoding_dict_prop) == 2
+            filtered_encoding_dict_prop = [{key: val} for key, val in encoding_dict_prop.items() if 'scale' in val[0]]
+            assert len(filtered_encoding_dict_prop) == 2
 
     # From: https://github.com/quic/aimet/blob/ce3dafe75d81893cdb8b45ba8abf53a672c28187/TrainingExtensions/torch/test/python/test_quantizer.py#L3733
     def test_multi_output_onnx_op(self):
@@ -276,8 +286,9 @@ class TestQuantsimOnnxExport:
                                                                  propagate_encodings=False)
             with open(os.path.join(path, "module_with_5_output.encodings")) as json_file:
                 activation_encodings = json.load(json_file)['activation_encodings']
-                assert '7' not in activation_encodings
-                assert set(['8', '9', '10', '11', 't.1']).issubset(activation_encodings.keys())
+                activation_encoding_names = {encoding['name'] for encoding in activation_encodings}
+                assert '7' not in activation_encoding_names
+                assert set(['8', '9', '10', '11', 't.1']).issubset(activation_encoding_names)
 
     # From: https://github.com/quic/aimet/blob/ce3dafe75d81893cdb8b45ba8abf53a672c28187/TrainingExtensions/torch/test/python/test_quantizer.py#L1935
     def test_mapping_encoding_for_torch_module_with_multiple_onnx_ops(self):

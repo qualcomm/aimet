@@ -370,9 +370,11 @@ class QuantizeAcceptanceTests(unittest.TestCase):
             with open(Path(tmp_dir, "resnet18_per_channel_quant.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
 
-            assert len(encodings['param_encodings']) == 21
-            assert encodings['param_encodings']['conv1.weight'][1]['bitwidth'] == 8
-            assert encodings['param_encodings']['conv1.weight'][1]['is_symmetric'] == 'True'
+            param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+            assert len(param_encodings) == 21
+
+            assert param_encodings['conv1.weight']['bw'] == 8
+            assert param_encodings['conv1.weight']['is_sym'] is True
 
     def test_dummy(self):
         # pytest has a 'feature' that returns an error code when all tests for a given suite are not selected

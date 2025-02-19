@@ -131,7 +131,7 @@ class TestQuantsim:
         with tempfile.TemporaryDirectory() as temp_dir:
             fname = "test_model"
             sim.export(temp_dir, fname, dummy_input)
-            file_path = os.path.join(temp_dir, fname + '.encodings')
+            file_path = os.path.join(temp_dir, fname + '_torch.encodings')
 
             sim_2 = QuantizationSimModel(model, dummy_input, config_file=config_file)
 
@@ -937,7 +937,7 @@ class TestQuantsim:
                 with open(os.path.join(tmp_dir, 'single_linear.encodings'), 'r') as encodings_file:
                     encodings = json.load(encodings_file)
 
-                param_encodings_set = {name for name in encodings['param_encodings'].keys()}
+                param_encodings_set = {encoding['name'] for encoding in encodings['param_encodings']}
 
                 for name, _ in model.named_parameters():
                     if 'bias' not in name:

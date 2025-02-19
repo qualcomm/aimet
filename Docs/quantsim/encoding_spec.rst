@@ -254,7 +254,7 @@ Certain keys will only be present for certain quantization types, as indicated i
      - Description
    * - INT
      - Denotes integer quantization
-   * - FP
+   * - FLOAT
      - Denotes floating point quantization
 
 .. list-table:: Quantizer Args structure

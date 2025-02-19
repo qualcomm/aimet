@@ -52,7 +52,7 @@ from aimet_common import libpymo
 # Change in major revision should indicate substantial change to the format, updates to minor version indicates
 # additional information element being added to encoding format and might require update to fully consume the encodings.
 # The patching version shall be updated to indicate minor updates to quantization simulation e.g. bug fix etc.
-encoding_version = '0.6.1'
+encoding_version = '1.0.0'
 ALLOW_EXPERIMENTAL = False
 VALID_ENCODING_VERSIONS = {'0.6.1', '1.0.0'}
 

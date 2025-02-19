@@ -729,6 +729,19 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         :param filename_prefix_encodings: File name prefix to be used when saving encodings.
                                           If None, then user defaults to filename_prefix value
         """
+
+        @contextlib.contextmanager
+        def _set_encoding_version_for_propagate_encodings():
+            old_encoding_version = quantsim.encoding_version
+            if propagate_encodings and quantsim.encoding_version == '1.0.0':
+                logger.info('Encoding version 1.0.0 not supported when propagate_encodings is True. Falling back to '
+                            '0.6.1 format.')
+                quantsim.encoding_version = '0.6.1'
+
+            yield
+
+            quantsim.encoding_version = old_encoding_version
+
         if quantsim.encoding_version == '0.6.1':
             msg = _red("Encoding version 0.6.1 will be deprecated in a future release, with version 1.0.0 becoming "
                        "the default. If your code depends on parsing the exported encodings file, ensure that it is "
@@ -739,47 +752,48 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                        "quantsim.encoding_version = '1.0.0'")
             warnings.warn(msg, DeprecationWarning, stacklevel=2)
 
-        if not filename_prefix_encodings:
-            filename_prefix_encodings = filename_prefix
+        with _set_encoding_version_for_propagate_encodings():
+            if not filename_prefix_encodings:
+                filename_prefix_encodings = filename_prefix
 
-        if quantsim.encoding_version not in VALID_ENCODING_VERSIONS:
-            raise NotImplementedError(f'Encoding version {quantsim.encoding_version} not in set of valid encoding '
-                                      f'versions {VALID_ENCODING_VERSIONS}.')
-        # save the quantized model and encodings
-        model_filename = filename_prefix + '.pth'
-        model_path = os.path.join(path, model_filename)
+            if quantsim.encoding_version not in VALID_ENCODING_VERSIONS:
+                raise NotImplementedError(f'Encoding version {quantsim.encoding_version} not in set of valid encoding '
+                                          f'versions {VALID_ENCODING_VERSIONS}.')
+            # save the quantized model and encodings
+            model_filename = filename_prefix + '.pth'
+            model_path = os.path.join(path, model_filename)
 
-        # Create a version of the model without any quantization ops
-        model_to_export = self.get_original_model(self.model, qdq_weights=True)
+            # Create a version of the model without any quantization ops
+            model_to_export = self.get_original_model(self.model, qdq_weights=True)
 
-        torch.save(model_to_export, model_path)
+            torch.save(model_to_export, model_path)
 
-        if onnx_export_args is None:
-            onnx_export_args = {'opset_version': None,
-                                'input_names': None,
-                                'output_names': None}
-            if version.parse(torch.__version__) < version.parse("1.10.0") and isinstance(onnx_export_args, dict):
-                onnx_export_args['enable_onnx_checker'] = False
-        log_with_error_and_assert_if_false(isinstance(onnx_export_args, (OnnxExportApiArgs, dict)),
-                                           logger,
-                                           f'unsupported opt_args type={type(onnx_export_args)}')
+            if onnx_export_args is None:
+                onnx_export_args = {'opset_version': None,
+                                    'input_names': None,
+                                    'output_names': None}
+                if version.parse(torch.__version__) < version.parse("1.10.0") and isinstance(onnx_export_args, dict):
+                    onnx_export_args['enable_onnx_checker'] = False
+            log_with_error_and_assert_if_false(isinstance(onnx_export_args, (OnnxExportApiArgs, dict)),
+                                               logger,
+                                               f'unsupported opt_args type={type(onnx_export_args)}')
 
-        if use_embedded_encodings:
-            self.save_model_with_embedded_quantization_nodes(self.model, path, filename_prefix, dummy_input,
-                                                             onnx_export_args, export_to_torchscript, self._is_conditional)
-        else:
-            if export_to_torchscript:
-                self.export_torch_script_model_and_encodings(path, filename_prefix, filename_prefix_encodings,
-                                                             model_to_export, self.model,
-                                                             dummy_input,
-                                                             self._excluded_layer_names)
+            if use_embedded_encodings:
+                self.save_model_with_embedded_quantization_nodes(self.model, path, filename_prefix, dummy_input,
+                                                                 onnx_export_args, export_to_torchscript, self._is_conditional)
             else:
-                self.export_onnx_model_and_encodings(path, filename_prefix, model_to_export, self.model,
-                                                     dummy_input, onnx_export_args, propagate_encodings,
-                                                     self._module_marker_map, self._is_conditional,
-                                                     self._excluded_layer_names, quantizer_args=self.quant_args,
-                                                     export_model=export_model,
-                                                     filename_prefix_encodings=filename_prefix_encodings)
+                if export_to_torchscript:
+                    self.export_torch_script_model_and_encodings(path, filename_prefix, filename_prefix_encodings,
+                                                                 model_to_export, self.model,
+                                                                 dummy_input,
+                                                                 self._excluded_layer_names)
+                else:
+                    self.export_onnx_model_and_encodings(path, filename_prefix, model_to_export, self.model,
+                                                         dummy_input, onnx_export_args, propagate_encodings,
+                                                         self._module_marker_map, self._is_conditional,
+                                                         self._excluded_layer_names, quantizer_args=self.quant_args,
+                                                         export_model=export_model,
+                                                         filename_prefix_encodings=filename_prefix_encodings)
 
     # pylint: disable=missing-function-docstring
     @classmethod

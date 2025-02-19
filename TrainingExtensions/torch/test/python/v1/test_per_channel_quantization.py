@@ -229,10 +229,11 @@ class TestPerChannelQcQuantizeOpStaticGrid:
 
             with open(os.path.join(tmp_dir, "two_input_model_per_channel.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
-            assert len(encodings['param_encodings']) == 5
-            assert len(encodings['param_encodings']['conv1_a.weight']) == 10
-            assert encodings['param_encodings']['conv1_a.weight'][1]['bitwidth'] == 8
-            assert encodings['param_encodings']['conv1_a.weight'][1]['is_symmetric'] == 'True'
+            param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+            assert len(param_encodings) == 5
+            assert len(param_encodings['conv1_a.weight']['scale']) == 10
+            assert param_encodings['conv1_a.weight']['bw'] == 8
+            assert param_encodings['conv1_a.weight']['is_sym'] is True
 
     def test_model_per_channel_single_channel(self):
         """Model with single channel conv """
@@ -669,9 +670,10 @@ class TestPerChannelQcQuantizeOpLearnedGrid:
 
             with open(os.path.join(temp_dir, "two_input_model_per_channel.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
-            assert len(encodings['param_encodings']) == 5
-            assert len(encodings['param_encodings']['conv1_a.weight']) == 10
-            assert encodings['param_encodings']['conv1_a.weight'][1]['bitwidth'] == 8
+            param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+            assert len(param_encodings) == 5
+            assert len(param_encodings['conv1_a.weight']['scale']) == 10
+            assert param_encodings['conv1_a.weight']['bw'] == 8
 
     def test_export_model_with_two_inputs_fp16(self):
         """Model with more than 1 input, fp16 mode"""
@@ -700,20 +702,14 @@ class TestPerChannelQcQuantizeOpLearnedGrid:
 
             with open(os.path.join(temp_dir, "results.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
+
             assert len(encodings['param_encodings']) == 5
             assert len(encodings['activation_encodings']) == 15
 
-            for key in encodings['param_encodings'].keys():
-                assert len(encodings['param_encodings'][key]) == 1
-                assert len(encodings['param_encodings'][key][0]) == 2
-                assert encodings['param_encodings'][key][0]['bitwidth'] == 16
-                assert encodings['param_encodings'][key][0]['dtype'] == 'float'
-
-            for key in encodings['activation_encodings'].keys():
-                assert len(encodings['activation_encodings'][key]) == 1
-                assert len(encodings['activation_encodings'][key][0]) == 2
-                assert encodings['activation_encodings'][key][0]['bitwidth'] == 16
-                assert encodings['activation_encodings'][key][0]['dtype'] == 'float'
+            for encoding in encodings['activation_encodings'] + encodings['param_encodings']:
+                assert 'scale' not in encoding
+                assert encoding['bw'] == 16
+                assert encoding['dtype'] == 'FLOAT'
 
     def test_model_with_two_inputs_in_manual_mixed_precision_mode(self):
         """
@@ -745,13 +741,13 @@ class TestPerChannelQcQuantizeOpLearnedGrid:
 
             with open(os.path.join(temp_dir, "results.encodings"), "r") as encodings_file:
                 encodings = json.load(encodings_file)
-            assert len(encodings['param_encodings']) == 5
-            assert len(encodings['param_encodings']['conv1_a.weight']) == 1
+
+            param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
+            assert len(param_encodings) == 5
 
             #verify the modified conv1_a params are set correctly
-            assert len(encodings['param_encodings']['conv1_a.weight'][0]) == 2
-            assert encodings['param_encodings']['conv1_a.weight'][0]['bitwidth'] == 16
-            assert encodings['param_encodings']['conv1_a.weight'][0]['dtype'] == 'float'
+            assert param_encodings['conv1_a.weight']['bw'] == 16
+            assert param_encodings['conv1_a.weight']['dtype'] == 'FLOAT'
 
 
 def create_learned_grid_wrapper():

@@ -105,7 +105,9 @@ class TestAdaroundAcceptance:
                                        default_activation_bw=8, use_cuda=True)
             sim.set_and_freeze_param_encodings(os.path.join(tmpdir, 'dummy.encodings'))
             sim.compute_encodings(callback, None)
-            assert sim.qc_quantize_op_dict['fc.weight'].encodings[0].delta == encoding_data['fc.weight'][0]['scale']
+
+            param_encodings = {encoding['name']: encoding for encoding in encoding_data}
+            assert sim.qc_quantize_op_dict['fc.weight'].encodings[0].delta == param_encodings['fc.weight']['scale'][0]
 
 def get_model():
     model = models.resnet18(pretrained=False, num_classes=10)

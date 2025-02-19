@@ -243,20 +243,21 @@ class TestMixedPrecision:
             with open(os.path.join(tempdir, 'test_quantize_with_mixed_precision_fp16_1.encodings'), "r") as encodings_file:
                 encodings = json.load(encodings_file)
 
-            assert len(encodings['activation_encodings'].keys()) == 8
-            assert len(encodings['param_encodings'].keys()) == 4
+            activation_encodings = {encoding['name']: encoding for encoding in encodings['activation_encodings']}
+            param_encodings = {encoding['name']: encoding for encoding in encodings['param_encodings']}
 
-            for name in encodings['activation_encodings']:
-                layer_encoding_dict = encodings['activation_encodings'][name][0]
-                assert len(layer_encoding_dict) == 2
-                assert layer_encoding_dict['dtype'] == 'float'
-                assert layer_encoding_dict['bitwidth'] == 16
+            assert len(activation_encodings.keys()) == 8
+            assert len(param_encodings.keys()) == 4
 
-            for name in encodings['param_encodings']:
-                layer_encoding_dict = encodings['param_encodings'][name][0]
-                assert len(layer_encoding_dict) == 2
-                assert layer_encoding_dict['dtype'] == 'float'
-                assert layer_encoding_dict['bitwidth'] == 16
+            for name in activation_encodings:
+                layer_encoding_dict = activation_encodings[name]
+                assert layer_encoding_dict['dtype'] == 'FLOAT'
+                assert layer_encoding_dict['bw'] == 16
+
+            for name in param_encodings:
+                layer_encoding_dict = param_encodings[name]
+                assert layer_encoding_dict['dtype'] == 'FLOAT'
+                assert layer_encoding_dict['bw'] == 16
 
 
     @pytest.mark.cuda
