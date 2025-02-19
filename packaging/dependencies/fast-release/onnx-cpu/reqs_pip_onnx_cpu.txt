@@ -1,9 +1,7 @@
 bokeh
-cvxpy
 hvplot
 Jinja2
 jsonschema
-matplotlib>=3
 networkx
 numpy<2
 onnx~=1.16.1
