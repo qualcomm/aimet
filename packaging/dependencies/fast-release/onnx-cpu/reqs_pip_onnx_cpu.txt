@@ -1,8 +1,7 @@
 bokeh
 cvxpy
-holoviews
 hvplot
-Jinja2>=3.0.3
+Jinja2
 jsonschema
 matplotlib>=3
 networkx
