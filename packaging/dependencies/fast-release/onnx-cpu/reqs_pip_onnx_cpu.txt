@@ -2,7 +2,6 @@ bokeh
 hvplot
 Jinja2
 jsonschema
-networkx
 numpy<2
 onnx~=1.16.1
 onnxruntime~=1.18.1
