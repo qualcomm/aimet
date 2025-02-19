@@ -38,11 +38,11 @@
 
 from typing import overload, Callable, Sequence, Type
 import torch
+import copy
 
 from aimet_common.utils import AimetLogger
 from aimet_common.connected_graph.product import Product
 from aimet_torch.meta.connectedgraph import Op
-from aimet_torch.v2._builder import _V2LazyQuantizer
 from aimet_torch.v2.nn import BaseQuantizationMixin, custom
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 from aimet_torch.v2.quantization.affine.quantizer import AffineQuantizerBase
@@ -325,25 +325,24 @@ def apply_requant_mask(sim: QuantizationSimModel,
     mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
     for name, module in sim.model.named_modules():
         if condition(module):
-            mask_index = 0
-            if module.input_quantizers[1] is not None and \
-                (not module.input_quantizers[1].is_initialized() or
-                (module.input_quantizers[1].is_initialized() and torch.equal(module.input_quantizers[1].max,
-                                                                             torch.zeros_like(module.input_quantizers[1].max)))):
-                mask_index = 1
+            if not isinstance(module, custom.QuantizedAdd):
+                msg = f"apply_requant_mask can only handle {custom.QuantizedAdd}, "\
+                      f"but got {type(module)}"
+                raise RuntimeError(msg)
+
+            if all(qtzr is None for qtzr in module.input_quantizers):
+                msg = "apply_requant_mask expects at least one of the input quantizers "\
+                      f"to exist, but got {module}"
+                raise RuntimeError(msg)
+
+            mask_index = 1
+            if module.input_quantizers[0] is not None and module.input_quantizers[0].is_initialized() and \
+                torch.all(module.input_quantizers[0].max == 0):
+                mask_index = 0
+
             q_mask_add = QuantizedMaskAdd()
-            q_mask_add.nullrequant.input_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[mask_index].bitwidth,
-                                                                          sim._rounding_mode,
-                                                                          sim._quant_scheme,
-                                                                          module.input_quantizers[mask_index].symmetric,
-                                                                          enabled_by_default=True
-                                                                          ).realize()
-            q_mask_add.nullrequant.output_quantizers[0] = _V2LazyQuantizer(module.input_quantizers[mask_index].bitwidth,
-                                                                           sim._rounding_mode,
-                                                                           sim._quant_scheme,
-                                                                           module.input_quantizers[mask_index].symmetric,
-                                                                           enabled_by_default=True
-                                                                           ).realize()
+            q_mask_add.nullrequant.input_quantizers[0] = copy.deepcopy(module.input_quantizers[mask_index])
+            q_mask_add.nullrequant.output_quantizers[0] = copy.deepcopy(module.input_quantizers[mask_index])
             q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
             setattr(sim.model, name, q_mask_add)
             if module.input_quantizers[mask_index].is_initialized() and module.output_quantizers[0].is_initialized():
