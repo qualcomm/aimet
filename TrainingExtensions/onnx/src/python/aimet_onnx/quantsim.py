@@ -763,15 +763,15 @@ class QuantizationSimModel:
         with open(encoding_path) as json_file:
             encodings = json.load(json_file)
 
-        # This function already makes a hard assumption that encodings_path is at the level of 'param_encodings' in 0.6.1 format.
         # TODO: handle this more cleanly
-        encodings = _convert_encoding_format_0_6_1_to_1_0_0(encodings)
+        if isinstance(encodings, dict):
+            encodings = _convert_encoding_format_0_6_1_to_1_0_0(encodings)
 
-
-        for quantizer_name in encodings:
+        encodings_dict = {encoding['name']: encoding for encoding in encodings}
+        for quantizer_name in encodings_dict:
             if quantizer_name in self.qc_quantize_op_dict:
                 # pylint: disable=protected-access
-                self.qc_quantize_op_dict[quantizer_name]._load_encodings_dict(encodings[quantizer_name])
+                self.qc_quantize_op_dict[quantizer_name]._load_encodings_dict(encodings_dict[quantizer_name])
                 self.qc_quantize_op_dict[quantizer_name].freeze_encodings()
 
     def get_all_quantizers(self) -> Tuple[List, List]:

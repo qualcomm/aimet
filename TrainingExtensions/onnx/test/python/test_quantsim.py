@@ -55,6 +55,7 @@ from onnxsim import simplify
 
 from aimet_common import quantsim
 from aimet_common import libquant_info
+from aimet_common import _libpymo as libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, EncodingType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_onnx.quantsim import QuantizationSimModel, load_encodings_to_sim, set_blockwise_quantization_for_weights, _apply_constraints, clamp_activation_encodings, \
@@ -1979,3 +1980,42 @@ class TestEncodingPropagation:
         model = models_for_tests.custom_op_model()
         sim = QuantizationSimModel(model, user_onnx_libs=[get_library_path()])
         assert {"model_input", "output", "model_output", "y", "z"} == sim.qc_quantize_op_dict.keys()
+
+    def test_set_and_freeze_param_encodings(self):
+        torch.manual_seed(0)
+        np.random.seed(0)
+        model = single_residual_model().model
+        model_2 = copy.deepcopy(model)
+        dummy_tensor = {'input': np.random.rand(1, 3, 32, 32).astype(np.float32)}
+        with tempfile.TemporaryDirectory() as tempdir:
+            sim = QuantizationSimModel(model, path=tempdir)
+            sim.compute_encodings(lambda session, _: session.run(None, dummy_tensor), None)
+            pre_load_out = sim.session.run(None, dummy_tensor)
+            new_encoding = libpymo.TfEncoding()
+            new_encoding.min = -16.0
+            new_encoding.max = 15.875
+            new_encoding.bw = 8
+            new_encoding.delta = .125
+            new_encoding.offset = -128
+            sim.qc_quantize_op_dict['conv3.weight'].load_encodings([new_encoding])
+            post_load_out = sim.session.run(None, dummy_tensor)
+
+            sim.export(tempdir, 'onnx_sim')
+
+            del sim
+
+            sim = QuantizationSimModel(model_2, path=tempdir)
+            sim.compute_encodings(lambda session, _: session.run(None,dummy_tensor), None)
+            pre_load_out_2 = sim.session.run(None, dummy_tensor)
+
+            with open(os.path.join(tempdir, 'onnx_sim.encodings'), 'r') as f:
+                encodings = json.load(f)
+
+            with open(os.path.join(tempdir, 'param_encodings.json'), 'w') as f:
+                json.dump(encodings['param_encodings'], f, sort_keys=True, indent=4)
+
+            sim.set_and_freeze_param_encodings(os.path.join(tempdir, 'param_encodings.json'))
+            post_load_out_2 = sim.session.run(None, dummy_tensor)
+
+            assert np.allclose(pre_load_out, pre_load_out_2)
+            assert np.allclose(post_load_out, post_load_out_2)
