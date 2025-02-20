@@ -1152,62 +1152,6 @@ class TestQuantsim:
         with pytest.raises(RuntimeError):
             _ = QuantizationSimModel(model, dummy_input)
 
-    @pytest.mark.parametrize("module_factory", [
-                                lambda: custom.Add(),
-                                lambda: custom.Subtract(),
-                                lambda: custom.Multiply(),
-                                lambda: custom.Divide(), 
-                            ])
-    @pytest.mark.parametrize("input_shape", [tuple(), (1,), (1, 1), (2,), (2, 1)])
-    def test_quantize_constant(self, module_factory, input_shape):
-        """ Test that model input quantizers are enabled correctly when using different constant types """
-        dummy_input = torch.randn(input_shape)
-
-        """
-        Given: A model with constant in buffer
-        When: Instantiate quantsim
-        Then: The input quantizer quantizing buffer constant should be enabled
-        """
-
-        class BufferModel(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.module = module_factory()
-                self.register_buffer("const", torch.randn(input_shape))
-
-            def forward(self, *inputs):
-                x = self.module(inputs[0], self.const)
-                return x
-
-        model = BufferModel()
-        sim = QuantizationSimModel(model, quant_scheme=QuantScheme.post_training_tf,
-                                    dummy_input=dummy_input, in_place=True)
-
-        assert sim.model.module.input_quantizers[1] is not None
-
-        """
-        Given: A model with parameter constant
-        When: Instantiate quantsim
-        Then: The input quantizer quantizing parameter constant should be enabled if the constant is not singleton
-        """
-
-        class ParamModel(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.module = module_factory()
-                self.const = torch.nn.Parameter(torch.randn(input_shape))
-
-            def forward(self, *inputs):
-                x = self.module(inputs[0], self.const)
-                return x
-
-        model = ParamModel()
-        sim = QuantizationSimModel(model, quant_scheme=QuantScheme.post_training_tf,
-                                    dummy_input=dummy_input, in_place=True)
-
-        assert (sim.model.module.input_quantizers[1] is None) == all(dim == 1 for dim in input_shape)
-
-
     def test_quantize_constant_python_float(self):
         """ Test that model input quantizers are enabled correctly when using different constant types """
         dummy_input = torch.randn(2, 1)

@@ -55,9 +55,6 @@ class _V2LazyQuantizer(LazyQuantizer):
         if not self.enabled:
             return None
 
-        if self.is_const and self.is_parm and self.is_singleton:
-            return None
-
         self._validate_quantizer_properties()
 
         scale_shape = self._get_scale_shape()
