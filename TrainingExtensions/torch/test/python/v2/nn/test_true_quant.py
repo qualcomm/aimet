@@ -59,6 +59,7 @@ from aimet_torch.v2.nn import (
     QuantizedConvTranspose1d,
     QuantizedConvTranspose2d,
     QuantizedConvTranspose3d,
+    QuantizedEmbedding,
     QuantizedGELU,
     QuantizedLinear,
     QuantizationMixin,
@@ -1100,3 +1101,41 @@ def test_subclassing():
     my_qlinear.bias.copy_(qlinear.bias)
 
     assert torch.equal(qlinear(x), my_qlinear(x))
+
+
+@pytest.mark.parametrize("indices", [
+    torch.tensor(2),                      # scalar index
+    torch.tensor([0, 1, 3, 5, 7, 9]),     # 1D indices
+    torch.tensor([[1, 3, 5], [8, 6, 4]]), # 2D indices
+])
+@pytest.mark.parametrize(
+    "scale_shape,  block_size", [
+    ((),           None),    # per-tensor
+    ((10, 1),      None),    # per-channel with axis=0
+    ((1, 10),      None),    # per-channel with axis=1
+    ((10, 2),      (-1, 5)), # per-block with channel_axis=0, block_axis=1
+    ((2, 10),      (5, -1)), # per-block with channel_axis=1, block_axis=0
+])
+def test_qembedding_output_encoding(scale_shape, block_size, indices):
+    """
+    Given: QuantizedEmbedding with weight-only quantization
+    """
+    qembedding = QuantizedEmbedding(10, 10)
+    weight_qtzr = QuantizeDequantize(scale_shape,
+                                     qmin=-128,
+                                     qmax=127,
+                                     symmetric=True,
+                                     block_size=block_size)
+    qembedding.param_quantizers['weight'] = weight_qtzr
+    qembedding.compute_param_encodings()
+
+    """
+    When: Run forward
+    Then: Output should inherit the weight encodings
+    """
+    qout = qembedding(indices)
+    qweight = weight_qtzr(qembedding.weight)
+
+    assert isinstance(qout, DequantizedTensor)
+    assert torch.equal(qout, qweight[indices])
+    assert torch.equal(qout.quantize(), qweight.quantize()[indices])

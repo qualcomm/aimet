@@ -38,8 +38,11 @@
 
 import abc
 import copy
+import functools
+from itertools import repeat
 
 import torch
+import torch.nn.functional as F
 from torch.utils._pytree import tree_map
 
 from aimet_torch.v2.quantization.base import EncodingBase
@@ -54,10 +57,81 @@ def implements(torch_function):
     Register an override for QuantizedTensorBase
     """
     def decorator(func):
-        HANDLED_FUNCTIONS[torch_function] = func
-        return func
+        @functools.wraps(func)
+        def wrapped_func(*args, **kwargs):
+            original = HANDLED_FUNCTIONS.pop(torch_function, None)
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                if original:
+                    HANDLED_FUNCTIONS[torch_function] = original
+
+        HANDLED_FUNCTIONS[torch_function] = wrapped_func
+        return wrapped_func
 
     return decorator
+
+
+@implements(F.embedding)
+def _embedding(input: torch.Tensor, weight: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    # pylint: disable=protected-access, redefined-builtin, import-outside-toplevel
+    from .affine import AffineEncoding
+
+    out = F.embedding(input, weight, *args, **kwargs)
+
+    if not isinstance(weight, QuantizedTensorBase):
+        return out
+
+    out = out.as_subclass(type(weight))
+    out.encoding = weight.encoding._clone() if weight.encoding else None
+
+    if not isinstance(out.encoding, AffineEncoding):
+        return out
+
+    out_scale = out.encoding.scale
+    out_offset = out.encoding.offset
+    blk_0, blk_1 = out.encoding.block_size or (-1, -1)
+
+    if blk_0 == -1:
+        blk_0 = weight.shape[0] // (out_scale.shape[0] if out_scale.shape != () else 1)
+
+    if blk_0 == weight.shape[0]:
+        # Edge case:
+        # block_size in axis 0 is equal to weight dim 0.
+        # Output can safely inherit weight encoding
+        # since F.embedding only selects weights along axis 0.
+
+        # In practice, this means one of the following
+        #   * Per-tensor quantization
+        #   * Per-channel quantization with axis=1
+        while out_scale.dim() > out.dim():
+            out_scale.squeeze_(0)
+
+        while out_offset.dim() > out.dim():
+            out_offset.squeeze_(0)
+    else:
+        # Common case:
+        # block_size in axis 0 is different from weight dim 0.
+        # Output scale & offset also needs to be selected by indices along axis 0
+
+        # In practice, this means one of the following
+        #   * Per-channel quantization with axis=0
+        #   * Per-block quantization
+        input = input // blk_0
+        out_scale = F.embedding(input, out_scale, *args, **kwargs)
+        out_offset = F.embedding(input, out_offset, *args, **kwargs)
+
+    # NOTE: output tensor can't inherit blk_0 since F.embedding has dismantled axis 0
+    out_block_size = (*repeat(-1, out_scale.dim()-1), blk_1) if out_scale.dim() > 0 else None
+
+    out.encoding = AffineEncoding(scale=out_scale,
+                                  offset=out_offset,
+                                  qmin=out.encoding.qmin,
+                                  qmax=out.encoding.qmax,
+                                  symmetry=out.encoding.symmetry,
+                                  block_size=out_block_size)
+    return out
 
 
 class QuantizedTensorBase(torch.Tensor):

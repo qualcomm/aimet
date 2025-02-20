@@ -36,9 +36,11 @@
 # =============================================================================
 import pytest
 import copy
+import numpy as np
 import pickle
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch import Tensor
 from torch import randn, arange
 
@@ -725,3 +727,44 @@ class TestQuantizedTensor:
 
         assert tensor.type() == qtensor.type()
         assert type(tensor.type()) == type(qtensor.type())
+
+    @pytest.mark.parametrize("indices", [
+        torch.tensor(2),                      # scalar index
+        torch.tensor([0, 1, 3, 5, 7, 9]),     # 1D indices
+        torch.tensor([[1, 3, 5], [8, 6, 4]]), # 2D indices
+    ])
+    @pytest.mark.parametrize(
+        "scale_shape,  block_size", [
+        ((),           None),    # per-tensor
+        ((10, 1),      None),    # per-channel with axis=0
+        ((1, 10),      None),    # per-channel with axis=1
+        ((10, 2),      (-1, 5)), # per-block with channel_axis=0, block_axis=1
+        ((2, 10),      (5, -1)), # per-block with channel_axis=1, block_axis=0
+    ])
+    def test_embedding(self, indices, scale_shape, block_size):
+        scale_numel = int(np.prod(scale_shape))
+        scale = torch.arange(1, scale_numel+1).reshape(scale_shape) / 255
+        offset = torch.zeros_like(scale)
+        encoding = AffineEncoding(scale, offset, qmin=-128, qmax=127, block_size=block_size)
+
+        """
+        Given: Quantized qweight and float32 weight which carry the same values
+        """
+        qweight = encoding.quantize(torch.randn(10, 10)).as_subclass(QuantizedTensor)
+        qweight.encoding = encoding
+        qweight = qweight.dequantize()
+        weight = qweight.as_subclass(torch.Tensor)
+
+        """
+        When: Call F.embedding with qweight and weight
+        Then:
+          1) Outputs should be equal
+          2) Output of qweight should be associated with sound encodings
+        """
+        fout = F.embedding(indices, weight)
+        qout = F.embedding(indices, qweight)
+        assert torch.equal(qout, fout)
+        
+        # Sanity check for soundness of encoding
+        assert torch.equal(qout.quantize(), qout.dequantize().quantize())
+        assert torch.equal(qout.dequantize(), qout.quantize().dequantize())
