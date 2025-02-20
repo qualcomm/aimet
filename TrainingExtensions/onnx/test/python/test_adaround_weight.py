@@ -63,7 +63,6 @@ class TestAdaround:
         np.random.seed(0)
         torch.manual_seed(0)
         model = models_for_tests.single_residual_model()
-        model_2 = copy.deepcopy(model)
         data_loader = dataloader(input_shape=(1, 3, 32, 32))
         dummy_input = {'input': np.random.rand(1, 3, 32, 32).astype(np.float32)}
         sess = build_session(model, None)
