@@ -36,24 +36,22 @@
 # =============================================================================
 
 #from transformers.models.llama.modelling_llama import LlamaRMSNorm
-from aimet_torch.v2.nn import QuantizedLinear
+from aimet_torch.v2.nn import QuantizedLinear, QuantizedLayerNorm
+from aimet_torch.v2.nn.true_quant import QuantizationMixin
+from aimet_torch.v2.quantization.affine import QuantizeDequantize
 import torch
 from torch import Tensor
 from torch import nn
 import torch.nn.functional as F
 import copy
+from aimet_torch.v2.utils import patch_attr
 
-'''
-TODO:
-    1. Add helper method @QuantizedLETModule for get_let_params
-    2. Add comments
-    3. implemenet let conv
-'''
+
 class LETModule():
     def __init__(self):
-        self.init_let_module()
+        self.reset_let_params()
 
-    def init_let_module(self):
+    def reset_let_params(self):
         self.prev_scale = None
         self.prev_shift = None
         self.prev_prep_fn = torch.nn.Identity()
@@ -79,7 +77,7 @@ class LETModule():
         self.foll_scale = f_scale
         self.foll_shift = f_shift
         self.foll_prep_fn = f_prep_fn
-        if p_shift is not None or f_shift is not None:
+        if prev_shift is not None or foll_shift is not None:
             assert self.bias is not None
 
     def fold_let_params(self):
@@ -96,31 +94,47 @@ class LETModule():
         self.output_quantizers = copy.deepcopy(source.output_quantizers)
         self.param_quantizers = copy.deepcopy(source.param_quantizers)
 
-class QuantizedLETConv(LETModule, torch.nn.Conv2d):
+    @staticmethod
+    def from_quantized_module(module):
+        # copy w/bias
+        # copy q/dq
+        # assert module is a quantized module. in the change L -> QL -> QLetL
+        '''
+        #https://github.com/quic/aimet/blob/6eea45a3b0f21543188598da8a533b6b4369af8e/TrainingExtensions/torch/src/python/aimet_torch/v2/nn/base.py#L383
+        # do using load/statedict?
+        '''
+        assert isinstance(module, QuantizationMixin), f"LET is only supported for quantized modules"
+        shape = module.param_quantizers['weight'].shape
+        #breakpoint()
+        if isinstance(module, QuantizedLinear):
+            new_module = LETQuantizedLinear(module.weight.shape[1], module.weight.shape[0])
+        elif isinstance(module, QuantizedLayerNorm):
+            new_module = LETQuantizedLayerNorm(module.weight.shape)
+        elif isinstance(module, QuantizedNorm):
+            new_module = LETQuantizedRMSNorm(module.weight.shape)
+        if isinstance(module, QuantizedGemmaNorm):
+            new_module = LETQuantizedGemmaNorm(module.weight.shape)
+        else:
+            pass
+            "TODO : ananmukh Throw descriptive error"
+        if module.param_quantizers:
+            new_module.param_quantizers['weight'] = QuantizeDequantize(shape=shape, bitwidth=8, symmetric=True)
+        if module.input_quantizers[0]:
+            new_module.input_quantizers[0] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=False)
+        if module.output_quantizers[0]:
+            new_module.output_quantizers[0] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=False)
+        new_module.load_state_dict(module.state_dict())
+        return new_module
+
+
+class LETQuantizedLinear(QuantizedLinear, LETModule):
     def __quant_init__(self):
-        super().__quant_init__()
-        self.param_quantizers = nn.ModuleDict({})
-        self.input_quantizers = nn.ModuleList([None])
-        self.output_quantizers = nn.ModuleList([None])
-
-    def forward(self, input):
-        pass
-
-    def fold(elf):
-        pass
-
-class LETLinear(QuantizedLinear, LETModule):
-    def __quant_init__(self):
-        #QuantizedLinear.__quant_init__()
-        print("xxxx")
         super().__quant_init__()
         LETModule.__init__(self)
 
-
-    def forward(self, input: Tensor) -> Tensor:
+    def _update_parameters(self):
         weight = self.weight
         bias = self.bias
-        print("&&&&&&&&", self.weight)
         
         if self.prev_scale is not None:
             prev_scale = self.prev_prep_fn(self.prev_scale)
@@ -141,31 +155,27 @@ class LETLinear(QuantizedLinear, LETModule):
 
             weight = weight * foll_scale.unsqueeze(0)
         
+        updated_params = {}
+        updated_params['weight'] = weight
+        updated_params['bias'] = bias
+        return updated_params
 
-        '''
-        if self.param_quantizers.weight:
-            w = self.param_quantizers["weight"](w)
-        '''
-        print("1", input, self.weight, self.bias)
-        print("2",input, weight, bias)
-        # self.weight = nn.Parameter(weight)
-        # self.bias = nn.Parameter(bias)
-        self.weight.data.copy_(weight)
-        self.bias.data.copy_(bias)
-        print("3", input, self.weight, self.bias)
-        print("4",input, weight, bias)
-        # TODO, does weight need to be assigned back to self.weight (or is it pointer like?)
-        #breakpoint()
-        out = super().forward(input)
-        out1 = F.linear(input, self.weight, self.bias)
-        breakpoint()
-        
-        '''
-        if self.output_quantizers[0]:
-            out = self.output_quantizers[0](out)
-        '''
-        return out
 
+    def _get_modified_weight(self):
+        return 2*self.weight
+    def _get_modified_bias(self):
+        return self.bias
+    def __call__(self, *args, **kwargs):
+        params = self._update_parameters()
+        print("params from linear", params)
+        with patch_attr(self, 'weight', params['weight']):
+            with patch_attr(self, 'bias', params['bias']):
+                super().compute_param_encodings()
+                out = super().__call__(*args, **kwargs)
+                
+                #out1 = F.linear(x, params['weight'], params['bias'])
+                print("linear ", out)
+                return out
     def fold(self):
         weight = self.weight
         bias = self.bias
@@ -188,170 +198,182 @@ class LETLinear(QuantizedLinear, LETModule):
             weight.data *= foll_scale.unsqueeze(0)
 
 
-#     @classmethod
-#     def initialize_from_original_module(cls, orig_module):
-#         bias = True if orig_module.bias is not None else False
-#         new_module = cls(
-#             in_features=orig_module.in_features,
-#             out_features=orig_module.out_features,
-#             bias=bias,
-#             dtype=orig_module.weight.dtype
-#         )
-#         new_module.weight.data.copy_(orig_module.weight.detach())
-#         if bias:
-#             new_module.bias.data.copy_(orig_module.bias.detach())
-#         return new_module
+class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
+    def __quant_init__(self):
+        super().__quant_init__()
+        LETModule.__init__(self)
 
-# class QuantizedLETLayerNorm(QuantizedLETModule, QuantizedLayerNorm):u
-#     def __quant_init__(self):
-#         super().__quant_init__()
-#         QuantizedLETModule.__init__(self)
-#         self.param_quantizers = nn.ModuleDict({})
-#         self.input_quantizers = nn.ModuleList([None])
-#         self.output_quantizers = nn.ModuleList([None])
+    def _update_parameters(self):
+        weight = self.weight
+        bias = self.bias
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            weight = weight / prev_scale
+            if bias is not None:
+                bias = bias / prev_scale
 
-#     def forward(self, input: Tensor) -> Tensor:
-#         w = self.weight
-#         bias = self.bias
-#         if self.p_scale is not None:
-#             p_scale = self.p_prep_fn(self.p_scale)
-#             w = w / p_scale
-#             if b is not None:
-#                 b = b / p_scale
+        updated_params = {}
+        updated_params['weight'] = weight
+        updated_params['bias'] = bias
+        return updated_params
 
-#         if self.input_quantizers[0]:
-#             hidden_states = self.input_quantizers[0](hidden_states)
+    def __call__(self, *args, **kwargs):
+        params = self._update_parameters()
+        print("params from layernorm", params)
+        with patch_attr(self, 'weight', params['weight']):
+            with patch_attr(self, 'bias', params['bias']):
+                super().compute_param_encodings()
+                out = super().__call__(*args, **kwargs)
+                print("layer norm ", out)
+                return out #super().__call__(*args, **kwargs)
 
-#         if self.param_quantizers.weight:
-#             w = self.param_quantizers.weight(w)
+    def fold(self):
+        weight = self.weight
+        bias = self.bias
+        if self.prev_scale is not None:
+            prev_scale = self.p_prep_fn(self.prev_scale)
+            weight.data /= prev_scale
+            if bias is not None:
+                bias.data /= prev_scale
 
-#         output = F.layer_norm(hidden_states, self.normalized_shape, w, b, self.eps)
-
-#         if self.output_quantizers[0]:
-#             output = self.output_quantizers[0](output)
-#         return output
-
-#     def fold(self):
-#         pass
-
-# class Norm(torch.nn.Module):
-#     def __init__(self, dim: int, eps: float = 1e-6):
-#         super().__init__()
-#         self.eps = eps
-#         self.weight = nn.Parameter(torch.zeros(dim))
-
-#     def _norm(self, x):
-#         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-#     def forward(self, x):
-#         return self.weight * self._norm(x)
-
-# class GemmaRmsNorm(torch.nn.Module):
-#     def __init__(self, dim: int, eps: float = 1e-6):
-#         super().__init__()
-    
-#     def forward(self, x):
-#         return (self.weight + 1) * self._norm(x)
-
-# LlamaRmsNorm = Norm
-
-# class QuantizedLETGemmaRMSNorm(QuantizationMixin,QuantizedLETModule, GemmaRmsNorm):
-#     def __quant_init__(self):
-#         super().__quant_init__()
-#         QuantizedLETModule.__init__(self)
-#         self.param_quantizers = nn.ModuleDict({})
-#         self.input_quantizers = nn.ModuleList([None])
-#         self.output_quantizers = nn.ModuleList([None])
-
-#     def forward(self, hidden_states):
-#         w = self.weight
-#         b = 1
-#         if self.p_scale is not None:
-#             p_scale = self.p_prep_fn(self.p_scale)
-#             w = w / p_scale
-#             b = b / p_scale
-
-#         if self.input_quantizers[0]:
-#             hidden_states = self.input_quantizers[0](hidden_states)
-
-#         if self.param_quantizers.weight:
-#             w = self.param_quantizers.weight(w + b)
-
-#         # == super().forward() ==
-#         #output = self._norm(hidden_states.float())
-#         #output = output * (b + w)
-#         # TODO check the d-types
-#         output = super.forward(hidden_states)
-#         if self.output_quantizers[0]:
-#             output = self.output_quantizers[0](output)
-#         return output
-
-#     def fold(self):
-#         w = self.weight
-#         if self.p_scale is not None:
-#             p_scale = self.p_prep_fn(self.p_scale)
-#             w.data = w.data / p_scale + 1 / p_scale - 1
-
-#     @torch.no_grad()
-#     def get_original_module(self):
-#         hidden_size = self.weight.shape[0]
-#         eps = self.eps
-#         orig_module = GemmaRMSNorm(hidden_size, eps)
-#         orig_module.weight.copy_(self.weight)
-#         return orig_module
-
-# @QuantizationMixin.implements(LlamaRmsNorm)
-# class QuantizedLETLlamaRMSNorm(QuantizationMixin, QuantizedLETModule, LlamaRmsNorm):
-#     def __quant_init__(self):
-#         super().__quant_init__()
-#         QuantizedLETModule.__init__(self)
-#         self.param_quantizers = nn.ModuleDict({})
-#         self.input_quantizers = nn.ModuleList([None])
-#         self.output_quantizers = nn.ModuleList([None])
-
-#     def forward(self, hidden_states):
-#         w = self.weight
-
-#         if self.p_scale is not None:
-#             p_scale = self.p_prep_fn(self.p_scale)
-#             w = w / p_scale
-
-#         if self.input_quantizers[0]:
-#             hidden_states = self.input_quantizers[0](hidden_states)
-
-#         if self.param_quantizers.weight:
-#             w = self.param_quantizers.weight(w)
+class Norm(torch.nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.rand(dim))
         
-#         #TODO check the d-types
-#         '''
-#         input_dtype = hidden_states.dtype
-#         hidden_states = hidden_states.to(torch.float32)
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x):
+        return self.weight * self._norm(x)
+
+class GemmaRmsNorm(Norm):
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__(dim, eps)
+        self.bias = torch.tensor(1)
+    
+    def forward(self, x):
+        #print("from GemmaRmsNorm", self.weight , self.bias)
+        out = (self.weight + self.bias) * super()._norm(x)
+
+        return out
+
+LlamaRmsNorm = Norm
+
+#https://github.qualcomm.com/qualcomm-ai/aimet/blob/6eea45a3b0f21543188598da8a533b6b4369af8e/TrainingExtensions/torch/src/python/aimet_torch/v2/nn/modules/custom.py#L484
+@QuantizationMixin.implements(Norm)
+class QuantizedNorm(QuantizationMixin, Norm):
+    def __quant_init__(self):
+        super().__quant_init__()
+        self.param_quantizers = nn.ModuleDict({})
+        self.input_quantizers = nn.ModuleList([None])
+        self.output_quantizers = nn.ModuleList([None])
+
+    def forward(self, hidden_states):
+        weight = self.weight
+        
+        if self.input_quantizers[0]:
+            hidden_states = self.input_quantizers[0](hidden_states)
+        
+        # if self.param_quantizers:
+        #     self.param_quantizers['weight'] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=True)
+        
+        
+        with self._patch_quantized_parameters():
+            out = super().forward(hidden_states)
+
+        if self.output_quantizers[0]:
+            out = self.output_quantizers[0](hidden_states)
+        breakpoint()
+        return out
+
+@QuantizationMixin.implements(GemmaRmsNorm)
+class QuantizedGemmaNorm(QuantizationMixin, GemmaRmsNorm):
+    def __quant_init__(self):
+        super().__quant_init__()
+        self.param_quantizers = nn.ModuleDict({})
+        self.input_quantizers = nn.ModuleList([None])
+        self.output_quantizers = nn.ModuleList([None])
+
+    def forward(self, hidden_states):
+        #weight = self.weight
+        if self.input_quantizers[0]:
+            hidden_states = self.input_quantizers[0](hidden_states)
+
+        # if self.param_quantizers.weight:
+        #     weight = self.param_quantizers.weight(weight)
+
+        with self._patch_quantized_parameters():
+            hidden_states = super().forward(hidden_states)
+
+        if self.output_quantizers[0]:
+            hidden_states = self.output_quantizers[0](hidden_states)
+        return hidden_states
+
+class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
+    def __quant_init__(self):
+        super().__quant_init__()
+        LETModule.__init__(self)
+
+    def _update_parameters(self):
+        weight = self.weight
+        bias = 1
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            weight = weight / prev_scale
+            bias = bias / prev_scale
+
+        updated_params = {}
+        updated_params['weight'] = weight
+        updated_params['bias'] = bias
+        return updated_params
+    
+    def __call__(self, *args, **kwargs):
+        params = self._update_parameters()
+        print("params from LETQuantizedGemmaNorm", params)
+        with patch_attr(self, 'weight', params['weight']):
+            with patch_attr(self, 'bias', params['bias']):
+                super().compute_param_encodings()
+                out = super().__call__(*args, **kwargs)
+                print("LETQuantizedGemmaNorm ", out)
+                return out
+
+    def fold(self):
+        weight = self.weight
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            weight.data = weight.data / prev_scale + 1 / prev_scale - 1
 
 
-#         variance = hidden_states.pow(2).mean(-1, keepdim=True)
-#         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-#         output = w * hidden_states.to(input_dtype)
-#         '''
+class LETQuantizedRMSNorm(QuantizedNorm, LETModule):
+    def __quant_init__(self):
+        super().__quant_init__()
+        LETModule.__init__(self)
 
-#         output = super().forward(hidden_states)
+    def _update_parameters(self):
+        weight = self.weight
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            weight = weight / prev_scale
 
-#         if self.output_quantizers[0]:
-#             output = self.output_quantizers[0](output)
-#         return output
+        updated_params = {}
+        updated_params['weight'] = weight
+        return updated_params
 
-#     def fold(self):
-#         w = self.weight
-#         if self.p_scale is not None:
-#             p_scale = self.p_prep_fn(self.p_scale)
-#             w.data /= p_scale
+    def __call__(self, *args, **kwargs):
+        params = self._update_parameters()
+        print("params from LETQuantizedRMSNorm", params)
+        with patch_attr(self, 'weight', params['weight']):
+            super().compute_param_encodings()
+            out = super().__call__(*args, **kwargs)
+            print("QuantizedLETLlamaRMSNorm ", out)
+            return out #super().__call__(*args, **kwargs)
 
-#     @classmethod
-#     def initialize_from_original_module(cls, orig_module):
-#         ##breakpoint()
-#         hidden_size = orig_module.weight.shape[0]
-#         eps = 1e-6#orig_module.eps
-#         new_module = cls(hidden_size, eps)
-#         #new_module.weight.copy_(orig_module.weight.detach())
-#         new_module.weight = nn.Parameter(orig_module.weight.detach())
-#         return new_module
+    def fold(self):
+        weight = self.weight
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            weight.data /= prev_scale
 
