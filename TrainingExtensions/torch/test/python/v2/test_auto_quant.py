@@ -58,6 +58,16 @@ from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.save_utils import SaveUtils
 from aimet_common.defs import QuantScheme
 from aimet_torch.v2.quantization import encoding_analyzer
+from aimet_common import quantsim as quantsim_common
+
+@contextlib.contextmanager
+def set_encoding_version(version):
+    old_version = quantsim_common.encoding_version
+    quantsim_common.encoding_version = version
+    try:
+        yield
+    finally:
+        quantsim_common.encoding_version = old_version
 
 
 class Model(torch.nn.Module):
@@ -824,7 +834,7 @@ class TestAutoQuant:
         bn_folded_acc = .1
         cle_acc = .2
         adaround_acc = .3
-        with patch_ptq_techniques(bn_folded_acc, cle_acc, adaround_acc) as mocks:
+        with patch_ptq_techniques(bn_folded_acc, cle_acc, adaround_acc) as mocks, set_encoding_version('0.6.1'):
             export = QuantizationSimModel.export
 
             def export_wrapper(*args, **kwargs):

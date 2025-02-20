@@ -58,6 +58,7 @@ from aimet_common.aimet_tensor_quantizer import AimetTensorQuantizer
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_common.utils import AimetLogger
+from aimet_common import quantsim as quantsim_common
 from aimet_torch import elementwise_ops
 from aimet_torch import onnx_utils
 from aimet_torch import utils
@@ -80,6 +81,14 @@ from ..models import test_models
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
+@contextlib.contextmanager
+def set_encoding_version(version):
+    old_version = quantsim_common.encoding_version
+    quantsim_common.encoding_version = version
+    try:
+        yield
+    finally:
+        quantsim_common.encoding_version = old_version
 
 @contextlib.contextmanager
 def set_export_to_onnx_direct(export_to_onnx_direct):
@@ -1600,7 +1609,7 @@ class TestQuantizationSimStaticGrad:
 
         # export and check encodings file has excluded layers listed as string
         with tempfile.TemporaryDirectory() as tmp_dir:
-            sim.export(tmp_dir, 'excluded_layers', dummy_input, propagate_encodings=True)
+            sim.export(tmp_dir, 'excluded_layers', dummy_input)
 
             with open(os.path.join(tmp_dir, 'excluded_layers.encodings')) as f:
                 encodings = json.load(f)
@@ -2042,20 +2051,18 @@ class TestQuantizationSimStaticGrad:
         sim.compute_encodings(forward_pass, None)
 
         # Save encodings
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir, set_encoding_version('0.6.1'):
             sim.export(tmp_dir, 'encodings_propagation_false', dummy_input)
             with open(os.path.join(tmp_dir, 'encodings_propagation_false.encodings')) as f:
                 encodings = json.load(f)
-                assert encodings['version'] == '1.0.0'
-                activation_encodings = [encoding for encoding in encodings['activation_encodings'] if
-                                        'scale' in encoding]
+                activation_encodings = [{key: val} for key, val in encodings['activation_encodings'].items() if
+                                        'scale' in val[0]]
                 assert len(activation_encodings) == 2
 
             # Save encodings again - now with propagate encodings flag enabled
             sim.export(tmp_dir, 'encodings_propagation_true', dummy_input, propagate_encodings=True)
             with open(os.path.join(tmp_dir, 'encodings_propagation_true.encodings')) as f:
                 encodings = json.load(f)
-                assert encodings['version'] == '0.6.1'
                 activation_encodings = [{key: val} for key, val in encodings['activation_encodings'].items() if
                                         'scale' in val[0]]
                 assert len(activation_encodings) == 2
@@ -2095,7 +2102,7 @@ class TestQuantizationSimStaticGrad:
         sim.compute_encodings(forward_pass, None)
 
         # Save encodings
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir, set_encoding_version('0.6.1'):
             sim.export(tmp_dir, 'encodings_propagation_false', dummy_input)
             with open(os.path.join(tmp_dir, 'encodings_propagation_false.encodings')) as f:
                 encodings = json.load(f)
@@ -3524,8 +3531,7 @@ class TestQuantizationSimLearnedGrid:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             sim.export(tmp_dir, 'module_with_5_output', dummy_input,
-                       onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)),
-                       propagate_encodings=False)
+                       onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)))
 
             del sim
 
@@ -3982,8 +3988,7 @@ class TestQuantizationSimLearnedGrid:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             sim.export(tmp_dir, 'module_with_5_output', dummy_input,
-                       onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)),
-                       propagate_encodings=False)
+                       onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)))
             with open(os.path.join(tmp_dir, 'module_with_5_output.encodings')) as json_file:
                 activation_encodings = json.load(json_file)['activation_encodings']
                 activation_encoding_names = {encoding['name'] for encoding in activation_encodings}
@@ -4009,11 +4014,11 @@ class TestQuantizationSimLearnedGrid:
         quant_sim.compute_encodings(evaluate, dummy_input)
         with tempfile.TemporaryDirectory() as tmp_dir:
             quant_sim.export(tmp_dir, 'cust_v1_simple', dummy_input,
-                             onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)),
-                             propagate_encodings=True)
+                             onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)))
             with open(os.path.join(tmp_dir, 'cust_v1_simple.encodings')) as json_file:
                 activation_encodings = json.load(json_file)['activation_encodings']
-                assert set(['10', '11', 't.1']).issubset(activation_encodings.keys())
+                activation_names = {encoding['name'] for encoding in activation_encodings}
+                assert set(['10', '11', 't.1']).issubset(activation_names)
 
     def test_custom_op_simple_v2(self):
         """
@@ -4040,8 +4045,7 @@ class TestQuantizationSimLearnedGrid:
         a, b, c, d, e = quant_sim.model(dummy_input)
         with tempfile.TemporaryDirectory() as tmp_dir:
             quant_sim.export(tmp_dir, 'cust_v2_simple', dummy_input,
-                             onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)),
-                             propagate_encodings=False)
+                             onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)))
 
             with open(os.path.join(tmp_dir, 'cust_v2_simple.encodings')) as json_file:
                 activation_encodings = json.load(json_file)['activation_encodings']
@@ -4072,7 +4076,7 @@ class TestQuantizationSimLearnedGrid:
                 model(*dummy_input)
 
         sim.compute_encodings(forward_pass, None)
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir, set_encoding_version('0.6.1'):
             sim.export(tmp_dir, "roi_model", dummy_input,
                        onnx_export_args=(onnx_utils.OnnxExportApiArgs(opset_version=11)),  propagate_encodings=True)
 
