@@ -1,0 +1,115 @@
+{
+	"defaults":
+	{
+		"ops":
+		{
+			"is_output_quantized": "True",
+			"is_symmetric": "False"
+		},
+		"params":
+		{
+			"is_quantized": "True",
+			"is_symmetric": "True"
+		},
+		"unsigned_symmetric": "False",
+		"per_channel_quantization": "True"
+	},
+	"params":
+	{
+		"bias":
+		{
+			"is_quantized": "False"
+		}
+	},
+	"op_type":
+	{
+		"Dropout":
+		{
+		  "is_output_quantized": "False"
+		},
+		"LayerNorm":
+		{
+			"is_output_quantized": "True",
+			"supported_kernels":
+			[
+				{
+					"activation":
+					{
+						"bitwidth": 16,
+						"dtype": "float"
+					},
+					"param":
+					{
+						"bitwidth": 16,
+						"dtype": "float"
+					}
+				}
+			]
+		},
+		"GELU": {
+			"is_output_quantized": "True",
+			"supported_kernels":
+			[
+				{
+					"activation":
+					{
+						"bitwidth": 16,
+						"dtype": "float"
+					},
+					"param":
+					{
+						"bitwidth": 16,
+						"dtype": "float"
+					}
+				}
+			]
+		},
+		"Gemm": {
+			"per_channel_quantization": "False"
+		},
+		"MatMul": {
+			"per_channel_quantization": "False"
+		}
+	},
+	"supergroups":
+	[
+		{
+			"op_list": ["Conv", "Relu"]
+		},
+		{
+			"op_list": ["Add", "Relu"]
+		},
+		{
+			"op_list": ["MatMul", "Add"]
+		},
+		{
+			"op_list": ["Gemm", "Relu"]
+		},
+		{
+			"op_list": ["Gemm", "Clip"]
+		},
+		{
+			"op_list": ["Sigmoid", "Mul"]
+		},
+		{
+			"op_list": ["Conv", "Clip"]
+		},
+		{
+			"op_list": ["ConvTranspose", "Relu"]
+		},
+		{
+			"op_list": ["ConvTranspose", "Clip"]
+		},
+		{
+			"op_list": ["Softplus", "Tanh", "Mul"]
+		}
+	],
+	"model_input":
+	{
+		"is_input_quantized": "True"
+	},
+	"model_output":
+	{
+		"is_output_quantized": "True"
+	}
+}

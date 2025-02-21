@@ -1,0 +1,1387 @@
+{
+    "defaults": {
+        "ops": {
+            "is_output_quantized": "True",
+            "is_symmetric": "True"
+        },
+        "params": {
+            "is_quantized": "True",
+            "is_symmetric": "True"
+        },
+        "strict_symmetric": "True",
+        "unsigned_symmetric": "False"
+    },
+    "params": {
+        "bias": {
+            "is_quantized": "False"
+        },
+        "scale": {
+            "is_quantized": "False"
+        },
+        "mean": {
+            "is_quantized": "False"
+        },
+        "var": {
+            "is_quantized": "False"
+        }
+    },
+    "op_type": {
+        "defaults": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Conv": {
+            "is_input_quantized": "True"
+        },
+        "ConvTranspose": {
+            "is_input_quantized": "True"
+        },
+        "Dropout": {
+            "is_output_quantized": "False"
+        },
+        "Gemm": {
+            "is_input_quantized": "True"
+        },
+        "MatMul": {
+            "is_input_quantized": "True",
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "AveragePool": {
+            "is_input_quantized": "True"
+        },
+        "Conv2d": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Convert": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Cast": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "DepthWiseConv2d": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "TransposeConv2d": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseAdd": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseBinary": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseSubtract": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseMultiply": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseDivide": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseMaximum": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseMinimum": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseExp": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseLog": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseNeuron": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseSquareRoot": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWisePower": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ElementWiseUnary": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Concat": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Gru": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Lstm": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Pad": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "PoolAvg2d": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "PoolMax2d": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Prelu": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Batchnorm": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Transpose": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Relu": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "HardSwish": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ReduceMax": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ReduceMean": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ReduceMin": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ReduceSum": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ReduceProd": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Reshape": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "FullyConnected": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Sigmoid": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ReluMinMax": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "StridedSlice": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Softmax": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "LogSoftmax": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Tanh": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Argmax": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Argmin": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 32,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Gather": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Gelu": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "Resize": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ResizeBilinear": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "ResizeNearestNeighbor": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        },
+        "LayerNorm": {
+            "supported_kernels": [
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 8,
+                        "dtype": "int"
+                    }
+                },
+                {
+                    "activation": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    },
+                    "param": {
+                        "bitwidth": 16,
+                        "dtype": "int"
+                    }
+                }
+            ]
+        }
+    },
+    "supergroups": [
+        {
+            "op_list": [
+                "Conv",
+                "Relu"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "Clip"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "Sigmoid"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "PRelu"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "BatchNormalization"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "BatchNormalization",
+                "Relu"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "BatchNormalization",
+                "Clip"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "BatchNormalization",
+                "Sigmoid"
+            ]
+        },
+        {
+            "op_list": [
+                "Conv",
+                "PRelu"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "Relu"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "Clip"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "Sigmoid"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "PRelu"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "BatchNormalization"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "BatchNormalization",
+                "Relu"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "BatchNormalization",
+                "Clip"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "BatchNormalization",
+                "Sigmoid"
+            ]
+        },
+        {
+            "op_list": [
+                "Gemm",
+                "PRelu"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "Relu"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "Clip"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "Sigmoid"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "PRelu"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "BatchNormalization"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "BatchNormalization",
+                "Relu"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "BatchNormalization",
+                "Clip"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "BatchNormalization",
+                "Sigmoid"
+            ]
+        },
+        {
+            "op_list": [
+                "Add",
+                "PRelu"
+            ]
+        }
+    ],
+    "model_input": {
+        "is_input_quantized": "True"
+    },
+    "model_output": {}
+}

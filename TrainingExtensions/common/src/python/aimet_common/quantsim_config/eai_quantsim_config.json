@@ -1,0 +1,152 @@
+{
+  "defaults":
+  {
+    "ops":
+    {
+      "is_output_quantized": "True",
+      "is_symmetric": "True"
+    },
+    "params":
+    {
+      "is_quantized": "True",
+      "is_symmetric": "True"
+    },
+    "strict_symmetric": "True",
+    "unsigned_symmetric": "False"
+  },
+  "params":
+  {
+    "bias":
+    {
+      "is_quantized": "False"
+    },
+    "scale":
+    {
+      "is_quantized": "False"
+    },
+    "mean":
+    {
+      "is_quantized": "False"
+    },
+    "var":
+    {
+      "is_quantized": "False"
+    }
+  },
+  "op_type":
+  {
+    "Conv":
+    {
+      "is_input_quantized": "True"
+    },
+    "ConvTranspose":
+    {
+      "is_input_quantized": "True"
+    },
+    "Dropout":
+    {
+      "is_output_quantized": "False"
+    },
+    "Gemm":
+    {
+      "is_input_quantized": "True"
+    },
+    "MatMul":
+    {
+      "is_input_quantized": "True"
+    },
+    "AveragePool":
+    {
+      "is_input_quantized": "True"
+    }
+  },
+  "supergroups": [
+    {
+      "op_list": ["Conv", "Relu"]
+    },
+    {
+      "op_list": ["Conv", "Clip"]
+    },
+    {
+      "op_list": ["Conv", "Sigmoid"]
+    },
+    {
+      "op_list": ["Conv", "PRelu"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization", "Relu"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization", "Clip"]
+    },
+    {
+      "op_list": ["Conv", "BatchNormalization", "Sigmoid"]
+    },
+    {
+      "op_list": ["Conv", "PRelu"]
+    },
+    {
+      "op_list": ["Gemm", "Relu"]
+    },
+    {
+      "op_list": ["Gemm", "Clip"]
+    },
+    {
+      "op_list": ["Gemm", "Sigmoid"]
+    },
+    {
+      "op_list": ["Gemm", "PRelu"]
+    },
+    {
+      "op_list": ["Gemm", "BatchNormalization"]
+    },
+    {
+      "op_list": ["Gemm", "BatchNormalization", "Relu"]
+    },
+    {
+      "op_list": ["Gemm", "BatchNormalization", "Clip"]
+    },
+    {
+      "op_list": ["Gemm", "BatchNormalization", "Sigmoid"]
+    },
+    {
+      "op_list": ["Gemm", "PRelu"]
+    },
+    {
+      "op_list": ["Add", "Relu"]
+    },
+    {
+      "op_list": ["Add", "Clip"]
+    },
+    {
+      "op_list": ["Add", "Sigmoid"]
+    },
+    {
+      "op_list": ["Add", "PRelu"]
+    },
+    {
+      "op_list": ["Add", "BatchNormalization"]
+    },
+    {
+      "op_list": ["Add", "BatchNormalization", "Relu"]
+    },
+    {
+      "op_list": ["Add", "BatchNormalization", "Clip"]
+    },
+    {
+      "op_list": ["Add", "BatchNormalization", "Sigmoid"]
+    },
+    {
+      "op_list": ["Add", "PRelu"]
+    }
+  ],
+  "model_input":
+  {
+    "is_input_quantized": "True"
+  },
+  "model_output":
+  {}
+}

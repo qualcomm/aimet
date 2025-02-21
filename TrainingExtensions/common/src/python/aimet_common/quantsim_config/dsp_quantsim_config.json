@@ -1,0 +1,62 @@
+{
+	"defaults":
+	{
+		"ops":
+		{
+			"is_output_quantized": "True"
+		},
+		"params":
+		{
+			"is_quantized": "True"
+		}
+	},
+	"params":
+	{
+		"bias":
+		{
+			"is_quantized": "False"
+		}
+	},
+	"op_type":
+	{
+		"Dropout":
+		{
+		  "is_output_quantized": "False"
+		},
+		"Squeeze":
+		{
+			"is_output_quantized": "False"
+		},
+		"Pad":
+		{
+			"is_output_quantized": "False"
+		},
+		"Mean":
+		{
+			"is_output_quantized": "False"
+		}
+	},
+	"supergroups": [
+		{
+			"op_list": ["Conv", "Relu"]
+		},
+		{
+			"op_list": ["Conv", "Clip"]
+		},
+		{
+			"op_list": ["Conv", "BatchNormalization", "Relu"]
+		},
+		{
+			"op_list": ["Add", "Relu"]
+		},
+		{
+			"op_list": ["Gemm", "Relu"]
+		}
+	],
+	"model_input":
+	{
+		"is_input_quantized": "True"
+	},
+	"model_output":
+	{}
+}
