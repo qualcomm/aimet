@@ -40,6 +40,7 @@
 import itertools
 from typing import Callable, Tuple, List, Union, Dict
 import copy
+import warnings
 
 import torch
 import torch.nn
@@ -47,7 +48,7 @@ import numpy as np
 
 from aimet_common.graph_pattern_matcher import PatternType
 from aimet_common.graph_searcher import GraphSearcher
-from aimet_common.utils import AimetLogger
+from aimet_common.utils import AimetLogger, _red
 from aimet_common.bias_correction import (
     ConvBnInfoType,
     ConvBnPatternHandler,
@@ -221,8 +222,9 @@ def call_analytical_correct_bias(layer: torch.nn.Module,
                                                                             dtype=layer.bias.dtype)
 
 
+# pylint: disable=too-many-arguments
 def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_samples: int,
-                 dummy_input: Union[torch.Tensor, Tuple], data_loader, num_bias_correct_samples: int,
+                 data_loader, num_bias_correct_samples: int, dummy_input: Union[torch.Tensor, Tuple] = None,
                  conv_bn_dict: Union[Dict[torch.nn.Module, ConvBnInfoType], None] = None,
                  perform_only_empirical_bias_corr: bool = True,
                  layers_to_ignore: List[torch.nn.Module] = None):
@@ -251,6 +253,13 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_sa
     # Find batch size
     batch_size = data_loader.batch_size
 
+    # Create dummy input
+    if dummy_input is None:
+        input_shape = utils.get_input_shape(data_loader)
+        dummy_input = utils.create_rand_tensors_given_shapes(input_shape, utils.get_device(model))
+        msg = _red("Please provide dummy input argument. From next release it will be made compulsory")
+        warnings.warn(msg, UserWarning, stacklevel=2)
+
     # Rounding up number of samples to batch size
     n_batches_bias_correction = int(np.ceil(num_bias_correct_samples / batch_size))
     n_batches_quantization = int(np.ceil(num_quant_samples / batch_size))
@@ -265,7 +274,7 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_sa
         for model_input, _ in data_loader_n_samples_quant:
             forward_pass(model, model_input)
 
-    ordered_conv_linear_nodes = get_ordered_lists_of_conv_fc(model, dummy_input=dummy_input)
+    ordered_conv_linear_nodes = get_ordered_lists_of_conv_fc(model, dummy_input)
 
     if conv_bn_dict is None:
         conv_bn_dict = find_all_conv_bn_with_activation(model, dummy_input)

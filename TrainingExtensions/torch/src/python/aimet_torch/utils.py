@@ -439,6 +439,18 @@ def is_leaf_module(module):
            (CustomSparseConv3DLayer is not None and isinstance(module, CustomSparseConv3DLayer))
 
 
+def get_input_shape(data_loader):
+    """
+    Returns shape of input tensors
+    :param data_loader: labelled dataloader
+    :return: shape or tuple of shapes
+    """
+    data, _ = next(iter(data_loader))
+    if isinstance(data, (tuple, list)):
+        input_shapes = [torch.Tensor.size(inst) for inst in data]
+        return input_shapes
+    return torch.Tensor.size(data)
+
 def has_hooks(module: torch.nn.Module):
     """ Returns True if the module uses hooks. """
     # pylint: disable=protected-access
@@ -518,23 +530,13 @@ def create_rand_tensors_given_shapes(input_shape, device: torch.device):
     return rand_tensors
 
 
-def get_ordered_lists_of_conv_fc(model: torch.nn.Module, input_shapes: Union[Tuple, List] = None,
-                                 dummy_input: Union[torch.Tensor, Tuple] = None) -> List:
+def get_ordered_lists_of_conv_fc(model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tuple]) -> List:
     """
     Finds order of nodes in graph
     :param model: model
-    :param input_shapes: input shape to model
     :param dummy_input: A dummy input to the model. Can be a Tensor or a Tuple of Tensors
     :return: List of names in graph in order
     """
-    if input_shapes is None and dummy_input is None:
-        raise ValueError('Both input shapes and dummy input cannot be None')
-
-    if dummy_input is None:
-        dummy_input = create_rand_tensors_given_shapes(input_shapes, get_device(model))
-        msg = _red("Input shapes argument will be deprecated in a future release. Start using dummy input argument instead")
-        warnings.warn(msg, DeprecationWarning, stacklevel=2)
-
     module_list = get_ordered_list_of_modules(model, dummy_input)
     module_list = [[name, module] for name, module in module_list if
                    isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Linear, torch.nn.ConvTranspose2d,
