@@ -33,6 +33,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+
 import contextlib
 import json
 import os
@@ -41,6 +42,7 @@ from pathlib import Path
 from typing import List
 
 import aimet_common.libpymo as libpymo
+from aimet_common.quantsim_config.utils import get_path_for_per_tensor_config
 import numpy as np
 import pytest
 import tensorflow as tf
@@ -1294,7 +1296,8 @@ def test_initialization_and_export_non_strict_symmetric(quant_scheme) -> None:
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(2, activation='softmax', name="keras_model")])
 
-    sim = QuantizationSimModel(model, quant_scheme=quant_scheme)
+    sim = QuantizationSimModel(model, quant_scheme=quant_scheme,
+                               config_file=get_path_for_per_tensor_config())
 
     # Enable input
     sim.compute_encodings(lambda m, _: m(np.random.randn(1, 32, 32, 4)), None)
