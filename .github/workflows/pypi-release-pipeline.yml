@@ -326,11 +326,11 @@ jobs:
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/torch"
           fi
-          PYTEST_ARGS=""
-          if [ "${{ matrix.VER_CUDA }}" == "" ] ; then
-              PYTEST_ARGS="$PYTEST_ARGS -m \"not cuda\""
+          PYTEST_ARGS="not blah"
+          if [ "${{ matrix.VER_CUDA }}" = "" ] ; then
+              PYTEST_ARGS="not cuda"
           fi
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $PYTEST_ARGS  $PYTEST_TARGETS
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest -m "$PYTEST_ARGS" $PYTEST_TARGETS
 
   publish:
     name: Publish the wheel packages

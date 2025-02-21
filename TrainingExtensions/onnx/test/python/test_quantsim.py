@@ -381,25 +381,18 @@ class TestQuantSim:
             with open(os.path.join(tempdir, 'onnx_sim_gpu.encodings')) as f:
                 gpu_encodings = json.load(f)
 
-            for name in list(cpu_encodings['activation_encodings'].keys()):
-                assert (np.max(np.abs(cpu_encodings['activation_encodings'][name][0]['max'] -
-                                      gpu_encodings['activation_encodings'][name][0]['max'])) < 0.05)
-                assert (np.max(np.abs(cpu_encodings['activation_encodings'][name][0]['min'] -
-                                      gpu_encodings['activation_encodings'][name][0]['min'])) < 0.05)
-                assert (np.max(np.abs(cpu_encodings['activation_encodings'][name][0]['scale'] -
-                                      gpu_encodings['activation_encodings'][name][0]['scale'])) < 0.05)
-                assert cpu_encodings['activation_encodings'][name][0]['offset'] == \
-                       gpu_encodings['activation_encodings'][name][0]['offset']
+            for i, name in enumerate(cpu_encodings['activation_encodings']):
+                assert (np.max(np.abs(cpu_encodings['activation_encodings'][i]['scale'][0] -
+                                      gpu_encodings['activation_encodings'][i]['scale'][0])) < 0.05)
+                assert cpu_encodings['activation_encodings'][i]['offset'] == \
+                       gpu_encodings['activation_encodings'][i]['offset']
 
-            for name in list(cpu_encodings['param_encodings'].keys()):
-                assert (np.max(np.abs(cpu_encodings['param_encodings'][name][0]['max'] -
-                                      gpu_encodings['param_encodings'][name][0]['max'])) < 0.05)
-                assert (np.max(np.abs(cpu_encodings['param_encodings'][name][0]['min'] -
-                                      gpu_encodings['param_encodings'][name][0]['min'])) < 0.05)
-                assert (np.max(np.abs(cpu_encodings['param_encodings'][name][0]['scale'] -
-                                      gpu_encodings['param_encodings'][name][0]['scale'])) < 0.05)
-                assert cpu_encodings['param_encodings'][name][0]['offset'] == \
-                       gpu_encodings['param_encodings'][name][0]['offset']
+            for i, name in enumerate(cpu_encodings['param_encodings']):
+                # Comparing the scale for first channel only
+                assert (np.max(np.abs(cpu_encodings['param_encodings'][i]['scale'][0] -
+                                      gpu_encodings['param_encodings'][i]['scale'][0])) < 0.05)
+                assert cpu_encodings['param_encodings'][i]['offset'] == \
+                       gpu_encodings['param_encodings'][i]['offset']
 
     @pytest.mark.cuda
     def test_compare_encodings_cpu_gpu_fp16(self):

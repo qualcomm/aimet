@@ -373,11 +373,11 @@ jobs:
           elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
           fi
-          PYTEST_ARGS=""
-          if [ "${{ matrix.VER_CUDA }}" == "" ] ; then
-              PYTEST_ARGS="$PYTEST_ARGS -m \"not cuda\""
+          PYTEST_ARGS="not blah"
+          if [ "${{ matrix.VER_CUDA }}" = "" ] ; then
+              PYTEST_ARGS="not cuda"
           fi
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest $PYTEST_ARGS  $PYTEST_TARGETS
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest -m "$PYTEST_ARGS" $PYTEST_TARGETS
 
   docker-push-latest:
     needs: [docker-tag, variants, test]
