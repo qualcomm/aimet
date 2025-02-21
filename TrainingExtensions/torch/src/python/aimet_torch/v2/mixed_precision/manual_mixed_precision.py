@@ -40,6 +40,7 @@
 from typing import overload, Union, List, Tuple, Dict, get_args, Type, Optional, IO
 import torch
 
+from aimet_common.quantsim_config.json_config_importer import JsonConfigImporter
 from aimet_common.utils import AimetLogger
 from aimet_torch.v2.utils import flatten_list
 from aimet_torch.v2.mixed_precision.utils import UserRequest, RequestType, SupportedDType, ModuleProduct, broadcast_tuples
@@ -68,7 +69,8 @@ class MixedPrecisionConfigurator:
         """
         self._sim = sim
         self.user_requests = []
-        self.mp_handler = MpHandler(sim)
+        # pylint: disable=protected-access
+        self.mp_handler = MpHandler(sim, JsonConfigImporter.import_json_config_file(self._sim._config_file))
 
     def _store_user_request(self, request_type: RequestType, module: Union[torch.nn.Module, Type, ModuleProduct],
                             activation: Union[List[SupportedDType], SupportedDType] = None,

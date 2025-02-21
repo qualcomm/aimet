@@ -39,12 +39,15 @@
 # pylint: disable=logging-fstring-interpolation
 
 import copy
+import functools
 from typing import Dict, List, Tuple, Optional, Union, IO
 
 import torch.nn
 
 from aimet_common.defs import QuantizationDataType, QuantScheme
 from aimet_common.utils import AimetLogger
+from aimet_torch.onnx_utils import map_torch_types_to_onnx
+from aimet_torch.utils import get_param_channel_axis
 from aimet_torch.v2.nn.modules.custom import QuantizedConcat
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -65,7 +68,13 @@ class MpHandler:
     requests and apply to the sim
 
     """
-    def __init__(self, sim: QuantizationSimModel):
+    def __init__(self, sim: QuantizationSimModel, configs: dict):
+        """
+        :param sim: QuantSim object
+        :param configs: configs parsed from the config file
+        """
+        self._sim = sim
+        self._configs = configs
         self.cg_traverser = ConnectedGraphTraverser(sim)
         self.mp_requests = {}
 
@@ -268,7 +277,9 @@ class MpHandler:
         return mp_requests
 
     @staticmethod
-    def _apply_request_to_quantizer(quantizer: QuantizerBase, candidate: Precision):
+    def _apply_request_to_quantizer(quantizer: QuantizerBase, candidate: Precision, quant_scheme: QuantScheme,
+                                    symm: bool, round_mode: str = 'nearest', tensor_shape: tuple = None,
+                                    ch_axis: int = None):
         """
         Helper function to apply mixed precision candidate to a quantizer
         :param quantizer: quantizer object
@@ -278,12 +289,13 @@ class MpHandler:
             if not isinstance(quantizer, FloatQuantizeDequantize):
                 # convert to float QDQ
                 quantizer = _V2LazyQuantizer(candidate.bitwidth,
-                                             'nearest',
-                                             QuantScheme.post_training_tf,
-                                             quantizer.symmetric,
+                                             round_mode,
+                                             quant_scheme,
+                                             symm,
                                              enabled_by_default=True,
-                                             data_type=QuantizationDataType.float
-                                             ).realize()
+                                             data_type=QuantizationDataType.float,
+                                             input_shape=tensor_shape,
+                                             ch_axis=ch_axis).realize()
 
             if candidate.bitwidth == 16:
                 quantizer.exponent_bits = 5
@@ -297,12 +309,13 @@ class MpHandler:
             if isinstance(quantizer, FloatQuantizeDequantize):
                 # convert to int QDQ
                 quantizer = _V2LazyQuantizer(candidate.bitwidth,
-                                             'nearest',
-                                             QuantScheme.post_training_tf,
-                                             quantizer.symmetric,
+                                             round_mode,
+                                             quant_scheme,
+                                             symm,
                                              enabled_by_default=True,
-                                             data_type=QuantizationDataType.int
-                                             ).realize()
+                                             data_type=QuantizationDataType.int,
+                                             input_shape=tensor_shape,
+                                             ch_axis=ch_axis).realize()
 
             quantizer.bitwidth = candidate.bitwidth
 
@@ -487,33 +500,75 @@ class MpHandler:
         self._log_mp_requests(mp_requests, "Mixed Precision Requests After Propagation", log_file)
         return mp_requests
 
+    @functools.cached_property
+    def _get_param_is_symm_fields(self):
+        """Generates dict of {op_name: is_symmetric} fields corresponding to the weight parameter"""
+        is_symm_fields = {'defaults': self._configs["defaults"]["params"].get("is_symmetric", False)}
+        for op_name, settings in self._configs["op_type"].items():
+            if settings.get('params', {}).get('weight', {}).get('is_symmetric') is not None:
+                is_symm_fields[op_name] = settings['params']['weight']['is_symmetric']
+
+        return is_symm_fields
+
+    @functools.cached_property
+    def _get_param_pcq_mapping(self):
+        """Generates dict of {op_name: per_channel_quantization} fields corresponding to the weight parameter"""
+
+        pcq_fields = {'defaults': self._configs["defaults"].get("per_channel_quantization", False)}
+        for op_name, settings in self._configs["op_type"].items():
+            if settings.get('per_channel_quantization', None) is not None:
+                pcq_fields[op_name] = settings['per_channel_quantization']
+
+        return pcq_fields
+
+
     def _apply_requests_to_sim(self, mp_requests: Dict):
         """
         Apply MP configuration to the sim object
         :param mp_requests: MP requests after preprocessing, applying backend awareness(if present), propagating to
         parent modules
         """
+        #pylint: disable=protected-access
+
         for module, request in mp_requests.items():
             if request.input_candidates:
                 assert len(module.input_quantizers) == len(request.input_candidates)
                 for idx, qtzr in enumerate(module.input_quantizers):
                     if request.input_candidates[idx] and qtzr:
                         module.input_quantizers[idx] = self._apply_request_to_quantizer(qtzr,
-                                                                                        request.input_candidates[idx])
+                                                                                        request.input_candidates[idx],
+                                                                                        self._sim._quant_scheme,
+                                                                                        False,
+                                                                                        self._sim._rounding_mode)
 
             if request.param_candidate:
                 assert all(param_key in module.param_quantizers for param_key in request.param_candidate.keys())
                 for param_key, param_candidate in request.param_candidate.items():
                     if param_candidate and param_key in module.param_quantizers.keys() and module.param_quantizers[param_key]:
+                        module_type = map_torch_types_to_onnx.get(module.qcls_to_cls[type(module)], [None])[0]
+
+                        ch_axis = None
+                        if self._get_param_pcq_mapping.get(module_type, self._get_param_pcq_mapping.get("defaults")):
+                            ch_axis = get_param_channel_axis(module, param_key)
+
                         module.param_quantizers[param_key] = \
-                            self._apply_request_to_quantizer(module.param_quantizers[param_key], param_candidate)
+                            self._apply_request_to_quantizer(module.param_quantizers[param_key], param_candidate,
+                                                             self._sim._quant_scheme,
+                                                             self._get_param_is_symm_fields.get(module_type,
+                                                                                                self._get_param_is_symm_fields.get("defaults")),
+                                                             self._sim._rounding_mode,
+                                                             tensor_shape=tuple(module.__getattr__(param_key).shape), #pylint: disable=unnecessary-dunder-call
+                                                             ch_axis=ch_axis)
 
             if request.output_candidates:
                 assert len(module.output_quantizers) == len(request.output_candidates)
                 for idx, qtzr in enumerate(module.output_quantizers):
                     if request.output_candidates[idx] and qtzr:
                         module.output_quantizers[idx] = self._apply_request_to_quantizer(qtzr,
-                                                                                         request.output_candidates[idx])
+                                                                                         request.output_candidates[idx],
+                                                                                         self._sim._quant_scheme,
+                                                                                         False,
+                                                                                         self._sim._rounding_mode)
 
     def _resolve_contentions_at_module(self, current_module, mp_request, visited_modules, mp_requests: Dict,
                                        strict: bool = True):
