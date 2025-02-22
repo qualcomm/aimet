@@ -51,7 +51,13 @@ from aimet_torch.v2.quantization.encoding_analyzer import EncodingAnalyzer, MinM
 from aimet_torch.v2.quantization.affine import AffineEncoding, GroupedBlockEncoding
 from aimet_torch.v2.quantization.tensor import QuantizedTensor, DequantizedTensor
 from aimet_torch.v2.quantization.base import QuantizerBase
-from aimet_torch.v2.quantization.affine.backends import quantize, quantize_dequantize, torch_builtins, _derive_qmin_qmax
+from aimet_torch.v2.quantization.affine.backends import (
+    quantize,
+    quantize_dequantize,
+    dequantize,
+    torch_builtins,
+    _derive_qmin_qmax
+)
 from aimet_torch.v2.utils import ste_round
 from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
 from ._utils import _GridMixin, _register_signature
@@ -702,6 +708,30 @@ class QuantizeDequantize(MinMaxQuantizer):
                                      encoding.qmin,
                                      encoding.qmax,
                                      block_size=self.block_size)
+        output = output.as_subclass(DequantizedTensor)
+        output.encoding = encoding
+        return output
+
+
+class Dequantize(MinMaxQuantizer):
+    def forward(self, input):
+        if not self.is_initialized():
+            raise RuntimeError(
+                'Failed to run Dequantize since quantization parameters are not initialized.'
+                ' Please initialize the quantization parameters using `compute_encodings()`.'
+            )
+
+        encoding = self.get_encodings()
+
+        # Subclasses of torch.Tensor with custom __torch_function__ (in our case, QuantizedTensorBase)
+        # is known to introduce substantial CPU overhead.
+        # Cast types of the inputs to plain torch.Tensor for faster execution.
+        input = input.as_subclass(torch.Tensor)
+
+        output = dequantize(input,
+                            encoding.scale,
+                            encoding.offset,
+                            block_size=self.block_size)
         output = output.as_subclass(DequantizedTensor)
         output.encoding = encoding
         return output
