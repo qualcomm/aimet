@@ -43,6 +43,7 @@ import torch
 from torch._C._nn import _parse_to as parse_to_args
 
 from aimet_common.defs import EncodingType
+from aimet_common.quantsim import VALID_ENCODING_VERSIONS
 from aimet_torch.v2.utils import docstring
 from aimet_torch.v2.quantization.base import EncodingBase
 from aimet_torch.v2.quantization.affine.backends import quantize, dequantize, _derive_qmin_qmax
@@ -198,16 +199,37 @@ class AffineEncoding(EncodingBase, _GridMixin):
         """
         Returns the dtype of the quantizer encoding
         """
-        if 0 <= self.qmin < self.qmax < 256:
+        if 0 <= self.qmin < self.qmax < 2**8:
             return torch.uint8
 
-        if -128 <= self.qmin < self.qmax < 128:
+        if -2**7 <= self.qmin < self.qmax < 2**7:
             return torch.int8
 
-        if -32768 <= self.qmin < self.qmax < 32768:
+        if -2**15 <= self.qmin < self.qmax < 2**15:
             return torch.int16
 
         return torch.int32
+
+    def _get_export_dtype(self) -> str: # pylint: disable=too-many-return-statements
+        if 0 <= self.qmin < self.qmax < 2**4:
+            return "uint4"
+
+        if 0 <= self.qmin < self.qmax < 2**8:
+            return "uint8"
+
+        if 0 <= self.qmin < self.qmax < 2**16:
+            return "uint16"
+
+        if -2**3 <= self.qmin < self.qmax < 2**3:
+            return "int4"
+
+        if -2**7 <= self.qmin < self.qmax < 2**7:
+            return "int8"
+
+        if -2**15 <= self.qmin < self.qmax < 2**15:
+            return "int16"
+
+        return "int32"
 
     @property
     def block_size(self) -> Optional[Tuple[int, ...]]:
@@ -283,20 +305,37 @@ class AffineEncoding(EncodingBase, _GridMixin):
     def _get_additional_properties(self) -> Dict[str, Any]:
         return {}
 
-    @staticmethod
-    def _get_block_size(block_size: Tuple):
-        assert len(block_size) >= 2
-        for dim_block_size in block_size:
-            if dim_block_size != 1:
-                return dim_block_size
-        return block_size[1]
+    def _get_channel_axis(self) -> Optional[int]:
+        try:
+            channel_axis = next(iter(axis for axis, dim in enumerate(self.scale.shape) if dim > 1))
+        except StopIteration:
+            # Per-channel encoding that happens to have only one output channel
+            # In this case, fall back to per-tensor encoding since we aren't fully
+            # sure about the channel axis
+            channel_axis = None
+        return channel_axis
 
-    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]:
+    def _get_block_axis(self) -> Optional[int]:
+        # NOTE: DO NOT USE THIS FUNCTION except for QNN encoding export.
+        #       This function assumes block axis can only be either axis 0 or axis 1.
+        #       This assumption holds in practical cases, but does not cover all theoretically
+        #       possible cases.
+        if self.block_size is None:
+            raise RuntimeError
+
+        for axis, blk in enumerate(self.block_size[:2]):
+            if blk != 1:
+                return axis
+
+        return None
+
+    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]: # pylint: disable=too-many-branches
         """
         Converts encoding object into QNN encoding
         """
         if encoding_version == '0.6.1':
             return self._to_legacy_format()
+
         if encoding_version == '1.0.0':
             encoding_dict = {'dtype': 'INT',
                              'bw': self.bitwidth,
@@ -316,13 +355,59 @@ class AffineEncoding(EncodingBase, _GridMixin):
                 encoding_dict['enc_type'] = EncodingType.PER_CHANNEL.name
             else:
                 encoding_dict['enc_type'] = EncodingType.PER_BLOCK.name
-                encoding_dict['block_size'] = self._get_block_size(self.block_size)
+                encoding_dict['block_size'] = self.block_size[self._get_block_axis()]
                 if encoding_dict['block_size'] == -1:
                     raise NotImplementedError('Exporting encodings to 1.0.0 format with block size -1 is not '
                                               'supported yet. Export using sim.export() instead.')
             return encoding_dict
 
-        raise AssertionError(f'Export encoding version {encoding_version} not supported.')
+        if encoding_version == "2.0.0.beta":
+            output_dtype = self._get_export_dtype()
+            assert output_dtype in ("int4", "int8", "int16", "int32", "uint4", "uint8", "uint16", "uint32")
+
+            y_scale = self.scale
+            y_zero_point = self.offset.to(torch.int32) if not self.symmetry else None
+
+            channel_axis = None
+            block_axis = None
+
+            if self.granularity == "pertensor":
+                pass
+            elif self.granularity == 'perchannel':
+                channel_axis = self._get_channel_axis()
+            elif self.granularity == 'blockwise':
+                # NOTE: This sometimes fail
+                block_axis = self._get_block_axis()
+            else:
+                raise NotImplementedError
+
+            if block_axis is not None:
+                axis = block_axis
+            elif channel_axis is not None:
+                axis = channel_axis
+                y_scale = y_scale.flatten()
+                if y_zero_point is not None:
+                    y_zero_point = y_zero_point.flatten()
+            else:
+                axis = None
+                y_scale = y_scale.squeeze()
+                if y_zero_point is not None:
+                    y_zero_point = y_zero_point.squeeze()
+
+            y_scale = y_scale.tolist()
+            if y_zero_point is not None:
+                y_zero_point = y_zero_point.tolist()
+
+            return {
+                "y_scale": y_scale,
+                "y_zero_point": y_zero_point,
+                "axis": axis,
+                "block_size": None,
+                "output_dtype": output_dtype,
+            }
+
+        raise AssertionError(f'Export encoding version {encoding_version} not supported.'
+                             f'Expected one of: {VALID_ENCODING_VERSIONS}')
 
 class VectorEncoding(AffineEncoding):
     """
