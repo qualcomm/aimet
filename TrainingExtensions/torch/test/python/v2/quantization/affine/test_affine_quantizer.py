@@ -1608,3 +1608,71 @@ def test_signed_doesnt_affect_output(symmetric):
     out_uint8 = qdq_uint8(x)
     assert torch.equal(out_int8, out_uint8)
     assert torch.equal(out_int8.quantize(), out_uint8.quantize() - 128)
+
+
+@pytest.mark.parametrize(
+    # NOTE: In onnx, "axis" is overloaded with two meanings.
+    #
+    #         +- channel axis (if block size is None)
+    # axis := |
+    #         +- block axis (otherwise)
+    "shape,         block_size,     axis", [
+    ((),            None,           None), # per-tensor
+    ((10, 1, 1, 1), None,           0),    # per-channel with axis=0 (Convolution)
+    ((1, 10, 1, 1), None,           1),    # per-channel with axis=1 (Convolution)
+    ((10, 1),       None,           0),    # per-channel with axis=0 (Linear/Gemm)
+    ((1, 10),       None,           1),    # per-channel with axis=1 (Linear/Gemm)
+    ((10, 2, 1, 1), (1, 5, -1, -1), 1),    # per-block with block_axis=1 (Convolution)
+    ((2, 10, 1, 1), (5, 1, -1, -1), 0),    # per-block with block_axis=0 (Convolution)
+    ((10, 2),       (1, 5),         1),    # per-block with block_axis=1 (Linear/Gemm)
+    ((2, 10),       (5, 1),         0),    # per-block with block_axis=0 (Linear/Gemm)
+])
+@pytest.mark.parametrize(
+    "qmin,   qmax,     symmetric, offset, output_dtype", [
+    (-8,     7,        True,      0,      "int4"),
+    (-8,     7,        False,     -5,     "int4"),
+    (-8,     7,        False,     0,      "int4"),
+    (0,      15,       True,      0,      "uint4"),
+    (0,      15,       False,     -5,     "uint4"),
+    (0,      15,       False,     0,      "uint4"),
+    (-128,   127,      True,      0,      "int8"),
+    (-128,   127,      False,     -5,     "int8"),
+    (-128,   127,      False,     0,      "int8"),
+    (0,      255,      True,      0,      "uint8"),
+    (0,      255,      False,     -5,     "uint8"),
+    (0,      255,      False,     0,      "uint8"),
+    (-2**15, 2**15-1,  True,      0,      "int16"),
+    (-2**15, 2**15-1,  False,     -5,     "int16"),
+    (-2**15, 2**15-1,  False,     0,      "int16"),
+    (0,      2**16-1,  True,      0,      "uint16"),
+    (0,      2**16-1,  False,     -5,     "uint16"),
+    (0,      2**16-1,  False,     0,      "uint16"),
+    (-2**31, 2**31-1,  True,      0,      "int32"),
+    # NOTE: Skipping since simulating int32 with non-zero offset is numerically very unstable
+    # (-2**31, 2**31-1,  False,     -5,     "int32"),
+    (-2**31, 2**31-1,  False,     0,      "int32"),
+])
+def test_encoding_spec_2_0_0(shape, block_size, axis,
+                             qmin, qmax, symmetric, offset, output_dtype):
+    scale = torch.arange(1, np.prod(shape)+1).view(shape) * 0.001
+    offset = torch.full(shape, offset)
+
+    qtzr = QuantizeDequantize(shape=shape,
+                              qmin=qmin,
+                              qmax=qmax,
+                              symmetric=symmetric,
+                              block_size=block_size).to(torch.float64)
+    qtzr.set_range(scale * (qmin + offset), scale * (qmax + offset))
+    encoding = qtzr.get_encodings().to_qnn_encoding_dict("2.0.0.beta")
+
+    assert torch.allclose(torch.tensor(encoding["y_scale"]).view_as(scale), scale)
+
+    if symmetric:
+        assert encoding["y_zero_point"] is None
+    else:
+        assert torch.equal(torch.tensor(encoding["y_zero_point"]).view_as(offset), offset)
+
+    assert encoding["axis"] == axis
+    assert encoding["block_size"] == None if block_size is None else \
+                                     next(iter(blk for blk in block_size if blk != 1))
+    assert encoding["output_dtype"] == output_dtype
