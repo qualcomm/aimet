@@ -219,7 +219,7 @@ def export(model: torch.nn.Module, *args, **kwargs):
         return torch.onnx.export(model, *args, **kwargs)
 
 
-def remove_quantization_nodes_from_onnx_graph(model: onnx.ModelProto):
+def remove_quantization_nodes_from_onnx_graph(model: onnx.ModelProto): # pylint: disable=too-many-locals, too-many-branches
     """
     Remove quantization nodes from ONNX graph with quantization nodes
     :param model: ONNX model with quantization nodes
@@ -263,6 +263,17 @@ def remove_quantization_nodes_from_onnx_graph(model: onnx.ModelProto):
 
         # Remove scale and offset from onnx graph
         _remove_constants(model, node.input[1:])
+
+    # Remove custom quantize-dequantize functions since it's not needed anymore
+    for func in list(model.functions):
+        if func.name in ONNX_QUANTIZER_OP_TYPES:
+            model.functions.remove(func)
+
+    # Remove aimet opset from imports since it's not needed anymore
+    for opset in model.opset_import:
+        if opset.domain == "aimet":
+            model.opset_import.remove(opset)
+            break
 
     return tensor_to_encoding_map
 
