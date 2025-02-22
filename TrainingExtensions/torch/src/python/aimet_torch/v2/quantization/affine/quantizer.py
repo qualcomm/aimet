@@ -713,7 +713,7 @@ class QuantizeDequantize(MinMaxQuantizer):
         return output
 
 
-class Dequantize(MinMaxQuantizer):
+class Dequantize(MinMaxQuantizer): # pylint: disable=missing-class-docstring
     def forward(self, input):
         if not self.is_initialized():
             raise RuntimeError(
