@@ -91,10 +91,10 @@ def _embedding(input: torch.Tensor, weight: torch.Tensor, *args, **kwargs) -> to
 
     out_scale = out.encoding.scale
     out_offset = out.encoding.offset
-    blk_0, blk_1 = out.encoding.block_size or (-1, -1)
+    blk_0, *blk_1 = out.encoding.block_size or (-1, -1)
 
     if blk_0 == -1:
-        blk_0 = weight.shape[0] // (out_scale.shape[0] if out_scale.shape != () else 1)
+        blk_0 = weight.shape[0] // (out_scale.shape[0] if out_scale.dim() == weight.dim() else 1)
 
     if blk_0 == weight.shape[0]:
         # Edge case:
@@ -123,7 +123,7 @@ def _embedding(input: torch.Tensor, weight: torch.Tensor, *args, **kwargs) -> to
         out_offset = F.embedding(input, out_offset, *args, **kwargs)
 
     # NOTE: output tensor can't inherit blk_0 since F.embedding has dismantled axis 0
-    out_block_size = (*repeat(-1, out_scale.dim()-1), blk_1) if out_scale.dim() > 0 else None
+    out_block_size = (*repeat(-1, out_scale.dim()-1), *blk_1) if out_scale.dim() > 0 else None
 
     out.encoding = AffineEncoding(scale=out_scale,
                                   offset=out_offset,

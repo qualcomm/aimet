@@ -1113,6 +1113,8 @@ def test_subclassing():
     ((),           None),    # per-tensor
     ((10, 1),      None),    # per-channel with axis=0
     ((1, 10),      None),    # per-channel with axis=1
+    ((10,),        None),    # per-channel with axis=1
+    ((10,),        (-1,)),   # per-channel with axis=1
     ((10, 2),      (-1, 5)), # per-block with channel_axis=0, block_axis=1
     ((2, 10),      (5, -1)), # per-block with channel_axis=1, block_axis=0
 ])
