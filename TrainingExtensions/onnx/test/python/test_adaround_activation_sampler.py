@@ -48,14 +48,14 @@ class TestAdaroundActivationSampler:
     """
      AdaRound Activation Sampler Unit Test Cases
     """
-    def test_activation_sampler_conv(self):
+    def test_activation_sampler_conv(self, tmp_path):
         """ Test ActivationSampler for a Conv op """
         np.random.seed(0)
         model = simple_relu_model()
         sim = QuantizationSimModel(model)
         activation_sampler = ActivationSampler('input', 'output', model, sim.model, True)
         data_loader = dataloader()
-        cached_dataset = CachedDataset(data_loader, 1, './')
+        cached_dataset = CachedDataset(data_loader, 1, tmp_path)
         all_inp_data, all_out_data = activation_sampler.sample_and_place_all_acts_on_cpu(cached_dataset)
 
         assert np.allclose(all_out_data, all_inp_data, atol=1e-5)
