@@ -37,9 +37,7 @@
 
 """ AdaRound Nightly Tests """
 import json
-import unittest
 import pytest
-import logging
 import random
 import os
 import numpy as np
@@ -47,13 +45,10 @@ import torch
 import torch.cuda
 from torchvision import models
 
-from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme
 from aimet_torch.utils import create_fake_data_loader, create_rand_tensors_given_shapes
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters
-
-logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
 
 def dummy_forward_pass(model, inp_shape):
@@ -66,14 +61,13 @@ def dummy_forward_pass(model, inp_shape):
     return output
 
 
-class AdaroundAcceptanceTests(unittest.TestCase):
+class TestAdaround:
     """
     AdaRound test cases
     """
     @pytest.mark.cuda
-    def test_adaround_resnet18_only_weights(self):
+    def test_adaround_resnet18_only_weights(self, tmp_path):
         """ test end to end adaround with only weight quantized """
-        AimetLogger.set_level_for_all_areas(logging.DEBUG)
         torch.cuda.empty_cache()
         seed_all(1000)
 
@@ -90,28 +84,22 @@ class AdaroundAcceptanceTests(unittest.TestCase):
         params = AdaroundParameters(data_loader=data_loader, num_batches=4, default_num_iterations=5,
                                     default_reg_param=0.01, default_beta_range=(20, 2))
 
-        adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path='./', filename_prefix='resnet18',
+        adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path=tmp_path, filename_prefix='resnet18',
                                                    default_param_bw=4,
                                                    default_quant_scheme=QuantScheme.post_training_tf_enhanced)
 
         ada_output = dummy_forward_pass(adarounded_model, input_shape)
-        self.assertFalse(torch.all(torch.eq(orig_output, ada_output)))
+        assert not torch.equal(orig_output, ada_output)
 
         # Test exported encodings JSON file
-        with open('./resnet18.encodings') as json_file:
+        with open(tmp_path / 'resnet18.encodings') as json_file:
             encoding_data = json.load(json_file)['param_encodings']
-            print(encoding_data)
 
-        self.assertTrue(isinstance(encoding_data["conv1.weight"], list))
-
-        # Delete encodings JSON file
-        if os.path.exists("./resnet18.encodings"):
-            os.remove("./resnet18.encodings")
+        assert isinstance(encoding_data["conv1.weight"], list)
 
     @pytest.mark.cuda
-    def test_adaround_resnet18_followed_by_quantsim(self):
+    def test_adaround_resnet18_followed_by_quantsim(self, tmp_path):
         """ test end to end adaround with weight 4 bits and output activations 8 bits quantized """
-        AimetLogger.set_level_for_all_areas(logging.DEBUG)
         torch.cuda.empty_cache()
         seed_all(1000)
 
@@ -130,36 +118,37 @@ class AdaroundAcceptanceTests(unittest.TestCase):
         output_bw = 8
         quant_scheme = QuantScheme.post_training_tf_enhanced
 
-        adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path='./',
+        adarounded_model = Adaround.apply_adaround(model, dummy_input, params, path=tmp_path,
                                                    filename_prefix='resnet18', default_param_bw=param_bw,
                                                    default_quant_scheme=quant_scheme)
 
         # Read exported param encodings JSON file
-        with open('./resnet18.encodings') as json_file:
+        with open(tmp_path / "resnet18.encodings") as json_file:
             encoding_data = json.load(json_file)['param_encodings']
 
-        encoding = encoding_data["conv1.weight"][0]
-        before_min, before_max, before_delta, before_offset = encoding.get('min'), encoding.get('max'),\
-                                                              encoding.get('scale'), encoding.get('offset')
+        encoding = encoding_data["conv1.weight"]
+        before_min = np.array([e["min"] for e in encoding])
+        before_max = np.array([e["max"] for e in encoding])
+        before_delta = np.array([e["scale"] for e in encoding])
+        before_offset = np.array([e["offset"] for e in encoding])
 
         # Create QuantSim using adarounded_model, set and freeze parameter encodings and then invoke compute_encodings
         sim = QuantizationSimModel(adarounded_model, quant_scheme=quant_scheme, default_param_bw=param_bw,
                                    default_output_bw=output_bw, dummy_input=dummy_input)
-        sim.set_and_freeze_param_encodings(encoding_path='./resnet18.encodings')
+        sim.set_and_freeze_param_encodings(encoding_path=tmp_path / 'resnet18.encodings')
         sim.compute_encodings(dummy_forward_pass, forward_pass_callback_args=input_shape)
 
         encoding = sim.model.conv1.param_quantizers['weight'].encoding
-        after_min, after_max, after_delta, after_offset = encoding.min, encoding.max, encoding.delta, encoding.offset
+        after_min = np.array([e.min for e in encoding])
+        after_max = np.array([e.max for e in encoding])
+        after_delta = np.array([e.delta for e in encoding])
+        after_offset = np.array([e.offset for e in encoding])
 
         # Quantization encoding should be same as used in Adaround optimization
-        self.assertEqual(before_min, after_min)
-        self.assertEqual(before_max, after_max)
-        self.assertEqual(before_delta, after_delta)
-        self.assertEqual(before_offset, after_offset)
-
-        # Delete encodings JSON file
-        if os.path.exists("./resnet18.encodings"):
-            os.remove("./resnet18.encodings")
+        assert np.all(before_min == after_min)
+        assert np.all(before_max == after_max)
+        assert np.all(before_delta == after_delta)
+        assert np.all(before_offset == after_offset)
 
     def test_dummy(self):
         # pytest has a 'feature' that returns an error code when all tests for a given suite are not selected
