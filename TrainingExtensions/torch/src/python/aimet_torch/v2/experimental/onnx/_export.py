@@ -287,6 +287,7 @@ def _get_encoding_from_onnx_node(onnx_model: onnx.ModelProto, quant_node: onnx.N
     from aimet_torch.v2.quantization.affine.encoding import AffineEncoding
     assert quant_node.op_type in ONNX_QUANTIZER_OP_TYPES
 
+    scale, offset = None, None
     qmin, qmax, block_size = None, None, None
     scale_name, offset_name = quant_node.input[1], quant_node.input[2]
 
@@ -303,7 +304,16 @@ def _get_encoding_from_onnx_node(onnx_model: onnx.ModelProto, quant_node: onnx.N
         scale = torch.tensor(_get_tensor_from_constant_name(onnx_model, scale_name))
         offset = torch.tensor(_get_tensor_from_constant_name(onnx_model, offset_name))
 
-    return AffineEncoding(scale, offset, qmin, qmax, block_size=block_size)
+    assert scale is not None
+    assert offset is not None
+
+    if scale.numel() == 1 and offset.numel() == 1:
+        scale = scale.squeeze()
+        offset = offset.squeeze()
+
+    symmetry = bool(torch.all(offset == 0))
+
+    return AffineEncoding(scale, offset, qmin, qmax, symmetry=symmetry, block_size=block_size)
 
 
 def _remove_constants(onnx_model: onnx.ModelProto, constant_names: Iterable[str]):
