@@ -41,11 +41,12 @@ import random
 import torch
 import numpy as np
 import copy
-
+from aimet_common.quantsim_config.utils import get_path_for_per_tensor_config
+from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_torch.v1.quantsim import QuantizationSimModel, load_checkpoint, save_checkpoint
 import models.mnist_torch_model as mnist_model
 from aimet_torch.v1.qc_quantize_op import StaticGridQuantWrapper
-from aimet_common.defs import QuantScheme, QuantizationDataType
+
 path = str('../data')
 filename_prefix = 'quantized_mnist'
 
@@ -185,7 +186,7 @@ class QuantizationSimAcceptanceTests(unittest.TestCase):
         mnist_model.evaluate(model=model, iterations=None, use_cuda=True)
 
         sim = QuantizationSimModel(model, quant_scheme=QuantScheme.training_range_learning_with_tf_init,
-                                   dummy_input=dummy_input)
+                                   dummy_input=dummy_input, config_file=get_path_for_per_tensor_config())
         sim.model.conv1.param_quantizers['bias'].enabled = True
 
         # Quantize the untrained MNIST model
@@ -219,7 +220,7 @@ class QuantizationSimAcceptanceTests(unittest.TestCase):
         mnist_model.evaluate(model=model, iterations=None, use_cuda=True)
 
         sim = QuantizationSimModel(model, quant_scheme=QuantScheme.training_range_learning_with_tf_enhanced_init,
-                                   dummy_input=dummy_input)
+                                   dummy_input=dummy_input, config_file=get_path_for_per_tensor_config())
         sim.model.conv1.param_quantizers['bias'].enabled = True
 
         # Quantize the untrained MNIST model
