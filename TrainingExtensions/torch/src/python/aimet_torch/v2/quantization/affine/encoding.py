@@ -370,6 +370,7 @@ class AffineEncoding(EncodingBase, _GridMixin):
 
             channel_axis = None
             block_axis = None
+            block_size = None
 
             if self.granularity == "pertensor":
                 pass
@@ -383,6 +384,7 @@ class AffineEncoding(EncodingBase, _GridMixin):
 
             if block_axis is not None:
                 axis = block_axis
+                block_size = self.block_size[block_axis]
             elif channel_axis is not None:
                 axis = channel_axis
                 y_scale = y_scale.flatten()
@@ -402,7 +404,7 @@ class AffineEncoding(EncodingBase, _GridMixin):
                 "y_scale": y_scale,
                 "y_zero_point": y_zero_point,
                 "axis": axis,
-                "block_size": None,
+                "block_size": block_size,
                 "output_dtype": output_dtype,
             }
 

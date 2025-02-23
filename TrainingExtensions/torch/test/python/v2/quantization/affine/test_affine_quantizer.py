@@ -1673,6 +1673,7 @@ def test_encoding_spec_2_0_0(shape, block_size, axis,
         assert torch.equal(torch.tensor(encoding["y_zero_point"]).view_as(offset), offset)
 
     assert encoding["axis"] == axis
-    assert encoding["block_size"] == None if block_size is None else \
-                                     next(iter(blk for blk in block_size if blk != 1))
+    assert encoding["block_size"] == (
+         None if block_size is None else next(iter(blk for blk in block_size if blk != 1))
+    )
     assert encoding["output_dtype"] == output_dtype
