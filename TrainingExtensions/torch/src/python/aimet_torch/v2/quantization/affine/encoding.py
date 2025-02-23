@@ -329,7 +329,7 @@ class AffineEncoding(EncodingBase, _GridMixin):
 
         return None
 
-    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]: # pylint: disable=too-many-branches
+    def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]: # pylint: disable=too-many-branches, too-many-statements
         """
         Converts encoding object into QNN encoding
         """
