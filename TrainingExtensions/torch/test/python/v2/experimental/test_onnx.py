@@ -50,7 +50,9 @@ import aimet_torch.v2.quantization as Q
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from torchvision.models import resnet18, mobilenet_v3_small
 from aimet_torch.v2.experimental.onnx._export import export as _export
+from aimet_torch.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.utils import get_all_quantizers
+from aimet_torch.v2.utils import remove_activation_quantizers
 from aimet_torch.model_preparer import prepare_model
 
 
@@ -283,23 +285,34 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
     x = torch.randn(input_shape)
     model = model_factory().eval()
     model = prepare_model(model)
+    fold_all_batch_norms(model, None, x)
     sim = QuantizationSimModel(model, x, config_file=get_path_for_per_channel_config())
 
-    sim.compute_encodings(lambda m, _: m(x), None)
+    sim.compute_encodings(lambda model: model(x))
 
     # Compute original pytorch model output with qdq weights
-    with contextlib.ExitStack() as stack:
-        for qmodule in sim.qmodules():
-            stack.enter_context(qmodule._remove_activation_quantizers())
-        y = sim.model(x)
+    with sim._concretize_int32_bias_quantizers(x):
+        expected_param_encodings = {
+            f"{module_name}.{param_name}": qtzr.get_encodings().to_qnn_encoding_dict(encoding_version)
+            for module_name, qmodule in sim.named_qmodules()
+            for param_name, qtzr in qmodule.param_quantizers.items()
+        }
+        expected_activation_encodings = {}
+        expected_activation_encodings.update({
+            f"{module_name}.input_quantizers.{i}": qtzr.get_encodings().to_qnn_encoding_dict(encoding_version)
+            for module_name, qmodule in sim.named_qmodules()
+            for i, qtzr in enumerate(qmodule.input_quantizers)
+            if qtzr is not None
+        })
+        expected_activation_encodings.update({
+            f"{module_name}.output_quantizers.{i}": qtzr.get_encodings().to_qnn_encoding_dict(encoding_version)
+            for module_name, qmodule in sim.named_qmodules()
+            for i, qtzr in enumerate(qmodule.output_quantizers)
+            if qtzr is not None
+        })
 
-    # Set min and max of quantizers for testing exported encodings
-    _, input_quantizers, output_quantizers = get_all_quantizers(sim.model)
-    for quantizer in input_quantizers + output_quantizers:
-        if not quantizer:
-            continue
-        quantizer.min = torch.nn.Parameter(torch.tensor(0.0))
-        quantizer.max = torch.nn.Parameter(torch.tensor(255.0))
+        with remove_activation_quantizers(sim.model):
+            expected_out = sim.model(x)
 
     with tempfile.TemporaryDirectory() as dirname:
         onnx_path = os.path.join(dirname, "torchvision_model.onnx")
@@ -321,21 +334,29 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
         Then: The onnx encodings should have the same number of encodings
               as the number of quantizers in the original pytorch model
         """
-        param_quantizers = [qtzr for qtzr_group in get_all_quantizers(sim.model)[:1] for qtzr in qtzr_group if qtzr]
-        activation_quantizers = [qtzr for qtzr_group in get_all_quantizers(sim.model)[1:] for qtzr in qtzr_group if qtzr]
-        assert len(onnx_encodings['param_encodings']) == len(param_quantizers)
-        assert len(onnx_encodings['activation_encodings']) == len(activation_quantizers)
+        assert len(onnx_encodings['param_encodings']) == len(expected_param_encodings)
+        assert len(onnx_encodings['activation_encodings']) == len(expected_activation_encodings)
 
         """
         Then: The onnx encodings should have the same scale and offset value
               as the values of quantizers in the original pytorch model
         """
         if encoding_version == '0.6.1':
-            assert all(encoding[0]['offset'] == 0.0 and encoding[0]['scale'] == 1.0 \
-                       for encoding in onnx_encodings['activation_encodings'].values())
+            for e in onnx_encodings['activation_encodings'].values():
+                assert any(
+                    e[0]["scale"] == expected[0]["scale"] and
+                    e[0]["offset"] == expected[0]["offset"] and
+                    e[0]["bitwidth"] == expected[0]["bitwidth"]
+                    for expected in expected_activation_encodings.values()
+                )
         else:
-            assert all(encoding['offset'][0] == 0.0 and encoding['scale'][0] == 1.0 \
-                       for encoding in onnx_encodings['activation_encodings'])
+            for e in onnx_encodings['activation_encodings']:
+                assert any(
+                    e["scale"] == expected["scale"] and
+                    e["offset"] == expected["offset"] and
+                    e["bw"] == expected["bw"]
+                    for expected in expected_activation_encodings.values()
+                )
 
         """
         Then: The exported onnx model should produce output close enough to
@@ -344,4 +365,4 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
         sess = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
         out, = sess.run(None, {onnx_model.graph.input[0].name: x.numpy()})
 
-        assert torch.allclose(torch.from_numpy(out), y, atol=1e-5)
+        assert torch.allclose(torch.from_numpy(out), expected_out, atol=1e-5)

@@ -65,10 +65,11 @@ from aimet_torch.v2 import nn as aimet_nn
 from aimet_torch.v2.nn import BaseQuantizationMixin, QuantizationMixin, UnknownModuleError
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
 from aimet_torch.v2._builder import _V2LazyQuantizeWrapper
+from aimet_torch.v2.quantization import QuantizedTensorBase
 from aimet_torch.v2.quantization.base import QuantizerBase
-from aimet_torch.v2.quantization.affine import AffineQuantizerBase
+from aimet_torch.v2.quantization.affine import AffineQuantizerBase, QuantizeDequantize, AffineEncoding
 from aimet_torch.v2.quantization.encoding_analyzer import PercentileEncodingAnalyzer
-from aimet_torch.v2.utils import patch_attr
+from aimet_torch.v2.utils import patch_attr, _is_expandable
 from aimet_torch import utils
 from aimet_torch.utils import deprecated, _red
 from aimet_torch.v2.deepspeed_utils import _register_zero3_forward_hooks
@@ -442,6 +443,8 @@ class QuantizationSimModel(_QuantizationSimModelBase):
                     with utils.in_eval_mode(self.model), torch.no_grad():
                         _ = self.model(*dummy_input)
 
+                # TODO
+                # stack.enter_context(self._concretize_int32_bias_quantizers(dummy_input))
                 return super().export(path, filename_prefix, dummy_input, *args, **kwargs)
 
         finally:
@@ -589,6 +592,80 @@ class QuantizationSimModel(_QuantizationSimModelBase):
             if not utils.is_leaf_module(module):
                 cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
 
+    @contextlib.contextmanager
+    def _concretize_int32_bias_quantizers(self, args):
+        def create_bias_quantizer(module, input, _): # pylint: disable=redefined-builtin
+            input, = input
+
+            if module.param_quantizers["weight"]:
+                weight_scale = module.param_quantizers["weight"].get_scale()
+            else:
+                weight_scale = None
+
+            if module.input_quantizers[0]:
+                input_scale = module.input_quantizers[0].get_scale()
+            elif isinstance(input, QuantizedTensorBase) and isinstance(input.encoding, AffineEncoding):
+                input_scale = input.encoding.scale
+            else:
+                input_scale = None
+
+            bias = module.bias
+            qmin = -2**31
+            qmax = 2**31 - 1
+            bias_qtzr = QuantizeDequantize(shape=bias.shape,
+                                           qmin=qmin,
+                                           qmax=qmax,
+                                           symmetric=True)
+            bias_qtzr.to(dtype=bias.dtype, device=bias.device)
+            module.param_quantizers["bias"] = bias_qtzr
+
+            if weight_scale is not None and input_scale is not None:
+                # Happy case: Can derive bias scale from input and weight scale
+                bias_scale = input_scale.detach() * weight_scale.detach()
+
+                # bias_scale.shape may not be always compatible with bias.shape,
+                # for example when weight quantizer is a blockwise quantizer
+                if bias_scale.numel() == bias.numel():
+                    bias_scale = bias_scale.view(bias.shape)
+
+                if _is_expandable(bias_scale.shape, bias.shape):
+                    bias_qtzr.set_range(bias_scale * qmin, bias_scale * qmax)
+
+            if not bias_qtzr.is_initialized():
+                # Compute bias scale without input and weight scale.
+                # This should be avoided as much as possible
+                module._compute_param_encodings(overwrite=False) # pylint: disable=protected-access
+
+        if not isinstance(args, (tuple, list)):
+            args = (args,)
+
+        handles = []
+        orig_bias_quantizers = {
+            qmodule: qmodule.param_quantizers["bias"]
+            for qmodule in self.qmodules()
+            if "bias" in qmodule.param_quantizers
+        }
+
+        try:
+            for qmodule, qtzr in orig_bias_quantizers.items():
+                if qtzr is not None:
+                    # Bias quantizer already exists.
+                    # This means the user created bias quantizer by him/herself
+                    # In this case, we honor the custom bias quantizer defined by the user
+                    continue
+
+                handles.append(qmodule.register_forward_hook(create_bias_quantizer))
+            try:
+                self.model(*args)
+            finally:
+                for handle in handles:
+                    handle.remove()
+            yield
+        finally:
+            for qmodule, qtzr in orig_bias_quantizers.items():
+                qmodule.param_quantizers["bias"] = qtzr
+
+
 class _QuantizationSimOnnxExport:
     """
     Helper class for exporting quantized models to ONNX format.
@@ -620,28 +697,25 @@ class _QuantizationSimOnnxExport:
                                "Other quantizer types are not supported.")
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.sim._apply_qdq_to_model_parameters(self.sim.model):
+            with self.sim._concretize_int32_bias_quantizers(args), \
+                    self.sim._apply_qdq_to_model_parameters(self.sim.model):
                 tmp_onnx_path = os.path.join(tmp_dir, "quantized_model.onnx")
                 export(self.sim.model, args, tmp_onnx_path, *posargs, **kwargs)
                 onnx_model = onnx.load(tmp_onnx_path)
 
+                param_names = {
+                    f"{layer_name}.{param_name}"
+                    for layer_name, layer in self.sim.model.named_modules()
+                    if isinstance(layer, QuantizationMixin)
+                    for param_name, quantizer in layer.param_quantizers.items()
+                    if quantizer
+                }
+
         tensor_to_encoding_map = remove_quantization_nodes_from_onnx_graph(onnx_model)
         onnx.save(onnx_model, f)
 
-        param_names = []
         param_encodings = {}
         activation_encodings = {}
-
-        for layer_name, layer in self.sim.model.named_modules():
-            if not isinstance(layer, self.sim._quantized_modules):
-                continue
-
-            if isinstance(layer, _QuantizedModuleProtocol) and isinstance(layer.get_original_module(), utils.DROPOUT_TYPES):
-                continue
-
-            for param_name, quantizer in layer.param_quantizers.items():
-                if quantizer:
-                    param_names.append(f"{layer_name}.{param_name}")
 
         for tensor, encoding in tensor_to_encoding_map.items():
             qnn_encoding = encoding.to_qnn_encoding_dict(encoding_version=quantsim.encoding_version)
@@ -671,7 +745,7 @@ class _QuantizationSimOnnxExport:
         onnx_file_path = (f if isinstance(f, str) else f.name)
         encoding_file_path = os.path.splitext(onnx_file_path)[0] + ".encodings"
         with open(encoding_file_path, 'w', encoding='utf-8') as encoding_file:
-            json.dump(encodings_dict, encoding_file, sort_keys=True, indent=4)
+            json.dump(encodings_dict, encoding_file, indent=2)
 
     @staticmethod
     def _has_non_affine_quantizer(module: torch.nn.Module):
