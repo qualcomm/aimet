@@ -100,7 +100,7 @@ def disable_add_relu_supergroups(qsim: QuantizationSimModel):
 def test_quantize_resnet50_keras():
     if version.parse(tf.version.VERSION) >= version.parse("2.00"):
         rand_inp = np.random.randn(1, 224, 224, 3)
-        model = tf.keras.applications.resnet50.ResNet50()
+        model = tf.keras.applications.resnet50.ResNet50(weights=None)
         _, model = fold_all_batch_norms(model)
         orig_out = model(rand_inp)
         qsim = QuantizationSimModel(model)

@@ -45,7 +45,7 @@ from aimet_tensorflow.keras.utils.weight_tensor_utils import WeightTensorUtils
 
 def test_fold_batch_norms():
     rand_inp = np.random.randn(1, 224, 224, 3)
-    model = tf.keras.applications.resnet50.ResNet50()
+    model = tf.keras.applications.resnet50.ResNet50(weights=None)
     conv_99_name = model.layers[99].name
     before_fold_weight = model.get_layer(conv_99_name).get_weights()[0]
     before_fold_output = model(rand_inp)
@@ -60,7 +60,7 @@ def test_fold_batch_norms():
 
 def test_fold_batch_norms_mobile_net_v2():
     # rand_inp = np.random.randn(1, 224, 224, 3)
-    model = tf.keras.applications.MobileNetV2()
+    model = tf.keras.applications.MobileNetV2(weights=None)
     conv_151 = model.layers[151]
     before_fold_weight = conv_151.get_weights()[0]
     # before_fold_output = model(rand_inp)
@@ -76,7 +76,7 @@ def test_fold_batch_norms_mobile_net_v2():
 
 
 def test_layer_group_search():
-    model = tf.keras.applications.ResNet50(input_shape=(224, 224, 3))
+    model = tf.keras.applications.ResNet50(weights=None, input_shape=(224, 224, 3))
 
     _, model = fold_all_batch_norms(model)
     graph_search_utils = GraphSearchUtils(model)
@@ -92,7 +92,7 @@ def test_layer_group_search():
 
 
 def test_cross_layer_scaling_resnet50():
-    model = tf.keras.applications.ResNet50(input_shape=(224, 224, 3))
+    model = tf.keras.applications.ResNet50(weights=None, input_shape=(224, 224, 3))
 
     conv4_weight_before_scaling = model.layers[22].get_weights()[0]
     conv1, conv2 = model.layers[10], model.layers[13]
@@ -112,7 +112,7 @@ def test_cross_layer_scaling_resnet50():
 
 
 def test_cross_layer_scaling_mobile_net_v2():
-    model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3))
+    model = tf.keras.applications.MobileNetV2(weights=None, input_shape=(224, 224, 3))
     conv1_weight_before_scaling = model.layers[7].get_weights()[0]
     dw_conv1_weight_before_scaling = model.layers[21].get_weights()[0]
 
@@ -143,7 +143,7 @@ def test_cross_layer_scaling_mobile_net_v2():
 
 
 def test_cross_layer_equalization_stepwise():
-    orig = tf.keras.applications.ResNet50(input_shape=(224, 224, 3))
+    orig = tf.keras.applications.ResNet50(weights=None, input_shape=(224, 224, 3))
 
     folded_pairs, model = fold_all_batch_norms(orig)
     bn_dict = {}
@@ -175,14 +175,14 @@ def test_cross_layer_equalization_stepwise():
 
 
 def test_cross_layer_equalization_resnet50():
-    model = tf.keras.applications.ResNet50(input_shape=(224, 224, 3))
+    model = tf.keras.applications.ResNet50(weights=None, input_shape=(224, 224, 3))
 
     cle_applied_model = equalize_model(model)
     cle_applied_model.summary()
 
 
 def test_cross_layer_equalization_mobile_net_v2():
-    model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3))
+    model = tf.keras.applications.MobileNetV2(weights=None, input_shape=(224, 224, 3))
 
     cle_applied_model = equalize_model(model)
     cle_applied_model.summary()

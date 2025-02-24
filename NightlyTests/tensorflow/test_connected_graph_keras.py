@@ -46,7 +46,7 @@ from aimet_tensorflow.keras.connectedgraph import ConnectedGraph as KerasConnect
 
 def test_connected_graph_resnet50_keras():
     if version.parse(tf.version.VERSION) >= version.parse("2.00"):
-        keras_model = tf.keras.applications.ResNet50(input_shape=(224, 224, 3))
+        keras_model = tf.keras.applications.ResNet50(weights=None, input_shape=(224, 224, 3))
         connected_graph_from_keras_model = KerasConnectedGraph(keras_model)
 
         ops_from_keras_model = connected_graph_from_keras_model.get_all_ops()
@@ -71,7 +71,7 @@ def test_connected_graph_resnet50_keras():
 
 def test_graph_searcher_functionality_keras():
     if version.parse(tf.version.VERSION) >= version.parse("2.00"):
-        keras_model = tf.keras.applications.ResNet50(input_shape=(224, 224, 3))
+        keras_model = tf.keras.applications.ResNet50(weights=None, input_shape=(224, 224, 3))
         connected_graph_from_keras_model = KerasConnectedGraph(keras_model)
 
         patterns_with_callbacks = []

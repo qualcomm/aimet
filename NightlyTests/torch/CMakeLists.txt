@@ -48,7 +48,7 @@ add_custom_target(AcceptanceTests.TorchDependencies
       COMMAND ${CMAKE_COMMAND} -E env
       "${AIMET_PYTHONPATH}"
       "${Python3_EXECUTABLE}" ${CMAKE_CURRENT_SOURCE_DIR}/dependencies.py ${CMAKE_CURRENT_SOURCE_DIR}/resnet18_eval_scores.csv
-       ${USE_CUDA})
+       )
 
 add_custom_target( AcceptanceTests.Torch )
 

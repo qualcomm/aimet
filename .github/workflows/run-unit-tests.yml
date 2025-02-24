@@ -1,0 +1,93 @@
+name: Run unit tests
+
+on:
+  workflow_call:
+    inputs:
+      variants:
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: Run AIMET unit tests
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.variants) }}
+    runs-on: ${{ matrix.runs-on }}
+    env:
+      pytest_github_report: true
+      pytest_use_zeros: true
+    container:
+      image: "ubuntu:22.04"
+    steps:
+      - if: matrix.ENABLE_TESTS == 'ON'
+        run: |
+          apt update -qq
+          apt install --no-install-recommends -y git curl g++ ca-certificates
+          curl -sSL 'https://pki.qualcomm.com/{qc_root_g2_cert.crt,ssl_v3_cert.crt,ssl_v4_cert.crt}' > qualcomm.crt
+          update-ca-certificates
+          rm -rf download
+      - if: matrix.ENABLE_TESTS == 'ON'
+        uses: actions/checkout@v4
+      - if: matrix.ENABLE_TESTS == 'ON'
+        uses: actions/download-artifact@v3
+        with:
+          name: "${{ matrix.id }}"
+          path: "downloads"
+      - name: Try to load python virtual environment from the cache
+        if: matrix.ENABLE_TESTS == 'ON'
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: ./.conda
+          key: ${{ matrix.id }}-${{ hashFiles('pyproject.toml', 'packaging/dependencies/**/*.txt', 'packaging/dependencies/plugins/**/*.py') }}
+      - name: Create python virtual environment
+        if: ${{ matrix.id  != 'tf-torch-cpu' && steps.cache.outputs.cache-hit != 'true' }}
+        run: |
+          export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo "${{ matrix.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
+
+          curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
+          bash ./conda.sh -u -b -p ./.conda
+          sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
+          ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find downloads -name '*.whl')[test, v1-deps]"
+      - name: Run pylint
+        if: matrix.ENABLE_TESTS == 'ON'
+        run: |
+          CONDA_PYTHONPATH="./.conda/envs/${{ matrix.id }}/lib/python${{ matrix.VER_PYTHON }}/site-packages"
+          AIMET_PACKAGES=$(find $CONDA_PYTHONPATH -regex ".*/aimet_\(common\|torch\|tensorflow\|onnx\)" | tr "\n" " ")
+
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" \
+              python3 -m pylint --rcfile=.pylintrc $AIMET_PACKAGES
+      - name: Run unit tests
+        if: matrix.ENABLE_TESTS == 'ON'
+        env:
+          CTEST_TARGETS: |
+            downloads/build/bin/MoDlCompressionTest
+            downloads/build/bin/MoDlEqualizationTest
+            downloads/build/bin/MoDlQuantizationTest
+        run: |
+          set -x
+
+          for target in $CTEST_TARGETS; do
+              chmod +x $target
+              # NOTE: Set LD_LIBRARY_PATH for dynamic linking with libpython3.so
+              #       since ubuntu:22.04 docker image doesn't have built-in libpython3.so
+              LD_LIBRARY_PATH=".conda/envs/${{ matrix.id }}/lib" \
+                  ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" $target
+          done
+
+          PYTEST_TARGETS="./ModelOptimizations/DlQuantization/test ./ModelOptimizations/DlEqualization/test"
+
+          if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/tensorflow/test"
+          elif [ "${{ matrix.VER_ONNXRUNTIME }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/onnx/test"
+          elif [ "${{ matrix.VER_TORCH }}" != "" ] ; then
+              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
+          fi
+          PYTEST_ARGS="not blah"
+          if [ "${{ matrix.VER_CUDA }}" = "" ] ; then
+              PYTEST_ARGS="not cuda"
+          fi
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pytest -m "$PYTEST_ARGS" $PYTEST_TARGETS

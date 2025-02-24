@@ -5,158 +5,137 @@ on:
     - cron: '0 0 * * *'
 
 jobs:
-  fast-release-docker-build:
-    if: github.server_url != 'https://github.com'
-    name: Docker build for torch-gpu fast release
+  variants:
+    name: Define supported AIMET variants
     runs-on: ubuntu-latest
-    steps:
-      - name: Install Tools
-        run: |
-          sudo apt update -qq
-          sudo apt install --no-install-recommends -y curl ca-certificates
-          sudo cp /tmp/certs/certificate-package.crt /usr/local/share/ca-certificates/certificate-package.crt
-          sudo update-ca-certificates
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-      - name: Check for Dockerfile Update
-        run: |
-          echo "docker-updated="$(if [ -n "$(git diff --name-only HEAD^ HEAD -- Jenkins/fast-release/Dockerfile.torch-gpu)" ]; then echo true; else echo false; fi) >> $GITHUB_ENV
-      - uses: ./.github/actions/docker-build-image
-        if: env.docker-updated == 'true'
-        with:
-          dockerfile: Jenkins/fast-release/Dockerfile.torch-gpu
-          docker-login: ${{ secrets.DOCKER_LOGIN }}
-          docker-password: ${{ secrets.DOCKER_CREDENTIALS }}
-          docker-registry: ${{ vars.DOCKER_REGISTRY }}
-          image-name: "${{ vars.DOCKER_IMAGE }}torch"
-          image-tag: "fast-release-latest"
-          build-args: |
-            REGISTRY=${{ vars.DOCKER_REGISTRY_TMP }}/
-            PYTHON_VERSION=3.10
-            BUILDKIT_INLINE_CACHE=1
-
-  build-pypi-whl:
-    if: github.server_url != 'https://github.com'
-    name: Build AIMET pypi wheel
-    runs-on: k8s-gpu
-    needs: [fast-release-docker-build]
-    env:
-      AIMET_VARIANT: torch-gpu
-      FAST_RELEASE: true
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}torch:fast-release-latest"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
     outputs:
-      version: ${{ steps.version.outputs.nightly_version }}
+      matrix: ${{ steps.final.outputs.value }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Tools
+      - name: Torch variants
         run: |
-          sudo apt-get update
-          sudo apt-get install python3 python3-pip -y
-          python3 -m pip install --upgrade pip
-          python3 -m pip install lastversion
-      - name: Format the Version String
-        id: version
+          VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "torch-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
+              },
+              {
+                 "id":              "torch-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "12.1.1",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
+              }
+            ]')
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
+      - name: Tensorflow variants
         run: |
-          set +e
-          CUR_VER=$(lastversion https://artifacts.codelinaro.org/ui/native/aimet/ 2>/dev/null)
-          if [ $? -ne 0 ]; then
-            CUR_VER=${{ vars.VERSION }}
-          fi
-          echo "Current Aimet-Torch Version: " $CUR_VER
-          IFS='.' read -r -a VERSION_SPLIT <<< "$CUR_VER"
-          VERSION_SPLIT[2]=$((VERSION_SPLIT[2] + 1))
-          NIGHTLY_VERSION="${VERSION_SPLIT[0]}.${VERSION_SPLIT[1]}.b${VERSION_SPLIT[2]}"
-          echo "Updates Nightly Version: " $NIGHTLY_VERSION
-          echo "NIGHTLY_VERSION=$NIGHTLY_VERSION" >> $GITHUB_ENV
-          echo "nightly_version=$NIGHTLY_VERSION" >> $GITHUB_OUTPUT
-          unset IFS
-      - name: Make the Pypi Wheel
+          VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "tf-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "2.10.1",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
+              },
+              {
+                 "id":              "tf-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "2.10.1",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "11.8.0",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
+              }
+            ]')
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
+      - name: ONNX variants
         run: |
-          mkdir -p build/staging/universal
-          cmake -S . -B ./build -DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_TENSORFLOW=OFF -DENABLE_ONNX=OFF -DPIP_INDEX=${{ vars.PYPI_INDEX }} -DSW_VERSION=${{ env.NIGHTLY_VERSION }} -DCMAKE_INSTALL_PREFIX="build/staging/universal" 
-          cmake --build ./build --parallel 4 --target all --target install --target packageaimet
-      - uses: actions/upload-artifact@v3
-        with:
-          name: aimet-torch-${{ env.NIGHTLY_VERSION }}
-          path: build/**/*.whl
-          if-no-files-found: error
-          retention-days: 1d
+          VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "onnx-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
+              },
+              {
+                 "id":              "onnx-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_CUDA":        "11.8.0",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all"
+              }
+            ]')
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
 
-  pypi-unit-tests:
-    if: github.server_url != 'https://github.com'
-    name: AIMET Pypi Unit Test
-    runs-on: k8s-gpu
-    needs: [build-pypi-whl]
-    env:
-      pytest_github_report: true
-      pytest_use_zeros: true
-      VERSION: ${{needs.build-pypi-whl.outputs.version}}
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: "${{ vars.DOCKER_REGISTRY_TMP }}/nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v2
-        with:
-          name: aimet-torch-${{ env.VERSION }}
-          path: .
-      - name: Install Tools
+      - name: Doc variants
         run: |
-          apt-get update
-          apt-get install python3 python3-pip -y
-          python3 -m pip install --upgrade pip
-          python3 -m pip install packaging/dist/aimet_torch-*.whl
-          python3 -m pip install bs4 deepspeed onnxruntime peft pytest spconv transformers torch==2.2.2 torchvision==0.17.2
-          python3 -m pip install pytorch-ignite --no-dependencies
-      - name: Run Unit Tests
-        run: pytest TrainingExtensions/torch/test/python/
+          VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "tf-torch-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "2.12.*",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "OFF",
+                 "BUILD_TARGETS":   "all;doc"
+              }
+            ]')
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
 
-  pypi-acceptance-tests:
-    if: github.server_url != 'https://github.com'
-    name: AIMET Pypi Acceptance Tests
-    runs-on: k8s-gpu
-    needs: [build-pypi-whl]
-    env:
-      pytest_github_report: true
-      pytest_use_zeros: true
-      DEPENDENCY_DATA_PATH: /data
-      VERSION: ${{needs.build-pypi-whl.outputs.version}}
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: "${{ vars.DOCKER_REGISTRY_TMP }}/nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04"
-      credentials:
-        username: ${{ secrets.DOCKER_LOGIN }}
-        password: ${{ secrets.DOCKER_CREDENTIALS }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v2
-        with:
-          name: aimet-torch-${{ env.VERSION }}
-          path: .
-      - name: Install Tools
+      - name: (Last step) Generate few extra properties for each variant
+        id: final
         run: |
-         apt-get update
-         apt-get install python3 python3-pip -y
-         python3 -m pip install packaging/dist/aimet_torch-*.whl
-         python3 -m pip install bs4 deepspeed==0.15.2 peft pytest safetensors torch==2.2.2 torchvision==0.17.2 transformers==4.27.4 wget
-         python3 -m pip install pytorch-ignite --no-dependencies
-      - name: Verify Dependency Data
-        run: python3 NightlyTests/torch/dependencies.py NightlyTests/torch/resnet18_eval_scores.csv True
-      - name: Run Acceptance Tests
-        run: pytest NightlyTests/torch/
-          
+          echo "value=$VALUE" >> $GITHUB_OUTPUT
+
+  call-build-wheels:
+    name: Call build-wheels
+    needs: [ variants ]
+    uses: ./.github/workflows/build-wheels.yml
+    with:
+      variants: ${{ needs.variants.outputs.matrix }}
+      tag: "latest"
+    secrets: inherit
+
+  call-run-unit-tests:
+    name: Run unit tests
+    needs: [ variants, call-build-wheels ]
+    uses: ./.github/workflows/run-unit-tests.yml
+    with:
+      variants: ${{ needs.variants.outputs.matrix }}
+    secrets: inherit
+
+  call-run-acceptance-tests:
+    name: Run acceptance tests
+    needs: [ variants, call-build-wheels, call-run-unit-tests ]
+    uses: ./.github/workflows/run-acceptance-tests.yml
+    with:
+      variants: ${{ needs.variants.outputs.matrix }}
+    secrets: inherit

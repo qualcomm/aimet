@@ -53,7 +53,7 @@ from aimet_common.utils import AimetLogger
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 
 eval_scores_csv_file = sys.argv[1]
-use_cuda = eval(sys.argv[2])
+use_cuda = True if torch.cuda.is_available() else False
 
 # ##############################################################################################
 # Dependency #1

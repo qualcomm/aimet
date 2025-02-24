@@ -1,0 +1,108 @@
+name: Build wheels
+
+on:
+  workflow_call:
+    inputs:
+      variants:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+
+jobs:
+  build:
+    strategy:
+      matrix: ${{ fromJSON(inputs.variants) }}
+    runs-on: ${{ matrix.runs-on }}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}:${{ inputs.tag }}"
+      credentials:
+        username: ${{ secrets.DOCKER_LOGIN }}
+        password: ${{ secrets.DOCKER_CREDENTIALS }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Generate CMAKE_ARGS"
+        run: |
+          set -x
+          CMAKE_ARGS=""
+          CMAKE_ARGS="-DENABLE_CUDA=$([ "${{ matrix.VER_CUDA }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TORCH=$([ "${{ matrix.VER_TORCH }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNXRUNTIME }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
+          CMAKE_ARGS="-DENABLE_TESTS=${{ matrix.ENABLE_TESTS }} $CMAKE_ARGS"
+          echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
+
+          BUILD_TARGETS="${{ matrix.BUILD_TARGETS }}"
+          echo "AIMET_BUILD_TARGETS=$BUILD_TARGETS" >> $GITHUB_ENV
+      - name: "Exclude Torch libraries from dependencies for manylinux"
+        if: matrix.VER_TORCH || matrix.VER_ONNXRUNTIME
+        run: |
+          . /etc/profile.d/conda.sh
+          TORCH_DIR=$(python3 -c 'import torch; print(f"{torch.utils.cmake_prefix_path}/../../lib")')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TORCH_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Exclude CUDA libraries from dependencies for manylinux"
+        if: matrix.VER_CUDA
+        run: |
+          . /etc/profile.d/conda.sh
+          CUBLAS_DIR=$(python3 -c 'import sysconfig ; from pathlib import Path; print(Path(sysconfig.get_config_var("prefix"), "lib"))')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Exclude Tensorflow libraries from dependencies for manylinux"
+        if: matrix.VER_TENSORFLOW
+        run: |
+          . /etc/profile.d/conda.sh
+          TF_DIR=$(python3 -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+          CUBLAS_DIR=$(python3 -c 'import tensorflow as tf; print(f"{tf.sysconfig.get_lib()}/../../../../lib")')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TF_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf --  '--exclude %s ')"
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          set -x
+          echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
+      - name: "Build AIMET wheel package"
+        run: |
+          set -x
+          rm -rf build dist
+          . /etc/profile.d/conda.sh
+          export CMAKE_ARGS="$AIMET_CMAKE_ARGS"
+          export SKBUILD_BUILD_TARGETS="$AIMET_BUILD_TARGETS"
+
+          if [ "${{ matrix.id }}" == "tf-torch-cpu" ] ; then
+            # Force-install tensorflow 2.10.1 since aimet isn't compatible with > 2.10
+            # FIXME: Remove this line
+            python3 -m pip install tensorflow-cpu==2.10.1 --no-deps
+            # Required to work around tensorflow-protobuf version mismatch
+            export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+          fi
+
+          python3 -m build --wheel --no-isolation .
+          auditwheel repair --plat manylinux_2_34_x86_64 $MANYLINUX_EXCLUDE_LIBS dist/aimet*.whl
+
+          if [ "${{ matrix.id }}" == "tf-torch-cpu" ] ; then
+            # Unzip aimet*.whl in current directory to upload Docs
+            python3 -m pip install -t wheelhouse --no-deps wheelhouse/aimet*.whl
+          fi
+      - name: Upload AIMET wheel file
+        uses: actions/upload-artifact@v3
+        with:
+          name: "${{ matrix.id }}"
+          path: |
+            wheelhouse/aimet*.whl
+            build/bin/MoDlCompressionTest
+            build/bin/MoDlEqualizationTest
+            build/bin/MoDlQuantizationTest
+          if-no-files-found: error
+          retention-days: 1d
+      - name: Upload AIMET documentation
+        if: matrix.id == 'tf-torch-cpu'
+        uses: actions/upload-artifact@v3
+        with:
+          name: Docs
+          path: wheelhouse/Docs/
+          if-no-files-found: error
+          retention-days: 1d
