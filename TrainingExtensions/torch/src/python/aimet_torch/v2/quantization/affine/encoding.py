@@ -39,7 +39,6 @@
 
 from typing import Tuple, Optional, Dict, Any, overload, Union, List
 from itertools import chain, repeat
-import math
 import torch
 from torch._C._nn import _parse_to as parse_to_args
 
