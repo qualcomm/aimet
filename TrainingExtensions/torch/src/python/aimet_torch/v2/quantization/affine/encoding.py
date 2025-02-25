@@ -480,14 +480,14 @@ class GroupedBlockEncoding(AffineEncoding):
         symmetry=False,
         block_size: Optional[Tuple[int, ...]] = None,
         block_grouping: Optional[Tuple[int, ...]] = None,
-        decompressed_bw: Optional[int] = None,
+        compressed_bw: Optional[int] = None,
         per_channel_scale: Optional[torch.Tensor] = None,
         per_block_int_scale: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         super().__init__(scale, offset, bitwidth, signed, symmetry, block_size, **kwargs)
         self.block_grouping = block_grouping
-        self.decompressed_bw = decompressed_bw
+        self.compressed_bw = compressed_bw
         self.per_channel_scale = per_channel_scale
         self.per_block_int_scale = per_block_int_scale
 
@@ -502,17 +502,11 @@ class GroupedBlockEncoding(AffineEncoding):
             # Equivalent to AffineEncoding
             pass
         else:
-            encoding_dict['bw'] = self.decompressed_bw
-            encoding_dict['compressed_bw'] = self.bitwidth
+            encoding_dict['bw'] = self.bitwidth
+            encoding_dict['compressed_bw'] = self.compressed_bw
             encoding_dict['scale'] = self.per_channel_scale.flatten().tolist()
             encoding_dict['offset'] = \
-                [-2 ** (self.decompressed_bw - 1) for _ in encoding_dict['scale']]
+                [-2 ** (self.bitwidth - 1) for _ in encoding_dict['scale']]
             encoding_dict['enc_type'] = EncodingType.LPBQ.name
             encoding_dict['per_block_int_scale'] = self.per_block_int_scale.flatten().tolist()
         return encoding_dict
-
-    def quantize(self, input: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
-
-    def dequantize(self, input: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError

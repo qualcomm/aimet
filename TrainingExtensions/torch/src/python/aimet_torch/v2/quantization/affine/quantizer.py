@@ -831,12 +831,12 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         if self.is_initialized():
             return GroupedBlockEncoding(scale=self.get_scale(dtype=torch.float32),
                                         offset=self.get_offset(dtype=torch.float32),
-                                        bitwidth=self.bitwidth,
+                                        bitwidth=self.decompressed_bw,
                                         signed=self.signed,
                                         symmetry=self.symmetric,
                                         block_size=self.block_size,
                                         block_grouping=self.block_grouping,
-                                        decompressed_bw=self.decompressed_bw,
+                                        compressed_bw=self.bitwidth,
                                         per_channel_scale=self.get_per_channel_scale(dtype=torch.float32),
                                         per_block_int_scale=self.get_per_block_integer_scale())
         return None
