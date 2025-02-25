@@ -39,6 +39,7 @@
 
 from typing import Tuple, Optional, Dict, Any, overload, Union, List
 from itertools import chain, repeat
+import math
 import torch
 from torch._C._nn import _parse_to as parse_to_args
 
@@ -366,7 +367,11 @@ class AffineEncoding(EncodingBase, _GridMixin):
             assert output_dtype in ("int4", "int8", "int16", "int32", "uint4", "uint8", "uint16", "uint32")
 
             y_scale = self.scale
-            y_zero_point = self.offset.to(torch.int32) if not self.symmetry else None
+            if self.symmetry:
+                centroid = math.ceil((self.qmin + self.qmax) / 2)
+                y_zero_point = torch.full_like(y_scale, centroid, dtype=torch.int32)
+            else:
+                y_zero_point = -self.offset.to(torch.int32)
 
             channel_axis = None
             block_axis = None
@@ -388,17 +393,14 @@ class AffineEncoding(EncodingBase, _GridMixin):
             elif channel_axis is not None:
                 axis = channel_axis
                 y_scale = y_scale.flatten()
-                if y_zero_point is not None:
-                    y_zero_point = y_zero_point.flatten()
+                y_zero_point = y_zero_point.flatten()
             else:
                 axis = None
                 y_scale = y_scale.squeeze()
-                if y_zero_point is not None:
-                    y_zero_point = y_zero_point.squeeze()
+                y_zero_point = y_zero_point.squeeze()
 
             y_scale = y_scale.tolist()
-            if y_zero_point is not None:
-                y_zero_point = y_zero_point.tolist()
+            y_zero_point = None if torch.all(y_zero_point == 0) else y_zero_point.tolist()
 
             return {
                 "y_scale": y_scale,
