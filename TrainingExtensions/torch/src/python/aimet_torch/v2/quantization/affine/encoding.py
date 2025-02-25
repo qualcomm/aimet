@@ -482,14 +482,21 @@ class GroupedBlockEncoding(AffineEncoding):
         block_grouping: Optional[Tuple[int, ...]] = None,
         decompressed_bw: Optional[int] = None,
         per_channel_scale: Optional[torch.Tensor] = None,
-        per_block_int_scale: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         super().__init__(scale, offset, bitwidth, signed, symmetry, block_size, **kwargs)
         self.block_grouping = block_grouping
         self.decompressed_bw = decompressed_bw
         self.per_channel_scale = per_channel_scale
-        self.per_block_int_scale = per_block_int_scale
+
+    @property
+    def per_block_int_scale(self):
+        return quantize(self.scale,
+                        scale=self.per_channel_scale,
+                        offset=torch.zeros_like(self.per_channel_scale),
+                        qmin=1,
+                        qmax=2 ** (self.decompressed_bw - self.bitwidth),
+                        block_size=self.block_grouping)
 
     def to_qnn_encoding_dict(self, encoding_version=None) -> Union[List, Dict]:
         """

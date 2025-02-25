@@ -761,7 +761,7 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         if not symmetric:
             raise RuntimeError('GroupedBlockQuantizeDequantize only supports symmetric quantization.')
 
-    def get_scale(self, dtype=None) -> torch.Tensor:
+    def get_scale(self, dtype=None) -> Optional[torch.Tensor]:
         """
         Compute quantization scale to be used for forward pass.
         Overrides QuantizeDequantize self.get_scale() to apply the grouped block algorithm for calculating modified
@@ -770,71 +770,43 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         :param dtype: dtype of the computed scale. Use of self.min.dtype by default.
         :return: Updated scale
         """
-        orig_scale = super().get_scale(dtype)
-        orig_scale_shape = orig_scale.shape
-        reshaped_scale = orig_scale.view(self.get_expanded_scale_shape())
-        max_scale = torch.amax(reshaped_scale, list(range(1, len(orig_scale_shape) * 2, 2)), keepdim=True)
+        lpbq_scale, _ = self._get_scale(dtype)
+        return lpbq_scale
+
+    def _get_scale(self, dtype=None) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+        raw_scale = super().get_scale(dtype)
+        if raw_scale is None:
+            return None, None
+
+        per_channel_scale = self._get_per_channel_scale(raw_scale)
+
+        lpbq_scale = quantize_dequantize(tensor=raw_scale,
+                                         scale=per_channel_scale,
+                                         offset=torch.zeros_like(per_channel_scale),
+                                         qmin=1,
+                                         qmax=2 ** (self.decompressed_bw - self.bitwidth),
+                                         block_size=self.block_grouping)
+        return lpbq_scale, per_channel_scale
+
+    def _get_per_channel_scale(self, raw_scale: torch.Tensor) -> torch.Tensor:
+        per_channel_scale_shape = [
+            s_dim // group_size if group_size != -1 else 1
+            for s_dim, group_size in zip(raw_scale.shape, self.block_grouping)
+        ]
+        reshaped_scale = torch_builtins.reshape_tensor_for_blocks(raw_scale,
+                                                                  per_channel_scale_shape,
+                                                                  self.block_grouping)
+        max_scale = torch.amax(reshaped_scale, dim=tuple(range(1, reshaped_scale.dim(), 2)))
         per_channel_scale = max_scale / 2 ** (self.decompressed_bw - self.bitwidth)
-        updated_scale = quantize_dequantize(reshaped_scale,
-                                            scale=per_channel_scale,
-                                            offset=torch.zeros_like(per_channel_scale),
-                                            qmin=1,
-                                            qmax=2 ** (self.decompressed_bw - self.bitwidth))
-        return updated_scale.view(orig_scale_shape)
-
-    def get_expanded_scale_shape(self) -> Tuple[int, ...]:
-        """
-        Get expanded scale shape which breaks each scale dimension into a pair of dimensions with sizes
-        (original_shape / block_grouping, block_grouping).
-
-        :return: Expanded scale shape
-        """
-        expanded_shape = []
-        for idx, block_group in enumerate(self.block_grouping):
-            # Block group of -1 is equivalent to grouping all blocks together
-            if block_group == -1:
-                expanded_shape.append(1)
-                expanded_shape.append(self.shape[idx])
-            else:
-                expanded_shape.append(self.shape[idx] // block_group)
-                expanded_shape.append(block_group)
-        return expanded_shape
-
-    def get_per_channel_scale(self, dtype=None) -> torch.Tensor:
-        """
-        Get per channel scale.
-
-        :return: Per channel scale
-        """
-        orig_scale = super().get_scale(dtype)
-        orig_scale_shape = orig_scale.shape
-        reshaped_scale = orig_scale.view(self.get_expanded_scale_shape())
-        max_scale = torch.amax(reshaped_scale, list(range(1, len(orig_scale_shape) * 2, 2)), keepdim=True)
-        per_channel_scale = max_scale / 2 ** (self.decompressed_bw - self.bitwidth)
-        return per_channel_scale.view(
-                *(s_dim // blk_group if blk_group != -1 else 1
-                    for s_dim, blk_group in zip(orig_scale_shape, self.block_grouping))
-            )
-
-    def get_per_block_integer_scale(self) -> torch.Tensor:
-        """
-        Get per block integer scale.
-
-        :return: Per block integer scale
-        """
-        shape = list(self.get_expanded_scale_shape())
-        shape[1::2] = [1 for _ in shape[1::2]]
-        per_channel_scale = self.get_per_channel_scale().view(shape)
-        expanded_scale = self.get_scale().view(self.get_expanded_scale_shape())
-        integer_scale = torch.round(expanded_scale / per_channel_scale).int().view(self.get_scale().shape)
-        return integer_scale
+        return per_channel_scale
 
     def get_encodings(self) -> Optional[GroupedBlockEncoding]:
         """
         Return the quantizer's encodings as an EncodingBase object
         """
         if self.is_initialized():
-            return GroupedBlockEncoding(scale=self.get_scale(dtype=torch.float32),
+            lpbq_scale, per_channel_scale = self._get_scale(dtype=torch.float32)
+            return GroupedBlockEncoding(scale=lpbq_scale,
                                         offset=self.get_offset(dtype=torch.float32),
                                         bitwidth=self.bitwidth,
                                         signed=self.signed,
@@ -842,6 +814,5 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
                                         block_size=self.block_size,
                                         block_grouping=self.block_grouping,
                                         decompressed_bw=self.decompressed_bw,
-                                        per_channel_scale=self.get_per_channel_scale(dtype=torch.float32),
-                                        per_block_int_scale=self.get_per_block_integer_scale())
+                                        per_channel_scale=per_channel_scale)
         return None
