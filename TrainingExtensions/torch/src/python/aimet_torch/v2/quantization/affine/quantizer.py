@@ -811,7 +811,10 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         reshaped_scale = orig_scale.view(self.get_expanded_scale_shape())
         max_scale = torch.amax(reshaped_scale, list(range(1, len(orig_scale_shape) * 2, 2)), keepdim=True)
         per_channel_scale = max_scale / 2 ** (self.decompressed_bw - self.bitwidth)
-        return per_channel_scale
+        return per_channel_scale.view(
+                *(s_dim // blk_group if blk_group != -1 else 1
+                    for s_dim, blk_group in zip(orig_scale_shape, self.block_grouping))
+            )
 
     def get_per_block_integer_scale(self) -> torch.Tensor:
         """
@@ -819,7 +822,9 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
 
         :return: Per block integer scale
         """
-        per_channel_scale = self.get_per_channel_scale()
+        shape = list(self.get_expanded_scale_shape())
+        shape[1::2] = [1 for _ in shape[1::2]]
+        per_channel_scale = self.get_per_channel_scale().view(shape)
         expanded_scale = self.get_scale().view(self.get_expanded_scale_shape())
         integer_scale = torch.round(expanded_scale / per_channel_scale).int().view(self.get_scale().shape)
         return integer_scale

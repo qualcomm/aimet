@@ -36,6 +36,7 @@
 # =============================================================================
 import os
 import copy
+import itertools
 import math
 import pickle
 import pytest
@@ -1628,6 +1629,7 @@ def _onnx_QuantizeLinear(input_shape, y_scale, y_zero_point, axis, block_size, o
                  TensorProto.UINT8 if output_dtype == "uint8" else \
                  TensorProto.UINT4 if output_dtype == "uint4" else \
                  None
+    assert onnx_dtype is not None
 
     x = helper.make_tensor_value_info(name='x',
                                       elem_type=TensorProto.FLOAT,
@@ -1660,22 +1662,23 @@ def _onnx_QuantizeLinear(input_shape, y_scale, y_zero_point, axis, block_size, o
     return model
 
 
+@torch.no_grad()
 @pytest.mark.parametrize(
     # NOTE: In onnx, "axis" is overloaded with two meanings.
     #
     #         +- channel axis (if block size is None)
     # axis := |
     #         +- block axis (otherwise)
-    "shape,         block_size,     axis", [
-    ((),            None,           None), # per-tensor
-    ((10, 1, 1, 1), None,           0),    # per-channel with axis=0 (Convolution)
-    ((1, 10, 1, 1), None,           1),    # per-channel with axis=1 (Convolution)
-    ((10, 1),       None,           0),    # per-channel with axis=0 (Linear/Gemm)
-    ((1, 10),       None,           1),    # per-channel with axis=1 (Linear/Gemm)
-    ((10, 2, 1, 1), (1, 5, -1, -1), 1),    # per-block with block_axis=1 (Convolution)
-    ((2, 10, 1, 1), (5, 1, -1, -1), 0),    # per-block with block_axis=0 (Convolution)
-    ((10, 2),       (1, 5),         1),    # per-block with block_axis=1 (Linear/Gemm)
-    ((2, 10),       (5, 1),         0),    # per-block with block_axis=0 (Linear/Gemm)
+    "shape,         block_size,   axis", [
+    ((),            None,         None), # per-tensor
+    ((10, 1, 1, 1), None,         0),    # per-channel with axis=0 (Convolution)
+    ((1, 10, 1, 1), None,         1),    # per-channel with axis=1 (Convolution)
+    ((10, 1),       None,         0),    # per-channel with axis=0 (Linear/Gemm)
+    ((1, 10),       None,         1),    # per-channel with axis=1 (Linear/Gemm)
+    ((10, 2, 1, 1), (1, 5, 1, 1), 1),    # per-block with block_axis=1 (Convolution)
+    ((2, 10, 1, 1), (5, 1, 1, 1), 0),    # per-block with block_axis=0 (Convolution)
+    ((10, 2),       (1, 5),       1),    # per-block with block_axis=1 (Linear/Gemm)
+    ((2, 10),       (5, 1),       0),    # per-block with block_axis=0 (Linear/Gemm)
 ])
 @pytest.mark.parametrize(
     "qmin,   qmax,     symmetric, offset, output_dtype", [
@@ -1702,8 +1705,8 @@ def _onnx_QuantizeLinear(input_shape, y_scale, y_zero_point, axis, block_size, o
     # (-2**31, 2**31-1,  False,     -5,     "int32"),
     (-2**31, 2**31-1,  False,     0,      "int32"),
 ])
-def test_encoding_spec_2_0_0(shape, block_size, axis,
-                             qmin, qmax, symmetric, offset, output_dtype):
+def test_affine_encoding_schema_2_0_0(shape, block_size, axis,
+                                      qmin, qmax, symmetric, offset, output_dtype):
     """
     When: Export affine encoding in 2.0.0.beta schema
     """
@@ -1752,12 +1755,14 @@ def test_encoding_spec_2_0_0(shape, block_size, axis,
     if version.parse(ort.__version__) < version.parse("1.20.0"):
         pytest.skip(reason="Remaining tests require onnxruntime>=1.20 for blockwise QuantizeLinear")
 
-    x_int = torch.tensor([
-        qmin-1, qmin, qmin+1, qmin+2, qmin+3, qmax-3, qmax-2, qmax-1, qmax, qmax+1
-    ], dtype=torch.float32).expand(10, 10)
-    while x_int.dim() < scale.dim():
-        x_int.unsqueeze_(-1)
-    x = Q.affine.dequantize(x_int, scale, offset, block_size=block_size)
+    input_shape = tuple(s * b for s, b in zip(shape, block_size or itertools.repeat(1)))
+    input_numel = np.prod(input_shape)
+    x = Q.affine.dequantize(
+        torch.arange(qmin, qmax, step=(qmax-qmin)/input_numel).view(input_shape),
+        scale,
+        torch.zeros_like(scale),
+        block_size=block_size,
+    )
 
     onnx_QuantizeLinear = _onnx_QuantizeLinear(input_shape=tuple(x.shape),
                                                y_scale=encoding["y_scale"],
@@ -1770,6 +1775,169 @@ def test_encoding_spec_2_0_0(shape, block_size, axis,
 
         with open(full_path, "wb") as f:
             f.write(onnx_QuantizeLinear.SerializeToString())
+
+        sess = ort.InferenceSession(full_path, providers=['CPUExecutionProvider'])
+        ort_out, = sess.run(None, {'x': x.numpy()})
+
+    ort_out = torch.from_numpy(ort_out.astype("float64"))
+    torch_out = qtzr(x.to(torch.float64)).quantize()
+
+    assert torch.allclose(ort_out, torch_out, atol=1)
+
+
+def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
+               y_zero_point, axis, block_size, block_grouping, output_dtype):
+    op = OperatorSetIdProto()
+    op.version = 21
+
+    assert output_dtype in ("int8", "int16", "uint8", "uint16")
+    assert y_zero_point is None
+
+    onnx_dtype = TensorProto.INT16 if output_dtype == "int16" else \
+                 TensorProto.INT8 if output_dtype == "int8" else \
+                 TensorProto.INT4 if output_dtype == "int4" else \
+                 TensorProto.UINT16 if output_dtype == "uint16" else \
+                 TensorProto.UINT8 if output_dtype == "uint8" else \
+                 TensorProto.UINT4 if output_dtype == "uint4" else \
+                 None
+    assert onnx_dtype is not None
+
+    x = helper.make_tensor_value_info(name='x',
+                                      elem_type=TensorProto.FLOAT,
+                                      shape=input_shape)
+
+    per_block_int_scale = numpy_helper.from_array(np.array(per_block_int_scale).astype('int32'),
+                                                  name='per_block_int_scale')
+    per_channel_float_scale = numpy_helper.from_array(np.array(per_channel_float_scale).astype('float32'),
+                                                      name='per_channel_float_scale')
+
+    y = helper.make_tensor_value_info(name='y',
+                                      elem_type=onnx_dtype,
+                                      shape=input_shape)
+
+    group_axis, group_size = next(iter(
+        (group_axis, group_size)
+        for group_axis, group_size in enumerate(block_grouping)
+        if group_size != 1
+    ))
+    dequantize_node = helper.make_node('DequantizeLinear',
+                                       inputs=['per_block_int_scale', 'per_channel_float_scale'],
+                                       outputs=['y_scale'],
+                                       axis=group_axis,
+                                       block_size=group_size)
+
+    quantize_node = helper.make_node('QuantizeLinear',
+                                     inputs=['x', 'y_scale'],
+                                     outputs=['y'],
+                                     axis=axis,
+                                     block_size=block_size,
+                                     output_dtype=onnx_dtype)
+
+    onnx_graph = helper.make_graph([dequantize_node, quantize_node],
+                                   name='lpbq',
+                                   inputs=[x],
+                                   outputs=[y],
+                                   initializer=[per_block_int_scale, per_channel_float_scale])
+
+    model = helper.make_model(onnx_graph, opset_imports=[op])
+    onnx.checker.check_model(model, True)
+
+    return model
+
+
+@torch.no_grad()
+@pytest.mark.parametrize(
+    "shape,          block_size,   block_grouping, axis", [
+    ((10, 64, 1, 1), (1, 4, 1, 1), (1, 32, 1, 1),  1),    # per-block with block_axis=1 (Convolution)
+    ((64, 10, 1, 1), (4, 1, 1, 1), (32, 1, 1, 1),  0),    # per-block with block_axis=0 (Convolution)
+    ((10, 64),       (1, 4),       (1, 32),        1),    # per-block with block_axis=1 (Linear/Gemm)
+    ((64, 10),       (4, 1),       (32, 1),        0),    # per-block with block_axis=0 (Linear/Gemm)
+])
+@pytest.mark.parametrize(
+    "compressed_bw, decompressed_bw", [
+    (4,        8),
+    (8,        16),
+])
+def test_lpbq_encoding_schema_2_0_0(shape, block_size, block_grouping, axis, compressed_bw, decompressed_bw):
+    """
+    When: Export affine encoding in 2.0.0.beta schema
+    """
+    scale = torch.arange(1, np.prod(shape)+1).view(shape) * 0.001
+    qmin = -2 ** (decompressed_bw - 1)
+    qmax = 2 ** (decompressed_bw - 1) - 1
+
+    qtzr = GroupedBlockQuantizeDequantize(shape=shape,
+                                          bitwidth=compressed_bw,
+                                          symmetric=True,
+                                          decompressed_bw=decompressed_bw,
+                                          block_size=block_size,
+                                          block_grouping=block_grouping).to(torch.float64)
+    qtzr.set_range(scale * qmin, scale * qmax)
+    encoding = qtzr.get_encodings().to_qnn_encoding_dict("2.0.0.beta")
+
+    """
+    Then: Exported qnn encoding should contain:
+            * "per_block_int_scale"
+            * "per_channel_float_scale"
+            * "y_zero_point"
+            * "axis"
+            * "block_size"
+            * "output_dtype"
+
+          all of which are defined as onnx::QuantizeLinear except
+          per_block_int_scale * per_channel_float_scale == y_scale
+    """
+
+    per_block_int_scale = torch.tensor(encoding["per_block_int_scale"])
+    per_channel_float_scale = torch.tensor(encoding["per_channel_float_scale"])
+
+    assert torch.allclose(
+        qtzr.get_scale(),
+        Q.affine.dequantize(
+            tensor=per_block_int_scale.to(torch.float32),
+            scale=per_channel_float_scale,
+            offset=torch.zeros_like(per_channel_float_scale),
+            block_size=block_grouping
+        )
+    )
+    assert encoding["y_zero_point"] is None
+    assert encoding["axis"] == axis
+    assert encoding["block_size"] == next(iter(blk for blk in block_size if blk != 1))
+    assert encoding["output_dtype"] == f"int{decompressed_bw}"
+
+
+    """
+    Then: The output of onnx::QuantizeLinear with the exported qnn encoding should be
+          all-close to AIMET affine.quantize() output with off-by-one tolerance threshold
+    """
+    if version.parse(ort.__version__) < version.parse("1.20.0"):
+        pytest.skip(reason="Remaining tests require onnxruntime>=1.20 for blockwise QuantizeLinear")
+
+    input_shape = tuple(s * b for s, b in zip(shape, block_size))
+    input_numel = np.prod(input_shape)
+    qmin = -2 ** (compressed_bw-1)
+    qmax = 2 ** (compressed_bw-1) - 1
+    x = Q.affine.dequantize(
+        torch.arange(qmin, qmax, step=(qmax-qmin)/input_numel).view(input_shape),
+        scale,
+        torch.zeros_like(scale),
+        block_size=block_size,
+    )
+
+    onnx_LPBQ = _onnx_LPBQ(input_shape=tuple(x.shape),
+                           per_block_int_scale=encoding["per_block_int_scale"],
+                           per_channel_float_scale=encoding["per_channel_float_scale"],
+                           y_zero_point=encoding["y_zero_point"],
+                           axis=encoding["axis"],
+                           block_size=encoding["block_size"],
+                           block_grouping=block_grouping,
+                           output_dtype=encoding["output_dtype"])
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        full_path = os.path.join(tmp_dir, "model.onnx")
+
+        with open(full_path, "wb") as f:
+            f.write(onnx_LPBQ.SerializeToString())
 
         sess = ort.InferenceSession(full_path, providers=['CPUExecutionProvider'])
         ort_out, = sess.run(None, {'x': x.numpy()})

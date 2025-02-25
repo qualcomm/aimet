@@ -501,7 +501,7 @@ class GroupedBlockEncoding(AffineEncoding):
         if all(group_size == 1 for group_size in self.block_grouping) or encoding_version == '0.6.1':
             # Equivalent to AffineEncoding
             pass
-        else:
+        elif encoding_version == "1.0.0":
             encoding_dict['bw'] = self.decompressed_bw
             encoding_dict['compressed_bw'] = self.bitwidth
             encoding_dict['scale'] = self.per_channel_scale.flatten().tolist()
@@ -509,10 +509,23 @@ class GroupedBlockEncoding(AffineEncoding):
                 [-2 ** (self.decompressed_bw - 1) for _ in encoding_dict['scale']]
             encoding_dict['enc_type'] = EncodingType.LPBQ.name
             encoding_dict['per_block_int_scale'] = self.per_block_int_scale.flatten().tolist()
+        elif encoding_version == "2.0.0.beta":
+            del encoding_dict["y_scale"]
+            del encoding_dict["output_dtype"]
+
+            decompressed_bw = self.decompressed_bw
+            compressed_bw = self.bitwidth
+            y_zero_point = encoding_dict.pop("y_zero_point")
+            if y_zero_point is not None:
+                y_zero_point = torch.tensor(y_zero_point) * 2 ** (decompressed_bw - compressed_bw)
+                y_zero_point = y_zero_point.tolist()
+
+            encoding_dict = {
+                "per_block_int_scale": self.per_block_int_scale.tolist(),
+                "per_channel_float_scale": self.per_channel_scale.tolist(),
+                "y_zero_point": y_zero_point,
+                **encoding_dict,
+                "output_dtype": f"int{decompressed_bw}" if self.signed else f"uint{decompressed_bw}"
+            }
+
         return encoding_dict
-
-    def quantize(self, input: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
-
-    def dequantize(self, input: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
