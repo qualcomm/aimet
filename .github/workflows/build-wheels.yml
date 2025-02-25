@@ -19,7 +19,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}:${{ inputs.tag }}"
+      image: "${{ vars.DOCKER_REGISTRY }}/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}:${{ inputs.image-tag }}"
       credentials:
         username: ${{ secrets.DOCKER_LOGIN }}
         password: ${{ secrets.DOCKER_CREDENTIALS }}
