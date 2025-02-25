@@ -368,7 +368,7 @@ class AffineEncoding(EncodingBase, _GridMixin):
 
             y_scale = self.scale
             if self.symmetry:
-                centroid = math.ceil((self.qmin + self.qmax) / 2)
+                centroid = self._get_centroid()
                 y_zero_point = torch.full_like(y_scale, centroid, dtype=torch.int32)
             else:
                 y_zero_point = -self.offset.to(torch.int32)
