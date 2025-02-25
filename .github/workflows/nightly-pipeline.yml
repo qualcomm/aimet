@@ -121,7 +121,7 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-      tag: "latest"
+      image-tag: "latest"
     secrets: inherit
 
   call-run-unit-tests:

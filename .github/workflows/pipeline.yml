@@ -198,7 +198,7 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-      tag: ${{ needs.docker-tag.outputs.tag }}
+      image-tag: ${{ needs.docker-tag.outputs.tag }}
     secrets: inherit
 
   call-run-unit-tests:

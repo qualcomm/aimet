@@ -6,7 +6,7 @@ on:
       variants:
         required: true
         type: string
-      tag:
+      image-tag:
         required: true
         type: string
 
