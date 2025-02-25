@@ -37,8 +37,9 @@
 """Utility APIs for onnx export"""
 
 from contextlib import contextmanager, ExitStack
-import functools
 from collections import defaultdict
+import functools
+import math
 from typing import Sequence, Iterable
 
 import onnx
@@ -311,7 +312,8 @@ def _get_encoding_from_onnx_node(onnx_model: onnx.ModelProto, quant_node: onnx.N
         scale = scale.squeeze()
         offset = offset.squeeze()
 
-    symmetry = bool(torch.all(offset == 0))
+    centroid = math.ceil((qmin + qmax) / 2)
+    symmetry = bool(torch.all(offset == -centroid))
 
     return AffineEncoding(scale, offset, qmin, qmax, symmetry=symmetry, block_size=block_size)
 
