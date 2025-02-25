@@ -40,8 +40,13 @@ import math
 import pickle
 import pytest
 import numpy as np
+from packaging import version
 import random
 import tempfile
+
+import onnx
+from onnx import helper, numpy_helper, OperatorSetIdProto, TensorProto
+import onnxruntime as ort
 import torch
 import warnings
 from torch import nn
@@ -1610,6 +1615,51 @@ def test_signed_doesnt_affect_output(symmetric):
     assert torch.equal(out_int8.quantize(), out_uint8.quantize() - 128)
 
 
+def _onnx_QuantizeLinear(input_shape, y_scale, y_zero_point, axis, block_size, output_dtype):
+    op = OperatorSetIdProto()
+    op.version = 21
+
+    assert output_dtype in ("int8", "int16", "uint8", "uint16")
+
+    onnx_dtype = TensorProto.INT16 if output_dtype == "int16" else \
+                 TensorProto.INT8 if output_dtype == "int8" else \
+                 TensorProto.INT4 if output_dtype == "int4" else \
+                 TensorProto.UINT16 if output_dtype == "uint16" else \
+                 TensorProto.UINT8 if output_dtype == "uint8" else \
+                 TensorProto.UINT4 if output_dtype == "uint4" else \
+                 None
+
+    x = helper.make_tensor_value_info(name='x',
+                                      elem_type=TensorProto.FLOAT,
+                                      shape=input_shape)
+
+    y_scale = numpy_helper.from_array(np.array(y_scale).astype('float32'), name='y_scale')
+    if y_zero_point is not None:
+        y_zero_point = numpy_helper.from_array(np.array(y_zero_point).astype(output_dtype), name='y_zero_point')
+
+    y = helper.make_tensor_value_info(name='y',
+                                      elem_type=onnx_dtype,
+                                      shape=input_shape)
+
+    quantize_node = helper.make_node('QuantizeLinear',
+                                     inputs=['x', 'y_scale', 'y_zero_point'] if y_zero_point is not None else ['x', 'y_scale'],
+                                     outputs=['y'],
+                                     axis=axis,
+                                     block_size=block_size,
+                                     output_dtype=onnx_dtype)
+
+    onnx_graph = helper.make_graph([quantize_node],
+                                   name='quantize',
+                                   inputs=[x],
+                                   outputs=[y],
+                                   initializer=[y_scale, y_zero_point] if y_zero_point is not None else [y_scale])
+
+    model = helper.make_model(onnx_graph, opset_imports=[op])
+    onnx.checker.check_model(model, True)
+
+    return model
+
+
 @pytest.mark.parametrize(
     # NOTE: In onnx, "axis" is overloaded with two meanings.
     #
@@ -1632,19 +1682,19 @@ def test_signed_doesnt_affect_output(symmetric):
     (-8,     7,        True,      0,      "int4"),
     (-8,     7,        False,     -5,     "int4"),
     (-8,     7,        False,     0,      "int4"),
-    (0,      15,       True,      0,      "uint4"),
+    (0,      15,       True,      -8,     "uint4"),
     (0,      15,       False,     -5,     "uint4"),
     (0,      15,       False,     0,      "uint4"),
     (-128,   127,      True,      0,      "int8"),
     (-128,   127,      False,     -5,     "int8"),
     (-128,   127,      False,     0,      "int8"),
-    (0,      255,      True,      0,      "uint8"),
+    (0,      255,      True,      -128,   "uint8"),
     (0,      255,      False,     -5,     "uint8"),
     (0,      255,      False,     0,      "uint8"),
     (-2**15, 2**15-1,  True,      0,      "int16"),
     (-2**15, 2**15-1,  False,     -5,     "int16"),
     (-2**15, 2**15-1,  False,     0,      "int16"),
-    (0,      2**16-1,  True,      0,      "uint16"),
+    (0,      2**16-1,  True,      -2**15, "uint16"),
     (0,      2**16-1,  False,     -5,     "uint16"),
     (0,      2**16-1,  False,     0,      "uint16"),
     (-2**31, 2**31-1,  True,      0,      "int32"),
@@ -1654,8 +1704,11 @@ def test_signed_doesnt_affect_output(symmetric):
 ])
 def test_encoding_spec_2_0_0(shape, block_size, axis,
                              qmin, qmax, symmetric, offset, output_dtype):
+    """
+    When: Export affine encoding in 2.0.0.beta schema
+    """
     scale = torch.arange(1, np.prod(shape)+1).view(shape) * 0.001
-    offset = torch.full(shape, offset)
+    offset = torch.full_like(scale, offset)
 
     qtzr = QuantizeDequantize(shape=shape,
                               qmin=qmin,
@@ -1665,15 +1718,63 @@ def test_encoding_spec_2_0_0(shape, block_size, axis,
     qtzr.set_range(scale * (qmin + offset), scale * (qmax + offset))
     encoding = qtzr.get_encodings().to_qnn_encoding_dict("2.0.0.beta")
 
+    """
+    Then: Exported qnn encoding should contain:
+            * "y_scale"
+            * "y_zero_point"
+            * "axis"
+            * "block_size"
+            * "output_dtype"
+
+          all of which are defined as onnx::QuantizeLinear
+    """
     assert torch.allclose(torch.tensor(encoding["y_scale"]).view_as(scale), scale)
 
-    if symmetric:
+    if torch.all(offset == 0):
         assert encoding["y_zero_point"] is None
     else:
-        assert torch.equal(torch.tensor(encoding["y_zero_point"]).view_as(offset), offset)
+        assert torch.equal(torch.tensor(encoding["y_zero_point"]).view_as(offset), -offset)
 
     assert encoding["axis"] == axis
     assert encoding["block_size"] == (
          None if block_size is None else next(iter(blk for blk in block_size if blk != 1))
     )
     assert encoding["output_dtype"] == output_dtype
+
+
+    """
+    Then: The output of onnx::QuantizeLinear with the exported qnn encoding should be
+          all-close to AIMET affine.quantize() output with off-by-one tolerance threshold
+    """
+    if output_dtype not in ("int8", "int16", "uint8", "uint16"):
+        pytest.skip(reason="onnx::QuantizeLinear only supports these data types")
+
+    if version.parse(ort.__version__) < version.parse("1.20.0"):
+        pytest.skip(reason="Remaining tests require onnxruntime>=1.20 for blockwise QuantizeLinear")
+
+    x_int = torch.tensor([
+        qmin-1, qmin, qmin+1, qmin+2, qmin+3, qmax-3, qmax-2, qmax-1, qmax, qmax+1
+    ], dtype=torch.float32).expand(10, 10)
+    while x_int.dim() < scale.dim():
+        x_int.unsqueeze_(-1)
+    x = Q.affine.dequantize(x_int, scale, offset, block_size=block_size)
+
+    onnx_QuantizeLinear = _onnx_QuantizeLinear(input_shape=tuple(x.shape),
+                                               y_scale=encoding["y_scale"],
+                                               y_zero_point=encoding["y_zero_point"],
+                                               axis=encoding["axis"],
+                                               block_size=encoding["block_size"],
+                                               output_dtype=encoding["output_dtype"])
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        full_path = os.path.join(tmp_dir, "model.onnx")
+
+        with open(full_path, "wb") as f:
+            f.write(onnx_QuantizeLinear.SerializeToString())
+
+        sess = ort.InferenceSession(full_path, providers=['CPUExecutionProvider'])
+        ort_out, = sess.run(None, {'x': x.numpy()})
+
+    ort_out = torch.from_numpy(ort_out.astype("float64"))
+    torch_out = qtzr(x.to(torch.float64)).quantize()
+
+    assert torch.allclose(ort_out, torch_out, atol=1)
