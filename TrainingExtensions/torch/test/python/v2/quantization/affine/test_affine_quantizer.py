@@ -675,18 +675,18 @@ def test_asymmetric_learning(q, x, optim_cls):
     assert not torch.equal(q.get_offset(), original_offset)
 
 def test_extreme_values_warning():
-        extreme_val = torch.finfo(torch.float16).max
-        dummy_input = torch.arange(start = 0, end=extreme_val, dtype=torch.float16)        
-        param_shape = (1,)
-        encoding_shape = (1,)
-        qdq = QuantizeDequantize(param_shape, 8, True, MinMaxEncodingAnalyzer(encoding_shape))
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            with qdq.compute_encodings():
-                qdq(dummy_input)
-            assert len(w) == 1
-            assert issubclass(w[-1].category, UserWarning)
-            assert "Extreme values" in str(w[-1].message)
+    extreme_val = torch.finfo(torch.float16).max
+    dummy_input = torch.arange(start = 0, end=extreme_val, dtype=torch.float16)
+    param_shape = (1,)
+    encoding_shape = (1,)
+    qdq = QuantizeDequantize(param_shape, 8, True, MinMaxEncodingAnalyzer(encoding_shape))
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        with qdq.compute_encodings():
+            qdq(dummy_input)
+        assert len(w) == 1
+        assert issubclass(w[-1].category, UserWarning)
+        assert "Extreme values" in str(w[-1].message)
 
 def test_invalid_encoding_analyzer():
     """
@@ -1015,6 +1015,9 @@ def test_quantized_tensor_with_block_size():
     assert torch.equal(q.dequantize(), affine.dequantize(q, bq.get_scale(), bq.get_offset(), bq.block_size))
 
 def test_gbbq_sanity():
+    """
+    Given: LPBQ quantizer with compressed_bw=4, decompressed_bw=8
+    """
     tensor = torch.randn(8, 12)
     gbbq = GroupedBlockQuantizeDequantize(shape=(8, 4),
                                           bitwidth=4,
@@ -1026,6 +1029,9 @@ def test_gbbq_sanity():
                             bitwidth=4,
                             symmetric=True)
 
+    """
+    When: Compute encodings
+    """
     with gbbq.compute_encodings():
         _ = gbbq(tensor)
 
@@ -1034,10 +1040,32 @@ def test_gbbq_sanity():
 
     assert gbbq.get_scale().shape == (8, 4)
 
-    # The largest scale for any given channel GBBQ should equal the scale for per channel
+    """
+    Then: The largest scale for any given channel GBBQ should equal the scale for per channel
+    """
     assert torch.equal(torch.amax(gbbq.get_scale(), dim=1, keepdim=True), pc.get_scale())
 
-    assert not torch.equal(gbbq(tensor), pc(tensor))
+    """
+    When: Run forward
+    """
+    gbbq_out = gbbq(tensor)
+    pcq_out = pc(tensor)
+
+    """
+    Then (1): Output shouldn't be equal to per-channel quantization
+    """
+    assert not torch.equal(gbbq_out, pcq_out)
+
+    """
+    Then (2): Output should be an 8-bit tensor, NOT a 4-bit tensor
+    """
+    assert gbbq_out.encoding.bitwidth == 8
+    assert torch.all((-128 <= gbbq_out.quantize()) & (gbbq_out.quantize() < 128))
+
+    """
+    Then (3): output.quantize().dequantze() should be no-op
+    """
+    assert torch.equal(gbbq_out.quantize().dequantize(), gbbq_out)
 
 @pytest.mark.parametrize('bitwidth, decompressed_bw', [[4, 8], [4, 16], [4, 12], [3, 5], [5, 9], [6, 6]])
 def test_gbbq_per_block_sanity(bitwidth, decompressed_bw):
