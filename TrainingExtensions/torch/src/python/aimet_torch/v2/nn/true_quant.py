@@ -542,6 +542,30 @@ def _generate_docstring(parent_cls):
         For more information, see :class:`QuantizationMixin`.
     """
 
+
+def _derive_bias_scale(input_scale: Optional[torch.Tensor],
+                       weight_scale: Optional[torch.Tensor],
+                       channel_axis: int):
+    if input_scale is None or weight_scale is None:
+        return None
+
+    bias_scale = input_scale.detach() * weight_scale.detach()
+
+    # bias_scale.shape is not yet compatible with bias.shape due to one of the following reasons:
+    #
+    # 1. trivial reason (per-channel quantization):
+    #      weight_scale and bias_scale are of shape [Cout, 1, 1, 1]
+    #
+    # 2. non-trivial reason (blockwise quantization):
+    #      weight_scale and bias_scale are of shape [Cout, NUM_BLOCKS, 1, 1]
+    #
+    # In any case, we need to reduce bias_scale into a 1D vector of the same shape as bias (=[Cout])
+    non_channel_axes = tuple(axis for axis in range(bias_scale.dim()) if axis != channel_axis)
+    bias_scale = torch.amax(bias_scale, dim=non_channel_axes)
+
+    return bias_scale
+
+
 @QuantizationMixin.implements(nn.AdaptiveAvgPool1d)
 class QuantizedAdaptiveAvgPool1d(_DispatchMixin, QuantizationMixin, nn.AdaptiveAvgPool1d):
     # pylint: disable=missing-class-docstring
@@ -760,6 +784,9 @@ class QuantizedConv1d(_DispatchMixin, QuantizationMixin, nn.Conv1d):  # pylint: 
     _builtin_torch_fn = F.conv1d
     __quant_init__ = QuantizationMixin.__unary__
 
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
+
 
 @QuantizationMixin.implements(nn.Conv2d)
 class QuantizedConv2d(_DispatchMixin, QuantizationMixin, nn.Conv2d):  # pylint: disable=too-many-ancestors
@@ -767,6 +794,9 @@ class QuantizedConv2d(_DispatchMixin, QuantizationMixin, nn.Conv2d):  # pylint: 
     __doc__ = _generate_docstring(parent_cls=nn.Conv2d)
     _builtin_torch_fn = F.conv2d
     __quant_init__ = QuantizationMixin.__unary__
+
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
 
 
 @QuantizationMixin.implements(nn.Conv3d)
@@ -776,6 +806,9 @@ class QuantizedConv3d(_DispatchMixin, QuantizationMixin, nn.Conv3d):  # pylint: 
     _builtin_torch_fn = F.conv3d
     __quant_init__ = QuantizationMixin.__unary__
 
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
+
 
 @QuantizationMixin.implements(nn.ConvTranspose1d)
 class QuantizedConvTranspose1d(_DispatchMixin, QuantizationMixin, nn.ConvTranspose1d): # pylint: disable=too-many-ancestors
@@ -783,6 +816,9 @@ class QuantizedConvTranspose1d(_DispatchMixin, QuantizationMixin, nn.ConvTranspo
     __doc__ = _generate_docstring(parent_cls=nn.ConvTranspose1d)
     _builtin_torch_fn = F.conv_transpose1d
     __quant_init__ = QuantizationMixin.__unary__
+
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=1)
 
 
 @QuantizationMixin.implements(nn.ConvTranspose2d)
@@ -792,6 +828,9 @@ class QuantizedConvTranspose2d(_DispatchMixin, QuantizationMixin, nn.ConvTranspo
     _builtin_torch_fn = F.conv_transpose2d
     __quant_init__ = QuantizationMixin.__unary__
 
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=1)
+
 
 @QuantizationMixin.implements(nn.ConvTranspose3d)
 class QuantizedConvTranspose3d(_DispatchMixin, QuantizationMixin, nn.ConvTranspose3d): # pylint: disable=too-many-ancestors
@@ -799,6 +838,9 @@ class QuantizedConvTranspose3d(_DispatchMixin, QuantizationMixin, nn.ConvTranspo
     __doc__ = _generate_docstring(parent_cls=nn.ConvTranspose3d)
     _builtin_torch_fn = F.conv_transpose3d
     __quant_init__ = QuantizationMixin.__unary__
+
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=1)
 
 
 @QuantizationMixin.implements(nn.CosineEmbeddingLoss)
@@ -1422,6 +1464,9 @@ class QuantizedLinear(_DispatchMixin, QuantizationMixin, nn.Linear):
         # before running forward.
         with patch_attr(F, 'linear', type(self)._builtin_torch_fn):
             return super().forward(*args, **kwargs)
+
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
 
 
 @QuantizationMixin.implements(nn.LocalResponseNorm)

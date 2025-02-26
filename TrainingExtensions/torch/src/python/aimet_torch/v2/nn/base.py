@@ -47,6 +47,7 @@ from torch import nn
 
 from aimet_torch.utils import is_vector_encoding
 from aimet_torch.v2.quantization.affine.encoding import VectorEncoding, AffineEncoding
+from aimet_torch.v2.quantization.affine import QuantizeDequantize
 
 from aimet_torch.v2.quantization.tensor import QuantizedTensorBase
 from aimet_torch.v2.quantization.base import QuantizerBase
@@ -686,6 +687,49 @@ class BaseQuantizationMixin(abc.ABC):
         ctx_2 = self._remove_param_quantizers()
         return _ContextManager(action=lambda: None,
                                cleanup=lambda: (ctx_1._cleanup(), ctx_2._cleanup()))
+
+    def _create_int32_bias_quantizer(self, input, _): # pylint: disable=redefined-builtin
+        assert hasattr(self, "bias")
+        bias = self.bias
+        qmin = -2**31
+        qmax = 2**31 - 1
+        bias_qtzr = QuantizeDequantize(shape=bias.shape,
+                                       qmin=qmin,
+                                       qmax=qmax,
+                                       symmetric=True)
+        bias_qtzr.to(dtype=bias.dtype, device=bias.device)
+        self.param_quantizers["bias"] = bias_qtzr
+
+        input, = input
+
+        if self.param_quantizers["weight"]:
+            weight_scale = self.param_quantizers["weight"].get_scale()
+        else:
+            weight_scale = None
+
+        if self.input_quantizers[0]:
+            input_scale = self.input_quantizers[0].get_scale()
+        elif isinstance(input, QuantizedTensorBase) and isinstance(input.encoding, AffineEncoding):
+            input_scale = input.encoding.scale
+        else:
+            input_scale = None
+
+        try:
+            bias_scale = self._derive_bias_scale(input_scale, weight_scale)
+        except NotImplementedError:
+            bias_scale = None
+
+        if bias_scale is not None:
+            bias_qtzr.set_range(bias_scale * qmin, bias_scale * qmax)
+
+        if not bias_qtzr.is_initialized():
+            # Compute bias scale without input and weight scale.
+            # This should be avoided as much as possible
+            with bias_qtzr.compute_encodings():
+                _ = bias_qtzr(bias)
+
+    def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
+        raise NotImplementedError
 
 
 def _remove_quantizers(quantizers, keys):
