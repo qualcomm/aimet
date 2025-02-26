@@ -491,6 +491,12 @@ class GroupedBlockEncoding(AffineEncoding):
 
     @property
     def per_block_int_scale(self):
+        """
+        Returns per-block integer scale which constructs blockwise scale
+        when multiplied with per-channel float scale.
+
+        scale = per_block_int_scale * per_channel_scale
+        """
         return quantize(self.scale,
                         scale=self.per_channel_scale,
                         offset=torch.zeros_like(self.per_channel_scale),
