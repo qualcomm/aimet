@@ -516,14 +516,16 @@ class GroupedBlockEncoding(AffineEncoding):
             decompressed_bw = self.decompressed_bw
             compressed_bw = self.bitwidth
             y_zero_point = encoding_dict.pop("y_zero_point")
-            if y_zero_point is not None:
-                y_zero_point = torch.tensor(y_zero_point) * 2 ** (decompressed_bw - compressed_bw)
-                y_zero_point = y_zero_point.tolist()
+
+            if y_zero_point is not None and torch.any(torch.tensor(y_zero_point) != 0):
+                raise RuntimeError(
+                    f"LPBQ only supports symmetric quantization; got non-zero y_zero_point {y_zero_point}"
+                )
 
             encoding_dict = {
                 "per_block_int_scale": self.per_block_int_scale.tolist(),
                 "per_channel_float_scale": self.per_channel_scale.tolist(),
-                "y_zero_point": y_zero_point,
+                "y_zero_point": None,
                 **encoding_dict,
                 "output_dtype": f"int{decompressed_bw}" if self.signed else f"uint{decompressed_bw}"
             }
