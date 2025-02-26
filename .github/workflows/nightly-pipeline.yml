@@ -4,7 +4,33 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+  # Run the workflow manually from the Actions tab
+  workflow_dispatch:
+
 jobs:
+  docker-tag:
+    name: Check if 'latest' tag could be used (no build docker images)
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Set a docker image tag"
+        id: tag
+        shell: bash
+        run: |
+          set -x
+
+          # for the default branch (develop) we use "latest" tag and
+          # do not build the docker images
+          if [[ "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]] ; then
+            tag="latest"
+          else
+            tag="$(git rev-parse --short HEAD)"
+          fi
+
+          echo "value=$tag" >> $GITHUB_OUTPUT
+
   variants:
     name: Define supported AIMET variants
     runs-on: ubuntu-latest
@@ -115,13 +141,37 @@ jobs:
         run: |
           echo "value=$VALUE" >> $GITHUB_OUTPUT
 
+  docker-build-image:
+    name: Docker image ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    needs: [ docker-tag, variants ]
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/docker-build-image
+        with:
+          dockerfile: Jenkins/fast-release/Dockerfile.ci
+          docker-login: ${{ secrets.DOCKER_LOGIN }}
+          docker-password: ${{ secrets.DOCKER_CREDENTIALS }}
+          docker-registry: ${{ vars.DOCKER_REGISTRY }}
+          image-name: "${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}"
+          image-tag: ${{ needs.docker-tag.outputs.tag }}
+          build-args: |
+            VER_PYTHON=${{ matrix.VER_PYTHON }}
+            VER_CUDA=${{ matrix.VER_CUDA }}
+            VER_TORCH=${{ matrix.VER_TORCH }}
+            VER_TENSORFLOW=${{ matrix.VER_TENSORFLOW }}
+            VER_ONNXRUNTIME=${{ matrix.VER_ONNXRUNTIME }}
+            AIMET_VARIANT=${{ matrix.id }}
+
   call-build-wheels:
     name: Call build-wheels
-    needs: [ variants ]
+    needs: [ docker-tag, variants, docker-build-image ]
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-      image-tag: "latest"
+      image-tag: ${{ needs.docker-tag.outputs.tag }}
     secrets: inherit
 
   call-run-unit-tests:
@@ -139,3 +189,13 @@ jobs:
     with:
       variants: ${{ needs.variants.outputs.matrix }}
     secrets: inherit
+
+  cleanup:
+    needs: [ docker-tag, variants, call-build-wheels ]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
+    steps:
+      - name: Delete temp docker image
+        if: needs.docker-tag.outputs.tag != 'latest'
+        run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" || true
