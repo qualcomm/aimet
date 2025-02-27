@@ -40,7 +40,7 @@ import torch.nn as nn
 from onnx import load_model
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from torch.nn import functional as F
-
+import tempfile
 
 class SmallMnist(nn.Module):
     def __init__(self):
@@ -296,6 +296,32 @@ def linear_layer_model():
 
     model = ONNXModel(load_model('./linear_layer_model.onnx'))
     return model
+
+
+def layernorm_model(elementwise_affine=True, bias=True, include_add_ops = False):
+    class LayerNormModel(torch.nn.Module):
+        def __init__(self, include_add_ops = False):
+            super(LayerNormModel, self).__init__()
+            self.include_add_ops = include_add_ops
+            self.layer_norm = torch.nn.LayerNorm(32, elementwise_affine=elementwise_affine, bias=bias)
+
+        def forward(self, x: torch.Tensor):
+            if self.include_add_ops:
+                x = x + x
+            x = self.layer_norm(x)
+            if self.include_add_ops:
+                x = x + x
+            return x
+
+    torch.manual_seed(10)
+    model = LayerNormModel(include_add_ops=include_add_ops).eval()
+    with tempfile.NamedTemporaryFile(prefix="layernorm_", suffix=".onnx") as onnx_model_path:
+        x = torch.randn((1, 3, 32, 32))
+        torch.onnx.export(model, x, onnx_model_path.name, input_names=['input'], output_names=['output'], opset_version=16)
+        model = load_model(onnx_model_path.name)
+
+    return model
+
 
 def conv_relu_model():
     class ConvReluModel(torch.nn.Module):

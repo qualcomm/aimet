@@ -52,6 +52,7 @@ from aimet_common.utils import AimetLogger
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE
 from aimet_onnx.utils import get_product_name_from_quantized_name
 from aimet_onnx.qc_quantize_op import OpMode, QcQuantizeOp
+from aimet_onnx.graph_passes.pass_registry import apply_graph_passes
 
 # pylint: disable=no-name-in-module, ungrouped-imports
 if version.parse(onnx.__version__) >= version.parse("1.14.0"):
@@ -144,6 +145,10 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
         self._override_param_bw_dtype(self._param_names, self._default_data_type, self._default_param_bw)
         self._override_act_bw_dtype(self._activation_names, self._default_data_type, self._default_output_bw)
         self._generate_and_apply_op_instance_specific_config()
+
+        # Run supergroup passes if specified in config
+        supergroup_pass_list = self._get_supergroup_pass_list()
+        apply_graph_passes(self._conn_graph, self._quant_ops_dict, supergroup_pass_list)
 
     def _map_quantizers_to_ops(self) -> Dict[str, OpToQuantizers]:
         """
@@ -404,6 +409,17 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                 if quantsim_param_type is not None and quantsim_param_type in op_config[ConfigDictKeys.PARAMS]:
                     param_config = op_config[ConfigDictKeys.PARAMS][quantsim_param_type]
                     self._set_config_for_param(param_quantizer, param_config)
+
+    def _get_supergroup_pass_list(self) -> List[str]:
+        """
+        Return supergroup pass list parsed from the config file.
+
+        Returns:
+            List[str]: List of supergroup passes to run
+        """
+        if ConfigDictKeys.SUPERGROUP_PASS_LIST in self._quantsim_configs:
+            return self._quantsim_configs[ConfigDictKeys.SUPERGROUP_PASS_LIST]
+        return []
 
     def _get_param_type(self, op_name: str, param_name: str) -> str:
         """ Returns the type of param, weight/ bias """

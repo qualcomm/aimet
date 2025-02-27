@@ -33,3 +33,6 @@ unit_test_results
 *.DS_Store
 packaging/setup_cfg.py
 package_info.py
+
+# Models
+*.onnx

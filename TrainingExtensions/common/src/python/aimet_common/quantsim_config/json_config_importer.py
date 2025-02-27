@@ -61,6 +61,7 @@ class ConfigDictKeys:
     PARAMS = "params"
     OP_TYPE = "op_type"
     SUPERGROUPS = "supergroups"
+    SUPERGROUP_PASS_LIST = "supergroup_pass_list"
     MODEL_INPUT = "model_input"
     MODEL_OUTPUT = "model_output"
     OPS = "ops"

@@ -273,6 +273,13 @@ QUANTSIM_CONFIG_SCHEMA = {
             },
             "additionalItems": False
         },
+        "supergroup_pass_list": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "minItems": 0
+        },
         "model_input": {
             "type": "object",
             "properties": {

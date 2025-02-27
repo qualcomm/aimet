@@ -39,9 +39,10 @@ import os
 import pytest
 from aimet_common.defs import QuantizationDataType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
-from aimet_onnx.quantsim import QuantizationSimModel
+from aimet_onnx.meta.connectedgraph import ConnectedGraph
+from aimet_onnx.quantsim import QuantizationSimModel, QuantSimConfigurator
 from .models import models_for_tests
-
+import tempfile
 
 class TestQuantSimConfig:
     """Tests for applying config to QuantizationSimModel"""
@@ -241,6 +242,48 @@ class TestQuantSimConfig:
 
         if os.path.exists('./data/quantsim_config.json'):
             os.remove('./data/quantsim_config.json')
+
+    def test_parse_config_file_supergroups_pass_list(self):
+        """
+        Test that supergroup pass list is set correctly in configuration file
+        """
+        model = models_for_tests.build_dummy_model()
+
+        quantsim_config = {
+            "defaults": {
+                "ops": {
+                    "is_output_quantized": "True",
+                    "is_symmetric": "False"
+                },
+                "params": {
+                    "is_quantized": "False",
+                    "is_symmetric": "False"
+                }
+            },
+            "params": {},
+            "op_type": {},
+            "supergroup_pass_list": ["LayerNormalization"],
+            "supergroups": [
+                {
+                    "op_list": ["Conv", "Relu"]
+                },
+                {
+                    "op_list": ["Relu", "MaxPool"]
+                },
+            ],
+            "model_input": {
+                "is_input_quantized": "True"
+            },
+            "model_output": {}
+        }
+
+        with tempfile.NamedTemporaryFile(prefix="quantsim_config", suffix=".json") as config_file:
+            with open(config_file.name, 'w') as f:
+                json.dump(quantsim_config, f)
+
+            qsim_config = QuantSimConfigurator(model, ConnectedGraph(model), config_file=config_file.name, quantsim_output_bw=8,
+                                               quantsim_param_bw=8, quantsim_data_type=QuantizationDataType.int)
+            assert qsim_config._get_supergroup_pass_list() == ["LayerNormalization"]
 
     def test_parse_config_file_symmetric_modes(self):
         """ Test that model output quantization parameters are set correctly when using json config file """
