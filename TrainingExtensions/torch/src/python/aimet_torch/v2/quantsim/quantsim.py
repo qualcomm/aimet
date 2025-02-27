@@ -600,7 +600,7 @@ class QuantizationSimModel(_QuantizationSimModelBase):
         orig_bias_quantizers = {
             qmodule: qmodule.param_quantizers["bias"]
             for qmodule in self.qmodules()
-            if "bias" in qmodule.param_quantizers
+            if "bias" in qmodule.param_quantizers and qmodule.bias is not None
         }
 
         try:

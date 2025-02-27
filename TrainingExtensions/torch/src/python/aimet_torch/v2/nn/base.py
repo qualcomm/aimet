@@ -690,6 +690,8 @@ class BaseQuantizationMixin(abc.ABC):
 
     def _create_int32_bias_quantizer(self, input, _): # pylint: disable=redefined-builtin
         assert hasattr(self, "bias")
+        assert isinstance(self.bias, torch.Tensor)
+
         bias = self.bias
         qmin = -2**31
         qmax = 2**31 - 1
