@@ -585,9 +585,6 @@ class QcQuantizeOp:
         return enc_dict
 
     def _export_2_0_0_encodings(self) -> Optional[Dict]: # pylint: disable=too-many-branches
-        """
-        Exports the quantizer's encodings in the "1.0.0" encoding format
-        """
         encodings = self.get_encodings()
 
         if encodings is None:
@@ -622,7 +619,7 @@ class QcQuantizeOp:
         #                    (AIMET)
         #                +-  -offset                    ... uint4, uint8, uint16, uint32
         # y_zero_point = |
-        #    (ONNX)      +-  -offset + 2 ** (bits - 1)  ... int4, int8, int16, int32
+        #    (ONNX)      +-  -offset - 2 ** (bits - 1)  ... int4, int8, int16, int32
         #                    (AIMET)
         if signed:
             y_zero_point = -offset - 2 ** (bw - 1)
