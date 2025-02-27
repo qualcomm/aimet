@@ -1100,13 +1100,13 @@ def _onnx_QuantizeDequantizeLinear(input_shape, y_scale, y_zero_point, axis, blo
     # axis := |
     #         +- block axis (otherwise)
     "input_shape,    channel_axis, block_axis,  block_size", [
-    ((10, 10, 3, 3), None,         None,        None), # per-tensor
-    ((10, 10, 3, 3), 0,            None,        None), # per-channel with axis=0 (Convolution)
-    ((10, 10, 3, 3), 1,            None,        None), # per-channel with axis=1 (Convolution)
+    ((10, 10, 1, 1), None,         None,        None), # per-tensor
+    ((10, 10, 1, 1), 0,            None,        None), # per-channel with axis=0 (Convolution)
+    ((10, 10, 1, 1), 1,            None,        None), # per-channel with axis=1 (Convolution)
     ((10, 10),       0,            None,        None), # per-channel with axis=0 (Linear/Gemm)
     ((10, 10),       1,            None,        None), # per-channel with axis=1 (Linear/Gemm)
-    ((10, 10, 3, 3), 0,            1,           5),    # per-block with block_axis=1 (Convolution)
-    ((10, 10, 3, 3), 1,            0,           5),    # per-block with block_axis=0 (Convolution)
+    ((10, 10, 1, 1), 0,            1,           5),    # per-block with block_axis=1 (Convolution)
+    ((10, 10, 1, 1), 1,            0,           5),    # per-block with block_axis=0 (Convolution)
     ((10, 10),       0,            1,           5),    # per-block with block_axis=1 (Linear/Gemm)
     ((10, 10),       1,            0,           5),    # per-block with block_axis=0 (Linear/Gemm)
 ])
@@ -1218,7 +1218,174 @@ def test_affine_encoding_schema_2_0_0(input_shape, channel_axis, block_axis, blo
         sess = ort.InferenceSession(full_path, providers=['CPUExecutionProvider'])
         ort_out, = sess.run(None, {'x': input})
 
-    ort_out = ort_out
     aimet_out = session.run(None, {'input': input})
-    atol = (abs(input).max() * 2) / (2 ** bitwidth - 1) # Allow off-by-one error
+    atol = y_scale # Allow off-by-one error
+    if block_axis is not None:
+        atol = atol.max(axis=block_axis, keepdims=True)
+    elif channel_axis is not None:
+        atol = atol.reshape(*(1 if axis != channel_axis else -1 for axis in range(input.ndim)))
+    assert np.allclose(ort_out, aimet_out, atol=atol)
+
+
+def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
+               y_zero_point, axis, block_size, output_dtype):
+    op = OperatorSetIdProto()
+    op.version = 21
+
+    assert output_dtype in ("int8", "int16", "uint8", "uint16")
+    assert y_zero_point is None
+
+    x_int_dtype = TensorProto.INT16 if output_dtype == "int16" else \
+                  TensorProto.INT8 if output_dtype == "int8" else \
+                  TensorProto.INT4 if output_dtype == "int4" else \
+                  TensorProto.UINT16 if output_dtype == "uint16" else \
+                  TensorProto.UINT8 if output_dtype == "uint8" else \
+                  TensorProto.UINT4 if output_dtype == "uint4" else \
+                  None
+    assert x_int_dtype is not None
+
+    x = helper.make_tensor_value_info(name='x',
+                                      elem_type=TensorProto.FLOAT,
+                                      shape=input_shape)
+
+    per_block_int_scale = numpy_helper.from_array(np.array(per_block_int_scale).astype('float32'),
+                                                  name='per_block_int_scale')
+    per_channel_float_scale = numpy_helper.from_array(np.array(per_channel_float_scale).astype('float32'),
+                                                      name='per_channel_float_scale')
+
+    y = helper.make_tensor_value_info(name='y',
+                                      elem_type=TensorProto.FLOAT,
+                                      shape=input_shape)
+
+    mul_node = helper.make_node('Mul',
+                                inputs=['per_block_int_scale', 'per_channel_float_scale'],
+                                outputs=['y_scale'])
+
+    quantize_node = helper.make_node('QuantizeLinear',
+                                     inputs=['x', 'y_scale'],
+                                     outputs=['x_int'],
+                                     axis=axis,
+                                     block_size=block_size,
+                                     output_dtype=x_int_dtype)
+
+    dequantize_node = helper.make_node('DequantizeLinear',
+                                       inputs=['x_int', 'y_scale'],
+                                       outputs=['y'],
+                                       axis=axis,
+                                       block_size=block_size)
+
+    onnx_graph = helper.make_graph([mul_node, quantize_node, dequantize_node],
+                                   name='lpbq',
+                                   inputs=[x],
+                                   outputs=[y],
+                                   initializer=[per_block_int_scale, per_channel_float_scale])
+
+    model = helper.make_model(onnx_graph, opset_imports=[op])
+    onnx.checker.check_model(model, True)
+
+    return model
+
+
+@pytest.mark.parametrize(
+    "input_shape,    block_axis,  block_size", [
+    ((10, 50, 1, 1), 1,           5),    # per-block with block_axis=1 (Convolution)
+    ((50, 10, 1, 1), 0,           5),    # per-block with block_axis=0 (Convolution)
+    ((10, 50),       1,           5),    # per-block with block_axis=1 (Linear/Gemm)
+    ((50, 10),       0,           5),    # per-block with block_axis=0 (Linear/Gemm)
+])
+@pytest.mark.parametrize(
+    "compressed_bw, decompressed_bw", [
+    (4,             8),
+    (8,             16),
+])
+def test_lpbq_encoding_schema_2_0_0(input_shape, block_axis, block_size, compressed_bw, decompressed_bw):
+    """
+    Given: QcQuantizeOp
+    """
+    input = np.random.randn(*input_shape).astype(np.float32)
+    channel_axis = 0 if block_axis == 1 else 1
+    quant_params = TensorQuantizerParams(input_shape, channel_axis, block_axis)
+
+    quant_info = libquant_info.QcQuantizeInfo()
+    quant_info.isIntDataType = True
+    quant_info.channelAxis = channel_axis
+    quant_info.blockAxis = block_axis
+
+    quant_node = helper.make_node(op_name, inputs=['input'], outputs=['output'],
+                                  domain=op_domain, quant_info=libpymo.PtrToInt64(quant_info))
+    model = create_model_from_node(quant_node, input.shape)
+    session = build_session(model, available_providers)
+    qtzr = GroupedBlockQuantizeDequantize(quant_info,
+                                          compressed_bw,
+                                          decompressed_bw,
+                                          block_size=block_size,
+                                          quant_scheme=QuantScheme.post_training_tf,
+                                          op_mode=OpMode.oneShotQuantizeDequantize,
+                                          tensor_quantizer_params=quant_params)
+
+    _, = session.run(None, {'input': input})
+    qtzr.compute_encodings()
+
+    """
+    When: Export encoding in 2.0.0.beta schema
+    """
+    encoding = qtzr.export_encodings("2.0.0.beta")
+
+    """
+    Then: Exported qnn encoding should contain:
+            * "per_block_int_scale"
+            * "per_channel_float_scale"
+            * "y_zero_point"
+            * "axis"
+            * "block_size"
+            * "output_dtype"
+
+          all of which are defined as onnx::QuantizeLinear except
+          per_block_int_scale * per_channel_float_scale == y_scale
+    """
+
+    per_block_int_scale = np.array(encoding["per_block_int_scale"])
+    per_channel_float_scale = np.array(encoding["per_channel_float_scale"])
+
+    assert per_block_int_scale.ndim == per_channel_float_scale.ndim == input.ndim
+    assert per_block_int_scale.shape[channel_axis] == input.shape[channel_axis]
+    assert per_block_int_scale.shape[block_axis] == input.shape[block_axis] // block_size
+    assert all(dim == 1 for axis, dim in enumerate(per_block_int_scale.shape)
+               if axis not in (channel_axis, block_axis))
+    assert per_channel_float_scale.shape[channel_axis] == input.shape[channel_axis]
+    assert all(dim == 1 for axis, dim in enumerate(per_channel_float_scale.shape) if axis != channel_axis)
+
+    assert encoding["y_zero_point"] is None
+    assert encoding["axis"] == block_axis
+    assert encoding["block_size"] == block_size
+    assert encoding["output_dtype"] == f"int{decompressed_bw}"
+
+
+    """
+    Then: The output of onnx::QuantizeLinear followed by DequantizeLinear with the exported qnn encoding
+          should be all-close to AIMET qdq output with off-by-one tolerance threshold
+    """
+    if version.parse(ort.__version__) < version.parse("1.20.0"):
+        pytest.skip(reason="Remaining tests require onnxruntime>=1.20 for blockwise QuantizeLinear")
+
+    onnx_LPBQ = _onnx_LPBQ(input_shape=input.shape,
+                           per_block_int_scale=encoding["per_block_int_scale"],
+                           per_channel_float_scale=encoding["per_channel_float_scale"],
+                           y_zero_point=encoding["y_zero_point"],
+                           axis=encoding["axis"],
+                           block_size=encoding["block_size"],
+                           output_dtype=encoding["output_dtype"])
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        full_path = os.path.join(tmp_dir, "model.onnx")
+
+        with open(full_path, "wb") as f:
+            f.write(onnx_LPBQ.SerializeToString())
+
+        sess = ort.InferenceSession(full_path, providers=['CPUExecutionProvider'])
+        ort_out, = sess.run(None, {'x': input})
+
+    aimet_out = session.run(None, {'input': input})
+    y_scale = per_block_int_scale * per_channel_float_scale
+    atol = y_scale.max(axis=block_axis, keepdims=True) # Allow off-by-one error
     assert np.allclose(ort_out, aimet_out, atol=atol)

@@ -1786,7 +1786,7 @@ def test_affine_encoding_schema_2_0_0(shape, block_size, axis,
 
 
 def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
-               y_zero_point, axis, block_size, block_grouping, output_dtype):
+               y_zero_point, axis, block_size, output_dtype):
     op = OperatorSetIdProto()
     op.version = 21
 
@@ -1806,7 +1806,7 @@ def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
                                       elem_type=TensorProto.FLOAT,
                                       shape=input_shape)
 
-    per_block_int_scale = numpy_helper.from_array(np.array(per_block_int_scale).astype('int32'),
+    per_block_int_scale = numpy_helper.from_array(np.array(per_block_int_scale).astype('float32'),
                                                   name='per_block_int_scale')
     per_channel_float_scale = numpy_helper.from_array(np.array(per_channel_float_scale).astype('float32'),
                                                       name='per_channel_float_scale')
@@ -1815,16 +1815,9 @@ def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
                                       elem_type=onnx_dtype,
                                       shape=input_shape)
 
-    group_axis, group_size = next(iter(
-        (group_axis, group_size)
-        for group_axis, group_size in enumerate(block_grouping)
-        if group_size != 1
-    ))
-    dequantize_node = helper.make_node('DequantizeLinear',
+    dequantize_node = helper.make_node('Mul',
                                        inputs=['per_block_int_scale', 'per_channel_float_scale'],
-                                       outputs=['y_scale'],
-                                       axis=group_axis,
-                                       block_size=group_size)
+                                       outputs=['y_scale'])
 
     quantize_node = helper.make_node('QuantizeLinear',
                                      inputs=['x', 'y_scale'],
@@ -1848,15 +1841,15 @@ def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
 @torch.no_grad()
 @pytest.mark.parametrize(
     "shape,          block_size,   block_grouping, axis", [
-    ((10, 64, 1, 1), (1, 4, 1, 1), (1, 32, 1, 1),  1),    # per-block with block_axis=1 (Convolution)
-    ((64, 10, 1, 1), (4, 1, 1, 1), (32, 1, 1, 1),  0),    # per-block with block_axis=0 (Convolution)
-    ((10, 64),       (1, 4),       (1, 32),        1),    # per-block with block_axis=1 (Linear/Gemm)
-    ((64, 10),       (4, 1),       (32, 1),        0),    # per-block with block_axis=0 (Linear/Gemm)
+    ((10, 64, 1, 1), (1, 8, 1, 1), (1, 64, 1, 1),  1),    # per-block with block_axis=1 (Convolution)
+    ((64, 10, 1, 1), (8, 1, 1, 1), (64, 1, 1, 1),  0),    # per-block with block_axis=0 (Convolution)
+    ((10, 64),       (1, 8),       (1, 64),        1),    # per-block with block_axis=1 (Linear/Gemm)
+    ((64, 10),       (8, 1),       (64, 1),        0),    # per-block with block_axis=0 (Linear/Gemm)
 ])
 @pytest.mark.parametrize(
     "compressed_bw, decompressed_bw", [
-    (4,        8),
-    (8,        16),
+    (4,             8),
+    (8,             16),
 ])
 def test_lpbq_encoding_schema_2_0_0(shape, block_size, block_grouping, axis, compressed_bw, decompressed_bw):
     """
@@ -1930,7 +1923,6 @@ def test_lpbq_encoding_schema_2_0_0(shape, block_size, block_grouping, axis, com
                            y_zero_point=encoding["y_zero_point"],
                            axis=encoding["axis"],
                            block_size=encoding["block_size"],
-                           block_grouping=block_grouping,
                            output_dtype=encoding["output_dtype"])
 
     with tempfile.TemporaryDirectory() as tmp_dir:

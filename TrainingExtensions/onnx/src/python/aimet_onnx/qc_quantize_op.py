@@ -881,12 +881,47 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         encodings["compressed_bw"] = self.bitwidth
         encodings["bw"] = self.decompressed_bw
         scale, _ = lpbq_utils.encodings_to_scale_offset_arrays(self.get_encodings(), self._encoding_shape())
-        int_scale, per_block_scale = lpbq_utils.grouped_dynamic_quantize(scale, self._block_grouping(), self.decompressed_bw - self.bitwidth)
-        encodings['per_block_int_scale'] = int_scale.flatten().tolist()
-        encodings['scale'] = per_block_scale.flatten().tolist()
+        compressed_bw = self.bitwidth
+        decompressed_bw = self.decompressed_bw
+        per_block_int_scale, per_channel_scale = lpbq_utils.grouped_dynamic_quantize(scale,
+                                                                                     self._block_grouping(),
+                                                                                     decompressed_bw - compressed_bw)
+        encodings['per_block_int_scale'] = per_block_int_scale.flatten().tolist()
+        encodings['scale'] = per_channel_scale.flatten().tolist()
         encodings["offset"] = [-2 ** (self.decompressed_bw - 1) for _ in encodings['scale']]
 
         return encodings
+
+    def _export_2_0_0_encodings(self) -> Optional[Dict]:
+        encodings = super()._export_2_0_0_encodings()
+
+        if encodings is None:
+            return None
+
+        output_dtype = encodings.pop("output_dtype")
+        y_zero_point = encodings.pop("y_zero_point")
+
+        if y_zero_point is not None and np.any(np.array(y_zero_point) != 0):
+            raise RuntimeError(
+                f"LPBQ only supports symmetric quantization; got non-zero y_zero_point {y_zero_point}"
+            )
+
+        compressed_bw = self.bitwidth
+        decompressed_bw = self.decompressed_bw
+        y_scale = np.array(encodings.pop("y_scale"))
+        per_block_int_scale, per_channel_scale = lpbq_utils.grouped_dynamic_quantize(y_scale,
+                                                                                     self._block_grouping(),
+                                                                                     decompressed_bw - compressed_bw)
+        per_channel_scale = per_channel_scale.squeeze(tuple(range(1, per_channel_scale.ndim, 2)))
+        assert per_block_int_scale.ndim == per_channel_scale.ndim
+
+        return {
+            "per_block_int_scale": per_block_int_scale.tolist(),
+            "per_channel_float_scale": per_channel_scale.tolist(),
+            "y_zero_point": None,
+            **encodings,
+            "output_dtype": f"int{decompressed_bw}" if output_dtype.startswith("int") else f"uint{decompressed_bw}"
+        }
 
     def _fill_mismatching_encoding_settings_info(self, encoding_dict: Optional[dict], encoding_mismatch_info: _EncodingMismatchInfo):
         super()._fill_mismatching_encoding_settings_info(encoding_dict, encoding_mismatch_info)
