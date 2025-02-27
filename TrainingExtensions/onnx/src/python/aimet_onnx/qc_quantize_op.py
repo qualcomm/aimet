@@ -520,6 +520,9 @@ class QcQuantizeOp:
         if encoding_version == "1.0.0":
             return self._export_1_0_0_encodings()
 
+        if encoding_version == "2.0.0.beta":
+            return self._export_2_0_0_encodings()
+
         raise RuntimeError(f"Unsupported encoding export version: {encoding_version}")
 
     def _export_legacy_encodings(self) -> Union[List, None]:
@@ -580,6 +583,92 @@ class QcQuantizeOp:
                 enc_dict["block_size"] = self.quant_info.blockSize
 
         return enc_dict
+
+    def _export_2_0_0_encodings(self) -> Optional[Dict]: # pylint: disable=too-many-branches
+        """
+        Exports the quantizer's encodings in the "1.0.0" encoding format
+        """
+        encodings = self.get_encodings()
+
+        if encodings is None:
+            # This means one of the three:
+            #   1. This quantizer not enabled
+            #   2. This quantizer not initialized
+            #   3. This quantizer is a floating point quantizer
+            # In any case, this corresponds to no-encoding in encoding_version 2.0.0
+            return None
+
+        signed = self.use_symmetric_encodings
+        bw = encodings[0].bw
+
+        if bw <= 4:
+            bw = 4
+        elif bw <= 8:
+            bw = 8
+        elif bw <= 16:
+            bw = 16
+        elif bw <= 32:
+            bw = 32
+        else:
+            raise RuntimeError(f"Invalid bw: {bw}")
+
+        output_dtype = f"int{bw}" if signed else f"uint{bw}"
+
+        y_scale = np.array([e.delta for e in encodings])
+        offset = np.array([e.offset for e in encodings])
+
+        # NOTE: AIMET TfEncoding offset is defined in a bit quirky way
+        #
+        #                    (AIMET)
+        #                +-  -offset                    ... uint4, uint8, uint16, uint32
+        # y_zero_point = |
+        #    (ONNX)      +-  -offset + 2 ** (bits - 1)  ... int4, int8, int16, int32
+        #                    (AIMET)
+        if signed:
+            y_zero_point = -offset - 2 ** (bw - 1)
+        else:
+            y_zero_point = -offset
+
+        if self.tensor_quantizer_params:
+            channel_axis = self.tensor_quantizer_params.channel_axis
+            block_axis = self.tensor_quantizer_params.block_axis
+            block_size = self.quant_info.blockSize or None
+        else:
+            channel_axis = None
+            block_axis = None
+            block_size = None
+
+        if block_size is not None:
+            axis = block_axis
+            scale_shape = [
+                input_dim               if axis == channel_axis else
+                input_dim // block_size if axis == block_axis else 1
+                for axis, input_dim
+                in enumerate(self.tensor_quantizer_params.tensor_shape)
+            ]
+            y_scale = y_scale.reshape(scale_shape)
+            y_zero_point = y_zero_point.reshape(scale_shape)
+        elif channel_axis is not None:
+            axis = channel_axis
+            y_scale = y_scale.flatten()
+            y_zero_point = y_zero_point.flatten()
+        else:
+            axis = None
+            assert y_scale.size == 1
+            assert y_zero_point.size == 1
+            y_scale = y_scale.squeeze()
+            y_zero_point = y_zero_point.squeeze()
+
+        y_scale = y_scale.tolist()
+        y_zero_point = None if np.all(y_zero_point == 0) else y_zero_point.tolist()
+
+        return {
+            "y_scale": y_scale,
+            "y_zero_point": y_zero_point,
+            "axis": axis,
+            "block_size": block_size,
+            "output_dtype": output_dtype,
+        }
 
     def update_encoding_stats(self, tensor: np.ndarray):
         """

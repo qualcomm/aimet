@@ -877,7 +877,7 @@ class QuantizationSimModel:
                 _set_src_qtzr(inp, consumer=op, src_qtzr=out_qtzr[0])
 
 
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals, too-many-branches
 def load_encodings_to_sim(quant_sim_model: QuantizationSimModel, onnx_encoding_path: str, strict=True) -> \
         List[_EncodingMismatchInfo]:
     """
@@ -898,10 +898,20 @@ def load_encodings_to_sim(quant_sim_model: QuantizationSimModel, onnx_encoding_p
     with open(onnx_encoding_path) as json_file:
         encodings = json.load(json_file)
 
-    if 'version' not in encodings or encodings['version'] not in VALID_ENCODING_VERSIONS:
-        raise NotImplementedError(f'Encoding version not in set of valid encoding versions {VALID_ENCODING_VERSIONS}.')
+    encoding_version = encodings.get("version", None)
+    if encoding_version not in VALID_ENCODING_VERSIONS:
+        raise NotImplementedError(
+            f"Encoding version should be one of {VALID_ENCODING_VERSIONS}; "
+            f"got {encoding_version}"
+        )
 
-    if encodings['version'] == '0.6.1':
+    if encoding_version not in ("0.6.1", "1.0.0"):
+        raise NotImplementedError(
+            "load_encodings_to_sim only supports encoding version 0.6.1 and 1.0.0; "
+            f"got {encoding_version}"
+        )
+
+    if encoding_version == '0.6.1':
         encodings['activation_encodings'] =  _convert_encoding_format_0_6_1_to_1_0_0(encodings['activation_encodings'])
         encodings['param_encodings'] =  _convert_encoding_format_0_6_1_to_1_0_0(encodings['param_encodings'])
 
