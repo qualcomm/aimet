@@ -626,7 +626,7 @@ class QcQuantizeOp:
         else:
             y_zero_point = -offset
 
-        if self.tensor_quantizer_params:
+        if self.quant_info.usePerChannelMode and self.tensor_quantizer_params:
             channel_axis = self.tensor_quantizer_params.channel_axis
             block_axis = self.tensor_quantizer_params.block_axis
             block_size = self.quant_info.blockSize or None
