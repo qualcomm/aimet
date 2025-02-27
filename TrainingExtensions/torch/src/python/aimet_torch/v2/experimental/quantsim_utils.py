@@ -347,7 +347,7 @@ def apply_requant_mask(sim: QuantizationSimModel,
             setattr(sim.model, name, q_mask_add)
             if module.input_quantizers[mask_index].is_initialized() and module.output_quantizers[0].is_initialized():
                 mask_add_names.append(name)
-                mask_add_act_mins.append(module.output_quantizers[0].min)
+                mask_add_act_mins.append(module.output_quantizers[0].min-module.output_quantizers[0].max)
                 mask_maxs.append(module.input_quantizers[mask_index].max)
             else:
                 logger.warning("The quantizers for %s may remain uninitialized "

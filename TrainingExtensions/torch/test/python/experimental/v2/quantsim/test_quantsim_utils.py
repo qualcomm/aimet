@@ -174,7 +174,7 @@ def test_apply_requant_mask():
             mask_add_names.append(name)
             assert module.input_quantizers[1] and module.input_quantizers[1].is_initialized()
             assert module.output_quantizers[0] and module.output_quantizers[0].is_initialized()
-            mask_add_act_mins.append(module.output_quantizers[0].min)
+            mask_add_act_mins.append(module.output_quantizers[0].min-module.output_quantizers[0].max)
             mask_maxs.append(module.input_quantizers[1].max)
 
     assert mask_add_names
