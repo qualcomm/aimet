@@ -279,10 +279,8 @@ class TestLayerOutputUtil:
                 # Output in NCHW format
                 layer_output_from_dict = layer_output_util.layer_output.layer_name_to_layer_output_dict[conv_layer_name]
 
-                # Convert from NCHW to NHWC
-                layer_output_from_dict = layer_output_from_dict.detach().permute(0, 2, 3, 1)
+                layer_output_from_dict = layer_output_from_dict.detach()
 
-                # Saved output should already be in NHWC format
                 saved_output = np.fromfile(tmpdir+f"/outputs/layer_outputs_0/{conv_layer_name}.raw",
                                            dtype=np.float32).reshape(layer_output_from_dict.shape)
                 saved_output = torch.from_numpy(saved_output)

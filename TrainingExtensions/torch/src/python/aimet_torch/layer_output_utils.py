@@ -100,7 +100,7 @@ class LayerOutputUtil:
                                         onnx_export_args=onnx_export_args)
 
         # Utility to save model inputs and their corresponding layer-outputs
-        self.save_input_output = SaveInputOutput(dir_path=dir_path, axis_layout='NCHW')
+        self.save_input_output = SaveInputOutput(dir_path=dir_path)
 
     def generate_layer_outputs(self, input_instance: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]):
         """
