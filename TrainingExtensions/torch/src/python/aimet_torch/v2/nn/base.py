@@ -700,19 +700,19 @@ class BaseQuantizationMixin(abc.ABC):
         bias_qtzr.to(dtype=bias.dtype, device=bias.device)
         self.param_quantizers["bias"] = bias_qtzr
 
-        input, = input
-
         if self.param_quantizers["weight"]:
             weight_scale = self.param_quantizers["weight"].get_scale()
         else:
             weight_scale = None
 
-        if self.input_quantizers[0]:
-            input_scale = self.input_quantizers[0].get_scale()
-        elif isinstance(input, QuantizedTensorBase) and isinstance(input.encoding, AffineEncoding):
-            input_scale = input.encoding.scale
-        else:
-            input_scale = None
+        input_scale = None
+
+        if len(input) == 1:
+            input, = input
+            if self.input_quantizers[0]:
+                input_scale = self.input_quantizers[0].get_scale()
+            elif isinstance(input, QuantizedTensorBase) and isinstance(input.encoding, AffineEncoding):
+                input_scale = input.encoding.scale
 
         try:
             bias_scale = self._derive_bias_scale(input_scale, weight_scale)

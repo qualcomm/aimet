@@ -545,6 +545,7 @@ def _generate_docstring(parent_cls):
 
 def _derive_bias_scale(input_scale: Optional[torch.Tensor],
                        weight_scale: Optional[torch.Tensor],
+                       bias_shape: torch.Size,
                        channel_axis: int):
     if input_scale is None or weight_scale is None:
         return None
@@ -563,7 +564,12 @@ def _derive_bias_scale(input_scale: Optional[torch.Tensor],
     non_channel_axes = tuple(axis for axis in range(bias_scale.dim()) if axis != channel_axis)
     bias_scale = torch.amax(bias_scale, dim=non_channel_axes)
 
-    return bias_scale
+    if bias_scale.shape in ((), bias_shape):
+        return bias_scale
+
+    # This means channel_axis != output channel axis.
+    # In this case, do not derive bias encoding from input and weight encodings
+    return None
 
 
 @QuantizationMixin.implements(nn.AdaptiveAvgPool1d)
@@ -785,7 +791,7 @@ class QuantizedConv1d(_DispatchMixin, QuantizationMixin, nn.Conv1d):  # pylint: 
     __quant_init__ = QuantizationMixin.__unary__
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=0)
 
 
 @QuantizationMixin.implements(nn.Conv2d)
@@ -796,7 +802,7 @@ class QuantizedConv2d(_DispatchMixin, QuantizationMixin, nn.Conv2d):  # pylint: 
     __quant_init__ = QuantizationMixin.__unary__
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=0)
 
 
 @QuantizationMixin.implements(nn.Conv3d)
@@ -807,7 +813,7 @@ class QuantizedConv3d(_DispatchMixin, QuantizationMixin, nn.Conv3d):  # pylint: 
     __quant_init__ = QuantizationMixin.__unary__
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=0)
 
 
 @QuantizationMixin.implements(nn.ConvTranspose1d)
@@ -818,7 +824,7 @@ class QuantizedConvTranspose1d(_DispatchMixin, QuantizationMixin, nn.ConvTranspo
     __quant_init__ = QuantizationMixin.__unary__
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=1)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=1)
 
 
 @QuantizationMixin.implements(nn.ConvTranspose2d)
@@ -829,7 +835,7 @@ class QuantizedConvTranspose2d(_DispatchMixin, QuantizationMixin, nn.ConvTranspo
     __quant_init__ = QuantizationMixin.__unary__
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=1)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=1)
 
 
 @QuantizationMixin.implements(nn.ConvTranspose3d)
@@ -840,7 +846,7 @@ class QuantizedConvTranspose3d(_DispatchMixin, QuantizationMixin, nn.ConvTranspo
     __quant_init__ = QuantizationMixin.__unary__
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=1)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=1)
 
 
 @QuantizationMixin.implements(nn.CosineEmbeddingLoss)
@@ -1466,7 +1472,7 @@ class QuantizedLinear(_DispatchMixin, QuantizationMixin, nn.Linear):
             return super().forward(*args, **kwargs)
 
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
-        return _derive_bias_scale(input_scale, weight_scale, channel_axis=0)
+        return _derive_bias_scale(input_scale, weight_scale, self.bias.shape, channel_axis=0)
 
 
 @QuantizationMixin.implements(nn.LocalResponseNorm)
