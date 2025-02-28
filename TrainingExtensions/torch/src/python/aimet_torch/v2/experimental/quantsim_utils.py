@@ -322,41 +322,45 @@ def apply_requant_mask(sim: QuantizationSimModel,
     else:
         condition = arg
 
-    mask_add_names, mask_add_act_mins, mask_maxs = [], [], []
-    for name, module in sim.model.named_modules():
-        if condition(module):
-            if not isinstance(module, custom.QuantizedAdd):
-                msg = f"apply_requant_mask can only handle {custom.QuantizedAdd}, "\
-                      f"but got {type(module)}"
-                raise RuntimeError(msg)
+    mask_adds, mask_add_act_mins, mask_maxs = [], [], []
+    def replace_mask_add_in_model(module: torch.nn.Module):
+        for name, child in module.named_children():
+            if condition(child):
+                if not isinstance(child, custom.QuantizedAdd):
+                    msg = f"apply_requant_mask can only handle {custom.QuantizedAdd}, "\
+                        f"but got {type(child)}"
+                    raise RuntimeError(msg)
 
-            if all(qtzr is None for qtzr in module.input_quantizers):
-                msg = "apply_requant_mask expects at least one of the input quantizers "\
-                      f"to exist, but got {module}"
-                raise RuntimeError(msg)
+                if all(qtzr is None for qtzr in child.input_quantizers):
+                    msg = "apply_requant_mask expects at least one of the input quantizers "\
+                        f"to exist, but got {child}"
+                    raise RuntimeError(msg)
 
-            mask_index = 1
-            if module.input_quantizers[0] is not None and module.input_quantizers[0].is_initialized() and \
-                torch.all(module.input_quantizers[0].max == 0):
-                mask_index = 0
+                mask_index = 1
+                if child.input_quantizers[0] is not None and child.input_quantizers[0].is_initialized() and \
+                    torch.all(child.input_quantizers[0].max == 0):
+                    mask_index = 0
 
-            q_mask_add = QuantizedMaskAdd()
-            q_mask_add.nullrequant.input_quantizers[0] = copy.deepcopy(module.input_quantizers[mask_index])
-            q_mask_add.nullrequant.output_quantizers[0] = copy.deepcopy(module.input_quantizers[mask_index])
-            q_mask_add.add.output_quantizers[0] = module.output_quantizers[0]
-            setattr(sim.model, name, q_mask_add)
-            if module.input_quantizers[mask_index].is_initialized() and module.output_quantizers[0].is_initialized():
-                mask_add_names.append(name)
-                mask_add_act_mins.append(module.output_quantizers[0].min-module.output_quantizers[0].max)
-                mask_maxs.append(module.input_quantizers[mask_index].max)
-            else:
-                logger.warning("The quantizers for %s may remain uninitialized "
-                                "only if sim model is about to use `load_encodings`", str(name))
+                q_mask_add = QuantizedMaskAdd()
+                q_mask_add.nullrequant.input_quantizers[0] = copy.deepcopy(child.input_quantizers[mask_index])
+                q_mask_add.nullrequant.output_quantizers[0] = copy.deepcopy(child.input_quantizers[mask_index])
+                q_mask_add.add.output_quantizers[0] = child.output_quantizers[0]
+                setattr(module, name, q_mask_add)
+                if child.input_quantizers[mask_index].is_initialized() and child.output_quantizers[0].is_initialized():
+                    mask_adds.append(q_mask_add)
+                    mask_add_act_mins.append(child.output_quantizers[0].min-child.output_quantizers[0].max)
+                    mask_maxs.append(child.input_quantizers[mask_index].max)
+                else:
+                    logger.warning("The quantizers for %s may remain uninitialized "
+                                    "only if sim model is about to use `load_encodings`", str(name))
+            replace_mask_add_in_model(child)
 
-    if mask_add_names:
+    replace_mask_add_in_model(sim.model)
+
+    if mask_adds:
         mask_add_act_global_min = min(mask_add_act_mins)
-        for name, mask_add_act_min, mask_max in zip(mask_add_names, mask_add_act_mins, mask_maxs):
-            sim.model.get_submodule(name).nullrequant.input_quantizers[0].set_range(mask_add_act_global_min,
-                                                                                    mask_max)
-            sim.model.get_submodule(name).nullrequant.output_quantizers[0].set_range(mask_add_act_min,
-                                                                                     mask_max)
+        for mask_add, mask_add_act_min, mask_max in zip(mask_adds, mask_add_act_mins, mask_maxs):
+            mask_add.nullrequant.input_quantizers[0].set_range(mask_add_act_global_min,
+                                                               mask_max)
+            mask_add.nullrequant.output_quantizers[0].set_range(mask_add_act_min,
+                                                                mask_max)
