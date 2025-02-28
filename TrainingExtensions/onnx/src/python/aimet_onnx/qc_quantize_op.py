@@ -285,6 +285,51 @@ class QcQuantizeOp:
         """
         return self.get_encodings()
 
+    def _get_scale(self) -> np.ndarray:
+        encodings = self.get_encodings()
+        if encodings is None:
+            return None
+        return np.array([enc.delta for enc in encodings]).reshape(self._encoding_shape())
+
+    def _get_offset(self) -> np.ndarray:
+        encodings = self.get_encodings()
+        if encodings is None:
+            return None
+        return np.array([enc.offset for enc in encodings]).reshape(self._encoding_shape())
+
+    def _encoding_shape(self):
+        """
+        Returns expected shape of y_scale and y_zero_point as defined in onnx::QuantizeLinear
+        EXCEPT this function allows slightly more flexible shapes in blockwise encodings
+        """
+        if not self.quant_info.usePerChannelMode:
+            return ()
+
+        assert self.tensor_quantizer_params is not None
+
+        input_shape = self.tensor_quantizer_params.tensor_shape
+        channel_axis = self.quant_info.channelAxis
+        block_axis = self.quant_info.blockAxis
+        block_size = self.quant_info.blockSize
+
+        if block_size > 0:
+            # NOTE
+            # Given input of shape (i_0, i_1, i_2, i_3, ...), block_size=B, and block_axis=1
+            # onnx::QuantizeLinear only allows y_scale of shape (i_0, i_1/B, i_2, i_3, ...).
+            # In practice, this enforces the input to be a 2D matrix of shape (i_0, i_1),
+            # meaning only Gemm but not Conv can be blockwise quantized.
+            # This is a deal-breaking limitation for us.
+            # For internal purposes, we carefully deviate from onnx definition and allow
+            # blockwise scale of shape (i_0, i_1/B, 1, 1, ...)
+            return tuple(
+                input_dim               if axis == channel_axis else
+                input_dim // block_size if axis == block_axis else 1
+                for axis, input_dim
+                in enumerate(input_shape)
+            )
+
+        return (input_shape[channel_axis],)
+
     def update_quantizer_and_load_encodings(self, encoding: List[libpymo.TfEncoding], is_symmetric: Optional[bool],
                                             is_strict_symmetric: Optional[bool], is_unsigned_symmetric: Optional[bool],
                                             data_type: QuantizationDataType):
@@ -637,24 +682,15 @@ class QcQuantizeOp:
 
         if block_size is not None:
             axis = block_axis
-            scale_shape = [
-                input_dim               if axis == channel_axis else
-                input_dim // block_size if axis == block_axis else 1
-                for axis, input_dim
-                in enumerate(self.tensor_quantizer_params.tensor_shape)
-            ]
-            y_scale = y_scale.reshape(scale_shape)
-            y_zero_point = y_zero_point.reshape(scale_shape)
         elif channel_axis is not None:
             axis = channel_axis
-            y_scale = y_scale.flatten()
-            y_zero_point = y_zero_point.flatten()
         else:
             axis = None
             assert y_scale.size == 1
             assert y_zero_point.size == 1
-            y_scale = y_scale.squeeze()
-            y_zero_point = y_zero_point.squeeze()
+
+        y_scale = y_scale.reshape(self._encoding_shape())
+        y_zero_point = y_zero_point.reshape(self._encoding_shape())
 
         y_scale = y_scale.tolist()
         y_zero_point = None if np.all(y_zero_point == 0) else y_zero_point.tolist()
@@ -771,24 +807,6 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         self.decompressed_bw = decompressed_bw
         self._enable_blockwise_quantization(block_size)
         self.data_type = QuantizationDataType.int
-
-    def _encoding_shape(self):
-        tensor_shape = self.tensor_quantizer_params.tensor_shape
-        shape = [1 for _ in range(len(tensor_shape))]
-
-        if not self.quant_info.usePerChannelMode:
-            return shape
-
-        ch_axis, block_axis = self.quant_info.channelAxis, self.quant_info.blockAxis
-        assert ch_axis >= 0
-
-        shape[ch_axis] = tensor_shape[ch_axis]
-
-        if self.quant_info.blockSize > 0:
-            assert block_axis >= 0
-            shape[block_axis] = tensor_shape[block_axis] // self.quant_info.blockSize
-
-        return shape
 
     def _block_grouping(self):
         grouping = [1 for _ in range(len(self._encoding_shape()))]
