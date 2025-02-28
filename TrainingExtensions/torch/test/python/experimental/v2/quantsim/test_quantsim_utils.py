@@ -50,7 +50,7 @@ from aimet_torch.v2.nn import custom
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantization.affine.backends.torch_builtins import quantize
 from aimet_torch.v2.experimental import clip_weights_to_7f7f, apply_requant_mask, QuantizedMaskAdd
-from ....models.test_models import SingleResidualWithAvgPool, Attention
+from ....models.test_models import SingleResidualWithAvgPool, SingleHeadAttention
 
 def test_clip_weights_to_7f7f():
     torch.manual_seed(0)
@@ -118,7 +118,7 @@ def test_apply_requant_mask():
     config.num_key_value_heads = 4
     config.max_position_embeddings = 32
 
-    model = Attention(config)
+    model = SingleHeadAttention(config)
 
     hidden_states_shape = (1, config.max_position_embeddings, config.hidden_size)
     mask_shape = (1, 1, config.max_position_embeddings, config.max_position_embeddings)
@@ -161,9 +161,7 @@ def test_apply_requant_mask():
         
     quantsim.compute_encodings(lambda m, _: m(*dummy_input), None)
 
-    mask_add_layers = [
-        quantsim.model.mask_add
-    ]
+    mask_add_layers = quantsim.model.mask_add
 
     def is_mask_add(module: torch.nn.Module):
         return module in mask_add_layers
@@ -172,10 +170,14 @@ def test_apply_requant_mask():
     for name, module in quantsim.model.named_modules():
         if is_mask_add(module):
             mask_add_names.append(name)
-            assert module.input_quantizers[1] and module.input_quantizers[1].is_initialized()
+            mask_index = 1
+            if module.input_quantizers[0] is not None and module.input_quantizers[0].is_initialized() and \
+                torch.all(module.input_quantizers[0].max == 0):
+                mask_index = 0
+            assert module.input_quantizers[mask_index] and module.input_quantizers[mask_index].is_initialized()
             assert module.output_quantizers[0] and module.output_quantizers[0].is_initialized()
             mask_add_act_mins.append(module.output_quantizers[0].min-module.output_quantizers[0].max)
-            mask_maxs.append(module.input_quantizers[1].max)
+            mask_maxs.append(module.input_quantizers[mask_index].max)
 
     assert mask_add_names
     apply_requant_mask(quantsim, is_mask_add)

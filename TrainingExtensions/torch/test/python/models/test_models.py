@@ -1606,9 +1606,7 @@ class RoPE(nn.Module):
         return x
 
 
-class Attention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
-
+class SingleHeadAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -1627,28 +1625,30 @@ class Attention(nn.Module):
                 f" and `num_heads`: {self.num_heads})."
             )
 
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias)
-        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
-        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
+        self.q_proj = nn.ModuleList([nn.Linear(self.hidden_size, self.head_dim, bias=config.attention_bias) for _ in range(self.num_heads)])
+        self.k_proj = nn.ModuleList([nn.Linear(self.hidden_size, self.head_dim, bias=config.attention_bias) for _ in range(self.num_key_value_heads)])
+        self.v_proj = nn.ModuleList([nn.Linear(self.hidden_size, self.head_dim, bias=config.attention_bias) for _ in range(self.num_key_value_heads)])
         self.o_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=config.attention_bias)
-        self.q_rope = RoPE()
-        self.k_rope = RoPE()
-        self.k_cat = aimet_modules.Concat(2)
-        self.v_cat = aimet_modules.Concat(2)
-        self.mm_qk = aimet_modules.MatMul()
-        self.div = aimet_modules.Divide()
-        self.mask_add = aimet_modules.Add()
-        self.sm = nn.Softmax(dim=-1)
-        self.mm_qkv = aimet_modules.MatMul()
+        self.q_rope = nn.ModuleList([RoPE() for _ in range(self.num_heads)])
+        self.k_rope = nn.ModuleList([RoPE() for _ in range(self.num_key_value_heads)])
+        self.k_cat = nn.ModuleList([aimet_modules.Concat(2) for _ in range(self.num_key_value_heads)])
+        self.v_cat = nn.ModuleList([aimet_modules.Concat(2) for _ in range(self.num_key_value_heads)])
+        self.mm_qk = nn.ModuleList([aimet_modules.MatMul() for _ in range(self.num_heads)])
+        self.div = nn.ModuleList([aimet_modules.Divide() for _ in range(self.num_heads)])
+        self.mask_add = nn.ModuleList([aimet_modules.Add() for _ in range(self.num_heads)])
+        self.sm = nn.ModuleList([nn.Softmax(dim=-1) for _ in range(self.num_heads)])
+        self.mm_qkv = nn.ModuleList([aimet_modules.MatMul() for _ in range(self.num_heads)])
 
     def repeat_kv(self, hidden_states, n_rep: int):
         """
         This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
         num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
         """
-        batch, num_key_value_heads, slen, head_dim = hidden_states.shape
         if n_rep == 1:
             return hidden_states
+        if isinstance(hidden_states, list):
+            return [state for state in hidden_states for _ in range(n_rep)]
+        batch, num_key_value_heads, slen, head_dim = hidden_states.shape
         hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
         return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
@@ -1679,41 +1679,44 @@ class Attention(nn.Module):
     ) -> torch.Tensor:
         bsz, q_len, _ = hidden_states.size()
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        query_states = [q_proj(hidden_states).view(bsz, q_len, 1, self.head_dim).transpose(1, 2) for q_proj in self.q_proj]
+        key_states = [k_proj(hidden_states).view(bsz, q_len, 1, self.head_dim).transpose(1, 2) for k_proj in self.k_proj]
+        value_states = [v_proj(hidden_states).view(bsz, q_len, 1, self.head_dim).transpose(1, 2) for v_proj in self.v_proj]
 
         rope_embedding = position_ids
-        query_states = self.q_rope(query_states, rope_embedding)
-        key_states = self.k_rope(key_states, rope_embedding)
+        query_states = [rope(q, rope_embedding) for rope, q in zip(self.q_rope, query_states)]
+        key_states = [rope(k, rope_embedding) for rope, k in zip(self.k_rope, key_states)]
 
         if past_key_value is not None:
-            key_states = self.k_cat(past_key_value[0], key_states)
-            value_states = self.v_cat(past_key_value[1], value_states)
-
-        past_key_value = (key_states, value_states) if use_cache else None
+            past_key, past_value = past_key_value
+            past_key = [past_key[:, i:i+1, :, :] for i in self.num_key_value_heads]
+            past_value = [past_value[:, i:i+1, :, :] for i in self.num_key_value_heads]
+            key_states = [cat(pk, k) for cat, pk, k in zip(self.k_cat, past_key, key_states)]
+            value_states = [cat(pv, v) for cat, pv, v in zip(self.v_cat, past_value, value_states)]
 
         key_states = self.repeat_kv(key_states, self.num_key_value_groups)
         value_states = self.repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = self.div(self.mm_qk(query_states, key_states.transpose(2, 3)), math.sqrt(self.head_dim))
+        attn_weights = [div(mm(q, k.transpose(2, 3)), math.sqrt(self.head_dim))
+                        for mm, div, q, k in zip(self.mm_qk, self.div, query_states, key_states)]
 
         if attention_mask is not None:
-            attn_weights = self.mask_add(attn_weights, attention_mask)
+            attn_weights = [self.mask_add[i](attn_weights[i], attention_mask)
+                            for i in range(len(attn_weights)//2)] + \
+                           [self.mask_add[i](attention_mask, attn_weights[i])
+                            for i in range(len(attn_weights)//2, len(attn_weights))]
 
         # upcast attention to fp32
-        attn_weights = self.sm(attn_weights).to(query_states.dtype)
-        attn_output = self.mm_qkv(attn_weights, value_states)
+        attn_weights = [sm(aw).to(query_states[0].dtype) for sm, aw in zip(self.sm, attn_weights)]
+        attn_output = [mm(aw, v) for mm, aw, v in zip(self.mm_qkv, attn_weights, value_states)]
 
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+        if attn_output[0].size() != (bsz, 1, q_len, self.head_dim):
             raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+                f"`attn_output[0]` should be of size {(bsz, 1, q_len, self.head_dim)}, but is"
+                f" {attn_output[0].size()}"
             )
+
+        attn_output = torch.cat(attn_output, dim=1)
 
         attn_output = attn_output.transpose(1, 2).contiguous()
 
