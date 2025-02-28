@@ -35,6 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Custom QcQuantizeOp to quantize weights and activations using ONNXRuntime """
+# pylint: disable=too-many-lines
 from __future__ import annotations      # Needed to typehint private class _EncodingMismatchInfo
 from dataclasses import dataclass
 from typing import Union, List, Optional, Dict, Tuple
