@@ -290,13 +290,13 @@ class QcQuantizeOp:
         encodings = self.get_encodings()
         if encodings is None:
             return None
-        return np.array([enc.delta for enc in encodings]).reshape(self._encoding_shape())
+        return np.array([enc.delta for enc in encodings], dtype=np.float32).reshape(self._encoding_shape())
 
     def _get_offset(self) -> np.ndarray:
         encodings = self.get_encodings()
         if encodings is None:
             return None
-        return np.array([enc.offset for enc in encodings]).reshape(self._encoding_shape())
+        return np.array([enc.offset for enc in encodings], dtype=np.float32).reshape(self._encoding_shape())
 
     def _encoding_shape(self):
         """
