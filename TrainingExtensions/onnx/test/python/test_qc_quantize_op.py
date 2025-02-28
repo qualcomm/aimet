@@ -1232,7 +1232,6 @@ def _onnx_LPBQ(input_shape, per_block_int_scale, per_channel_float_scale,
     op = OperatorSetIdProto()
     op.version = 21
 
-    assert output_dtype in ("int8", "int16", "uint8", "uint16")
     assert y_zero_point is None
 
     x_int_dtype = TensorProto.INT16 if output_dtype == "int16" else \
@@ -1358,7 +1357,7 @@ def test_lpbq_encoding_schema_2_0_0(input_shape, block_axis, block_size, compres
     assert encoding["y_zero_point"] is None
     assert encoding["axis"] == block_axis
     assert encoding["block_size"] == block_size
-    assert encoding["output_dtype"] == f"int{decompressed_bw}"
+    assert encoding["output_dtype"] == f"int{compressed_bw}"
 
 
     """
