@@ -920,7 +920,7 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
             "per_channel_float_scale": per_channel_scale.tolist(),
             "y_zero_point": None,
             **encodings,
-            "output_dtype": f"int{decompressed_bw}" if output_dtype.startswith("int") else f"uint{decompressed_bw}"
+            "output_dtype": f"int{compressed_bw}" if output_dtype.startswith("int") else f"uint{compressed_bw}"
         }
 
     def _fill_mismatching_encoding_settings_info(self, encoding_dict: Optional[dict], encoding_mismatch_info: _EncodingMismatchInfo):

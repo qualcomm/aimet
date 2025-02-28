@@ -513,7 +513,7 @@ class GroupedBlockEncoding(AffineEncoding):
             del encoding_dict["y_scale"]
             del encoding_dict["output_dtype"]
 
-            decompressed_bw = self.decompressed_bw
+            compressed_bw = self.bitwidth
             y_zero_point = encoding_dict.pop("y_zero_point")
 
             if y_zero_point is not None and torch.any(torch.tensor(y_zero_point) != 0):
@@ -526,7 +526,7 @@ class GroupedBlockEncoding(AffineEncoding):
                 "per_channel_float_scale": self.per_channel_scale.tolist(),
                 "y_zero_point": None,
                 **encoding_dict,
-                "output_dtype": f"int{decompressed_bw}" if self.signed else f"uint{decompressed_bw}"
+                "output_dtype": f"int{compressed_bw}" if self.signed else f"uint{compressed_bw}"
             }
 
         return encoding_dict
