@@ -762,7 +762,7 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
             raise RuntimeError('GroupedBlockQuantizeDequantize only supports symmetric quantization.')
 
     def get_scale(self, dtype=None) -> Optional[torch.Tensor]:
-        """
+        r"""
         Compute quantization scale to be used for forward pass.
         Overrides QuantizeDequantize self.get_scale() to apply the grouped block algorithm for calculating modified
         scales.
@@ -772,6 +772,17 @@ class GroupedBlockQuantizeDequantize(QuantizeDequantize): # pylint: disable=too-
         """
         lpbq_scale, _ = self._get_scale(dtype)
         return lpbq_scale
+
+    def get_per_channel_scale(self, dtype=None) -> Optional[torch.Tensor]:
+        r"""
+        Returns per-channel scale such that
+
+        :math:`scale = per_chanel_scale * per_block_int_scale`
+        """
+        raw_scale = super().get_scale(dtype)
+        if raw_scale is None:
+            return None
+        return self._get_per_channel_scale(raw_scale)
 
     def _get_scale(self, dtype=None) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
         raw_scale = super().get_scale(dtype)

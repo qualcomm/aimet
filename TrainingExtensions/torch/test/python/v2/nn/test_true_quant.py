@@ -36,6 +36,7 @@
 # =============================================================================
 
 import ast
+import copy
 import functools
 import itertools
 from packaging import version
@@ -50,16 +51,21 @@ from torch.overrides import get_ignored_functions
 import transformers
 
 from aimet_torch.v2.quantization.affine.backends import quantize, quantize_dequantize, dequantize
-from aimet_torch.v2.quantization.affine import Quantize, QuantizeDequantize
+from aimet_torch.v2.quantization.affine import (
+    AffineEncoding,
+    Quantize,
+    QuantizeDequantize,
+    GroupedBlockQuantizeDequantize,
+)
 import aimet_torch.v2 as aimet
 from aimet_torch.v2.nn import (
     QuantizationMixin,
     QuantizedConv1d,
     QuantizedConv2d,
     QuantizedConv3d,
-    QuantizedConvTranspose1d,
-    QuantizedConvTranspose2d,
-    QuantizedConvTranspose3d,
+    QuantizedConvTranspose1d as QConvTranspose1d,
+    QuantizedConvTranspose2d as QConvTranspose2d,
+    QuantizedConvTranspose3d as QConvTranspose3d,
     QuantizedEmbedding,
     QuantizedGELU,
     QuantizedGroupNorm,
@@ -74,7 +80,6 @@ from aimet_torch.v2.nn import (
 )
 from aimet_torch.v2.nn.fake_quant import _legacy_impl
 from aimet_torch.v2.nn.true_quant import _dispatch, _dispatch_table
-from aimet_torch.v2.quantization.affine import AffineEncoding
 from aimet_torch.v2.quantization.tensor import QuantizedTensor, DequantizedTensor
 from aimet_torch.v2.utils import enable_recompute
 from aimet_torch.v2.nn import custom
@@ -174,13 +179,13 @@ def register_int_convtranspose():
                                output_encodings.offset,
                                output_encodings.bitwidth)
 
-    QuantizedConvTranspose1d.set_default_kernel(functools.partial(int_convtransposend, F.conv_transpose1d))
-    QuantizedConvTranspose2d.set_default_kernel(functools.partial(int_convtransposend, F.conv_transpose2d))
-    QuantizedConvTranspose3d.set_default_kernel(functools.partial(int_convtransposend, F.conv_transpose3d))
+    QConvTranspose1d.set_default_kernel(functools.partial(int_convtransposend, F.conv_transpose1d))
+    QConvTranspose2d.set_default_kernel(functools.partial(int_convtransposend, F.conv_transpose2d))
+    QConvTranspose3d.set_default_kernel(functools.partial(int_convtransposend, F.conv_transpose3d))
     yield
-    QuantizedConvTranspose1d.set_default_kernel(None)
-    QuantizedConvTranspose2d.set_default_kernel(None)
-    QuantizedConvTranspose3d.set_default_kernel(None)
+    QConvTranspose1d.set_default_kernel(None)
+    QConvTranspose2d.set_default_kernel(None)
+    QConvTranspose3d.set_default_kernel(None)
 
 
 @pytest.fixture
@@ -1147,12 +1152,12 @@ def test_qembedding_output_encoding(scale_shape, block_size, indices):
 
 
 @pytest.mark.parametrize(
-    "qmodule_factory,                             input_shape", [
-    (lambda: QuantizedConv2d(16, 16, 3),          (1, 16, 3, 3)),
-    (lambda: QuantizedConvTranspose2d(16, 16, 3), (1, 16, 3, 3)),
-    (lambda: QuantizedLinear(16, 16),             (1, 9, 16)),
+    "qmodule_factory,                     input_shape", [
+    (lambda: QuantizedConv2d(16, 16, 3),  (1, 16, 3, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3), (1, 16, 3, 3)),
+    (lambda: QuantizedLinear(16, 16),     (1, 9, 16)),
 ])
-def test_create_int32_bias_quantizer_standalone(qmodule_factory, input_shape):
+def test_create_int32_bias_quantizer_trivial(qmodule_factory, input_shape):
     """
     Given: Quantized module without input or weight quantizer
     """
@@ -1172,47 +1177,67 @@ def test_create_int32_bias_quantizer_standalone(qmodule_factory, input_shape):
 
 
 @pytest.mark.parametrize(
-    "qmodule_factory,                             scale_shape,      block_size,          input_shape", [
-    (lambda: QuantizedConv1d(16, 16, 3),          (),               None,                (1, 16, 3)),
-    (lambda: QuantizedConv1d(16, 16, 3),          (16, 1, 1),       None,                (1, 16, 3)),
-    (lambda: QuantizedConv1d(16, 16, 3),          (16, 4, 1),       (-1, 4, -1),         (1, 16, 3)),
-    (lambda: QuantizedConv2d(16, 16, 3),          (),               None,                (1, 16, 3, 3)),
-    (lambda: QuantizedConv2d(16, 16, 3),          (16, 1, 1, 1),    None,                (1, 16, 3, 3)),
-    (lambda: QuantizedConv2d(16, 16, 3),          (16, 4, 1, 1),    (-1, 4, -1, -1),     (1, 16, 3, 3)),
-    (lambda: QuantizedConv3d(16, 16, 3),          (),               None,                (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConv3d(16, 16, 3),          (16, 1, 1, 1, 1), None,                (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConv3d(16, 16, 3),          (16, 4, 1, 1, 1), (-1, 4, -1, -1, -1), (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConvTranspose1d(16, 16, 3), (),               None,                (1, 16, 3)),
-    (lambda: QuantizedConvTranspose1d(16, 16, 3), (1, 16, 1),       None,                (1, 16, 3)),
-    (lambda: QuantizedConvTranspose1d(16, 16, 3), (4, 16, 1),       (4, -1, -1),         (1, 16, 3)),
-    (lambda: QuantizedConvTranspose2d(16, 16, 3), (),               None,                (1, 16, 3, 3)),
-    (lambda: QuantizedConvTranspose2d(16, 16, 3), (1, 16, 1, 1),    None,                (1, 16, 3, 3)),
-    (lambda: QuantizedConvTranspose2d(16, 16, 3), (4, 16, 1, 1),    (4, -1, -1, -1),     (1, 16, 3, 3)),
-    (lambda: QuantizedConvTranspose3d(16, 16, 3), (),               None,                (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConvTranspose3d(16, 16, 3), (1, 16, 1, 1, 1), None,                (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConvTranspose3d(16, 16, 3), (4, 16, 1, 1, 1), (4, -1, -1, -1, -1), (1, 16, 3, 3, 3)),
-    (lambda: QuantizedLinear(16, 16),             (),               None,                (1, 9, 16)),
-    (lambda: QuantizedLinear(16, 16),             (16, 1),          None,                (1, 9, 16)),
-    (lambda: QuantizedLinear(16, 16),             (16, 4),          (-1, 4),             (1, 9, 16)),
+    "qmodule_factory,                     scale_shape,      block_size,      block_grouping,  input_shape", [
+    (lambda: QuantizedConv1d(16, 16, 3),  (),               None,            None,            (16, 3)),
+    (lambda: QuantizedConv1d(16, 16, 3),  (16, 1, 1),       None,            None,            (16, 3)),
+    (lambda: QuantizedConv1d(16, 16, 3),  (16, 4, 1),       (1, 4, 3),       None,            (16, 3)),
+    (lambda: QuantizedConv1d(16, 16, 3),  (16, 4, 1),       (1, 4, 3),       (1, 4,  1),      (16, 3)),
+    (lambda: QuantizedConv2d(16, 16, 3),  (),               None,            None,            (16, 3, 3)),
+    (lambda: QuantizedConv2d(16, 16, 3),  (16, 1, 1, 1),    None,            None,            (16, 3, 3)),
+    (lambda: QuantizedConv2d(16, 16, 3),  (16, 4, 1, 1),    (1, 4, 3, 3),    None,            (16, 3, 3)),
+    (lambda: QuantizedConv2d(16, 16, 3),  (16, 4, 1, 1),    (1, 4, 3, 3),    (1, 4, 1, 1),    (16, 3, 3)),
+    (lambda: QuantizedConv3d(16, 16, 3),  (),               None,            None,            (16, 3, 3, 3)),
+    (lambda: QuantizedConv3d(16, 16, 3),  (16, 1, 1, 1, 1), None,            None,            (16, 3, 3, 3)),
+    (lambda: QuantizedConv3d(16, 16, 3),  (16, 4, 1, 1, 1), (1, 4, 3, 3, 3), None,            (16, 3, 3, 3)),
+    (lambda: QuantizedConv3d(16, 16, 3),  (16, 4, 1, 1, 1), (1, 4, 3, 3, 3), (1, 4, 1, 1, 1), (16, 3, 3, 3)),
+    (lambda: QConvTranspose1d(16, 16, 3), (),               None,            None,            (16, 3)),
+    (lambda: QConvTranspose1d(16, 16, 3), (1, 16, 1),       None,            None,            (16, 3)),
+    (lambda: QConvTranspose1d(16, 16, 3), (4, 16, 1),       (4, 1, 3),       None,            (16, 3)),
+    (lambda: QConvTranspose1d(16, 16, 3), (4, 16, 1),       (4, 1, 3),       (4, 1, 1),       (16, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3), (),               None,            None,            (16, 3, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3), (1, 16, 1, 1),    None,            None,            (16, 3, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3), (4, 16, 1, 1),    (4, 1, 3, 3),    None,            (16, 3, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3), (4, 16, 1, 1),    (4, 1, 3, 3),    (4, 1, 1, 1),    (16, 3, 3)),
+    (lambda: QConvTranspose3d(16, 16, 3), (),               None,            None,            (16, 3, 3, 3)),
+    (lambda: QConvTranspose3d(16, 16, 3), (1, 16, 1, 1, 1), None,            None,            (16, 3, 3, 3)),
+    (lambda: QConvTranspose3d(16, 16, 3), (4, 16, 1, 1, 1), (4, 1, 3, 3, 3), None,            (16, 3, 3, 3)),
+    (lambda: QConvTranspose3d(16, 16, 3), (4, 16, 1, 1, 1), (4, 1, 3, 3, 3), (4, 1, 1, 1, 1), (16, 3, 3, 3)),
+    (lambda: QuantizedLinear(16, 16),     (),               None,            None,            (9, 16)),
+    (lambda: QuantizedLinear(16, 16),     (16, 1),          None,            None,            (9, 16)),
+    (lambda: QuantizedLinear(16, 16),     (16, 4),          (1, 4),          None,            (9, 16)),
+    (lambda: QuantizedLinear(16, 16),     (16, 4),          (1, 4),          (1, 4),          (9, 16)),
 ])
-def test_create_int32_bias_quantizer_affine(qmodule_factory, scale_shape, block_size, input_shape):
+def test_create_int32_bias_quantizer_analytic(qmodule_factory, scale_shape, block_size,
+                                              block_grouping, input_shape):
     """
     Given: Quantized module with input and weight quantizer
     """
     qmodule = qmodule_factory()
 
+    if block_grouping:
+        weight_qtzr = GroupedBlockQuantizeDequantize(scale_shape,
+                                                     bitwidth=4,
+                                                     decompressed_bw=8,
+                                                     symmetric=True,
+                                                     block_size=block_size,
+                                                     block_grouping=block_grouping)
+    else:
+        weight_qtzr = QuantizeDequantize(scale_shape,
+                                         qmin=-128,
+                                         qmax=127,
+                                         symmetric=True,
+                                         block_size=block_size)
+
     input = torch.randn(input_shape)
     qmodule.input_quantizers[0] = QuantizeDequantize((), qmin=0, qmax=255, symmetric=False)
-    qmodule.param_quantizers["weight"] = QuantizeDequantize(scale_shape,
-                                                            qmin=-128, qmax=127, symmetric=True,
-                                                            block_size=block_size)
+    qmodule.param_quantizers["weight"] = copy.deepcopy(weight_qtzr)
 
     with qmodule.compute_encodings():
         _ = qmodule(input)
 
     """
     When: Call _create_int32_bias_quantizer
-    Then: Bias encoding should be derived from input and weight scales, such that
+    Then: Bias encoding should be derived analytically from input and weight encodings, such that
           bias_scale = input_scale * weight_scale
     """
     qmodule._create_int32_bias_quantizer((input,), None)
@@ -1221,18 +1246,19 @@ def test_create_int32_bias_quantizer_affine(qmodule_factory, scale_shape, block_
     bias_qtzr = qmodule.param_quantizers["bias"]
 
     input_scale = input_qtzr.get_scale()
-    weight_scale = weight_qtzr.get_scale()
+    if block_grouping:
+        weight_scale = weight_qtzr.get_per_channel_scale()
+    else:
+        weight_scale = weight_qtzr.get_scale()
+
     expected_bias_scale = input_scale * weight_scale
     if block_size is None:
         expected_bias_scale = expected_bias_scale.flatten()
-    elif isinstance(qmodule, nn.modules.conv._ConvTransposeNd):
-        expected_bias_scale = expected_bias_scale.amax(dim=[d for d in range(qmodule.weight.dim()) if d != 1])
-    elif isinstance(qmodule, nn.modules.conv._ConvNd):
-        expected_bias_scale = expected_bias_scale.amax(dim=[d for d in range(qmodule.weight.dim()) if d != 0])
-    elif isinstance(qmodule, nn.Linear):
-        expected_bias_scale = expected_bias_scale.amax(dim=[1])
     else:
-        raise ValueError
+        channel_axis = 1 if isinstance(qmodule, nn.modules.conv._ConvTransposeNd) else 0
+        non_channel_axes = [axis for axis, _ in enumerate(qmodule.weight.shape) if axis != channel_axis]
+        expected_bias_scale = expected_bias_scale.amax(dim=non_channel_axes)
+
     assert torch.allclose(bias_qtzr.get_scale(), expected_bias_scale)
 
     """
@@ -1247,16 +1273,14 @@ def test_create_int32_bias_quantizer_affine(qmodule_factory, scale_shape, block_
                                     offset=torch.zeros(()),
                                     qmin=0, qmax=255, symmetry=False)
     qmodule.input_quantizers[0] = None
-    qmodule.param_quantizers["weight"] = QuantizeDequantize(scale_shape,
-                                                            qmin=-128, qmax=127, symmetric=True,
-                                                            block_size=block_size)
+    qmodule.param_quantizers["weight"] = copy.deepcopy(weight_qtzr)
 
     with qmodule.compute_encodings():
         _ = qmodule(input)
 
     """
     When: Call _create_int32_bias_quantizer
-    Then: Bias encoding should be derived from input and weight scales, such that
+    Then: Bias encoding should be derived analytically from input and weight encodings, such that
           bias_scale = input_scale * weight_scale
     """
     qmodule._create_int32_bias_quantizer((input,), None)
@@ -1264,18 +1288,19 @@ def test_create_int32_bias_quantizer_affine(qmodule_factory, scale_shape, block_
     bias_qtzr = qmodule.param_quantizers["bias"]
 
     input_scale = input.encoding.scale
-    weight_scale = weight_qtzr.get_scale()
+    if block_grouping:
+        weight_scale = weight_qtzr.get_per_channel_scale()
+    else:
+        weight_scale = weight_qtzr.get_scale()
+
     expected_bias_scale = input_scale * weight_scale
     if block_size is None:
         expected_bias_scale = expected_bias_scale.flatten()
-    elif isinstance(qmodule, nn.modules.conv._ConvTransposeNd):
-        expected_bias_scale = expected_bias_scale.amax(dim=[d for d in range(qmodule.weight.dim()) if d != 1])
-    elif isinstance(qmodule, nn.modules.conv._ConvNd):
-        expected_bias_scale = expected_bias_scale.amax(dim=[d for d in range(qmodule.weight.dim()) if d != 0])
-    elif isinstance(qmodule, nn.Linear):
-        expected_bias_scale = expected_bias_scale.amax(dim=[1])
     else:
-        raise ValueError
+        channel_axis = 1 if isinstance(qmodule, nn.modules.conv._ConvTransposeNd) else 0
+        non_channel_axes = [axis for axis, _ in enumerate(qmodule.weight.shape) if axis != channel_axis]
+        expected_bias_scale = expected_bias_scale.amax(dim=non_channel_axes)
+
     assert torch.allclose(bias_qtzr.get_scale(), expected_bias_scale)
 
 
@@ -1288,12 +1313,12 @@ def test_create_int32_bias_quantizer_affine(qmodule_factory, scale_shape, block_
     (lambda: QuantizedConv2d(16, 16, 3),              (4, 16, 1, 1),    (4, -1, -1, -1),     (1, 16, 3, 3)),
     (lambda: QuantizedConv3d(16, 16, 3),              (1, 16, 1, 1, 1), None,                (1, 16, 3, 3, 3)),
     (lambda: QuantizedConv3d(16, 16, 3),              (4, 16, 1, 1, 1), (4, -1, -1, -1, -1), (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConvTranspose1d(16, 16, 3),     (16, 1, 1),       None,                (1, 16, 3)),
-    (lambda: QuantizedConvTranspose1d(16, 16, 3),     (16, 4, 1),       (-1, 4, -1),         (1, 16, 3)),
-    (lambda: QuantizedConvTranspose2d(16, 16, 3),     (16, 1, 1, 1),    None,                (1, 16, 3, 3)),
-    (lambda: QuantizedConvTranspose2d(16, 16, 3),     (16, 4, 1, 1),    (-1, 4, -1, -1),     (1, 16, 3, 3)),
-    (lambda: QuantizedConvTranspose3d(16, 16, 3),     (16, 1, 1, 1, 1), None,                (1, 16, 3, 3, 3)),
-    (lambda: QuantizedConvTranspose3d(16, 16, 3),     (16, 4, 1, 1, 1), (-1, 4, -1, -1, -1), (1, 16, 3, 3, 3)),
+    (lambda: QConvTranspose1d(16, 16, 3),             (16, 1, 1),       None,                (1, 16, 3)),
+    (lambda: QConvTranspose1d(16, 16, 3),             (16, 4, 1),       (-1, 4, -1),         (1, 16, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3),             (16, 1, 1, 1),    None,                (1, 16, 3, 3)),
+    (lambda: QConvTranspose2d(16, 16, 3),             (16, 4, 1, 1),    (-1, 4, -1, -1),     (1, 16, 3, 3)),
+    (lambda: QConvTranspose3d(16, 16, 3),             (16, 1, 1, 1, 1), None,                (1, 16, 3, 3, 3)),
+    (lambda: QConvTranspose3d(16, 16, 3),             (16, 4, 1, 1, 1), (-1, 4, -1, -1, -1), (1, 16, 3, 3, 3)),
     (lambda: QuantizedLinear(16, 16),                 (1, 16),          None,                (1, 9, 16)),
     (lambda: QuantizedLinear(16, 16),                 (4, 16),          (4, -1),             (1, 9, 16)),
     (lambda: QuantizedLayerNorm(9),                   (),               None,                (1, 4, 9)),
@@ -1307,10 +1332,7 @@ def test_create_int32_bias_quantizer_affine(qmodule_factory, scale_shape, block_
     (lambda: QuantizedInstanceNorm3d(9, affine=True), (),               None,                (1, 9, 4, 4, 4)),
     (lambda: QuantizedInstanceNorm3d(9, affine=True), (9,),             None,                (1, 9, 4, 4, 4)),
 ])
-def test_create_int32_bias_quantizer_bias_encoding_derivation_not_supported(qmodule_factory, 
-                                                                            scale_shape,
-                                                                            block_size,
-                                                                            input_shape):
+def test_create_int32_bias_quantizer_statistical(qmodule_factory, scale_shape, block_size, input_shape):
     """
     Given: Quantized module whose bias encodings should NOT be derived from input and weight encodings.
            Notable among them are:
@@ -1335,7 +1357,7 @@ def test_create_int32_bias_quantizer_bias_encoding_derivation_not_supported(qmod
 
     """
     When: Call _create_int32_bias_quantizer
-    Then: Bias encoding should be calibrated only based on the values bias,
+    Then: Bias encoding should be calibrated statistically based on the values of bias,
           and hence shouldn't incur any quantization noise
     """
     qmodule._create_int32_bias_quantizer((input,), None)

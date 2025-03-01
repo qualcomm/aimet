@@ -47,7 +47,11 @@ from torch import nn
 
 from aimet_torch.utils import is_vector_encoding
 from aimet_torch.v2.quantization.affine.encoding import VectorEncoding, AffineEncoding
-from aimet_torch.v2.quantization.affine import QuantizeDequantize
+from aimet_torch.v2.quantization.affine import (
+    AffineQuantizerBase,
+    GroupedBlockQuantizeDequantize,
+    QuantizeDequantize,
+)
 
 from aimet_torch.v2.quantization.tensor import QuantizedTensorBase
 from aimet_torch.v2.quantization.base import QuantizerBase
@@ -702,7 +706,10 @@ class BaseQuantizationMixin(abc.ABC):
         bias_qtzr.to(dtype=bias.dtype, device=bias.device)
         self.param_quantizers["bias"] = bias_qtzr
 
-        if self.param_quantizers["weight"]:
+        if isinstance(self.param_quantizers["weight"], GroupedBlockQuantizeDequantize):
+            # NOTE: In LPBQ, bias encodings should be derived from per-channel weight scale
+            weight_scale = self.param_quantizers["weight"].get_per_channel_scale()
+        elif isinstance(self.param_quantizers["weight"], AffineQuantizerBase):
             weight_scale = self.param_quantizers["weight"].get_scale()
         else:
             weight_scale = None
@@ -725,7 +732,8 @@ class BaseQuantizationMixin(abc.ABC):
             bias_qtzr.set_range(bias_scale * qmin, bias_scale * qmax)
 
         if not bias_qtzr.is_initialized():
-            # Compute bias scale without input and weight scale.
+            # Failed to derive bias encodings analytically from input and weight encodings.
+            # Fall back to statistical bias encoding calibration.
             # This should be avoided as much as possible
             with bias_qtzr.compute_encodings():
                 _ = bias_qtzr(bias)
