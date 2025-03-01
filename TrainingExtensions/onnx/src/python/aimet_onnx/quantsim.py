@@ -795,14 +795,23 @@ class QuantizationSimModel:
                     #   * Conv with channel_axis=1
                     #   * ConvTranspose with channel_axis=0
                     #   * Gemm with channel_axis=1
-                    return None
+                    return get_statistical_bias_scale(input_name, weight_name, bias_name)
 
-            weight_scale = weight_qtzr._get_scale()
+            if isinstance(weight_qtzr, GroupedBlockQuantizeDequantize):
+                # NOTE: In LPBQ, bias encodings should be derived from per-channel weight scale
+                weight_scale = weight_qtzr._get_per_channel_scale()
+            else:
+                weight_scale = weight_qtzr._get_scale()
+
             input_scale = input_qtzr._get_scale()
+
+            if weight_scale is None or input_scale is None:
+                return get_statistical_bias_scale(input_name, weight_name, bias_name)
+
             bias_scale = input_scale * weight_scale
 
             if block_size is not None:
-                bias_scale = bias_scale.amax(axis=block_axis)
+                bias_scale = bias_scale.max(axis=block_axis)
 
             if channel_axis is not None:
                 bias_scale = bias_scale.reshape([num_channels])

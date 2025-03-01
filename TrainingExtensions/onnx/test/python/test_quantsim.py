@@ -2041,16 +2041,20 @@ class TestEncodingPropagation:
 
 
 @pytest.mark.parametrize(
-    "model_factory,             input_shape", [
-    (single_residual_model,     (1, 3, 32, 32)),
-    (transposed_conv_model,     (10, 10, 4, 4)),
-    (batchnorm_model,           (10, 10, 8, 8)),
-    (batchnorm_model_constants, (10, 10, 8, 8)),
-    (instance_norm_model,       (2, 10, 24, 24)),
-    (layernorm_model,           (1, 4, 64, 64)),
+    "model_factory,             input_shape,     block_size, lpbq", [
+    (single_residual_model,     (1, 3, 32, 32),  None,       False),
+    (single_residual_model,     (1, 3, 32, 32),  4,          False),
+    (single_residual_model,     (1, 3, 32, 32),  4,          True),
+    (transposed_conv_model,     (10, 10, 4, 4),  None,       False),
+    (transposed_conv_model,     (10, 10, 4, 4),  5,          False),
+    (transposed_conv_model,     (10, 10, 4, 4),  5,          True),
+    (batchnorm_model,           (10, 10, 8, 8),  None,       False),
+    (batchnorm_model_constants, (10, 10, 8, 8),  None,       False),
+    (instance_norm_model,       (2, 10, 24, 24), None,       False),
+    (layernorm_model,           (1, 4, 64, 64),  None,       False),
     # TODO: Add tests with GroupNormalization
 ])
-def test_bias_export(model_factory, input_shape, tmp_path):
+def test_bias_export(model_factory, input_shape, block_size, lpbq, tmp_path):
     model = model_factory()
     input = np.random.randn(*input_shape).astype(np.float32)
 
@@ -2058,6 +2062,24 @@ def test_bias_export(model_factory, input_shape, tmp_path):
     When: Call _concretize_int32_bias_quantizers() before export
     """
     sim = QuantizationSimModel(model, quant_scheme=QuantScheme.post_training_tf)
+
+    if block_size:
+        op_types = ("Conv", "ConvTranspose", "Gemm")
+        if lpbq:
+            set_grouped_blockwise_quantization_for_weights(sim,
+                                                           op_types,
+                                                           bitwidth=4,
+                                                           decompressed_bw=8,
+                                                           block_size=block_size,
+                                                           strict=False)
+        else:
+            set_blockwise_quantization_for_weights(sim,
+                                                   op_types,
+                                                   bitwidth=4,
+                                                   symmetric=True,
+                                                   block_size=block_size,
+                                                   strict=False)
+
     sim.compute_encodings(lambda sess, _: sess.run(None, {"input": input}), None)
     sim._concretize_int32_bias_quantizers()
     sim.export(tmp_path, "model")
@@ -2069,6 +2091,11 @@ def test_bias_export(model_factory, input_shape, tmp_path):
         enc["name"]: enc
         for enc in itertools.chain(encodings["activation_encodings"], encodings["param_encodings"])
     }
+
+    # sanity check
+    if block_size:
+        enc_type = "LPBQ" if lpbq else "PER_BLOCK"
+        assert any(enc["enc_type"] == enc_type for enc in exported_encodings.values())
 
     """
     Then: All bias encodings should be exported
@@ -2097,6 +2124,12 @@ def test_bias_export(model_factory, input_shape, tmp_path):
         assert all(offset == -2**31 for offset in exported_encodings[bias.name]["offset"])
 
         weight_scale = np.array(exported_encodings[weight.name]["scale"])
+
+        if exported_encodings[weight.name]["enc_type"] == "PER_BLOCK":
+            weight_scale = weight_scale.reshape(sim.qc_quantize_op_dict[weight.name]._encoding_shape())
+            block_axis = 0 if op.type == "ConvTranspose" else 1
+            weight_scale = weight_scale.max(axis=block_axis).flatten()
+
         bias_scale = np.array(exported_encodings[bias.name]["scale"])
         try:
             input_scale = np.array(exported_encodings[input.name]["scale"])
