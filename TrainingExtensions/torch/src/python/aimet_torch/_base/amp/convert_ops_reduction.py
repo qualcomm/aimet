@@ -52,8 +52,7 @@ from aimet_common.amp.convert_ops_reduction import ReduceConvertOps as BaseReduc
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op
 from aimet_torch._base.quantsim import _QuantizationSimModelInterface
-from aimet_torch._base.amp.quantizer_groups import ops_not_to_traverse, find_output_quantizer_groups, \
-    get_module_name_to_module_dict, find_wrapper_module
+from aimet_torch._base.amp.quantizer_groups import ops_not_to_traverse, get_module_name_to_module_dict, find_wrapper_module
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
 
@@ -183,7 +182,8 @@ class ReduceConvertOps(BaseReduceConvertOps):
                     dotted_name = map_for_skipped_ops[op.dotted_name]
                 if consumer.type in ops_to_skip_local:
                     map_for_skipped_ops[consumer.dotted_name] = dotted_name
-                    find_output_quantizer_groups(consumer, parent_child_op_groups, map_for_skipped_ops)
+                    ReduceConvertOps.find_output_quantizer_groups_all(consumer, parent_child_op_groups,
+                                                                      map_for_skipped_ops, ops_to_skip_local)
                 # If there is a one to one connection between quantizers
                 else:
                     parent_child_op_groups[dotted_name].append(consumer.dotted_name)
