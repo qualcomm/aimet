@@ -57,7 +57,7 @@ from packaging import version
 from aimet_common import _libpymo as libpymo, quantsim
 from aimet_common import libquant_info
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_common.quantsim import extract_global_quantizer_args, VALID_ENCODING_VERSIONS
+from aimet_common.quantsim import extract_global_quantizer_args, VALID_ENCODING_VERSIONS, _get_minimum_scale
 from aimet_common.utils import save_json_yaml, AimetLogger, _red
 from aimet_common.quant_utils import _convert_encoding_format_0_6_1_to_1_0_0
 from aimet_common.connected_graph.product import Product
@@ -727,6 +727,144 @@ class QuantizationSimModel:
             node.name = node.name.replace('_updated', '')
 
         return model
+
+    def _concretize_int32_bias_quantizers(self):
+        # pylint: disable=redefined-builtin, protected-access, too-many-statements
+        constants = [node for node in self.model.graph().node if node.op_type == "Constant"]
+
+        def get_statistical_bias_scale(_, __, bias_name: str) -> np.ndarray:
+            bias_proto = self.model.get_initializer(bias_name)
+
+            if bias_proto is None:
+                try:
+                    bias_proto = next(iter(
+                        node.attribute[0].t for node in constants
+                        if node.output == [bias_name]
+                    ))
+                except StopIteration as e:
+                    raise RuntimeError(
+                        "Failed to calibrate encoding of bias. "
+                        f"Couldn't find the value of \"{bias_name}\" statically from the graph."
+                    ) from e
+
+            bias = onnx.numpy_helper.to_array(bias_proto)
+
+            int32_minimum_scale = _get_minimum_scale(2**32-1)
+            bias_scale = np.maximum(abs(bias) / 2**31, int32_minimum_scale)
+
+            if not bias_qtzr.quant_info.usePerChannelMode:
+                bias_scale = bias_scale.max()
+
+            return bias_scale
+
+        def get_analytic_bias_scale(input_name: str,
+                                    weight_name: str,
+                                    bias_name: str) -> np.ndarray:
+            weight_qtzr = self.qc_quantize_op_dict.get(weight_name)
+
+            if not (weight_qtzr and weight_qtzr.enabled and weight_qtzr.is_initialized()):
+                return get_statistical_bias_scale(input_name, weight_name, bias_name)
+
+            input_qtzr = self.qc_quantize_op_dict.get(input_name)
+
+            if not (input_qtzr and input_qtzr.enabled and input_qtzr.is_initialized()):
+                # TODO: We can handle this better. For example,
+                #
+                #       input ->    Q0     -> Reshape ->    Q1     -> Conv
+                #                (enabled)              (disabled)
+                #
+                # In this case, we can track down Q0 as the effective input quantizer
+                # although Q1 is disabled.
+                return get_statistical_bias_scale(input_name, weight_name, bias_name)
+
+            channel_axis = None
+            num_channels = None
+            block_axis = None
+            block_size = None
+            if weight_qtzr.quant_info.usePerChannelMode:
+                channel_axis = weight_qtzr.quant_info.channelAxis
+                num_channels = weight_qtzr.tensor_quantizer_params.tensor_shape[channel_axis]
+                block_size = weight_qtzr.quant_info.blockSize or None
+                block_axis = weight_qtzr.quant_info.blockAxis if block_size else None
+
+                expected_channel_axis, expected_block_axis = self._get_quantization_axes(op)
+
+                if channel_axis != expected_channel_axis or \
+                        block_axis not in (expected_block_axis, None):
+                    # For example:
+                    #   * Conv with channel_axis=1
+                    #   * ConvTranspose with channel_axis=0
+                    #   * Gemm with channel_axis=1
+                    return None
+
+            weight_scale = weight_qtzr._get_scale()
+            input_scale = input_qtzr._get_scale()
+            bias_scale = input_scale * weight_scale
+
+            if block_size is not None:
+                bias_scale = bias_scale.amax(axis=block_axis)
+
+            if channel_axis is not None:
+                bias_scale = bias_scale.reshape([num_channels])
+
+            return bias_scale
+
+
+        switcher = {
+            "Conv": get_analytic_bias_scale,
+            "Gemm": get_analytic_bias_scale,
+            "ConvTranspose": get_analytic_bias_scale,
+            "BatchNormalization": get_statistical_bias_scale,
+            "InstanceNormalization": get_statistical_bias_scale,
+            "LayerNormalization": get_statistical_bias_scale,
+            "GroupNormalization": get_statistical_bias_scale,
+        }
+
+        ops_with_bias = {
+            op
+            for op in self.connected_graph.get_all_ops().values()
+            for param_name, (_, param_type) in op.parameters.items()
+            if param_type == "bias"
+        }
+
+        for op in ops_with_bias:
+            input, *_ = op.inputs
+            weight = None
+            bias = None
+
+            for inp in op.inputs:
+                _, param_type = op.parameters.get(inp.name, (None, None))
+                if param_type == "weight":
+                    weight = inp
+                elif param_type == "bias":
+                    bias = inp
+
+            bias_qtzr = self.qc_quantize_op_dict.get(bias.name)
+
+            if bias_qtzr and bias_qtzr.enabled and bias_qtzr.is_initialized():
+                # Edge case: bias encoding already exists.
+                # Always honor the existing bias encoding
+                continue
+
+            if weight is None:
+                # Edge case: Op has no weight. Fall back to statistical bias scale
+                get_bias_scale = get_statistical_bias_scale
+            else:
+                get_bias_scale = switcher.get(op.type, get_statistical_bias_scale)
+
+            bias_scale = get_bias_scale(input.name, weight.name, bias.name)
+
+            encodings = [libpymo.TfEncoding() for _ in range(bias_scale.size)]
+
+            for enc, scale in zip(encodings, bias_scale.flatten()):
+                enc.bw = 32
+                enc.delta = scale
+                enc.offset = -2**31
+                enc.min = scale * -2**31
+                enc.max = scale * (2**31 - 1)
+
+            bias_qtzr.load_encodings(encodings)
+            bias_qtzr.enabled = True
 
     def export(self, path: str, filename_prefix: str):
         """

@@ -1083,7 +1083,7 @@ def build_lstm_gru_dummy_model():
 
 
 def single_residual_model(training=torch.onnx.TrainingMode.EVAL):
-    x = torch.randn(1, 3, 32, 32, requires_grad=True)
+    x = torch.randn(1, 3, 32, 32)
     model = SingleResidualWithAvgPool()
 
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -2124,8 +2124,8 @@ def layernorm_model():
     model = helper.make_model(
         graph=helper.make_graph(
             name='LayerNormModel',
-            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[1, 4, 64, 64])],
-            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[1, 32, 40960])],
+            inputs=[helper.make_tensor_value_info('input', TensorProto.FLOAT, shape=[1, 4, 64, 64])],
+            outputs=[helper.make_tensor_value_info('output', TensorProto.FLOAT, shape=[1, 32, 40960])],
             initializer=[
                 numpy_helper.from_array(np.random.randn(320, 4, 3, 3).astype('float32'), name='conv_in.weight'),
                 numpy_helper.from_array(np.random.randn(320).astype('float32'), name='conv_in.bias'),
@@ -2140,7 +2140,7 @@ def layernorm_model():
             nodes=[
                 helper.make_node(
                     'Conv',
-                    inputs=['model_input', 'conv_in.weight', 'conv_in.bias'],
+                    inputs=['input', 'conv_in.weight', 'conv_in.bias'],
                     outputs=['/conv_in/Conv_output_0'],
                     name='/conv_in/Conv',
                     doc_string='',
@@ -2156,7 +2156,7 @@ def layernorm_model():
                     outputs=['/down_blocks.0/resnets.0/norm1/Constant_output_0'],
                     name='/down_blocks.0/resnets.0/norm1/Constant',
                     doc_string='',
-                    value=numpy_helper.from_array(np.array([0, 32, -1], dtype='int64'), name=''),
+                    value=numpy_helper.from_array(np.array([-1, 32], dtype='int64'), name=''),
                 ),
                 helper.make_node(
                     'Reshape',
@@ -2169,7 +2169,7 @@ def layernorm_model():
                 helper.make_node(
                     'LayerNormalization',
                     inputs=['/down_blocks.0/resnets.0/norm1/Reshape_output_0', 'layernorm.scale', 'layernorm.bias'],
-                    outputs=['model_output'],
+                    outputs=['output'],
                     name='/down_blocks.0/resnets.0/norm1/LayerNormalization',
                     doc_string='',
                     epsilon=9.999999747378752e-06,
@@ -2489,8 +2489,8 @@ def batchnorm_model():
     model = helper.make_model(
         graph=helper.make_graph(
             name='BatchnormModel',
-            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
-            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            inputs=[helper.make_tensor_value_info('input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            outputs=[helper.make_tensor_value_info('output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
             initializer=[
                 numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32'), name='batchnorm.weight'),
                 numpy_helper.from_array(np.random.randn(10, ).astype('float32'), name='batchnorm.bias'),
@@ -2500,8 +2500,8 @@ def batchnorm_model():
             nodes=[
                 helper.make_node(
                     'BatchNormalization',
-                    inputs=['model_input', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm.input_mean', 'batchnorm.input_var'],
-                    outputs=['model_output'],
+                    inputs=['input', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm.input_mean', 'batchnorm.input_var'],
+                    outputs=['output'],
                     name='batchnorm'
                 ),
             ]
@@ -2514,8 +2514,8 @@ def batchnorm_model_constants():
     model = helper.make_model(
         graph=helper.make_graph(
             name='BatchnormModel',
-            inputs=[helper.make_tensor_value_info('model_input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
-            outputs=[helper.make_tensor_value_info('model_output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            inputs=[helper.make_tensor_value_info('input', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
+            outputs=[helper.make_tensor_value_info('output', TensorProto.FLOAT, shape=[10, 10, 8, 8])],
             initializer=[],
             nodes=[
                 helper.make_node('Constant', inputs=[], outputs=["batchnorm.weight"],
@@ -2528,8 +2528,8 @@ def batchnorm_model_constants():
                                  value=numpy_helper.from_array(np.abs(np.random.randn(10, )).astype('float32')), name='input_var'),
                 helper.make_node(
                     'BatchNormalization',
-                    inputs=['model_input', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm.input_mean', 'batchnorm.input_var'],
-                    outputs=['model_output'],
+                    inputs=['input', 'batchnorm.weight', 'batchnorm.bias', 'batchnorm.input_mean', 'batchnorm.input_var'],
+                    outputs=['output'],
                     name='batchnorm'
                 ),
             ]

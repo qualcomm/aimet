@@ -58,14 +58,36 @@ from aimet_common import libquant_info
 from aimet_common import _libpymo as libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, EncodingType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
-from aimet_onnx.quantsim import QuantizationSimModel, load_encodings_to_sim, set_blockwise_quantization_for_weights, _apply_constraints, clamp_activation_encodings, \
-    set_grouped_blockwise_quantization_for_weights
+from aimet_onnx.quantsim import (
+    QuantizationSimModel,
+    load_encodings_to_sim,
+    set_blockwise_quantization_for_weights,
+    _apply_constraints,
+    clamp_activation_encodings,
+    set_grouped_blockwise_quantization_for_weights,
+    _get_minimum_scale,
+)
 from aimet_onnx.qc_quantize_op import OpMode, GroupedBlockQuantizeDequantize
 from aimet_onnx.utils import make_dummy_input
-from .models.models_for_tests import SingleResidual
 from .models import models_for_tests, test_models
-from .models.models_for_tests import build_dummy_model, single_residual_model, BNAfterConv, multi_input_with_constant_model , multi_output_model, custom_add_model, build_lstm_gru_dummy_model, \
-    transposed_conv_model, depthwise_transposed_conv_model, linear_split_into_matmul_add, _convert_to_onnx
+from .models.models_for_tests import (
+    batchnorm_model,
+    batchnorm_model_constants,
+    BNAfterConv,
+    build_dummy_model,
+    build_lstm_gru_dummy_model,
+    custom_add_model,
+    depthwise_transposed_conv_model,
+    instance_norm_model,
+    layernorm_model,
+    linear_split_into_matmul_add,
+    multi_input_with_constant_model,
+    multi_output_model,
+    single_residual_model,
+    SingleResidual,
+    transposed_conv_model,
+    _convert_to_onnx
+)
 
 
 def _compare_encodings(dst, src):
@@ -2016,3 +2038,104 @@ class TestEncodingPropagation:
 
             assert np.allclose(pre_load_out, pre_load_out_2)
             assert np.allclose(post_load_out, post_load_out_2)
+
+
+@pytest.mark.parametrize(
+    "model_factory,             input_shape", [
+    (single_residual_model,     (1, 3, 32, 32)),
+    (transposed_conv_model,     (10, 10, 4, 4)),
+    (batchnorm_model,           (10, 10, 8, 8)),
+    (batchnorm_model_constants, (10, 10, 8, 8)),
+    (instance_norm_model,       (2, 10, 24, 24)),
+    (layernorm_model,           (1, 4, 64, 64)),
+    # TODO: Add tests with GroupNormalization
+])
+def test_bias_export(model_factory, input_shape, tmp_path):
+    model = model_factory()
+    input = np.random.randn(*input_shape).astype(np.float32)
+
+    """
+    When: Call _concretize_int32_bias_quantizers() before export
+    """
+    sim = QuantizationSimModel(model, quant_scheme=QuantScheme.post_training_tf)
+    sim.compute_encodings(lambda sess, _: sess.run(None, {"input": input}), None)
+    sim._concretize_int32_bias_quantizers()
+    sim.export(tmp_path, "model")
+
+    with open(tmp_path / "model.encodings") as f:
+        encodings = json.load(f)
+
+    exported_encodings = {
+        enc["name"]: enc
+        for enc in itertools.chain(encodings["activation_encodings"], encodings["param_encodings"])
+    }
+
+    """
+    Then: All bias encodings should be exported
+    """
+    all_biases = {
+        param_name
+        for op in sim.connected_graph.get_all_ops().values()
+        for param_name, (_, param_type) in op.parameters.items()
+        if param_type == "bias"
+    }
+    assert exported_encodings.keys() > all_biases
+
+    """
+    Then: For linear ops such as Conv, ConvTranspose, and Gemm,
+          bias encoding should be derived analytically from input and weight encodings
+    """
+    linear_ops_with_bias = {
+        op for op in sim.connected_graph.get_all_ops().values()
+        if op.type in ("Conv", "ConvTranspose", "Gemm") and
+           "bias" in [param_type for _, param_type in op.parameters.values()]
+    }
+
+    for op in linear_ops_with_bias:
+        input, weight, bias = op.inputs
+        assert bias.name in exported_encodings
+        assert all(offset == -2**31 for offset in exported_encodings[bias.name]["offset"])
+
+        weight_scale = np.array(exported_encodings[weight.name]["scale"])
+        bias_scale = np.array(exported_encodings[bias.name]["scale"])
+        try:
+            input_scale = np.array(exported_encodings[input.name]["scale"])
+        except KeyError:
+            continue # TODO: Remove this exception. Find input scale more smartly
+
+        assert np.allclose(bias_scale, input_scale * weight_scale)
+
+    """
+    Then: For non-linear ops such as BatchNormalization, InstanceNormalization, LayerNormalization,
+          and GroupNormalization, bias encoding should be calibrated statistically
+    """
+    nonlinear_ops_with_bias = {
+        op for op in sim.connected_graph.get_all_ops().values()
+        if op.type in ("BatchNormalization", "InstanceNormalization"
+                       "LayerNormalization" "GroupNormalization") and
+           "bias" in [param_type for _, param_type in op.parameters.values()]
+    }
+
+    for op in nonlinear_ops_with_bias:
+        input, weight, bias, *_ = op.inputs
+        if bias.name not in exported_encodings:
+            print()
+            assert False
+        assert all(offset == -2**31 for offset in exported_encodings[bias.name]["offset"])
+
+        weight_scale = np.array(exported_encodings[weight.name]["scale"])
+        bias_scale = np.array(exported_encodings[bias.name]["scale"])
+        try:
+            input_scale = np.array(exported_encodings[input.name]["scale"])
+        except KeyError:
+            continue
+
+        bias_proto = sim.model.get_initializer(bias.name) or \
+            next(iter(
+                node.attribute[0].t for node in sim.model.graph().node
+                if node.output == [bias.name]
+            ))
+
+        bias_value = onnx.numpy_helper.to_array(bias_proto)
+        expected_bias_scale = np.maximum(abs(bias_value) / 2**31, _get_minimum_scale(2**32-1))
+        assert np.allclose(bias_scale, expected_bias_scale)

@@ -310,3 +310,25 @@ def extract_global_quantizer_args(quant_scheme: Union[str, QuantScheme],
                        "per_channel_quantization": is_per_channel_quant
                        })
     return quant_args
+
+
+def _get_minimum_scale(num_steps: int) -> float:
+    """
+    Return the minimum scale given the number of steps in the quantization grid.
+
+    We define the minimum scale as the smallest scale
+    that can represent input range [-0.005, 0.005] without clipping error
+
+    Following this rule, the minimum scale in practice will be:
+
+      | dtype | minimum scale |
+      |-------|---------------|
+      |  int4 |    6.67e-04   |
+      |  int8 |    3.92e-05   | (note: float16.eps =  9.7e-04)
+      | int16 |    1.52e-07   | (note: float32.eps = 1.19e-07)
+      | int32 |    2.33e-12   | (note: float64.eps = 2.22e-16)
+
+    """
+    _MINIMUM_RANGE_TO_REPRESENT = (-0.005, 0.005)
+    _min, _max = _MINIMUM_RANGE_TO_REPRESENT
+    return (_max - _min) / num_steps
