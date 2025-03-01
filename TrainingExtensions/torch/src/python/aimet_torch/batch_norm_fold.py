@@ -46,6 +46,7 @@ if _get_default_api() == "v1":
         _is_valid_bn_fold,
         _find_all_batch_norms_to_fold,
         find_standalone_batchnorm_ops,
+        find_all_batch_norms_to_fold
     )
 
     from .utils import _warn_replaced_in_v2
@@ -64,6 +65,7 @@ else:
         _is_valid_bn_fold,
         _find_all_batch_norms_to_fold,
         find_standalone_batchnorm_ops,
+        find_all_batch_norms_to_fold
     )
 
 
@@ -75,6 +77,7 @@ __all__ = [
     "_is_valid_bn_fold",
     "_find_all_batch_norms_to_fold",
     "find_standalone_batchnorm_ops",
+    "find_all_batch_norms_to_fold"
 ]
 
 undefined = set(__all__) - set(globals())
