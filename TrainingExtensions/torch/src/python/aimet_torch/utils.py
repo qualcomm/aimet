@@ -1138,3 +1138,18 @@ def __getattr__(name: str):
         else:
             msg = f"module '{__name__}' has no attribute '{name}'"
         raise AttributeError(msg) from e
+
+
+def get_param_channel_axis(module: torch.nn.Module, param_name: str):
+    """
+    Given a module and its param name, this method returns the channel axis of the given parameter.
+
+    :param module: torch.nn.Module
+    :param param_name: str representing the name of the parameter
+    """
+    channel_axis = 0
+    if isinstance(module, (torch.nn.ConvTranspose1d,
+                           torch.nn.ConvTranspose2d,
+                           torch.nn.ConvTranspose3d)):
+        channel_axis = 1 if param_name == 'weight' else 0
+    return channel_axis

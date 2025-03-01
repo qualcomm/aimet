@@ -42,7 +42,7 @@ import torch
 
 from aimet_common.defs import QuantScheme, QuantizationDataType, MAP_ROUND_MODE_TO_PYMO
 from aimet_common.utils import AimetLogger, log_with_error_and_assert_if_false
-from aimet_torch.utils import is_leaf_module
+from aimet_torch.utils import is_leaf_module, get_param_channel_axis
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -143,14 +143,8 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC): # pylint: disable=too-many-inst
         Changes all parameter quantizers (if any) to per-channel mode.
         """
         for param_name, param_quantizer in self.param_quantizers.items():
-            channel_axis = 0
-            if isinstance(self._module_to_wrap, (torch.nn.ConvTranspose1d,
-                                                 torch.nn.ConvTranspose2d,
-                                                 torch.nn.ConvTranspose3d)):
-                channel_axis = 1 if param_name == 'weight' else 0
-
             # pylint: disable = protected-access
-            param_quantizer.channel_axis = channel_axis
+            param_quantizer.channel_axis = get_param_channel_axis(self._module_to_wrap, param_name)
 
     @staticmethod
     def forward(_):
@@ -168,10 +162,11 @@ class LazyQuantizer(ABC):
     """
     Quantizer builder class for supporting both v1 and v2 blocks
     """
-    # pylint: disable=too-many-instance-attributes
+    # pylint: disable=too-many-instance-attributes, too-many-arguments
     def __init__(self, bitwidth: int, round_mode, quant_scheme: QuantScheme,
                  use_symmetric_encodings: bool, enabled_by_default: bool,
-                 data_type: QuantizationDataType = QuantizationDataType.int):
+                 data_type: QuantizationDataType = QuantizationDataType.int, input_shape: tuple = None,
+                 ch_axis: int = None):
         self.round_mode = MAP_ROUND_MODE_TO_PYMO[round_mode]
         self.quant_scheme = quant_scheme
         self.use_symmetric_encodings = use_symmetric_encodings
@@ -185,8 +180,8 @@ class LazyQuantizer(ABC):
         self.is_parm = False
         self.is_singleton = False
         self._encoding_min_max_fixed_vals = None
-        self.input_tensor_shape = None # None indicates unknown
-        self.channel_axis = None
+        self.input_tensor_shape = input_shape # None indicates unknown
+        self.channel_axis = ch_axis
 
     @property
     def encoding_min_max_fixed_vals(self) -> Optional[Tuple[float, float]]:

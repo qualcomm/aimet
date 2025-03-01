@@ -44,7 +44,10 @@ import torch
 from torch import nn
 
 from aimet_common.defs import QuantizationDataType
+
+from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_torch.v2.nn import BaseQuantizationMixin
+from aimet_torch.v2.quantization.affine import QuantizeDequantize
 from aimet_torch.v2.quantization.base.quantizer import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.mixed_precision import MixedPrecisionConfigurator, SupportedDType, Precision
@@ -431,6 +434,8 @@ class TestManualMixedPrecisionConfigurator:
                            Precision(QuantizationDataType.float, 16) for output_candidate in request.output_candidates)
                 if 'weight' in m.param_quantizers:
                     assert request.param_candidate == {'weight': Precision(QuantizationDataType.float, 16)}
+
+
 
     @pytest.mark.parametrize("candidate, qsim_bw", [('int16', 8), ('fp16', 8), ('fp16', 16)])
     def test_mp_7(self, candidate: SupportedDType, qsim_bw: int):
@@ -1591,3 +1596,39 @@ class TestManualMixedPrecisionConfigurator:
         mp_configurator.set_precision(torch.nn.Linear, 'int16', param={'weight': 'int16'})
         with pytest.raises(RuntimeError):
             mp_configurator.apply()
+
+    def test_mp_46(self):
+        """
+        Test symmetric settings
+        """
+
+        model = SingleResidual()
+
+        torch.manual_seed(0)
+        input_tensor = torch.randn((1, 3, 32, 32))
+        sim = QuantizationSimModel(model, input_tensor, default_data_type=QuantizationDataType.float, default_output_bw=16, default_param_bw=16,
+                                   config_file=get_path_for_per_channel_config())
+
+        mp_configurator = MixedPrecisionConfigurator(sim)
+
+        mp_configurator.set_precision(torch.nn.Conv2d, 'int8', {'weight': 'int8'})
+        mp_configurator.apply()
+
+        sim.compute_encodings(lambda model, _: model(input_tensor), None)
+
+        for m in sim.model.modules():
+            if isinstance(m, torch.nn.Conv2d):
+                for q in m.input_quantizers:
+                    if q:
+                        assert isinstance(q, QuantizeDequantize)
+                        assert q.symmetric == False
+                        assert q.shape == ()
+                for q in m.output_quantizers:
+                    if q:
+                        assert isinstance(q, QuantizeDequantize)
+                        assert q.symmetric == False
+                        assert q.shape == ()
+
+                assert isinstance(m.param_quantizers['weight'], QuantizeDequantize)
+                assert m.param_quantizers['weight'].symmetric == True
+                assert m.param_quantizers['weight'].shape != ()
