@@ -733,6 +733,16 @@ class QuantizationSimModel:
         constants = [node for node in self.model.graph().node if node.op_type == "Constant"]
 
         def get_statistical_bias_scale(_, __, bias_name: str) -> np.ndarray:
+            r"""
+            Compute int32 bias scale statistically, such that
+
+            :math:`scale = abs(max(bias)) / 2**31`
+
+            Note that using statistical bias scale isn't ideal for runtime performance
+            on integer accelerators.
+            For better runtime performance, bias encodings should be derived analytically
+            whenever possible. (See ``get_analytic_bias_scale``)
+            """
             bias_proto = self.model.get_initializer(bias_name)
 
             if bias_proto is None:
@@ -759,9 +769,20 @@ class QuantizationSimModel:
         def get_analytic_bias_scale(input_name: str,
                                     weight_name: str,
                                     bias_name: str) -> np.ndarray:
+            """
+            Derive int32 bias scale analytically from input and weight encodings, such that
+
+            :math:`bias_scale = weight_scale * input_scale`
+
+            This analytic formula is friendly for integer hardware/runtime
+            since bias-add operation ``(input @ weight) + bias`` becomes trivial when
+            both terms share the same quantization scale
+            """
             weight_qtzr = self.qc_quantize_op_dict.get(weight_name)
 
             if not (weight_qtzr and weight_qtzr.enabled and weight_qtzr.is_initialized()):
+                # Weight quantizer wasn't created, enabled, or initialized.
+                # Since weight_scale isn't avaiable, fall back to statictical bias scale
                 return get_statistical_bias_scale(input_name, weight_name, bias_name)
 
             input_qtzr = self.qc_quantize_op_dict.get(input_name)
