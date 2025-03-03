@@ -809,26 +809,14 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         self._enable_blockwise_quantization(block_size)
         self.data_type = QuantizationDataType.int
 
-    def _get_scale(self) -> Optional[np.ndarray]:
-        raw_scale = super()._get_scale()
-        if raw_scale is None:
-            return None
-
-        decompressed_bw = self.decompressed_bw
-        compressed_bw = self.bitwidth
-        per_block_int_scale, per_channel_scale = lpbq_utils.grouped_dynamic_quantize(raw_scale,
-                                                                                     self._block_grouping(),
-                                                                                     decompressed_bw - compressed_bw)
-        return per_block_int_scale * per_channel_scale
-
     def _get_per_channel_scale(self) -> Optional[np.ndarray]:
-        raw_scale = super()._get_scale()
-        if raw_scale is None:
+        scale = self._get_scale()
+        if scale is None:
             return None
 
         decompressed_bw = self.decompressed_bw
         compressed_bw = self.bitwidth
-        _, per_channel_scale = lpbq_utils.grouped_dynamic_quantize(raw_scale,
+        _, per_channel_scale = lpbq_utils.grouped_dynamic_quantize(scale,
                                                                    self._block_grouping(),
                                                                    decompressed_bw - compressed_bw)
         return per_channel_scale
