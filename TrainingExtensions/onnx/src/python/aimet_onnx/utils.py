@@ -348,7 +348,7 @@ class ParamUtils:
         return None
 
     @staticmethod
-    def get_param_by_name(model: ModelProto, param_name: str):
+    def get_param_by_name(model: ModelProto, param_name: str) -> TensorProto:
         """
         Returns the param tensor
 

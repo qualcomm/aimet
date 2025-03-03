@@ -730,7 +730,6 @@ class QuantizationSimModel:
 
     def _concretize_int32_bias_quantizers(self):
         # pylint: disable=redefined-builtin, protected-access, too-many-statements
-        constants = [node for node in self.model.graph().node if node.op_type == "Constant"]
 
         def get_statistical_bias_scale(_, __, bias_name: str) -> np.ndarray:
             r"""
@@ -743,19 +742,13 @@ class QuantizationSimModel:
             For better runtime performance, bias encodings should be derived analytically
             whenever possible. (See ``get_analytic_bias_scale``)
             """
-            bias_proto = self.model.get_initializer(bias_name)
+            bias_proto = utils.ParamUtils.get_param_by_name(self.model.model, bias_name)
 
             if bias_proto is None:
-                try:
-                    bias_proto = next(iter(
-                        node.attribute[0].t for node in constants
-                        if node.output == [bias_name]
-                    ))
-                except StopIteration as e:
-                    raise RuntimeError(
-                        "Failed to calibrate encoding of bias. "
-                        f"Couldn't find the value of \"{bias_name}\" statically from the graph."
-                    ) from e
+                raise RuntimeError(
+                    "Failed to calibrate encoding of bias. "
+                    f"Couldn't find the value of \"{bias_name}\" statically from the graph."
+                )
 
             bias = onnx.numpy_helper.to_array(bias_proto)
 
