@@ -65,7 +65,7 @@ from aimet_onnx.quantsim import (
     _apply_constraints,
     clamp_activation_encodings,
     set_grouped_blockwise_quantization_for_weights,
-    _get_minimum_scale,
+    _INT32_MINIMUM_SCALE,
 )
 from aimet_onnx.qc_quantize_op import OpMode, GroupedBlockQuantizeDequantize
 from aimet_onnx.utils import make_dummy_input
@@ -2170,5 +2170,5 @@ def test_bias_export(model_factory, input_shape, block_size, lpbq, tmp_path):
             ))
 
         bias_value = onnx.numpy_helper.to_array(bias_proto)
-        expected_bias_scale = np.maximum(abs(bias_value) / 2**31, _get_minimum_scale(2**32-1))
+        expected_bias_scale = np.maximum(abs(bias_value) / 2**31, _INT32_MINIMUM_SCALE)
         assert np.allclose(bias_scale, expected_bias_scale)

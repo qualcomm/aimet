@@ -57,7 +57,7 @@ from packaging import version
 from aimet_common import _libpymo as libpymo, quantsim
 from aimet_common import libquant_info
 from aimet_common.defs import QuantScheme, QuantizationDataType
-from aimet_common.quantsim import extract_global_quantizer_args, VALID_ENCODING_VERSIONS, _get_minimum_scale
+from aimet_common.quantsim import extract_global_quantizer_args, VALID_ENCODING_VERSIONS, _INT32_MINIMUM_SCALE
 from aimet_common.utils import save_json_yaml, AimetLogger, _red
 from aimet_common.quant_utils import _convert_encoding_format_0_6_1_to_1_0_0
 from aimet_common.connected_graph.product import Product
@@ -749,8 +749,7 @@ class QuantizationSimModel:
 
             bias = onnx.numpy_helper.to_array(bias_proto)
 
-            int32_minimum_scale = _get_minimum_scale(2**32-1)
-            bias_scale = np.maximum(abs(bias) / 2**31, int32_minimum_scale)
+            bias_scale = np.maximum(abs(bias) / 2**31, _INT32_MINIMUM_SCALE)
 
             if not bias_qtzr.quant_info.usePerChannelMode:
                 bias_scale = bias_scale.max()

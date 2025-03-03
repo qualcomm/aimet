@@ -332,3 +332,9 @@ def _get_minimum_scale(num_steps: int) -> float:
     _MINIMUM_RANGE_TO_REPRESENT = (-0.005, 0.005)
     _min, _max = _MINIMUM_RANGE_TO_REPRESENT
     return (_max - _min) / num_steps
+
+
+_INT4_MINIMUM_SCALE = _get_minimum_scale(2**4-1)
+_INT8_MINIMUM_SCALE = _get_minimum_scale(2**8-1)
+_INT16_MINIMUM_SCALE = _get_minimum_scale(2**16-1)
+_INT32_MINIMUM_SCALE = _get_minimum_scale(2**32-1)
