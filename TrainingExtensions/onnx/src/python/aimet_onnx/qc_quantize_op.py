@@ -129,13 +129,10 @@ class QcQuantizeOp:
         assert block_axis is not None
         assert block_axis != channel_axis
 
-        num_quantizers = tensor_shape[channel_axis]
-
         if block_size != 0:
             if tensor_shape[block_axis] % block_size != 0:
                 raise ValueError(
                     f"Input shape {tensor_shape} not divisible by block size {block_size} at axis {block_axis}")
-            num_quantizers *= tensor_shape[block_axis] // block_size
 
         self.quant_info.usePerChannelMode = True
         self.quant_info.channelAxis = channel_axis if channel_axis >= 0 else channel_axis + len(tensor_shape)
@@ -167,7 +164,23 @@ class QcQuantizeOp:
                 self.quant_info.isIntDataType = True
 
     def _build_tensor_quantizer(self):
-        return libpymo.BlockTensorQuantizer(self._encoding_shape(),
+        shape = ()
+        if self.quant_info.usePerChannelMode:
+            assert self.tensor_quantizer_params is not None
+
+            input_shape = self.tensor_quantizer_params.tensor_shape
+            channel_axis = self.quant_info.channelAxis
+            block_axis = self.quant_info.blockAxis
+            block_size = self.quant_info.blockSize
+
+            shape = tuple(
+                input_dim if axis == channel_axis else
+                input_dim // block_size if axis == block_axis and block_size > 0 else 1
+                for axis, input_dim
+                in enumerate(input_shape)
+            )
+
+        return libpymo.BlockTensorQuantizer(shape,
                                             self.bitwidth,
                                             MAP_QUANT_SCHEME_TO_PYMO[self.quant_scheme])
 
