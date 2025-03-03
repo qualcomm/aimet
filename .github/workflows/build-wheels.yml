@@ -34,6 +34,7 @@ jobs:
           CMAKE_ARGS="-DENABLE_ONNX=$([ "${{ matrix.VER_ONNXRUNTIME }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TENSORFLOW=$([ "${{ matrix.VER_TENSORFLOW }}" = "" ] && echo OFF || echo ON) $CMAKE_ARGS"
           CMAKE_ARGS="-DENABLE_TESTS=${{ matrix.ENABLE_TESTS }} $CMAKE_ARGS"
+          CMAKE_ARGS="-DPIP_INDEX=${{ matrix.PIP_INDEX }} $CMAKE_ARGS"
           echo "AIMET_CMAKE_ARGS=$CMAKE_ARGS" >> $GITHUB_ENV
 
           BUILD_TARGETS="${{ matrix.BUILD_TARGETS }}"

@@ -50,7 +50,8 @@ jobs:
                  "VER_ONNXRUNTIME": "",
                  "VER_CUDA":        "",
                  "ENABLE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all"
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       ""
               },
               {
                  "id":              "torch-gpu",
@@ -61,7 +62,8 @@ jobs:
                  "VER_ONNXRUNTIME": "",
                  "VER_CUDA":        "12.1.1",
                  "ENABLE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all"
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -77,7 +79,8 @@ jobs:
                  "VER_ONNXRUNTIME": "",
                  "VER_CUDA":        "",
                  "ENABLE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all"
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       ""
               },
               {
                  "id":              "tf-gpu",
@@ -88,7 +91,8 @@ jobs:
                  "VER_ONNXRUNTIME": "",
                  "VER_CUDA":        "11.8.0",
                  "ENABLE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all"
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -103,7 +107,8 @@ jobs:
                  "VER_TORCH":       "",
                  "VER_ONNXRUNTIME": "1.18.1",
                  "ENABLE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all"
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       ""
               },
               {
                  "id":              "onnx-gpu",
@@ -114,7 +119,8 @@ jobs:
                  "VER_ONNXRUNTIME": "1.18.1",
                  "VER_CUDA":        "11.8.0",
                  "ENABLE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all"
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -131,7 +137,8 @@ jobs:
                  "VER_ONNXRUNTIME": "1.18.1",
                  "VER_CUDA":        "",
                  "ENABLE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all;doc"
+                 "BUILD_TARGETS":   "all;doc",
+                 "PIP_INDEX":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
