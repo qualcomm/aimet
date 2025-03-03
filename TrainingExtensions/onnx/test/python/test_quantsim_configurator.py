@@ -411,4 +411,4 @@ class TestQuantSimConfig:
         assert not sim.qc_quantize_op_dict["batchnorm.input_var"].enabled
         assert not sim.qc_quantize_op_dict["batchnorm.bias"].enabled
         assert sim.qc_quantize_op_dict["batchnorm.weight"].enabled
-        assert sim.qc_quantize_op_dict["model_output"].enabled
+        assert sim.qc_quantize_op_dict["output"].enabled
