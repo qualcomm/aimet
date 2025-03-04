@@ -6,6 +6,20 @@
 Release notes
 #############
 
+2.1.0
+=====
+
+* New Features
+    * Common
+        * Use per-channel quantization by default
+        * Make encoding version 1.0.0 default
+    * PyTorch
+        * Enabled input quantizers that take external scalar parameter as input
+
+* Bug Fixes
+    * PyTorch
+        * Fixed adaround caching bug in latest torch >= 2.6
+
 2.0.0
 =====
 
