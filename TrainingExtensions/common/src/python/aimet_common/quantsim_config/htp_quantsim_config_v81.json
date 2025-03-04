@@ -101,16 +101,6 @@
         }
       }
     },
-    "GroupNormalization":
-    {
-      "per_channel_quantization": "False",
-      "params": {
-        "bias":
-        {
-          "is_quantized": "True"
-        }
-      }
-    },
     "LayerNormalization":
     {
       "per_channel_quantization": "False",
