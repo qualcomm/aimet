@@ -36,7 +36,6 @@
 # =============================================================================
 """ Utilities for importing and validating json configuration file """
 
-import os
 import json
 from typing import Dict, List, Union
 from jsonschema import validate
@@ -94,16 +93,8 @@ class JsonConfigImporter:
         :param config_file: Config file to parse
         :return: Quantsim configs dictionary
         """
-        if not config_file:
-            config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default_config_per_channel.json')
-            logger.info('No config file provided, defaulting to config file at %s', config_file)
-
         with open(config_file) as configs:
-            try:
-                quantsim_configs = json.load(configs)
-            except json.decoder.JSONDecodeError as e:
-                logger.error('Error parsing json config file')
-                raise RuntimeError('Error parsing json config file') from e
+            quantsim_configs = json.load(configs)
 
         _validate_syntax(quantsim_configs)
         convert_configs_values_to_bool(quantsim_configs)

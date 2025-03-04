@@ -37,7 +37,8 @@
 """ Utilities for parsing and applying quantsim configurations from json config file """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List
+import os
+from typing import Dict, List, Optional
 from aimet_common.defs import QuantizationDataType, QuantDtypeBwInfo
 from aimet_common.connected_graph.operation import Op
 from aimet_common.graph_pattern_matcher import PatternType
@@ -140,14 +141,37 @@ class OnnxConnectedGraphTypeMapper:
 
 class QuantSimConfigurator(ABC):
     """ Class for parsing and applying quantsim configurations from json config file """
-    def __init__(self, config_file: str, default_data_type: QuantizationDataType, default_output_bw: int, default_param_bw: int):
+
+    currdir = os.path.dirname(__file__)
+
+    _aliases = {
+        "default": os.path.join(currdir, "default_config_per_channel.json"),
+        "htp_v66": os.path.join(currdir, "htp_quantsim_config_v66.json"),
+        "htp_v68": os.path.join(currdir, "htp_quantsim_config_v68.json"),
+        "htp_v69": os.path.join(currdir, "htp_quantsim_config_v69.json"),
+        "htp_v73": os.path.join(currdir, "htp_quantsim_config_v73.json"),
+        "htp_v75": os.path.join(currdir, "htp_quantsim_config_v75.json"),
+        "htp_v79": os.path.join(currdir, "htp_quantsim_config_v79.json"),
+        "htp_v81": os.path.join(currdir, "htp_quantsim_config_v81.json"),
+    }
+    del currdir
+
+    def __init__(self,
+                 config_file: Optional[str],
+                 default_data_type: QuantizationDataType,
+                 default_output_bw: int,
+                 default_param_bw: int):
+        if config_file is None:
+            config_file = "default"
+
+        if config_file in self._aliases:
+            config_file = self._aliases[config_file]
+
         self._quantsim_configs = JsonConfigImporter.import_json_config_file(config_file)
         self._supported_kernels = {}
         self._default_data_type = default_data_type
         self._default_output_bw = default_output_bw
         self._default_param_bw = default_param_bw
-
-
 
     def _set_quantsim_configs(self):
         """
