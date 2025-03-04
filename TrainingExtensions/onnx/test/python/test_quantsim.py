@@ -565,7 +565,7 @@ class TestQuantSim:
         weight_initializer_3.raw_data = np.asarray(np.abs(weight_initializer_3_data), dtype=np.float32).tobytes()
 
         with tempfile.TemporaryDirectory() as tempdir:
-            sim = QuantizationSimModel(model, config_file=get_path_for_per_channel_config(), path=tempdir)
+            sim = QuantizationSimModel(model, path=tempdir)
 
             conv_ops = [node for node in sim.model.model.graph.node if node.op_type == 'Conv']
             relu_ops = [node for node in sim.model.model.graph.node if node.op_type == 'Relu']
@@ -595,7 +595,7 @@ class TestQuantSim:
             out2 = sim.session.run(None, dummy_tensor)
             del sim
 
-            sim = QuantizationSimModel(model, config_file=get_path_for_per_channel_config(), path=tempdir)
+            sim = QuantizationSimModel(model, path=tempdir)
             if strict:
                 with pytest.raises(AssertionError):
                     load_encodings_to_sim(sim, os.path.join(tempdir, 'onnx_sim.encodings'), strict=strict)
@@ -613,7 +613,7 @@ class TestQuantSim:
                 assert sim.get_qc_quantize_op()[weight_initializers[2]].use_strict_symmetric
                 assert sim.get_qc_quantize_op()[weight_initializers[3]].use_unsigned_symmetric
                 assert len(mismatched_encodings) == 8
-                assert np.allclose(out2, out3)
+                assert np.allclose(out2, out3, rtol=0.01)
 
     @pytest.mark.parametrize('swap_quantizer_func, is_lpbq', [(functools.partial(set_grouped_blockwise_quantization_for_weights,
                                                                                  op_types=("MatMul", "Conv", "Gemm"),

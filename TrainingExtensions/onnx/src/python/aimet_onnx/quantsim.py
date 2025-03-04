@@ -120,7 +120,7 @@ class QuantizationSimModel:
     def __init__(self,
                  model: ModelProto,
                  dummy_input: Dict[str, np.ndarray] = None,
-                 quant_scheme: QuantScheme = QuantScheme.post_training_tf_enhanced,
+                 quant_scheme: QuantScheme = QuantScheme.post_training_tf,
                  rounding_mode: str = 'nearest',
                  default_param_bw: int = 8,
                  default_activation_bw: int = 8,

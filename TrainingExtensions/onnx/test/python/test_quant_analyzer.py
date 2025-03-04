@@ -281,7 +281,7 @@ class TestQuantAnalyzer:
         model = models_for_tests._convert_to_onnx(models_for_tests.TinyModel(), dummy_input)
         dummy_input_dict = {'input': np.random.randn(1, 3, 32, 32).astype(np.float32)}
         fold_all_batch_norms_to_weight(model)
-        sim = QuantizationSimModel(copy.deepcopy(model), dummy_input_dict)
+        sim = QuantizationSimModel(model, dummy_input_dict, quant_scheme=QuantScheme.post_training_tf_enhanced)
         sim.compute_encodings(evaluate, dummy_input_dict)
         forward_pass_callback = CallbackFunc(calibrate, dummy_input_dict)
         eval_callback = CallbackFunc(evaluate, dummy_input_dict)
@@ -326,7 +326,8 @@ class TestQuantAnalyzer:
             model = models_for_tests._convert_to_onnx(models_for_tests.TinyModel(), dummy_input)
             dummy_input_dict = {'input': np.random.randn(1, 3, 32, 32).astype(np.float32)}
             fold_all_batch_norms_to_weight(model)
-            sim = QuantizationSimModel(copy.deepcopy(model), dummy_input_dict, config_file=Path(tmp_dir, "quantsim_config.json"))
+            sim = QuantizationSimModel(model, dummy_input_dict, quant_scheme=QuantScheme.post_training_tf_enhanced,
+                                       config_file=Path(tmp_dir, "quantsim_config.json"))
             sim.compute_encodings(evaluate, dummy_input_dict)
             forward_pass_callback = CallbackFunc(calibrate, dummy_input_dict)
             eval_callback = CallbackFunc(evaluate, dummy_input_dict)
