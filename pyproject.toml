@@ -5,31 +5,24 @@ requires = [
 build-backend = "scikit_build_core.build"
 
 [project]
-#name = "aimet"
+authors = [
+    { name = "Qualcomm Innovation Center, Inc." },
+    { name = "Qualcomm Innovation Center, Inc.", email = "aimet.os@quicinc.com" },
+]
 requires-python = ">=3.8"
-dynamic = ["name", "dependencies", "version", "optional-dependencies"]
+dynamic = ["name", "dependencies", "version", "optional-dependencies", "description"]
+license = {text = "BSD-3-Clause"}
 
-[project.optional-dependencies]
-# Expected types of extras:
-# dev = [
-#   ...
-# ]
-# test = [
-#   ...
-# ]
-# docs = [
-#   ...
-# ]
-# "v1-deps" = [
-#   "torch==x.y.z" # This will be used only for ``pip install aimet-torch[v1-deps]``
-# ]
+[project.urls]
+Homepage = "https://quic.github.io/aimet-pages/index.html"
 
 [tool.scikit-build]
 experimental = true
 metadata.name = { provider = "aimet", provider-path = "packaging/plugins/local" }
 metadata.dependencies = { provider = "aimet", provider-path = "packaging/plugins/local" }
-metadata.version = { provider="aimet", provider-path = "packaging/plugins/local" }
-metadata.optional-dependencies = { provider="aimet", provider-path = "packaging/plugins/local" }
+metadata.version = { provider = "aimet", provider-path = "packaging/plugins/local" }
+metadata.optional-dependencies = { provider = "aimet", provider-path = "packaging/plugins/local" }
+metadata.description = { provider = "aimet", provider-path = "packaging/plugins/local" }
 build-dir = "build"
 sdist.cmake = false
 logging.level = "DEBUG"
