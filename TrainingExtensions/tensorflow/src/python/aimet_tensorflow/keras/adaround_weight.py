@@ -48,6 +48,7 @@ from aimet_common import _libpymo as libpymo
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme
 from aimet_common.quantsim_config.json_config_importer import JsonConfigImporter, ConfigDictKeys, ConfigDictType
+from aimet_common.quantsim_config.quantsim_config import _get_config_file
 from aimet_tensorflow.keras.adaround.activation_sampler import ActivationSampler
 from aimet_tensorflow.keras.adaround.adaround_loss import AdaroundHyperParameters
 from aimet_tensorflow.keras.adaround.adaround_wrapper import AdaroundWrapper
@@ -118,6 +119,7 @@ class Adaround:
         :param config_file: Configuration file for model quantizers
         :return: Model with Adarounded weights
         """
+        config_file = _get_config_file(config_file)
 
         # Get parameters from config file. To allow one central place for Adaround and Quantsim
         configs, strict_symmetric, unsigned_symmetric, per_channel_enabled = cls.get_config_dict_keys(config_file)

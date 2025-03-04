@@ -69,6 +69,7 @@ from safetensors.numpy import save_file as save_safetensor_file
 from aimet_common.utils import AimetLogger, save_json_yaml, log_with_error_and_assert_if_false, Handle
 from aimet_common.defs import QuantScheme, QuantizationDataType, SupportedKernelsAction, QuantDtypeBwInfo
 from aimet_common.quantsim import validate_quantsim_inputs, extract_global_quantizer_args, VALID_ENCODING_VERSIONS
+from aimet_common.quantsim_config.quantsim_config import _get_config_file
 from aimet_common.quant_utils import get_conv_accum_bounds
 from aimet_common.utils import deprecated, _red
 from aimet_common import quantsim
@@ -277,6 +278,8 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                                  Note that the mode default_data_type=QuantizationDataType.float is only supported with
                                  default_output_bw=16 or 32 and default_param_bw=16 or 32.
         """
+        config_file = _get_config_file(config_file)
+
         if not isinstance(dummy_input, (tuple, list)):
             dummy_input = (dummy_input,)
 
