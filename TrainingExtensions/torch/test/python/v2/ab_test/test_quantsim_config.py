@@ -1200,7 +1200,7 @@ class TestQuantsimConfig:
             },
             "params": {},
             "op_type": {
-                "LayerNorm": {
+                "LayerNormalization": {
                     "is_input_quantized": "True",
                     "params": {
                         "bias": {
@@ -1208,7 +1208,7 @@ class TestQuantsimConfig:
                         },
                     },
                 },
-                "GELU": {
+                "Gelu": {
                     "is_input_quantized": "True",
                 }
             },
@@ -1861,7 +1861,7 @@ class TestQuantsimConfig:
             },
             "params": {},
             "op_type": {
-                "LayerNorm": {
+                "LayerNormalization": {
                     "supported_kernels":
                         [
                             {
@@ -1876,7 +1876,7 @@ class TestQuantsimConfig:
                             },
                         ]
                 },
-                "GELU": {
+                "Gelu": {
                     "is_output_quantized": "True",
                     "supported_kernels":
                         [

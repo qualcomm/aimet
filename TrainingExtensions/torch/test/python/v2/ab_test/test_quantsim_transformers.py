@@ -81,7 +81,7 @@ def generate_custom_quantsim_config(file_path: str):
         },
         "params": {},
         "op_type": {
-            "LayerNorm": {
+            "LayerNormalization": {
                 "is_output_quantized": "True",
                 "supported_kernels":
                     [
@@ -97,7 +97,7 @@ def generate_custom_quantsim_config(file_path: str):
                         }
                     ]
             },
-            "GELU": {
+            "Gelu": {
                 "is_output_quantized": "True",
                 "supported_kernels":
                     [

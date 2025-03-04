@@ -69,7 +69,7 @@ QUANTSIM_CONFIG = {
         "Mean": {"is_output_quantized": "False"},
         # Enable per-channel quantization for Gemm to validate GPTVQ algorithm
         "Gemm": {"per_channel_quantization": "True"},
-        "LayerNorm": {"per_channel_quantization": "False"},
+        "LayerNormalization": {"per_channel_quantization": "False"},
         "Gather": {"is_output_quantized": "False"},
     },
     "supergroups": [

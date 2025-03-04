@@ -3594,7 +3594,7 @@ class TestQuantizationSimLearnedGrid:
             },
             "params": {},
             "op_type": {
-                    "GroupNorm":
+                    "GroupNormalization":
                     {
                       "per_channel_quantization": "False",
                       "params": {
@@ -3877,7 +3877,7 @@ class TestQuantizationSimLearnedGrid:
             },
             'params': {},
             'op_type': {
-                'GroupNorm': {
+                'GroupNormalization': {
                     'per_channel_quantization': 'False',
                     'params': {'bias': {'is_quantized': 'True'}},
                 },

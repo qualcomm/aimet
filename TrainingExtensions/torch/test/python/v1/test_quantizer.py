@@ -4649,7 +4649,7 @@ class TestQuantizationSimLearnedGrid:
             },
             "params": {},
             "op_type": {
-                    "GroupNorm":
+                    "GroupNormalization":
                     {
                       "per_channel_quantization": "False",
                       "params": {
