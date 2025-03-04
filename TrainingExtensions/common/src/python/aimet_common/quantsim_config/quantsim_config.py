@@ -162,12 +162,11 @@ def _get_config_file(alias_or_filename: Optional[str]) -> str:
 
     if not os.path.exists(config_file):
         raise FileNotFoundError(
-            f"Config file not found: {alias_or_filename}."
-            "Expected a file path or an alias to the standard config files.\n"
-
-            "Config file aliases consist of:"
+            f"Config file not found: {alias_or_filename}. " +
+            "Expected a file path or an alias to the standard config files.\n" +
+            "Config file aliases consist of:\n" +
             "\n".join([
-                f"* {key}: {value}"
+                f"  * \"{key}\": {value}"
                 for key, value in _config_file_aliases.items()
             ])
         )
