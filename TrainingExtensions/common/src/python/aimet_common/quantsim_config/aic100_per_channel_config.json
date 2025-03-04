@@ -27,7 +27,7 @@
 		{
 		  "is_output_quantized": "False"
 		},
-		"LayerNorm":
+		"LayerNormalization":
 		{
 			"is_output_quantized": "True",
 			"supported_kernels":
@@ -46,7 +46,7 @@
 				}
 			]
 		},
-		"GELU": {
+		"Gelu": {
 			"is_output_quantized": "True",
 			"supported_kernels":
 			[

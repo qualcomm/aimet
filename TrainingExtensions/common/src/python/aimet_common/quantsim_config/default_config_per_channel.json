@@ -67,7 +67,7 @@
     {
       "per_channel_quantization": "False"
     },
-    "LayerNorm":
+    "LayerNormalization":
     {
       "per_channel_quantization": "False"
     },

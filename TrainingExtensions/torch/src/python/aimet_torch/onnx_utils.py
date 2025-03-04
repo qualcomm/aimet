@@ -91,13 +91,13 @@ map_torch_types_to_onnx = {
     nn.Dropout2d: ['Dropout'],
     nn.Embedding: ['Gather'],
     nn.Flatten: ['Flatten'],
-    nn.GELU: ['GELU'],                  # Not a supported op in ONNX, adding this entry for usage by Connected Graph
-    nn.GroupNorm: ['GroupNorm'],
+    nn.GELU: ['Gelu'],
+    nn.GroupNorm: ['GroupNormalization'],
     nn.GRU: ['GRU'],
     nn.Hardswish: ['HardSwish'],
     nn.MaxPool2d: ['MaxPool'],
     nn.MaxPool3d: ['MaxPool'],
-    nn.LayerNorm: ['LayerNorm'],        # Not a supported op in ONNX, adding this entry for usage by Connected Graph
+    nn.LayerNorm: ['LayerNormalization'],
     nn.InstanceNorm2d: ['InstanceNormalization'],
     nn.InstanceNorm1d: ['InstanceNormalization'],
     nn.LeakyReLU: ['LeakyRelu'],

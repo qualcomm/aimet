@@ -294,7 +294,7 @@
         "Gemm": {
             "per_channel_quantization": "False"
         },
-        "GroupNorm": {
+        "GroupNormalization": {
             "per_channel_quantization": "False",
             "params": {
                 "bias": {
@@ -354,7 +354,7 @@
                 }
             ]
         },
-        "LayerNorm": {
+        "LayerNormalization": {
             "per_channel_quantization": "False",
             "params": {
                 "weight": {
@@ -2312,7 +2312,7 @@
                 }
             ]
         },
-        "InstanceNorm": {
+        "InstanceNormalization": {
             "supported_kernels": [
                 {
                     "activation": {

@@ -26,7 +26,7 @@
 		{
 		  "is_output_quantized": "False"
 		},
-		"LayerNorm":
+		"LayerNormalization":
 		{
 			"is_output_quantized": "True",
 			"supported_kernels":

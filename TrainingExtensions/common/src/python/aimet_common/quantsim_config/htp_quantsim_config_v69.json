@@ -138,10 +138,6 @@
     {
       "is_output_quantized": "False"
     },
-    "LayerNorm":
-    {
-      "per_channel_quantization": "False"
-    },
     "LayerNormalization":
     {
       "per_channel_quantization": "False"
