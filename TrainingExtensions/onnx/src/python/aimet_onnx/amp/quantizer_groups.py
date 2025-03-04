@@ -159,7 +159,7 @@ class QuantizerGroup(QuantizerGroupBase):
         return result
 
 
-op_types_to_ignore = ['Reshape', 'branch', 'Gather', 'Unsqueeze', 'Pad']
+op_types_to_ignore = ['Reshape', 'branch', 'Gather', 'Unsqueeze', 'Pad', 'Transpose']
 ops_not_to_traverse = ['Shape']
 
 
