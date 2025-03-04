@@ -60,6 +60,7 @@ from aimet_common.defs import QuantScheme, QuantizationDataType
 from aimet_common.quantsim import extract_global_quantizer_args, VALID_ENCODING_VERSIONS, _INT32_MINIMUM_SCALE
 from aimet_common.utils import save_json_yaml, AimetLogger, _red
 from aimet_common.quant_utils import _convert_encoding_format_0_6_1_to_1_0_0
+from aimet_common.quantsim_config.quantsim_config import _config_file_aliases
 from aimet_common.connected_graph.product import Product
 from aimet_onnx import utils
 from aimet_onnx.meta.operations import Op
@@ -114,7 +115,26 @@ def _apply_constraints(flag: bool):
 
 
 class QuantizationSimModel:
-    """ Creates a QuantizationSimModel model by adding quantization simulations ops to a given model """
+    __doc__ = f"""
+    Class that simulates the quantized model execution on a target hardware backend.
+
+    :param model: ONNX model
+    :param dummy_input: Dummy input to the model. If None, will attempt to auto-generate a dummy input
+    :param quant_scheme: Quantization scheme (e.g. QuantScheme.post_training_tf)
+    :param rounding_mode: Rounding mode (e.g. nearest)
+    :param default_param_bw: Quantization bitwidth for parameter
+    :param default_activation_bw: Quantization bitwidth for activation
+    :param use_symmetric_encodings: True if symmetric encoding is used.  False otherwise.
+    :param use_cuda: True if using CUDA to run quantization op. False otherwise.
+    :param config_file: File path or alias of the configuration file.
+                        Alias can be one of {{ {', '.join(_config_file_aliases.keys())} }} (Default: `"default"`)
+    :param default_data_type: Default data type to use for quantizing all layer inputs, outputs and parameters.
+                             Possible options are QuantizationDataType.int and QuantizationDataType.float.
+                             Note that the mode default_data_type=QuantizationDataType.float is only supported with
+                             default_output_bw=16 and default_param_bw=16
+    :param user_onnx_libs: List of paths to all compiled ONNX custom ops libraries
+    :param path: Directory to save the artifacts.
+    """
 
     # pylint: disable=too-many-arguments, too-many-locals, too-many-instance-attributes
     def __init__(self,
@@ -128,25 +148,6 @@ class QuantizationSimModel:
                  device: int = 0, config_file: str = None,
                  default_data_type: QuantizationDataType = QuantizationDataType.int,
                  user_onnx_libs: List[str] = None, path: str = None):
-        """
-        Constructor
-
-        :param model: ONNX model
-        :param dummy_input: Dummy input to the model. If None, will attempt to auto-generate a dummy input
-        :param quant_scheme: Quantization scheme (e.g. QuantScheme.post_training_tf)
-        :param rounding_mode: Rounding mode (e.g. nearest)
-        :param default_param_bw: Quantization bitwidth for parameter
-        :param default_activation_bw: Quantization bitwidth for activation
-        :param use_symmetric_encodings: True if symmetric encoding is used.  False otherwise.
-        :param use_cuda: True if using CUDA to run quantization op. False otherwise.
-        :param config_file: Path to Configuration file for model quantizers
-        :param default_data_type: Default data type to use for quantizing all layer inputs, outputs and parameters.
-                                 Possible options are QuantizationDataType.int and QuantizationDataType.float.
-                                 Note that the mode default_data_type=QuantizationDataType.float is only supported with
-                                 default_output_bw=16 and default_param_bw=16
-        :param user_onnx_libs: List of paths to all compiled ONNX custom ops libraries
-        :param path: Directory to save the artifacts.
-        """
         self.model = model
         if not isinstance(model, ONNXModel):
             self.model = ONNXModel(model)

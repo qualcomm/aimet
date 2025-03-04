@@ -50,6 +50,7 @@ import onnx
 
 from aimet_common import quantsim
 from aimet_common.defs import QuantScheme, QuantizationDataType
+from aimet_common.quantsim_config.quantsim_config import _config_file_aliases
 from aimet_torch._base.quantsim import (
     _QuantizationSimModelBase,
     logger,
@@ -162,7 +163,7 @@ def _convert_to_qmodel(model: torch.nn.Module):
 
 
 class QuantizationSimModel(_QuantizationSimModelBase):
-    """
+    __doc__ = f"""
     Class that simulates the quantized model execution on a target hardware backend.
 
     QuantizationSimModel simulates quantization of a given model by converting
@@ -197,7 +198,38 @@ class QuantizationSimModel(_QuantizationSimModelBase):
           )
           ...
         )
+
+    .. warning::
+       `rounding_mode` parameter is deprecated.
+       Passing `rounding_mode` will throw runtime error in >=1.35.
+
+    .. warning::
+       The default value of `quant_scheme` has changed
+       from `QuantScheme.post_training_tf_enhanced` to `QuantScheme.training_range_learning_with_tf_init`
+       since 2.0.0, and will be deprecated in the longer term.
+
+    Args:
+        model (torch.nn.Module): Model to simulate the quantized execution of
+        dummy_input (Tensor | Sequence[Tensor]): Dummy input to be used to capture
+            the computational graph of the model. All input tensors are expected to be
+            already placed on the appropriate devices to run forward pass of the model.
+        quant_scheme (QuantScheme, optional): Quantization scheme that indicates
+            how to observe and calibrate the quantization encodings (Default: `QuantScheme.post_training_tf_enhanced`)
+        rounding_mode: Deprecated
+        default_output_bw (int, optional): Default bitwidth (4-31) to use for quantizing all layer inputs and outputs
+            unless otherwise specified in the config file. (Default: 8)
+        default_param_bw (int, optional): Default bitwidth (4-31) to use for quantizing all layer parameters
+            unless otherwise specified in the config file. (Default: 8)
+        in_place (bool, optional): If True, then the given model is modified in-place into a quantized model. (Default: `False`)
+        config_file (str, optional): File path or alias of the configuration file.
+            Alias can be one of {{ {', '.join(_config_file_aliases.keys())} }} (Default: `"default"`)
+        default_data_type (QuantizationDataType, optional): Default data type to use for quantizing all
+            inputs, outputs and parameters unless otherwise specified in the config file.
+            Possible options are QuantizationDataType.int and QuantizationDataType.float.
+            Note that the mode default_data_type=QuantizationDataType.float is only supported with
+            default_output_bw=16 or 32 and default_param_bw=16 or 32. (Default: `QuantizationDataType.int`)
     """
+
     _quantized_modules = quantized_modules
 
     def __init__(self, # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
@@ -208,38 +240,8 @@ class QuantizationSimModel(_QuantizationSimModelBase):
                  default_output_bw: int = 8,
                  default_param_bw: int = 8,
                  in_place: bool = False,
-                 config_file: Optional[str] = None,
+                 config_file: str = None,
                  default_data_type: QuantizationDataType = QuantizationDataType.int):
-        """
-        .. warning::
-           `rounding_mode` parameter is deprecated.
-           Passing `rounding_mode` will throw runtime error in >=1.35.
-
-        .. warning::
-           The default value of `quant_scheme` has changed
-           from `QuantScheme.post_training_tf_enhanced` to `QuantScheme.training_range_learning_with_tf_init`
-           since 2.0.0, and will be deprecated in the longer term.
-
-        Args:
-            model (torch.nn.Module): Model to simulate the quantized execution of
-            dummy_input (Tensor | Sequence[Tensor]): Dummy input to be used to capture
-                the computational graph of the model. All input tensors are expected to be
-                already placed on the appropriate devices to run forward pass of the model.
-            quant_scheme (QuantScheme, optional): Quantization scheme that indicates
-                how to observe and calibrate the quantization encodings (Default: `QuantScheme.post_training_tf_enhanced`)
-            rounding_mode: Deprecated
-            default_output_bw (int, optional): Default bitwidth (4-31) to use for quantizing all layer inputs and outputs
-                unless otherwise specified in the config file. (Default: 8)
-            default_param_bw (int, optional): Default bitwidth (4-31) to use for quantizing all layer parameters
-                unless otherwise specified in the config file. (Default: 8)
-            in_place (bool, optional): If True, then the given model is modified in-place into a quantized model. (Default: `False`)
-            config_file (str, optional): Path to the quantization simulation config file (Default: `None`)
-            default_data_type (QuantizationDataType, optional): Default data type to use for quantizing all
-                inputs, outputs and parameters unless otherwise specified in the config file.
-                Possible options are QuantizationDataType.int and QuantizationDataType.float.
-                Note that the mode default_data_type=QuantizationDataType.float is only supported with
-                default_output_bw=16 or 32 and default_param_bw=16 or 32. (Default: `QuantizationDataType.int`)
-        """
         if not quant_scheme:
             old_default = QuantScheme.post_training_tf_enhanced
             new_default = QuantScheme.training_range_learning_with_tf_init
