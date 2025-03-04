@@ -59,7 +59,7 @@ from aimet_tensorflow.keras.quant_sim.tensor_quantizer import ParamPerTensorQuan
 from aimet_tensorflow.keras.quant_sim.qc_mha_wrapper import QcQuantizableMultiHeadAttention
 from aimet_tensorflow.keras.quantsim import QuantizationSimModel
 from aimet_tensorflow.keras.rnn.qc_quant_LSTM import QuantizedLSTM
-from test_models_keras import tiny_conv_net
+from test_models_keras import tiny_conv_net, model_with_sigmoid_and_softmax
 
 
 def conv_functional():
@@ -1655,3 +1655,49 @@ def test_quantsim_export_to_1_0_0():
         with open(os.path.join(temp_dir, 'test_export.encodings'), 'r') as encoding_file:
             encodings = json.load(encoding_file)
         assert encodings['version'] == '0.6.1'
+
+
+def test_config_with_encoding_constraints():
+    """
+    Test whether encoding constraints are properly handled
+    """
+    quantsim_config = {
+        "defaults": {
+            "ops": { "is_output_quantized": "True" },
+            "params": {
+                "is_quantized": "True",
+                "is_symmetric": "True"
+            },
+            "strict_symmetric": "False",
+            "unsigned_symmetric": "True",
+            "per_channel_quantization": "True"
+        },
+        "params": {
+            "bias": { "is_quantized": "False" }
+        },
+        "op_type": {
+            "Sigmoid": {"encoding_constraints": { "min": 0.0, "max": 1.0}},
+            "Softmax": {"encoding_constraints": { "min": 0.0, "max": 1.0}},
+        },
+        "supergroups": [],
+        "model_input": { "is_input_quantized": "True" },
+        "model_output": {}
+    }
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config_file_path = os.path.join(tmp_dir, 'quantsim_config.json')
+        with open(config_file_path, "w") as f:
+            json.dump(quantsim_config, f)
+
+        model = model_with_sigmoid_and_softmax()
+        sim = QuantizationSimModel(model, config_file=config_file_path)
+        dummy_input = np.random.randn(1, 1)
+
+        def forward_pass_callback(model_, _):
+            model_(dummy_input)
+
+        sim.compute_encodings(forward_pass_callback=forward_pass_callback, forward_pass_callback_args=None)
+        sigmoid_encoding = sim.model.layers[2].output_quantizers[0].encoding
+        assert sigmoid_encoding.min == 0.0 and sigmoid_encoding.max == 1.0
+        softmax_encoding = sim.model.layers[5].output_quantizers[0].encoding
+        assert softmax_encoding.min == 0.0 and softmax_encoding.max == 1.0

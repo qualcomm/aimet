@@ -403,6 +403,9 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
         if setting_name == ConfigDictKeys.IS_SYMMETRIC:
             # Will modify all input and output quantizers in the False case
             return input_false_list + output_false_list
+        if setting_name == ConfigDictKeys.ENCODING_CONSTRAINTS:
+            return output_true_list + output_false_list
+
         _logger.error("Encountered unrecognized case for setting name %s, setting value %s", setting_name,
                       quantizer_setting)
         raise ValueError
@@ -595,6 +598,12 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
             self._layer_to_quantizers_dict[layer][OUTPUT_QUANTIZERS] = \
                 _initialize_output_quantizers(
                     layer, activation_quant_settings, output_quantizer_enabled)
+
+            if ConfigDictKeys.ENCODING_CONSTRAINTS in config_dict:
+                quantizer_setting = config_dict[ConfigDictKeys.ENCODING_CONSTRAINTS][SETTING]
+                for quantizer in self._layer_to_quantizers_dict[layer][OUTPUT_QUANTIZERS]:
+                    quantizer.set_fixed_encoding_range((quantizer_setting[ConfigDictKeys.MIN],
+                                                        quantizer_setting[ConfigDictKeys.MAX]))
 
             # Configs for Params
             param_config_dict = config_dict[ConfigDictKeys.PARAMS]

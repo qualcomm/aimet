@@ -34,6 +34,7 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+# pylint: disable=too-many-lines
 """ Tensor quantizer for tf 2 keras """
 import abc
 import functools
@@ -290,6 +291,7 @@ class StaticGridPerTensorQuantizer(TensorQuantizer):
                                                          MAP_ROUND_MODE_TO_PYMO[round_mode])
         self._tensor_quantizer.setStrictSymmetric(use_strict_symmetric)
         self._tensor_quantizer.setUnsignedSymmetric(use_unsigned_symmetric)
+        self._encoding_min_max_fixed_vals = None
 
     @TensorQuantizer.quant_scheme.setter
     def quant_scheme(self, quant_scheme: QuantScheme):
@@ -397,15 +399,37 @@ class StaticGridPerTensorQuantizer(TensorQuantizer):
         self._encoding_max.assign(encoding.max)
         self._is_encoding_valid = True
 
+    def set_fixed_encoding_range(self, fixed_range: Tuple[float, float]):
+        """
+        Set the min/max values to be used when computing encodings
+
+        :param fixed_range: Tuple of (min, max) value to use in-place of observer statistics when computing encodings
+        """
+        self._encoding_min_max_fixed_vals = fixed_range
+
     def compute_encoding(self, ops_with_invalid_encodings: List = None):
         """ Compute encoding for the tensor quantizer """
         if self.is_enabled() and not self._is_encoding_frozen:
+
+            if self._encoding_min_max_fixed_vals is None:
+                encoding = self._tensor_quantizer.computeEncoding(self.bitwidth, self.is_symmetric)
+                is_valid_encoding = self._tensor_quantizer.isEncodingValid
+            else:
+                min_val, max_val = self._encoding_min_max_fixed_vals
+                encoding = libpymo.TfEncoding()
+                encoding.bw = self.bitwidth
+                encoding.min = min_val
+                encoding.max = max_val
+                partial_quantizer = libpymo.TensorQuantizer(libpymo.QuantizationMode.QUANTIZATION_TF, self.round_mode)
+                partial_quantizer.computePartialEncoding(encoding.bw, encoding, self.is_symmetric,
+                                                         self.use_unsigned_symmetric, self.use_strict_symmetric)
+                is_valid_encoding = True
+
             # TODO: remove last two parameters after fixing PyModelOptimizations
-            encoding = self._tensor_quantizer.computeEncoding(self.bitwidth, self.is_symmetric)
             if self.data_type == QuantizationDataType.float:
                 self._quantizer_mode.assign(int(libpymo.TensorQuantizerOpMode.quantizeDequantize))
             else:
-                if self._tensor_quantizer.isEncodingValid:  # pylint: disable=using-constant-test
+                if is_valid_encoding:  # pylint: disable=using-constant-test
                     if self._quant_scheme in RANGE_LEARNING_SCHEMES and self.is_symmetric and encoding.min != 0:
                         self._encoding_min.assign(-encoding.max)
                     else:
