@@ -13,6 +13,7 @@ import itertools
 import os
 import pathlib
 import shlex
+import subprocess
 
 __all__ = ["dynamic_metadata"]
 
@@ -55,6 +56,20 @@ def get_aimet_variant() -> str:
     return variant
 
 
+def get_name() -> str:
+    aimet_variant = get_aimet_variant()
+
+    # List of suffixes to remove
+    suffixes = ["-cpu", "-gpu"]
+
+    # Remove suffix from the aimet_variant
+    for suffix in suffixes:
+        if aimet_variant.endswith(suffix):
+            aimet_variant = aimet_variant.replace(suffix, "")
+
+    return f"aimet-{aimet_variant}"
+
+
 def get_aimet_dependencies() -> list[str]:
     """Read dependencies form the corresponded files and return them as a list (!) of strings"""
     aimet_variant = get_aimet_variant()
@@ -71,8 +86,37 @@ def get_aimet_dependencies() -> list[str]:
     return list(sorted(deps))
 
 
+def get_cuda_version():
+    cuda_version = ""
+    try:
+        # Run the nvcc command to get CUDA version
+        output = subprocess.check_output(['nvcc', '--version']).decode('utf-8')
+        # Extract the version number from the output
+        for line in output.split('\n'):
+            if 'release' in line:
+                cuda_version = line.split('release')[-1].strip().split(',')[0]
+                # Remove the decimal point
+                cuda_version = cuda_version.replace(".", "")
+    except Exception:
+        pass
+
+    return cuda_version
+
+
 def get_version() -> str:
-    return pathlib.Path("packaging", "version.txt").read_text(encoding="utf8")
+    version = pathlib.Path("packaging", "version.txt").read_text(encoding="utf8").splitlines()[0]
+    cuda_version = get_cuda_version()
+
+    # For PyPi releases, just return the version without appending the variant string
+    cmake_args = {k:v for k,v in (arg.split("=", 1) for arg in shlex.split(os.environ.get("CMAKE_ARGS", "")))}
+    if cmake_args.get("-DPIP_INDEX", "") == "pypi":
+        return version
+
+    # Append the variant string to the original software version that was passed in
+    variant_string = f"cu{cuda_version}" if cuda_version else "cpu"
+    version = version + "+" + variant_string
+
+    return version
 
 
 def optional_dependencies() -> dict[str, list[str]]:
@@ -156,6 +200,22 @@ def optional_dependencies() -> dict[str, list[str]]:
     return optional_dependencies
 
 
+def get_description() -> str:
+    aimet_variant = get_aimet_variant()
+
+    variant_map = {
+        "torch": "AIMET torch package",
+        "onnx": "AIMET onnx package",
+        "tf": "AIMET tensorflow package"
+    }
+
+    for key in variant_map:
+        if key in aimet_variant:
+            return variant_map[key]
+
+    raise RuntimeError("No matching AIMET variant found.")
+
+
 def dynamic_metadata(
     field: str,
     settings: dict[str, object] | None = None,
@@ -163,11 +223,13 @@ def dynamic_metadata(
     if settings:
         raise ValueError("No inline configuration is supported")
     if field == "name":
-        return f"aimet-{get_aimet_variant()}"
+        return get_name()
     if field == "dependencies":
         return get_aimet_dependencies()
     if field == "optional-dependencies":
         return optional_dependencies()
     if field == "version":
         return get_version()
+    if field == "description":
+        return get_description()
     raise ValueError(f"Unsupported field '{field}'")
