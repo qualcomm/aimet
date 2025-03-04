@@ -391,3 +391,24 @@ def resnet_34():
     model = ResNet34()
     model.build(input_shape=(1, 480, 480, 3))
     return model
+
+
+def model_with_sigmoid_and_softmax():
+    """
+    Functional model with sigmoid and softmax activations
+    """
+    input1 = tf.keras.layers.Input(shape=(1,))
+    dense1 = tf.keras.layers.Dense(
+        2, input_dim=2, use_bias=True
+    )(input1)
+    dense1_1 = tf.keras.layers.Activation('sigmoid')(dense1)
+    dense2 = tf.keras.layers.Dense(
+        1, activation=tf.keras.activations.relu, use_bias=True
+    )(dense1_1)
+    output = tf.keras.layers.Dense(
+        1, use_bias=True
+    )(dense2)
+    output_1 = tf.keras.layers.Activation('softmax')(output)
+    model = tf.keras.Model(inputs=[input1], outputs=[output_1])
+
+    return model
