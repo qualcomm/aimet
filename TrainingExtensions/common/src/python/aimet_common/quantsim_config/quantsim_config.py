@@ -139,33 +139,51 @@ class OnnxConnectedGraphTypeMapper:
         return self._conn_graph_to_onnx_dict.get(conn_graph_type)
 
 
+_config_file_aliases = {
+    "default": "default_config_per_channel.json",
+    "htp_v66": "htp_quantsim_config_v66.json",
+    "htp_v68": "htp_quantsim_config_v68.json",
+    "htp_v69": "htp_quantsim_config_v69.json",
+    "htp_v73": "htp_quantsim_config_v73.json",
+    "htp_v75": "htp_quantsim_config_v75.json",
+    "htp_v79": "htp_quantsim_config_v79.json",
+    "htp_v81": "htp_quantsim_config_v81.json",
+}
+
+def _get_config_file(alias_or_filename: Optional[str]) -> str:
+    if alias_or_filename is None:
+        alias_or_filename = "default"
+
+    if os.path.exists(alias_or_filename):
+        return os.path.abspath(alias_or_filename)
+
+    config_file = _config_file_aliases.get(alias_or_filename, alias_or_filename)
+    config_file = os.path.join(os.path.dirname(__file__), config_file)
+
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(
+            f"Config file not found: {alias_or_filename}."
+            "Expected a file path or an alias to the standard config files.\n"
+
+            "Config file aliases consist of:"
+            "\n".join([
+                f"* {key}: {value}"
+                for key, value in _config_file_aliases.items()
+            ])
+        )
+
+    return config_file
+
+
 class QuantSimConfigurator(ABC):
     """ Class for parsing and applying quantsim configurations from json config file """
-
-    currdir = os.path.dirname(__file__)
-
-    _aliases = {
-        "default": os.path.join(currdir, "default_config_per_channel.json"),
-        "htp_v66": os.path.join(currdir, "htp_quantsim_config_v66.json"),
-        "htp_v68": os.path.join(currdir, "htp_quantsim_config_v68.json"),
-        "htp_v69": os.path.join(currdir, "htp_quantsim_config_v69.json"),
-        "htp_v73": os.path.join(currdir, "htp_quantsim_config_v73.json"),
-        "htp_v75": os.path.join(currdir, "htp_quantsim_config_v75.json"),
-        "htp_v79": os.path.join(currdir, "htp_quantsim_config_v79.json"),
-        "htp_v81": os.path.join(currdir, "htp_quantsim_config_v81.json"),
-    }
-    del currdir
 
     def __init__(self,
                  config_file: Optional[str],
                  default_data_type: QuantizationDataType,
                  default_output_bw: int,
                  default_param_bw: int):
-        if config_file is None:
-            config_file = "default"
-
-        if config_file in self._aliases:
-            config_file = self._aliases[config_file]
+        config_file = _get_config_file(config_file)
 
         self._quantsim_configs = JsonConfigImporter.import_json_config_file(config_file)
         self._supported_kernels = {}
