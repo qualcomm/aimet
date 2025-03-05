@@ -353,9 +353,8 @@ def apply_requant_mask(sim: QuantizationSimModel,
                 else:
                     logger.warning("The quantizers for %s may remain uninitialized "
                                     "only if sim model is about to use `load_encodings`", str(name))
-            replace_mask_add_in_model(child)
 
-    replace_mask_add_in_model(sim.model)
+    sim.model.apply(replace_mask_add_in_model)
 
     if mask_adds:
         mask_add_act_global_min = min(mask_add_act_mins)
