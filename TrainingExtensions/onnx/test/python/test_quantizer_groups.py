@@ -34,12 +34,18 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+import os
+import tempfile
+
+import onnx
+import torch
 
 from aimet_common.defs import QuantizationDataType
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.amp.quantizer_groups import find_op_groups, find_quantizer_group
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
-from .models.test_models import model_small_mnist, model_with_split, single_residual_model, concat_model, linear_layer_model
+from .models.test_models import model_small_mnist, model_with_split, single_residual_model, concat_model, \
+    linear_layer_model, ConvTransposeConvModel
 
 
 class TestQuantizerGroups:
@@ -145,3 +151,19 @@ class TestQuantizerGroups:
         _, quantizer_groups = find_quantizer_group(sim)
         assert len(quantizer_groups) == 3
         assert quantizer_groups[-1].activation_quantizers[0] == '/layers.1/Gemm_output_0'
+
+    def test_transpose_layer_model(self):
+        model = ConvTransposeConvModel()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_dir = os.path.join(tmpdir, "convTransposeConvModel.onnx")
+            torch.onnx.export(model, torch.randn(1, 3, 9, 9), save_dir,
+                              input_names=['input.1'], output_names=['outputs'])
+            sim = QuantizationSimModel(onnx.load(save_dir))
+            _, quantizer_groups = find_quantizer_group(sim)
+
+            assert len(quantizer_groups) == 3
+            assert len(quantizer_groups[1].activation_quantizers) == 1 and "/conv1/Conv_output_0" == quantizer_groups[1].activation_quantizers[0]
+            assert len(quantizer_groups[1].parameter_quantizers) == 1 and "conv2.weight" == quantizer_groups[1].parameter_quantizers[0]
+
+
+

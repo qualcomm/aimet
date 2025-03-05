@@ -403,5 +403,16 @@ def single_conv_layer_model():
     model = ONNXModel(load_model('./single_conv_layer_model.onnx'))
     return model
 
+class ConvTransposeConvModel(torch.nn.Module):
+    def __init__(self):
+        super(ConvTransposeConvModel, self).__init__()
+        self.conv1 = torch.nn.Conv2d(in_channels=3, out_channels=7, kernel_size=2, stride=1)
+        self.conv2 = torch.nn.Conv2d(in_channels=8, out_channels=4, kernel_size=3, stride=1)
+        self.relu1 = torch.nn.ReLU()
 
-
+    def forward(self, inp):
+        outs = self.conv1(inp)
+        outs = outs.permute(0, 2, 3, 1)
+        outs1 = self.conv2(outs)
+        outs2 = self.relu1(outs1)
+        return outs2
