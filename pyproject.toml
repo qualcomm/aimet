@@ -12,9 +12,11 @@ authors = [
 requires-python = ">=3.8"
 dynamic = ["name", "dependencies", "version", "optional-dependencies", "description"]
 license = {text = "BSD-3-Clause"}
+readme = "README.md"
 
 [project.urls]
-Homepage = "https://quic.github.io/aimet-pages/index.html"
+Homepage = "https://github.com/quic/aimet"
+Documentation = "https://quic.github.io/aimet-pages/releases/latest/index.html"
 
 [tool.scikit-build]
 experimental = true
