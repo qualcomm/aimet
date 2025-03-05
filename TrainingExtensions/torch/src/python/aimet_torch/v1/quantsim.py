@@ -100,7 +100,7 @@ quantized_modules = (
 )
 
 
-class QuantizationSimModel(_QuantizationSimModelBase):
+class QuantizationSimModel(_QuantizationSimModelBase): # pylint: disable=missing-class-docstring
     __doc__ = _QuantizationSimModelBase.__doc__
 
     # pylint: disable=too-many-arguments, too-many-locals, too-many-public-methods

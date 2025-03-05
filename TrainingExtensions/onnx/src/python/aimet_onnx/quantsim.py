@@ -114,6 +114,7 @@ def _apply_constraints(flag: bool):
         _tie_qtzrs = orig_flag
 
 
+# pylint: disable=missing-class-docstring, too-many-arguments, too-many-locals, too-many-instance-attributes
 class QuantizationSimModel:
     __doc__ = f"""
     Class that simulates the quantized model execution on a target hardware backend.
@@ -136,7 +137,6 @@ class QuantizationSimModel:
     :param path: Directory to save the artifacts.
     """
 
-    # pylint: disable=too-many-arguments, too-many-locals, too-many-instance-attributes
     def __init__(self,
                  model: ModelProto,
                  dummy_input: Dict[str, np.ndarray] = None,

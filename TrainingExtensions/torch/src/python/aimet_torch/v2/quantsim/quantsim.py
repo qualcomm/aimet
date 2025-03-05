@@ -162,7 +162,7 @@ def _convert_to_qmodel(model: torch.nn.Module):
     ]))
 
 
-class QuantizationSimModel(_QuantizationSimModelBase):
+class QuantizationSimModel(_QuantizationSimModelBase): # pylint: disable=missing-class-docstring
     __doc__ = f"""
     Class that simulates the quantized model execution on a target hardware backend.
 
