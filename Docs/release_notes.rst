@@ -15,6 +15,7 @@ Release notes
         * Make encoding version 1.0.0 default
     * PyTorch
         * Enabled input quantizers that take external scalar parameter as input
+        * Publish Quantized Weight (QW) and Quantized Weight Activation (QWA) LoRA training flows in feature guide documentation
 
 * Bug Fixes
     * PyTorch
