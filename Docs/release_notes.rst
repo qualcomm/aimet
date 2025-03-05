@@ -10,16 +10,16 @@ Release notes
 =====
 
 * New Features
-    * Common
-        * Use per-channel quantization by default
-        * Make encoding version 1.0.0 default
+    * PyTorch and ONNX
+        * AIMET QuantSim by default uses per-channel quantization for weights instead of per-tensor [Breaking change]
+        * AIMET QuantSim exports encoding json schema version 1.0.0 by default
     * PyTorch
-        * Enabled input quantizers that take external scalar parameter as input
-        * Publish Quantized Weight (QW) and Quantized Weight Activation (QWA) LoRA training flows in feature guide documentation
+        * AIMET now quantizes scalars of type :mod:`torch.nn.Parameter` - these were not quantized in prior releases
+        * Published recipe for performing LoRA QAT - using LoRA adapters to recover quantized accuracy of the base model. Includes recipes for weight-only (WQ) and weight-and-activation (QWA) QAT
 
 * Bug Fixes
     * PyTorch
-        * Fixed adaround caching bug in latest torch >= 2.6
+        * Fixed a bug that prevented Adaround from caching data samples with PyTorch versions 2.6 and later
 
 2.0.0
 =====
