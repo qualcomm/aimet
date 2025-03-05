@@ -33,6 +33,7 @@ jobs:
           AIMET_TORCH_SRC_CODE: "TrainingExtensions/torch/*"
           AIMET_ONNX_SRC_CODE:  "TrainingExtensions/onnx/*"
           AIMET_TF_SRC_CODE:    "TrainingExtensions/tensorflow/*"
+          DOC_SRC_CODE:         "Docs/*"
         shell: bash
         run: |
           set -x
@@ -48,6 +49,8 @@ jobs:
               ONNX_TEST_REQUIRED='true'
             elif [[ $file == $AIMET_TF_SRC_CODE ]]; then
               TF_TEST_REQUIRED='true'
+            elif [[ $file == $DOC_SRC_CODE ]]; then
+              : # Documentation change doesn't require running unit tests; only doc rebuild is needed
             else
               TORCH_TEST_REQUIRED='true'
               ONNX_TEST_REQUIRED='true'
