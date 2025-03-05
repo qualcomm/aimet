@@ -14,7 +14,7 @@ Release notes
         * AIMET QuantSim by default uses per-channel quantization for weights instead of per-tensor [Breaking change]
         * AIMET QuantSim exports encoding json schema version 1.0.0 by default
     * PyTorch
-        * AIMET now quantizes scalars of type :mod:`torch.nn.Parameter` - these were not quantized in prior releases
+        * AIMET now quantizes scalar inputs of type :mod:`torch.nn.Parameter` - these were not quantized in prior releases
         * Published recipe for performing LoRA QAT - using LoRA adapters to recover quantized accuracy of the base model. Includes recipes for weight-only (WQ) and weight-and-activation (QWA) QAT
 
 * Bug Fixes
