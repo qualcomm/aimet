@@ -20,65 +20,39 @@ jobs:
     outputs:
       matrix: ${{ steps.final.outputs.value }}
     steps:
-      - name: Torch variants
+      - name: Variants to be published on PyPI
         run: |
-          if [ "${{ inputs.variant-id }}" == "torch-cpu" ] ; then
+          if [ "${{ inputs.variant-id }}" == "torch-gpu" ] ; then
             VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-                {
-                   "id":              "torch-cpu",
-                   "runs-on":         "ubuntu-latest",
-                   "VER_PYTHON":      "3.10",
-                   "VER_TENSORFLOW":  "",
-                   "VER_TORCH":       "2.1.2",
-                   "VER_ONNXRUNTIME": "",
-                   "VER_CUDA":        "",
-                   "ENABLE_TESTS":    "ON",
-                   "BUILD_TARGETS":   "all"
-                }
-              ]')
-            elif [ "${{ inputs.variant-id }}" == "torch-gpu" ] ; then
-              VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-                {
-                   "id":              "torch-gpu",
-                   "runs-on":         "k8s-gpu",
-                   "VER_PYTHON":      "3.10",
-                   "VER_TENSORFLOW":  "",
-                   "VER_TORCH":       "2.1.2",
-                   "VER_ONNXRUNTIME": "",
-                   "VER_CUDA":        "12.1.1",
-                   "ENABLE_TESTS":    "ON",
-                   "BUILD_TARGETS":   "all"
-                }
-              ]')
-            elif [ "${{ inputs.variant-id }}" == "onnx-cpu" ] ; then
-              VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-                {
-                   "id":              "onnx-cpu",
-                   "runs-on":         "ubuntu-latest",
-                   "VER_PYTHON":      "3.10",
-                   "VER_TENSORFLOW":  "",
-                   "VER_TORCH":       "",
-                   "VER_ONNXRUNTIME": "1.18.1",
-                   "VER_CUDA":        "",
-                   "ENABLE_TESTS":    "ON",
-                   "BUILD_TARGETS":   "all"
-                }
-              ]')
-            elif [ "${{ inputs.variant-id }}" == "onnx-gpu" ] ; then
-              VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
-                {
-                   "id":              "onnx-gpu",
-                   "runs-on":         "k8s-gpu",
-                   "VER_PYTHON":      "3.10",
-                   "VER_TENSORFLOW":  "",
-                   "VER_TORCH":       "",
-                   "VER_ONNXRUNTIME": "1.18.1",
-                   "VER_CUDA":        "11.8.0",
-                   "ENABLE_TESTS":    "ON",
-                   "BUILD_TARGETS":   "all"
-                }
-              ]')  
-            fi
+              {
+                 "id":              "torch-gpu",
+                 "runs-on":         "k8s-gpu",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "2.1.2",
+                 "VER_ONNXRUNTIME": "",
+                 "VER_CUDA":        "12.1.1",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       "pypi"    
+              }
+            ]')
+          elif [ "${{ inputs.variant-id }}" == "onnx-cpu" ] ; then
+            VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "onnx-cpu",
+                 "runs-on":         "ubuntu-latest",
+                 "VER_PYTHON":      "3.10",
+                 "VER_TENSORFLOW":  "",
+                 "VER_TORCH":       "",
+                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_CUDA":        "",
+                 "ENABLE_TESTS":    "ON",
+                 "BUILD_TARGETS":   "all",
+                 "PIP_INDEX":       "pypi"
+              }
+            ]')  
+          fi
           echo "VALUE=$VALUE" >> $GITHUB_ENV
       - name: (Last step) Generate few extra properties for each variant
         id: final
