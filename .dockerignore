@@ -7,3 +7,4 @@
 !packaging/plugins
 !packaging/version.txt
 !pyproject.toml
+!README.md
