@@ -159,11 +159,10 @@ lora_a_layers = [module.lora_A for module in quantsim.model.modules() if isinsta
 lora_b_layers = [module.lora_B for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
 lora_add_layers = [module.add_lora_to_res for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
 lora_mul_layers = [module.mul_scale for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
-lora_layers = chain(lora_a_layers, lora_b_layers, lora_add_layers, lora_mul_layers)
 
 with place_model(model, torch.device("cuda")):
     # Temporarily remove all LoRa layer quantizers, leaving only base model quantizers
-    with remove_all_quantizers(lora_layers):
+    with remove_all_quantizers(lora_a_layers + lora_b_layers + lora_add_layers + lora_mul_layers):
         # Only compute encodings for base model weights, activations
         calibration_callback = generate_calibration_callback(dataloader=train_dataloader, max_iterations=20, device=torch.device("cuda"))
         quantsim.compute_encodings(calibration_callback)
