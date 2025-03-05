@@ -37,24 +37,25 @@
 # pylint: disable=missing-docstring
 
 # [setup]
-from functools import partial
 from itertools import chain
 
 from torch.utils.data import DataLoader
-from transformers import AutoModelForCausalLM, AutoTokenizer, default_data_collator
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, default_data_collator
 from datasets import load_dataset
 
 model_id = "facebook/opt-350m"
 peft_model_id = "ybelkada/opt-350m-lora"
 
-# Load model and LoRa adapter from Huggingface
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-model = AutoModelForCausalLM.from_pretrained(model_id)
-model.load_adapter(peft_model_id)
-
 # This ensures that use_cache and return_dict are always set to false
 # These settings are selected so that the model is JIT-traceable
-model.forward = partial(model.forward, use_cache=False, return_dict=False)
+config = AutoConfig.from_pretrained(model_id)
+config.use_cache = False
+config.return_dict = False
+
+# Load model and LoRa adapter from Huggingface
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(model_id, config=config)
+model.load_adapter(peft_model_id)
 
 # Load train and test splits of dataset
 def tokenize(examples):
@@ -152,14 +153,16 @@ def train_one_epoch(model, dataloader, device=torch.device("cuda")):
 from aimet_torch.utils import place_model
 from aimet_torch.peft import LoraLayer
 import aimet_torch.v2.quantization as Q
-
 from aimet_torch.v2.utils import remove_all_quantizers
 
-lora_layers = [module for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
+lora_a_layers = [module.lora_A for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
+lora_b_layers = [module.lora_B for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
+lora_add_layers = [module.add_lora_to_res for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
+lora_mul_layers = [module.mul_scale for module in quantsim.model.modules() if isinstance(module, LoraLayer)]
 
 with place_model(model, torch.device("cuda")):
     # Temporarily remove all LoRa layer quantizers, leaving only base model quantizers
-    with remove_all_quantizers(lora_layers):
+    with remove_all_quantizers(lora_a_layers + lora_b_layers + lora_add_layers + lora_mul_layers):
         # Only compute encodings for base model weights, activations
         calibration_callback = generate_calibration_callback(dataloader=train_dataloader, max_iterations=20, device=torch.device("cuda"))
         quantsim.compute_encodings(calibration_callback)
