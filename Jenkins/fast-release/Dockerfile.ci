@@ -71,7 +71,14 @@ RUN --mount=type=bind,target=/workspace \
         -DENABLE_CUDA=$([ -z ${VER_CUDA} ]; echo $?) \
        " \
     && ${CONDA} run --name ${CONDA_DEFAULT_ENV} --live-stream \
-        bash -c 'python3 -m piptools compile --output-file=- --resolver=backtracking --constraint=/tmp/constraints.txt --extra=.,dev,test,docs /workspace/pyproject.toml | python3 -m pip install -r /dev/stdin'
+        python3 -m piptools compile -vv \
+                                    --output-file=/tmp/requirements.txt \
+                                    --resolver=backtracking \
+                                    --constraint=/tmp/constraints.txt \
+                                    --extra=.,dev,test,docs \
+                                    /workspace/pyproject.toml \
+    && ${CONDA} run --name ${CONDA_DEFAULT_ENV} --live-stream \
+        python3 -m pip install -r /tmp/requirements.txt
 
 ENV PYTHONPYCACHEPREFIX=/tmp
 
