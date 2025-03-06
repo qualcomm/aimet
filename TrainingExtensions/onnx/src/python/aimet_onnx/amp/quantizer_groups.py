@@ -289,7 +289,7 @@ def _add_input_quantizer_group(op_to_param_dict: Dict, sim: QuantizationSimModel
     for input_op in conn_graph_ops:
         parent_child_op_groups = {input_op.dotted_name: [input_op.dotted_name]}
         if input_op.type in op_types_to_ignore:
-            parent_child_op_groups, map_for_skipped_ops = {input_op.dotted_name: []}, dict()
+            parent_child_op_groups, map_for_skipped_ops = {input_op.dotted_name: []}, {}
             _find_parent_child_op_groups(input_op, parent_child_op_groups, map_for_skipped_ops)
         parameter_quantizers = []
         activation_quantizers = []
