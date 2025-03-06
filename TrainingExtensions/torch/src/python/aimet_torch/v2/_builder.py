@@ -46,7 +46,11 @@ from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, LazyQuantiz
 import aimet_torch.fp_quantization as v1_fp_quantization
 from aimet_torch.v2.quantization.float import FloatQuantizeDequantize
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
-from aimet_torch.v2.quantization.encoding_analyzer import MinMaxEncodingAnalyzer, PercentileEncodingAnalyzer, SqnrEncodingAnalyzer
+from aimet_torch.v2.quantization.encoding_analyzer import (
+    MinMaxEncodingAnalyzer,
+    PercentileEncodingAnalyzer,
+    TfEnhancedEncodingAnalyzer,
+)
 
 
 class _V2LazyQuantizer(LazyQuantizer):
@@ -118,7 +122,7 @@ class _V2LazyQuantizer(LazyQuantizer):
             return PercentileEncodingAnalyzer(shape)
         if self.quant_scheme in (QuantScheme.post_training_tf_enhanced,
                                  QuantScheme.training_range_learning_with_tf_enhanced_init):
-            return SqnrEncodingAnalyzer(shape)
+            return TfEnhancedEncodingAnalyzer(shape)
         raise NotImplementedError(f"Quant scheme {self.quant_scheme} in old quantsim is not supported yet in quantsim v1.5")
 
 
