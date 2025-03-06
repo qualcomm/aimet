@@ -77,7 +77,9 @@ jobs:
                   ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" $target
           done
 
-          PYTEST_TARGETS="./ModelOptimizations/DlQuantization/test ./ModelOptimizations/DlEqualization/test"
+          PYTEST_TARGETS="./ModelOptimizations/DlQuantization/test"
+          PYTEST_TARGETS="$PYTEST_TARGETS ./ModelOptimizations/DlEqualization/test"
+          PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/common/test"
 
           if [ "${{ matrix.VER_TENSORFLOW }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/tensorflow/test"
