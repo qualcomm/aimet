@@ -210,7 +210,8 @@ def _find_parent_child_op_groups(op: Op, parent_child_op_groups: Dict, map_for_s
             else:
                 if consumer.dotted_name not in parent_child_op_groups[dotted_name]:
                     parent_child_op_groups[dotted_name].append(consumer.dotted_name)
-        if not consumers and op.dotted_name in map_for_skipped_ops:
+        if not consumers and op.dotted_name in map_for_skipped_ops and \
+                map_for_skipped_ops[op.dotted_name] not in parent_child_op_groups:
             parent_child_op_groups[map_for_skipped_ops[op.dotted_name]] = []
     else:
         dotted_name = op.dotted_name
@@ -284,11 +285,17 @@ def _add_input_quantizer_group(op_to_param_dict: Dict, sim: QuantizationSimModel
     :param quantizer_groups: Quantizer Groups List
     """
     conn_graph_ops = get_all_input_ops(sim.connected_graph)
+    act_and_param_quants = []
     for input_op in conn_graph_ops:
+        parent_child_op_groups = {input_op.dotted_name: [input_op.dotted_name]}
+        if input_op.type in op_types_to_ignore:
+            parent_child_op_groups, map_for_skipped_ops = {input_op.dotted_name: []}, dict()
+            _find_parent_child_op_groups(input_op, parent_child_op_groups, map_for_skipped_ops)
         parameter_quantizers = []
         activation_quantizers = []
-        if input_op.dotted_name in op_to_param_dict:
-            parameter_quantizers.append(op_to_param_dict[input_op.dotted_name])
+        for child_name in parent_child_op_groups[input_op.dotted_name]:
+            if child_name in op_to_param_dict:
+                parameter_quantizers.append(op_to_param_dict[child_name])
         for input_product in input_op.inputs:
             activation_quantizer = input_product.tensor_dict[input_op]
             if isinstance(activation_quantizer, str) and \
@@ -296,7 +303,19 @@ def _add_input_quantizer_group(op_to_param_dict: Dict, sim: QuantizationSimModel
                     sim.qc_quantize_op_dict[activation_quantizer].enabled:
                 activation_quantizers.append(input_product.tensor_dict[input_op])
         if activation_quantizers or parameter_quantizers:
-            _add_quantizer_group(quantizer_groups, tuple(activation_quantizers), tuple(parameter_quantizers))
+            found_flag = False
+            for quant in act_and_param_quants:
+                if set(quant[0]).intersection(set(activation_quantizers)) or \
+                        set(quant[1]).intersection(set(parameter_quantizers)):
+                    quant[0].extend(activation_quantizers)
+                    quant[1].extend(parameter_quantizers)
+                    found_flag = True
+                    break
+            if not found_flag:
+                act_and_param_quants.append([activation_quantizers, parameter_quantizers])
+
+    for quant in act_and_param_quants:
+        _add_quantizer_group(quantizer_groups, tuple(set(quant[0])), tuple(set(quant[1])))
 
 
 def _add_output_quantizer_group(op_name_to_quantizer_dict: Dict, sim: QuantizationSimModel, quantizer_groups: List):
