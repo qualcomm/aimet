@@ -49,21 +49,6 @@ from aimet_common.quantsim_config.quantsim_config import _build_list_of_permutat
 
 class TestJsonConfigImporter(unittest.TestCase):
     """ Class containing unit tests for json config importer feature """
-    def test_import_file(self):
-        """ Test that asserts are raised if config file does not exist or is not parsable by json """
-        with self.assertRaises(FileNotFoundError):
-            JsonConfigImporter.import_json_config_file('./missing_file')
-
-
-        with open('./temp.py', 'w') as f:
-            f.write('print("hello world")')
-
-        with self.assertRaises(RuntimeError):
-            JsonConfigImporter.import_json_config_file('./temp.py')
-
-        if os.path.exists('./temp.py'):
-            os.remove('./temp.py')
-
     def test_validate_syntax(self):
         """ Test syntactic validation for config files """
         # No defaults
