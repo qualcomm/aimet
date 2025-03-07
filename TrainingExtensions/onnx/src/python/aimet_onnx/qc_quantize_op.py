@@ -748,19 +748,20 @@ class QcQuantizeOp:
                     encoding_mismatch_info.bitwidth_mismatch = (self.bitwidth, encoding_dict['bw'])
             if self.data_type.name.upper() != encoding_dict['dtype']:
                 encoding_mismatch_info.dtype_mismatch = (self.data_type.name, encoding_dict['dtype'])
-            if self.use_symmetric_encodings != is_symmetric:
-                encoding_mismatch_info.is_symmetric_mismatch = (self.use_symmetric_encodings, is_symmetric)
-            if self.use_strict_symmetric != is_strict_symmetric:
-                encoding_mismatch_info.is_strict_symmetric_mismatch = (
-                self.use_strict_symmetric, is_strict_symmetric)
+            if self.data_type == QuantizationDataType.int:
+                if self.use_symmetric_encodings != is_symmetric:
+                    encoding_mismatch_info.is_symmetric_mismatch = (self.use_symmetric_encodings, is_symmetric)
+                if self.use_strict_symmetric != is_strict_symmetric:
+                    encoding_mismatch_info.is_strict_symmetric_mismatch = (
+                    self.use_strict_symmetric, is_strict_symmetric)
 
-            # Unsigned symmetric is a special case because even if the setting is true, the encodings may appear to be
-            # signed symmetric if any observed tensor values were < 0.
-            # In this case, only mark a mismatch if quantizer was set to signed symmetric but an unsigned symmetric
-            # encoding was seen.
-            if self.use_unsigned_symmetric != is_unsigned_symmetric and not self.use_unsigned_symmetric:
-                encoding_mismatch_info.is_unsigned_symmetric_mismatch = (self.use_unsigned_symmetric,
-                                                                         is_unsigned_symmetric)
+                # Unsigned symmetric is a special case because even if the setting is true, the encodings may appear to be
+                # signed symmetric if any observed tensor values were < 0.
+                # In this case, only mark a mismatch if quantizer was set to signed symmetric but an unsigned symmetric
+                # encoding was seen.
+                if self.use_unsigned_symmetric != is_unsigned_symmetric and not self.use_unsigned_symmetric:
+                    encoding_mismatch_info.is_unsigned_symmetric_mismatch = (self.use_unsigned_symmetric,
+                                                                             is_unsigned_symmetric)
 
 
 class GroupedBlockQuantizeDequantize(QcQuantizeOp):

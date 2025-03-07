@@ -1387,6 +1387,18 @@ class TestQuantSim:
             assert activation_encodings['add_input2']
             assert activation_encodings['mul_input2']
 
+    def test_load_float16_encodings(self, tmpdir):
+        model = models_for_tests.weight_matmul_model(10, 10)
+        sim = QuantizationSimModel(model, default_activation_bw=16, default_param_bw=16,
+                                   default_data_type=QuantizationDataType.float)
+        sim.export(tmpdir, "model")
+
+        model = models_for_tests.weight_matmul_model(10, 10)
+        sim = QuantizationSimModel(model, default_activation_bw=16, default_param_bw=16,
+                                   default_data_type=QuantizationDataType.float)
+        load_encodings_to_sim(sim, os.path.join(tmpdir, "model.encodings"), strict=True)
+
+
     def test_gather_exception_rule_for_float_data(self):
         model = models_for_tests.gather_op_model()
         quantsim_config = {
