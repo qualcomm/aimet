@@ -63,8 +63,14 @@ from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
 from ._utils import _GridMixin, _register_signature
 
 
-__all__ = ['AffineQuantizerBase', 'MinMaxQuantizer', 'Quantize', 'QuantizeDequantize',
-           'GroupedBlockQuantizeDequantize']
+__all__ = [
+    'AffineQuantizerBase',
+    'Dequantize',
+    'GroupedBlockQuantizeDequantize',
+    'MinMaxQuantizer',
+    'Quantize',
+    'QuantizeDequantize',
+]
 
 
 
