@@ -303,12 +303,8 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             self.connected_graph = None
 
         if isinstance(quant_scheme, str):
-            if quant_scheme == 'tf':
-                quant_scheme = QuantScheme.post_training_tf
-            elif quant_scheme == 'tf_enhanced':
-                quant_scheme = QuantScheme.post_training_tf_enhanced
-            elif quant_scheme == 'percentile':
-                quant_scheme = QuantScheme.post_training_percentile
+            quant_scheme = QuantScheme.from_str(quant_scheme)
+
         self._quant_scheme = quant_scheme
         self._rounding_mode = rounding_mode
         self._default_output_bw = default_output_bw

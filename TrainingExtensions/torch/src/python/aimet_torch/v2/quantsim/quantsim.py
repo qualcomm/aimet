@@ -244,7 +244,7 @@ class QuantizationSimModel(_QuantizationSimModelBase): # pylint: disable=missing
                  default_data_type: QuantizationDataType = QuantizationDataType.int):
         if not quant_scheme:
             old_default = QuantScheme.post_training_tf_enhanced
-            new_default = QuantScheme.training_range_learning_with_tf_init
+            new_default = QuantScheme.min_max
             msg = _red(f"The default value of 'quant_scheme' has changed from '{old_default}' "
                        f"to '{new_default}' since aimet-torch==2.0.0. "
                        "If you wish to maintain the legacy default behavior, "

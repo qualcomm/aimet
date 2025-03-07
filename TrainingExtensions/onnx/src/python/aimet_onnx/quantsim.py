@@ -140,7 +140,7 @@ class QuantizationSimModel:
     def __init__(self,
                  model: ModelProto,
                  dummy_input: Dict[str, np.ndarray] = None,
-                 quant_scheme: QuantScheme = QuantScheme.post_training_tf,
+                 quant_scheme: QuantScheme = QuantScheme.min_max,
                  rounding_mode: str = 'nearest',
                  default_param_bw: int = 8,
                  default_activation_bw: int = 8,
@@ -148,11 +148,15 @@ class QuantizationSimModel:
                  device: int = 0, config_file: str = None,
                  default_data_type: QuantizationDataType = QuantizationDataType.int,
                  user_onnx_libs: List[str] = None, path: str = None):
+        if isinstance(quant_scheme, str):
+            quant_scheme = QuantScheme.from_str(quant_scheme)
+
         self.model = model
         if not isinstance(model, ONNXModel):
             self.model = ONNXModel(model)
         if not dummy_input:
             dummy_input = make_dummy_input(self.model.model)
+
         self.qc_quantize_op_dict = {}
         self.connected_graph = ConnectedGraph(self.model)
         self._quant_scheme = quant_scheme

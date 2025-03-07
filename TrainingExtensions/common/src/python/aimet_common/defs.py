@@ -46,26 +46,40 @@ from aimet_common.layer_database import Layer
 from aimet_common import libpymo
 
 
-# supported quantization schemes
 class QuantScheme(Enum):
-    """ Enumeration of Quant schemes"""
-
-    post_training_tf = 1
-    """ For a Tensor, the absolute minimum and maximum value of the Tensor are used to compute the Quantization
-    encodings. """
+    """Quantization schemes"""
+    min_max = 1
+    post_training_tf = min_max
     post_training_tf_enhanced = 2
-    """ For a Tensor, searches and selects the optimal minimum and maximum value that minimizes the Quantization Noise.
-    The Quantization encodings are calculated using the selected minimum and maximum value. """
+
+    ### Below are deprecated ###
     training_range_learning_with_tf_init = 3
-    """ For a Tensor, the encoding values are initialized with the post_training_tf scheme. Then, the encodings are
-    learned during training. """
     training_range_learning_with_tf_enhanced_init = 4
-    """ For a Tensor, the encoding values are initialized with the post_training_tf_enhanced scheme. Then, the encodings
-    are learned during training. """
     training_range_learning = 5
     post_training_percentile = 6
-    """ For a Tensor, adjusted minimum and maximum values are selected based on the percentile value passed.
-    The Quantization encodings are calculated using the adjusted minimum and maximum value."""
+    #############################
+
+    @classmethod
+    def from_str(cls, alias: str) -> "QuantScheme":
+        """
+        Returns QuantScheme object from string alias
+        """
+        try:
+            return _quant_scheme_aliases[alias]
+        except KeyError as e:
+            raise ValueError(
+                f"Invalid string literal {alias}"
+                f"Expected one of {list(_quant_scheme_aliases.keys())}"
+            ) from e
+
+
+_quant_scheme_aliases = {
+    "min_max": QuantScheme.min_max,
+    "tf": QuantScheme.min_max,
+    "tf_enhanced": QuantScheme.post_training_tf_enhanced,
+    "percentile": QuantScheme.post_training_percentile,
+}
+
 
 MAP_QUANT_SCHEME_TO_PYMO = {QuantScheme.post_training_tf: libpymo.QuantizationMode.QUANTIZATION_TF,
                             QuantScheme.post_training_tf_enhanced:
