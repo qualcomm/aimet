@@ -122,7 +122,7 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
                             param_bw,
                             param_quant_scheme,
                             param_percentile,
-                            encoding_path):
+                            adaround_encoding_path):
 
         for module in sim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
@@ -135,8 +135,8 @@ class AutoQuant(AutoQuantBase): # pylint: disable=too-many-instance-attributes
                 for quantizer in module.param_quantizers.values():
                     self._set_quantizer_qscheme(quantizer, param_quant_scheme, param_percentile)
 
-        if encoding_path:
-            sim.set_and_freeze_param_encodings(encoding_path)
+        if adaround_encoding_path:
+            sim.set_and_freeze_param_encodings(adaround_encoding_path)
 
         if output_bw == 32:
             self._disable_activation_quantizers(sim)
@@ -430,7 +430,7 @@ class AutoQuantWithAutoMixedPrecision:
             target_acc: float,
             amp_args: _MixedPrecisionArgs,
             results_dir: str,
-            encoding_path: str = None,
+            adaround_encoding_path: str = None,
     ) -> _MixedPrecisionResult:
         """
         Apply mixed-precision and return the highest accuracy.
@@ -441,15 +441,13 @@ class AutoQuantWithAutoMixedPrecision:
         :param model: Model to apply mixed precision.
         :param dummy_input: Dummy input to the model.
         :param target_acc: Minimum evaluation score required.
-        :param encoding_path: Path to parameter encodings file.
+        :param adaround_encoding_path: Path to parameter encodings file.
         :param results_dir: Directory to save the results of AdaRound and mixed precision.
         :return: MixedPrecisionAlgo object.
         """
         if not amp_args:
             raise RuntimeError
-
-        sim = self._auto_quant_base._create_quantsim_and_encodings(model,
-                                                                   encoding_path=encoding_path)
+        sim = self._auto_quant_base._create_quantsim_and_encodings(model, adaround_encoding_path=adaround_encoding_path)
 
         with _mock_v1_quantizers(sim):
             algo = GreedyMixedPrecisionAlgo(
@@ -538,6 +536,7 @@ class AutoQuantWithAutoMixedPrecision:
                 # In this case, do not proceed to AMP and exit immediately.
                 if result["model"] is None and\
                         result["accuracy"] is None and\
+                        result["adaround_encoding_path"] is None and\
                         result["encoding_path"] is None and\
                         result["applied_techniques"] is None:
                     return result
@@ -547,7 +546,7 @@ class AutoQuantWithAutoMixedPrecision:
 
                 if len(candidates) < 2:
                     _logger.info(
-                        "After Adaround, we have only one Adarond-compatible candidate left for AMP (W%dA%d). "
+                        "After Adaround, we have only one Adaround-compatible candidate left for AMP (W%dA%d). "
                         "Return without proceeding to AMP", candidates[0].param_bw, candidates[0].output_bw
                     )
                     return result
@@ -555,14 +554,13 @@ class AutoQuantWithAutoMixedPrecision:
                 model = result["model"]
                 applied_techniques = result["applied_techniques"]
                 # Freeze weight encoding to adaround weight encoding
-                encoding_path = result["encoding_path"] if "adaround" in applied_techniques else None
+                adaround_encoding_path = result["adaround_encoding_path"] if "adaround" in applied_techniques else None
             except Exception:
                 if strict_validation:
                     raise
                 result = {}
                 model = fp32_model
                 applied_techniques = []
-                encoding_path = None
 
             amp_args = copy.copy(self._amp_args)
             if amp_args:
@@ -570,7 +568,7 @@ class AutoQuantWithAutoMixedPrecision:
 
         with eval_manager.session("Automatic Mixed Precision", ptq=True) as sess:
             amp_result = self._apply_mixed_precision(
-                model, dummy_input, target_acc, amp_args, results_dir, encoding_path=encoding_path
+                model, dummy_input, target_acc, amp_args, results_dir, adaround_encoding_path=adaround_encoding_path
             )
             result["pareto_list"] = amp_result.pareto_list
 
@@ -627,16 +625,16 @@ def _adaround_wrapper(apply_adaround_fn: Callable,
                                        key=lambda candidate: (candidate.param_bw, candidate.output_bw))
         # Run Adaround with the lowest-bitwidth candidate
         lowest_candidate = sorted_int_candidates[0]
-        model, encoding_path = apply_adaround(param_bw=lowest_candidate.param_bw)
+        model, adaround_encoding_path = apply_adaround(param_bw=lowest_candidate.param_bw)
 
         # If the lowest candidate is the only INT candidate, return immediately
         if len(sorted_int_candidates) == 1:
-            return model, encoding_path
+            return model, adaround_encoding_path
 
         eval_score = eval_fn(model,
                              param_bw=lowest_candidate.param_bw,
                              output_bw=lowest_candidate.output_bw,
-                             encoding_path=encoding_path)
+                             adaround_encoding_path=adaround_encoding_path)
         _logger.info("W%dA%d eval score after Adaround: %f",
                      lowest_candidate.param_bw,
                      lowest_candidate.output_bw,
@@ -644,7 +642,7 @@ def _adaround_wrapper(apply_adaround_fn: Callable,
 
         # If the lowest candidate satisfy the target accuracy, return immediately
         if eval_score >= target_acc:
-            return model, encoding_path
+            return model, adaround_encoding_path
 
         # If the lowest candidate fails to meet the target accuracy,
         # discard the lowest candidate, apply Adaround to the second-lowest candidate,
@@ -652,12 +650,11 @@ def _adaround_wrapper(apply_adaround_fn: Callable,
         second_lowest_candidate = sorted_int_candidates[1]
 
         if second_lowest_candidate.param_bw != lowest_candidate.param_bw:
-            model = None
-            model, encoding_path = apply_adaround(param_bw=second_lowest_candidate.param_bw)
+            model, adaround_encoding_path = apply_adaround(param_bw=second_lowest_candidate.param_bw)
             eval_score = eval_fn(model,
                                  param_bw=second_lowest_candidate.param_bw,
                                  output_bw=second_lowest_candidate.output_bw,
-                                 encoding_path=encoding_path)
+                                 adaround_encoding_path=adaround_encoding_path)
             _logger.info("W%dA%d eval score after Adaround: %f",
                          second_lowest_candidate.param_bw,
                          second_lowest_candidate.output_bw,
@@ -674,6 +671,6 @@ def _adaround_wrapper(apply_adaround_fn: Callable,
         amp_candidates.clear()
         amp_candidates.extend(adaround_compatible_amp_candidates)
 
-        return model, encoding_path
+        return model, adaround_encoding_path
 
     return _apply_adaround_wrapper
