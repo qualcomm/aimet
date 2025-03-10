@@ -61,7 +61,7 @@ def get_activation_shapes(sim: QuantizationSimModel) -> Dict[str, Any]:
         hooks.append(utils.add_hook_to_get_activation(sim.model.model, name))
     dummy_input = utils.make_dummy_input(sim.model.model)
     # pylint: disable=protected-access
-    sess = QuantizationSimModel.build_session(sim.model.model, sim.providers, sim._user_onnx_libs)
+    sess = QuantizationSimModel.build_session(sim.model.model, ["CPUExecutionProvider"], sim._user_onnx_libs)
     outputs = sess.run(None, dummy_input)
     activation_shapes = {}
     for idx, node in enumerate(sim.model.graph().output):
