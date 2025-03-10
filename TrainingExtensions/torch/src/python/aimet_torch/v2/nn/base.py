@@ -696,16 +696,6 @@ class BaseQuantizationMixin(abc.ABC):
         assert hasattr(self, "bias")
         assert isinstance(self.bias, torch.Tensor)
 
-        bias = self.bias
-        qmin = -2**31
-        qmax = 2**31 - 1
-        bias_qtzr = QuantizeDequantize(shape=bias.shape,
-                                       qmin=qmin,
-                                       qmax=qmax,
-                                       symmetric=True)
-        bias_qtzr.to(dtype=bias.dtype, device=bias.device)
-        self.param_quantizers["bias"] = bias_qtzr
-
         if isinstance(self.param_quantizers["weight"], GroupedBlockQuantizeDequantize):
             # NOTE: In LPBQ, bias encodings should be derived from per-channel weight scale
             weight_scale = self.param_quantizers["weight"].get_per_channel_scale()
@@ -727,6 +717,16 @@ class BaseQuantizationMixin(abc.ABC):
             bias_scale = self._derive_bias_scale(input_scale, weight_scale)
         except NotImplementedError:
             bias_scale = None
+
+        bias = self.bias
+        qmin = -2**31
+        qmax = 2**31 - 1
+        bias_qtzr = QuantizeDequantize(shape=bias_scale.shape if bias_scale is not None else bias.shape,
+                                       qmin=qmin,
+                                       qmax=qmax,
+                                       symmetric=True)
+        bias_qtzr.to(dtype=bias.dtype, device=bias.device)
+        self.param_quantizers["bias"] = bias_qtzr
 
         if bias_scale is not None:
             bias_qtzr.set_range(bias_scale * qmin, bias_scale * qmax)
