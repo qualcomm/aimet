@@ -303,15 +303,13 @@ def _add_input_quantizer_group(op_to_param_dict: Dict, sim: QuantizationSimModel
                     sim.qc_quantize_op_dict[activation_quantizer].enabled:
                 activation_quantizers.append(input_product.tensor_dict[input_op])
         if activation_quantizers or parameter_quantizers:
-            found_flag = False
             for quant in act_and_param_quants:
                 if set(quant[0]).intersection(set(activation_quantizers)) or \
                         set(quant[1]).intersection(set(parameter_quantizers)):
                     quant[0].extend(activation_quantizers)
                     quant[1].extend(parameter_quantizers)
-                    found_flag = True
                     break
-            if not found_flag:
+            else:
                 act_and_param_quants.append([activation_quantizers, parameter_quantizers])
 
     for quant in act_and_param_quants:
