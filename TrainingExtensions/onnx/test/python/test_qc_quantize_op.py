@@ -838,7 +838,9 @@ class TestBlockwiseQuantizeOp:
 
     def test_export_float_encodings(self):
         quant_info = libquant_info.QcQuantizeInfo()
-        qc_quantize_op = QcQuantizeOp(quant_info, bitwidth=16, op_mode=OpMode.quantizeDequantize)
+        qc_quantize_op = QcQuantizeOp(quant_info, bitwidth=16, op_mode=OpMode.quantizeDequantize,
+                                      tensor_quantizer_params=TensorQuantizerParams([2, 2], 0, 1))
+        qc_quantize_op.enable_per_channel_quantization()
         qc_quantize_op.data_type = QuantizationDataType.float
         encodings = qc_quantize_op.export_encodings("0.6.1")
         assert len(encodings) == 1
@@ -849,6 +851,7 @@ class TestBlockwiseQuantizeOp:
         assert exported_encodings.keys() == {"enc_type", "dtype", "bw"}
         assert exported_encodings["dtype"] == "FLOAT"
         assert exported_encodings["bw"] == 16
+        assert exported_encodings["enc_type"] == EncodingType.PER_TENSOR.name
 
     def test_load_float_encodings(self):
         quant_info = libquant_info.QcQuantizeInfo()

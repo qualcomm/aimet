@@ -580,7 +580,7 @@ class QcQuantizeOp:
         raise RuntimeError(f"Exporting data type {self.data_type} not supported")
 
     def _encoding_type(self):
-        if not self.quant_info.usePerChannelMode:
+        if not self.quant_info.usePerChannelMode or self.data_type == QuantizationDataType.float:
             return EncodingType.PER_TENSOR
         if not self.quant_info.blockSize:
             return EncodingType.PER_CHANNEL
