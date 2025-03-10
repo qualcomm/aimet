@@ -721,7 +721,16 @@ class BaseQuantizationMixin(abc.ABC):
         bias = self.bias
         qmin = -2**31
         qmax = 2**31 - 1
-        bias_qtzr = QuantizeDequantize(shape=bias_scale.shape if bias_scale is not None else bias.shape,
+
+        if bias_scale is not None:
+            bias_encoding_shape = bias_scale.shape
+        elif weight_scale is not None and weight_scale.shape == ():
+            # If weight is per-tensor quantized, bias should be also per-tensor quantized
+            bias_encoding_shape = ()
+        else:
+            bias_encoding_shape = bias.shape
+
+        bias_qtzr = QuantizeDequantize(shape=bias_encoding_shape,
                                        qmin=qmin,
                                        qmax=qmax,
                                        symmetric=True)
