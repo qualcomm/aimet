@@ -1253,12 +1253,13 @@ def test_create_int32_bias_quantizer_analytic(qmodule_factory, scale_shape, bloc
 
     expected_bias_scale = input_scale * weight_scale
     if block_size is None:
-        expected_bias_scale = expected_bias_scale.flatten()
+        expected_bias_scale = expected_bias_scale.squeeze()
     else:
         channel_axis = 1 if isinstance(qmodule, nn.modules.conv._ConvTransposeNd) else 0
         non_channel_axes = [axis for axis, _ in enumerate(qmodule.weight.shape) if axis != channel_axis]
         expected_bias_scale = expected_bias_scale.amax(dim=non_channel_axes)
 
+    assert bias_qtzr.get_scale().shape == expected_bias_scale.shape
     assert torch.allclose(bias_qtzr.get_scale(), expected_bias_scale)
 
     """
