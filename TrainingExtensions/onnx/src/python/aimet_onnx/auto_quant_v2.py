@@ -37,7 +37,7 @@
 # pylint: disable=too-many-lines, protected-access
 
 """Automatic Post-Training Quantization V2"""
-
+import contextlib
 import copy
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
@@ -82,6 +82,7 @@ from aimet_common.amp.utils import (
     CANDIDATE_WITH_DTYPE,
     AmpCandidate,
 )
+from aimet_common import quantsim
 
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AutoQuant)
@@ -92,6 +93,19 @@ cache = Cache()
 # NOTE: None means "all".
 NUM_SAMPLES_FOR_PERFORMANCE_EVALUATION = None
 
+
+@contextlib.contextmanager
+def _swap_encoding_version():
+    old_encoding_version = quantsim.encoding_version
+    if old_encoding_version == '1.0.0':
+        _logger.warning('Encoding version 1.0.0 not supported for aimet_onnx AutoQuant. Falling back to version 0.6.1')
+
+    quantsim.encoding_version = '0.6.1'
+
+    try:
+        yield
+    finally:
+        quantsim.encoding_version = old_encoding_version
 
 @dataclass(frozen=True)
 class _QuantSchemePair:
@@ -331,10 +345,11 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
         :param allowed_accuracy_drop: Maximum allowed accuracy drop
         :return: Tuple of (best model, eval score, encoding path)
         """
-        result = self._optimize_helper(self._optimize_main, allowed_accuracy_drop)
-        return result["model"],\
-               result["accuracy"],\
-               result["encoding_path"]
+        with _swap_encoding_version():
+            result = self._optimize_helper(self._optimize_main, allowed_accuracy_drop)
+            return result["model"],\
+                   result["accuracy"],\
+                   result["encoding_path"]
 
     def set_adaround_params(self, adaround_params: AdaroundParameters) -> None:
         """
@@ -1323,17 +1338,18 @@ class AutoQuantWithAutoMixedPrecision:
             Pareto front is None if AMP is not enabled or AutoQuant exits
             without performing AMP.
         """
-        html_template_file = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "auto_quant_v2_diagnostics_template_with_amp.html",
-        )
-        with patch.object(_EvalManager, "HTML_TEMPLATE_FILE", html_template_file):
-            result = self._auto_quant_base._optimize_helper(self._optimize_main,
-                                                            allowed_accuracy_drop)
-            return result["model"],\
-                   result["accuracy"],\
-                   result["encoding_path"],\
-                   result["pareto_list"]
+        with _swap_encoding_version():
+            html_template_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "auto_quant_v2_diagnostics_template_with_amp.html",
+            )
+            with patch.object(_EvalManager, "HTML_TEMPLATE_FILE", html_template_file):
+                result = self._auto_quant_base._optimize_helper(self._optimize_main,
+                                                                allowed_accuracy_drop)
+                return result["model"],\
+                       result["accuracy"],\
+                       result["encoding_path"],\
+                       result["pareto_list"]
 
     def set_adaround_params(self, adaround_params: AdaroundParameters) -> None:
         """
