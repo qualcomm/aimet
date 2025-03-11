@@ -227,11 +227,13 @@ class PtqResult:
     Evaluation results.
     :param tag: Identifier string of the evaluation result.
     :param model_path: Path to the serialized model.
+    :param adaround_encoding_path: Path to the weight encodings obtained during Adaround.
     :param encoding_path: Path to the encoding file.
     :param accuracy: Accuracy of the model.
     """
     model_path: str
     device: torch.device
+    adaround_encoding_path: Optional[str]
     encoding_path: str
     accuracy: float
     applied_techniques: List[str]
@@ -248,6 +250,7 @@ class PtqResult:
         return {
             "model": self.load_model(),
             "accuracy": self.accuracy,
+            "adaround_encoding_path": self.adaround_encoding_path,
             "encoding_path": self.encoding_path,
             "applied_techniques": self.applied_techniques,
         }
@@ -583,7 +586,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             assert acc is not None
             assert model is None
 
-        self._set_ptq_result(sim, acc, applied_techniques, export_kwargs)
+        self._set_ptq_result(sim, acc, applied_techniques, export_kwargs, kwargs.get('adaround_encoding_path'))
 
     def _set_ptq_result(
             self,
@@ -591,6 +594,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             acc: float,
             applied_techniques: List[str],
             export_kwargs: Mapping,
+            adaround_encoding_path: Optional[str]
     ) -> PtqResult:
         """
         Set the result of PTQ. Should be called exactly once inside a with-as block.
@@ -611,6 +615,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
         self._ptq_result = PtqResult(
             model_path=model_path,
             device=device,
+            adaround_encoding_path=adaround_encoding_path,
             encoding_path=encoding_path,
             accuracy=acc,
             applied_techniques=applied_techniques,
@@ -971,7 +976,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
             param_quant_scheme: QuantScheme = None,
             param_percentile: float = None,
             config_file: str = None,
-            encoding_path: str = None,
+            adaround_encoding_path: str = None,
     ) -> _QuantizationSimModelInterface:
         """
         Create a QuantizationSimModel and compute encoding. If `encoding_path` is not None,
@@ -993,7 +998,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
             Only valid if param quant scheme is percentile scheme.
         :param config_file: Path to configuration file for model quantizers.
                             Defaults to self._quantsim_params["config_file"].
-        :param encoding_path: Path to parameter encodings file.
+        :param adaround_encoding_path: Path to parameter encodings file.
         :return: Quantsim model.
         """
         if output_bw is not None:
@@ -1029,7 +1034,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
                                  param_bw,
                                  param_quant_scheme,
                                  param_percentile,
-                                 encoding_path)
+                                 adaround_encoding_path)
 
         if self._has_enabled_quantizers(sim):
             sim.compute_encodings(self.forward_pass_callback, None)
@@ -1050,7 +1055,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
                             param_bw,
                             param_quant_scheme,
                             param_percentile,
-                            encoding_path):
+                            adaround_encoding_path):
         """Configures quantizers in sim with given bitwidths, quantschemes, and percentiles then loads encodings
 
         Any 32 bit quantizers are disabled after loading and freezing encodings
@@ -1121,7 +1126,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
         """
         # NOTE: We dont need to make a deepcopy of model here, since Adaround.apply_adaround
         # internally creates and returns a deepcopy of model.
-        filename_prefix = "adaround"
+        filename_prefix = "adaround_weight"
         adaround_encoding_path = os.path.join(self.results_dir,
                                               "{}.encodings".format(filename_prefix))
 
@@ -1289,6 +1294,7 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
                 return {
                     "model": None,
                     "accuracy": None,
+                    "adaround_encoding_path": None,
                     "encoding_path": None,
                     "applied_techniques": None,
                 }
@@ -1332,10 +1338,10 @@ class AutoQuantBase(abc.ABC): # pylint: disable=too-many-instance-attributes
 
         # AdaRound
         with self.eval_manager.session("AdaRound", ptq=True) as sess:
-            model, encoding_path = self._apply_adaround(model)
+            model, adaround_encoding_path = self._apply_adaround(model)
             if sess.ptq_result is None:
                 sess.set_ptq_result(model=model,
-                                    encoding_path=encoding_path,
+                                    adaround_encoding_path=adaround_encoding_path,
                                     applied_techniques=[*applied_techniques, "adaround"],
                                     export_kwargs=self._export_kwargs)
 
