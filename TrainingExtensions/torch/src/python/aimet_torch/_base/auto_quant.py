@@ -586,7 +586,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             assert acc is not None
             assert model is None
 
-        self._set_ptq_result(sim, acc, applied_techniques, export_kwargs)
+        self._set_ptq_result(sim, acc, applied_techniques, export_kwargs, kwargs.get('adaround_encoding_path'))
 
     def _set_ptq_result(
             self,
@@ -594,6 +594,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             acc: float,
             applied_techniques: List[str],
             export_kwargs: Mapping,
+            adaround_encoding_path: Optional[str]
     ) -> PtqResult:
         """
         Set the result of PTQ. Should be called exactly once inside a with-as block.
@@ -614,7 +615,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
         self._ptq_result = PtqResult(
             model_path=model_path,
             device=device,
-            adaround_encoding_path=None,
+            adaround_encoding_path=adaround_encoding_path,
             encoding_path=encoding_path,
             accuracy=acc,
             applied_techniques=applied_techniques,
