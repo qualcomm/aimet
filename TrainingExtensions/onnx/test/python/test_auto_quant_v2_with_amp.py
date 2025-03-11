@@ -54,9 +54,11 @@ import numpy as np
 from aimet_common.defs import QuantScheme, QuantizationDataType
 
 from aimet_onnx.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
-from aimet_onnx.auto_quant_v2 import AutoQuantWithAutoMixedPrecision as AutoQuant
+from aimet_onnx._deprecated.auto_quant_v2 import (
+    AutoQuantWithAutoMixedPrecision as AutoQuant,
+    PtqResult,
+)
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.auto_quant_v2 import PtqResult
 
 from .models.test_models import conv_relu_model
 
@@ -381,7 +383,7 @@ def patch_ptq_techniques(bn_folded_acc, cle_acc, adaround_acc, amp_final_acc,
         GreedyMixedPrecisionAlgo: MagicMock
 
     with patch("aimet_onnx.auto_quant_v2.QuantizationSimModel", side_effect=_QuantizationSimModel) as mock_qsim, \
-            patch("aimet_onnx.auto_quant_v2.PtqResult", side_effect=_PtqResult) as mock_ptq,\
+            patch("aimet_onnx.auto_quant_v2._PtqResult", side_effect=_PtqResult) as mock_ptq,\
             patch("aimet_onnx.auto_quant_v2.fold_all_batch_norms_to_weight", side_effect=bn_folding) as mock_bn_folding,\
             patch("aimet_onnx.auto_quant_v2.equalize_model", side_effect=cle) as mock_cle,\
             patch("aimet_onnx.auto_quant_v2.Adaround._apply_adaround", side_effect=adaround) as mock_adaround,\

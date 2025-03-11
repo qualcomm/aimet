@@ -212,7 +212,7 @@ def _validate_inputs(model: Union[onnx.ModelProto, ONNXModel], # pylint: disable
     validate_quantsim_inputs(quant_scheme, rounding_mode, output_bw, param_bw)
 
 
-class AutoQuant: # pylint: disable=too-many-instance-attributes
+class _AutoQuant: # pylint: disable=too-many-instance-attributes
     """
     Integrate and apply post-training quantization techniques.
 
@@ -736,7 +736,7 @@ class AutoQuant: # pylint: disable=too-many-instance-attributes
 
 
 @dataclass
-class PtqResult:
+class _PtqResult:
     """
     Evaluation results.
     :param tag: Identifier string of the evaluation result.
@@ -811,7 +811,7 @@ class _EvalManager:
         for sess in self._all_sessions.values():
             sess.reset_status()
 
-    def get_best_ptq_result(self) -> Optional[PtqResult]:
+    def get_best_ptq_result(self) -> Optional[_PtqResult]:
         """
         Get the results with the highest evaluation score among the ptq results evaluated so far.
         :return: The best evaluation result so far.
@@ -1058,7 +1058,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
         return None
 
     @property
-    def ptq_result(self) -> Optional[PtqResult]:
+    def ptq_result(self) -> Optional[_PtqResult]:
         """Getter of self._ptq_result."""
         return self._ptq_result
 
@@ -1101,14 +1101,14 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             sim: QuantizationSimModel,
             acc: float,
             applied_techniques: List[str],
-    ) -> PtqResult:
+    ) -> _PtqResult:
         """
         Set the result of PTQ. Should be called exactly once inside a with-as block.
 
         :param sim: Result of PTQ. The quamtization encoding (compute_encodings()) is
                     assumed to have been computed in advance.
         :param acc: Eval score.
-        :return: PtqResult object.
+        :return: _PtqResult object.
         """
         if self._ptq_result is not None:
             raise RuntimeError(
@@ -1116,7 +1116,7 @@ class _EvalSession: # pylint: disable=too-many-instance-attributes
             )
 
         model_path, encoding_path = self._export(sim)
-        self._ptq_result = PtqResult(
+        self._ptq_result = _PtqResult(
             model_path=model_path,
             encoding_path=encoding_path,
             accuracy=acc,
@@ -1263,7 +1263,7 @@ DEFAULT_NUM_SAMPLES_FOR_AMP_PHASE_1 = EvalCallbackFactory._DEFAULT_SQNR_NUM_SAMP
 DEFAULT_NUM_SAMPLES_FOR_AMP_PHASE_2 = None
 
 
-class AutoQuantWithAutoMixedPrecision:
+class _AutoQuantWithAutoMixedPrecision:
     """
     Integrate and apply post-training quantization techniques.
 
@@ -1303,20 +1303,20 @@ class AutoQuantWithAutoMixedPrecision:
         :param cache_id: ID associated with cache results
         :param strict_validation: Flag set to True by default.When False, AutoQuant will proceed with execution and handle errors internally if possible. This may produce unideal or unintuitive results.
         """
-        self._auto_quant_base = AutoQuant(model=model,
-                                          dummy_input=dummy_input,
-                                          data_loader=data_loader,
-                                          eval_callback=eval_callback,
-                                          param_bw=param_bw,
-                                          output_bw=output_bw,
-                                          quant_scheme=quant_scheme,
-                                          rounding_mode=rounding_mode,
-                                          use_cuda=use_cuda,
-                                          device=device,
-                                          config_file=config_file,
-                                          results_dir=results_dir,
-                                          cache_id=cache_id,
-                                          strict_validation=strict_validation)
+        self._auto_quant_base = _AutoQuant(model=model,
+                                           dummy_input=dummy_input,
+                                           data_loader=data_loader,
+                                           eval_callback=eval_callback,
+                                           param_bw=param_bw,
+                                           output_bw=output_bw,
+                                           quant_scheme=quant_scheme,
+                                           rounding_mode=rounding_mode,
+                                           use_cuda=use_cuda,
+                                           device=device,
+                                           config_file=config_file,
+                                           results_dir=results_dir,
+                                           cache_id=cache_id,
+                                           strict_validation=strict_validation)
         self._data_loader = data_loader
         self._amp_args = None
 
@@ -1628,7 +1628,7 @@ class AutoQuantWithAutoMixedPrecision:
                            "has been finished successfully.")
 
 def _adaround_wrapper(apply_adaround_fn: Callable,
-                      auto_quant: AutoQuant,
+                      auto_quant: _AutoQuant,
                       amp_candidates: List[AmpCandidate],
                       target_acc: float,
                       eval_fn: Callable):
@@ -1707,3 +1707,30 @@ def _adaround_wrapper(apply_adaround_fn: Callable,
         return model, encoding_path
 
     return _apply_adaround_wrapper
+
+
+__deleted_atttributes__ = {
+    "AutoQuant",
+    "AutoQuantWithAutoMixedPrecision",
+    "_EvalSession",
+    "_EvalManager",
+    "_MixedPrecisionArgs",
+    "_MixedPrecisionResult",
+    "PtqResult",
+    "_QuantSchemePair",
+}
+
+def __getattr__(name: str):
+    try:
+        return globals()[name]
+    except KeyError as e:
+        if name in __deleted_atttributes__:
+            # pylint: disable=cyclic-import, import-outside-toplevel
+            from ._deprecated import auto_quant_v2 as deprecated
+            msg = f"'{name}' was deleted since aimet-onnx==2.3. " \
+                  f"If you need to use {name} for backwards compatibility, " \
+                  f"please import from '{deprecated.__name__}'"
+            raise NameError(msg) from e
+
+        msg = f"module '{__name__}' has no attribute '{name}'"
+        raise AttributeError(msg) from e

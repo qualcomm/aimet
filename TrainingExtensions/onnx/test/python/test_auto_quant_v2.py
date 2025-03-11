@@ -51,7 +51,7 @@ import numpy as np
 
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.adaround.adaround_weight import AdaroundParameters
-from aimet_onnx.auto_quant_v2 import AutoQuant, PtqResult
+from aimet_onnx._deprecated.auto_quant_v2 import AutoQuant, PtqResult
 
 from aimet_common.defs import QuantScheme, QuantizationDataType
 
@@ -296,7 +296,7 @@ def patch_ptq_techniques(bn_folded_acc, cle_acc, adaround_acc, fp32_acc=None, w3
          patch("aimet_onnx.auto_quant_v2.fold_all_batch_norms_to_weight", side_effect=bn_folding) as mock_bn_folding,\
          patch("aimet_onnx.auto_quant_v2.equalize_model", side_effect=cle) as mock_cle,\
          patch("aimet_onnx.auto_quant_v2.Adaround._apply_adaround", side_effect=adaround) as mock_adaround, \
-         patch("aimet_onnx.auto_quant_v2.PtqResult", side_effect=_PtqResult) as mock_ptq:
+         patch("aimet_onnx.auto_quant_v2._PtqResult", side_effect=_PtqResult) as mock_ptq:
         try:
             yield Mocks(
                 eval_callback=mock_eval_callback,
@@ -708,8 +708,8 @@ class TestAutoQuant:
                     sim.session['param_quant_scheme'] = kwargs['param_quant_scheme']
                 return sim
 
-            with patch("aimet_onnx.auto_quant_v2.AutoQuant.optimize", optimize), \
-                    patch("aimet_onnx.auto_quant_v2.AutoQuant._create_quantsim_and_encodings", mock_create_quantsim_and_encodings):
+            with patch("aimet_onnx.auto_quant_v2._AutoQuant.optimize", optimize), \
+                    patch("aimet_onnx.auto_quant_v2._AutoQuant._create_quantsim_and_encodings", mock_create_quantsim_and_encodings):
                 auto_quant = AutoQuant(onnx_model,
                                        dummy_input,
                                        unlabeled_data_loader,
