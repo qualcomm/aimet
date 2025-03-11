@@ -550,9 +550,15 @@ class TestAutoQuant:
                 with open(encoding_path) as f:
                     encodings = json.load(f)
 
-                for enc in encodings["param_encodings"] + encodings["activation_encodings"]:
-                    assert enc["bw"] == 16
-                    assert enc["dtype"] == "FLOAT"
+                for param_encodings in encodings["param_encodings"].values():
+                    for enc in param_encodings:
+                        assert enc["bitwidth"] == 16
+                        assert enc["dtype"] == "float"
+
+                for activation_encodings in encodings["activation_encodings"].values():
+                    for enc in activation_encodings:
+                        assert enc["bitwidth"] == 16
+                        assert enc["dtype"] == "float"
 
     def test_auto_quant_invalid_input(self, onnx_model, dummy_input, unlabeled_data_loader):
         auto_quant = AutoQuant(onnx_model,
