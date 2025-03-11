@@ -169,31 +169,12 @@ def optional_dependencies() -> dict[str, list[str]]:
     except ImportError:
         return optional_dependencies
 
-    import sys
-    import sysconfig
-
-    py_impl = sys.implementation
-    assert py_impl.name == "cpython"
-    assert sysconfig.get_platform() == "linux-x86_64"
-
-    major, minor, *_ = py_impl.version
-    platform = f"cp{major}{minor}-cp{major}{minor}-linux_x86_64"
-
     from packaging import version
     v = version.parse(torch.__version__)
-    torch_pkg = f"torch-{v.major}.{v.minor}.{v.micro}"
-
-    if aimet_variant == 'torch-gpu':
-        major, minor = torch.version.cuda.split('.')
-        cuda = f"cu{major}{minor}"
-    else:
-        cuda = "cpu"
-
-    torch_pkg += f"%2B{cuda}"
 
     optional_dependencies.update({
         "v1-deps": [
-            f"torch@https://download.pytorch.org/whl/{cuda}/{torch_pkg}-{platform}.whl",
+            f"torch=={v.major}{v.minor}.*"
         ]
     })
 

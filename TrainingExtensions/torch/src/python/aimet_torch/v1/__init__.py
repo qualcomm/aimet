@@ -69,7 +69,9 @@ def _is_torch_compatible(current: str, required: str):
     cuda, = cuda
     required_cuda, = required_cuda
 
-    if cuda == "cpu":
+    # AIMET is always compatible with libtorch unless
+    # both AIMET and PyTorch are compiled with CUDA
+    if cuda == "cpu" or required_cuda == "cpu":
         return True
 
     # pylint: disable=unused-variable
