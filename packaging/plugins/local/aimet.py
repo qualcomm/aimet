@@ -174,7 +174,7 @@ def optional_dependencies() -> dict[str, list[str]]:
 
     optional_dependencies.update({
         "v1-deps": [
-            f"torch=={v.major}{v.minor}.*"
+            f"torch=={v.major}.{v.minor}.*"
         ]
     })
 
