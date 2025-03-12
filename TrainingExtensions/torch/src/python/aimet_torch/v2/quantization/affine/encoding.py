@@ -546,7 +546,7 @@ class GroupedBlockEncoding(AffineEncoding):
 
     @classmethod
     def _from_affine_encoding(cls, encoding: AffineEncoding) -> "GroupedBlockEncoding":
-        # pylint: disable=import-outside-toplevel, protected-access
+        # pylint: disable=import-outside-toplevel, protected-access, cyclic-import
         from .quantizer import GroupedBlockQuantizeDequantize
 
         if isinstance(encoding, GroupedBlockEncoding):
