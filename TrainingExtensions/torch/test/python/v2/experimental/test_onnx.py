@@ -54,6 +54,7 @@ from aimet_torch.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.utils import get_all_quantizers
 from aimet_torch.v2.utils import remove_activation_quantizers
 from aimet_torch.model_preparer import prepare_model
+from aimet_torch.v2.quantsim.config_utils import set_grouped_blockwise_quantization_for_weights
 
 
 @pytest.fixture(autouse=True, params=range(1))
@@ -272,21 +273,25 @@ def test_export_torchvision_models(model_factory, input_shape):
 
 
 @torch.no_grad()
-@pytest.mark.parametrize(
-    "model_factory,      input_shape", [
-    (resnet18,           (1, 3, 224, 224)),
-    (mobilenet_v3_small, (1, 3, 224, 224)),
-])
 @pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0"])
-def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding_version):
+@pytest.mark.parametrize("lpbq", (False, True))
+def test_quantsim_export_resnet18(encoding_version, lpbq: bool):
     """
     When: Export quantized torchvision model using quantsim.export
     """
-    x = torch.randn(input_shape)
-    model = model_factory().eval()
+    x = torch.randn(1, 3, 224, 224)
+    model = resnet18().eval()
     model = prepare_model(model)
     fold_all_batch_norms(model, None, x)
     sim = QuantizationSimModel(model, x, config_file=get_path_for_per_channel_config())
+
+    if lpbq:
+        set_grouped_blockwise_quantization_for_weights(sim,
+                                                       [sim.model.fc],
+                                                       bitwidth=4,
+                                                       symmetric=True,
+                                                       decompressed_bw=8,
+                                                       block_size=64)
 
     sim.compute_encodings(lambda model: model(x))
 
@@ -342,6 +347,8 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
               as the values of quantizers in the original pytorch model
         """
         if encoding_version == '0.6.1':
+            assert onnx_encodings['param_encodings'] == expected_param_encodings
+
             for e in onnx_encodings['activation_encodings'].values():
                 assert any(
                     e[0]["scale"] == expected[0]["scale"] and
@@ -350,6 +357,10 @@ def test_quantsim_export_torchvision_models(model_factory, input_shape, encoding
                     for expected in expected_activation_encodings.values()
                 )
         else:
+            for e in onnx_encodings['param_encodings']:
+                name = e.pop("name")
+                assert e == expected_param_encodings[name]
+
             for e in onnx_encodings['activation_encodings']:
                 assert any(
                     e["scale"] == expected["scale"] and

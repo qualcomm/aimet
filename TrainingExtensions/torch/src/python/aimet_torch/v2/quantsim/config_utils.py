@@ -325,8 +325,7 @@ def _get_layers_to_quantizer_shapes_for_block_size(sim, condition, block_size):
         for name, shape in invalid_layers_for_block_size:
             error_str = f"Quant layer {name} has shape {shape} which does not align with block_size {block_size}. " \
                         f"Each dimension's shape must divide evenly with the corresponding block size."
-            logger.error(error_str)
-            raise RuntimeError('Quant layers found whose weights do not align with block size.')
+            raise RuntimeError(error_str)
 
     return layer_to_quantizer_shape_dict
 
