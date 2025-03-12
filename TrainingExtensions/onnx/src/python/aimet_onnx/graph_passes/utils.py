@@ -37,8 +37,44 @@
 # pylint: disable=missing-module-docstring
 
 from aimet_common.connected_graph.operation import Op
-from typing import List, Tuple
+from aimet_onnx.utils import ParamUtils, ModelProto
+from typing import List, Tuple, Optional
+from onnx import numpy_helper
+import numpy as np
 
+
+def get_numpy_array(model: ModelProto, param_name: str) -> Optional[np.ndarray]:
+    """
+    returns param value as a numpy array from model if present, otherwise None.
+
+    Args:
+        model (ModelProto): source Model 
+        param_name (str): parameter name to fetch value for
+
+    Returns:
+        Optional[nd.array]: returns nd.array if parameter exists. Otherwise, None.
+    """
+    return numpy_helper.to_array(ParamUtils.get_param_by_name(model, param_name))
+
+def match_pow_2_pattern(op: Op, model: ModelProto) -> bool:
+    """
+    Check if Op is equivalent to pow(x, 2)
+
+    Args:
+        op (Op): Op to check for
+        model (ModelProto): source model
+
+    Returns:
+        bool: Return True if Op is either pow(x, 2) or mul(x, x)
+    """
+    if op.type == "Mul":
+        return op.inputs[0] == op.inputs[1]
+    if op.type == "Pow":
+        if not op.inputs[1].is_const:
+            return False
+
+        return get_numpy_array(model, op.inputs[1].name) == 2
+    return False
 
 def match_and_get_next_op(op: Op, op_type: str) -> Op:
     """

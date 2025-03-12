@@ -41,6 +41,7 @@ from aimet_common.connected_graph.operation import Op
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.graph_passes.utils import get_const_input_names, get_output_names
+from aimet_onnx.utils import ModelProto
 from typing import Dict, List
 
 class GraphPass:
@@ -48,20 +49,20 @@ class GraphPass:
     Abstract GraphPass to iterate over Ops from ConnectedGraph
     """
     @abstractmethod
-    def match_pattern(self, op: Op):
+    def match_pattern(self, op: Op, model: ModelProto):
         """
         Pattern match and collect ops starting from given Op.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def apply_on_op(self, op: Op, op_quantizers: Dict[str, QcQuantizeOp]):
+    def apply_on_op(self, op: Op, model: ModelProto, op_quantizers: Dict[str, QcQuantizeOp]):
         """
         Operate on given op.
         """
         raise NotImplementedError
 
-    def apply_on_graph(self, graph: ConnectedGraph, op_quantizers: Dict[str, QcQuantizeOp]):
+    def apply_on_graph(self, model: ModelProto, graph: ConnectedGraph, op_quantizers: Dict[str, QcQuantizeOp]):
         """
         Iterate over all the ops in ConnectedGraph and call `apply_on_op`
 
@@ -70,16 +71,16 @@ class GraphPass:
             op_quantizers (Dict[str, QcQuantizeOp]): Activation or param name to QuantizeOp mapping
         """
         for op in graph.ordered_ops:
-            self.apply_on_op(op, op_quantizers)
+            self.apply_on_op(op, model, op_quantizers)
 
-    def __call__(self, graph: ConnectedGraph, op_quantizers: Dict[str, QcQuantizeOp]):
+    def __call__(self, model: ModelProto, graph: ConnectedGraph, op_quantizers: Dict[str, QcQuantizeOp]):
         """
         Entry function to iterate over Ops from ConnectedGraph and apply pattern match
         Args:
             graph (ConnectedGraph): Input ConnectedGraph
             op_quantizers (Dict[str, QcQuantizeOp]): Global map of QcQuantizeOp
         """
-        self.apply_on_graph(graph, op_quantizers)
+        self.apply_on_graph(model, graph, op_quantizers)
 
 
 class SupergroupGraphPass(GraphPass):
@@ -110,13 +111,13 @@ class SupergroupGraphPass(GraphPass):
         self.disable_quantizers : List[str] = []
 
     @abstractmethod
-    def match_pattern(self, op: Op):
+    def match_pattern(self, op: Op, model: ModelProto):
         """
         Pattern match and collect ops starting from given Op.
         """
         raise NotImplementedError
 
-    def apply_on_op(self, op: Op, op_quantizers: Dict[str, QcQuantizeOp]):
+    def apply_on_op(self, op: Op, model: ModelProto, op_quantizers: Dict[str, QcQuantizeOp]):
         """
         Check for pattern match for given Op.
         If pattern matches, then invoke disable_quantizers with collected candidate nodes.
@@ -125,7 +126,7 @@ class SupergroupGraphPass(GraphPass):
             op (Op): Op to check for pattern match
             op_quantizers (Dict[str, QcQuantizeOp]): Global map of QcQuantizeOp
         """
-        if self.match_pattern(op):
+        if self.match_pattern(op, model):
             self.update_quantizers(op_quantizers)
 
     def disable_output_quantizers(self, op_list: List[Op]):

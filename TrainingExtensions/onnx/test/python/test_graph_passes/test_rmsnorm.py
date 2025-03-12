@@ -34,6 +34,38 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=missing-module-docstring
-from . import layernorm
-from . import rmsnorm
+from ..models.test_models import rmsnorm_model
+from .utils import assert_on_const_quantizers, assert_on_output_quantizers, get_dummy_qc_quantize_op_dict
+
+from aimet_onnx.meta.connectedgraph import ConnectedGraph
+from aimet_onnx.graph_passes.pass_registry import apply_graph_passes
+import pytest
+
+
+@pytest.mark.parametrize("elementwise_affine", [True, False])
+@pytest.mark.parametrize("mul_for_pow", [True, False])
+@pytest.mark.parametrize("separate_mul_div", [True, False])
+def test_rmsnorm(elementwise_affine, mul_for_pow, separate_mul_div):
+
+    model = rmsnorm_model(dim=32, elementwise_affine=elementwise_affine, mul_for_pow=mul_for_pow, separate_mul_div=separate_mul_div)
+    graph = ConnectedGraph(model)
+    qc_quantize_op_dict = get_dummy_qc_quantize_op_dict(graph)
+
+    quantization_status = [q_op.enabled for q_op in list(qc_quantize_op_dict.values())]
+    # Check if quantization is enabled for all ops
+    assert all(quantization_status)
+    apply_graph_passes(model, graph, qc_quantize_op_dict, ["RMSNormalization"])
+
+    all_ops = graph.ordered_ops
+    # Check if quantization is disabled for RMSNormalization intermediate op outputs
+    assert_on_output_quantizers(all_ops[:-1], qc_quantize_op_dict)
+    # Check if quantization is enabled for last op of RMSNormalization sub-graph
+    assert_on_output_quantizers(all_ops[-1:], qc_quantize_op_dict, enabled=True)
+
+    # Check if quantization is disabled for RMSNormalization sub-graph constant ops except weight
+    if elementwise_affine:
+        layernorm_weight = all_ops[-1]
+        all_ops.remove(layernorm_weight)
+        assert_on_const_quantizers([layernorm_weight], qc_quantize_op_dict, enabled=True)
+
+    assert_on_const_quantizers(all_ops, qc_quantize_op_dict)

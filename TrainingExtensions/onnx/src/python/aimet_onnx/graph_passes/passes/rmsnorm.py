@@ -39,89 +39,94 @@
 from aimet_common.connected_graph.operation import Op
 from aimet_onnx.graph_passes.graph_pass import SupergroupGraphPass
 from aimet_onnx.graph_passes.pass_registry import register_pass
-from aimet_onnx.graph_passes.utils import check_consecutive_ops, get_op_from_outputs, match_and_get_next_op
-from aimet_onnx.utils import ModelProto
+from aimet_onnx.graph_passes.utils import check_consecutive_ops, match_pow_2_pattern, get_numpy_array
 
-@register_pass("LayerNormalization")
-class LayerNormalization(SupergroupGraphPass):
+@register_pass("RMSNormalization")
+class RMSNormalization(SupergroupGraphPass):
     """
-    Disable output quantizers for LayerNormalization intermediate ops:
+    Disable output quantizers for RMSNormalization intermediate ops:
     
-    LayerNormalization(x) = (x - E(x)) / Sqrt(Var(x) + ε) * γ + β
+    RMSNormalization(x) = x / Sqrt(E(x**2) + ε) * γ
 
     Expected graph:
+    Version 1: With x * div ( 1 / denominator )
                 x
             +---+---+
             |       |
+    Mul or Pow(x, 2)|
+            |       |
         ReduceMean  |
-            |       |
-            +---+---+     
-                Sub
-            +---+---+
-            |       |
-            Pow     |
-            |       |
-        ReduceMean  | 
             |       |
             Add     |
             |       |
             Sqrt    |
+        1   |       |
+        +-- Div     |
+            |       |
+            +---+---+ 
+                Mul
+                |
+                Mul (if elementwise_affine=True)
+
+    Version 2: With x * div ( 1 / denominator )
+                x
+            +---+---+
+            |       |
+            |       Mul or Pow(x, 2)
+            |       |
+            |       ReduceMean
+            |       |
+            |       Add
+            |       |
+            |       Sqrt
+            |       |
             +---+---+ 
                 Div
                 |
-                Mul (if affine_transform=True)
-                |
-                Add (if bias=True)
+                Mul (if elementwise_affine=True)
     """
 
     # pylint: disable=too-many-branches, too-many-return-statements
-    def match_pattern(self, op: Op, _: ModelProto):
+    def match_pattern(self, op:Op, model):
         """
         Match LayerNormalization pattern and collect ops to disable output quantizers
         """
-        # E[x]
-        sub_1 = match_and_get_next_op(op, "ReduceMean")
-
-        # x - E[x]
-        if sub_1 is None or sub_1.type != "Sub" or len(sub_1.output_ops) != 2 or sub_1.inputs[0] != op.inputs[0]:
+        # Match Mul(x, x) or Pow(x, 2)
+        match = match_pow_2_pattern(op, model)
+        if not match or len(op.output_ops) != 1:
             return False
 
-        pow_1 = get_op_from_outputs(sub_1, "Pow")
-        div_1 = get_op_from_outputs(sub_1, "Div")
-        if pow_1 is None or div_1 is None:
-            return False
-
-        # Sqrt(Var(x) + ε)
-        match, denominator_ops = check_consecutive_ops(pow_1, ["Pow", "ReduceMean", "Add", "Sqrt"])
+        # Sqrt(E(Pow(x, 2)) + ε)
+        match, denominator_ops = check_consecutive_ops(op.output_ops[0], ["ReduceMean", "Add", "Sqrt", "Div"], validate_last_op_consumers=False)
         if not match:
             return False
 
-        # (x - E(x)) / Sqrt(Var(x) + ε)
-        if div_1.inputs[0].producer != sub_1 or div_1.inputs[1].producer != denominator_ops[-1]:
+        all_ops = [ op ] + denominator_ops
+        div_op = all_ops[-1]
+
+        # Div pattern 1: x * (1 / Sqrt(E(Pow(x, 2)) + ε))
+        if div_op.inputs[0].is_const and get_numpy_array(model, div_op.inputs[0].name) == 1 and len(div_op.output_ops) == 1:
+            mul_op = div_op.output_ops[0]
+            # Mul input order can be anything.
+            input_names = { input.name for input in mul_op.inputs }
+            expected_inputs = { op.inputs[0].name, div_op.outputs[0].name }
+            if mul_op.type != "Mul" or input_names != expected_inputs:
+                return False
+            all_ops.append(mul_op)
+
+        # Div pattern 2: x / Sqrt(E(Pow(x, 2)) + ε)
+        elif div_op.inputs[0] != op.inputs[0]:
             return False
 
-        # Collect quantizers to disable.
-        all_ops = [ op, sub_1 ] + denominator_ops + [ div_1 ]
-        self.disable_output_quantizers(op_list=all_ops[:-1])
-        self.disable_const_quantizers(op_list=all_ops)
+        # Check if weights are present
+        elementwise_affine = False
+        if len(all_ops[-1].output_ops) == 1 and all_ops[-1].output_ops[0].type == "Mul":
+            elementwise_affine = True
+            # Weights are present
+            all_ops.append(all_ops[-1].output_ops[0])
 
-        # LayerNormalization pattern has been matched.
-        # Check if affine_transform is set.
-        # (x - E(x)) / Sqrt(Var(x) + ε) * γ
-        match, div_mul_ops = check_consecutive_ops(div_1, ["Div", "Mul"])
-        if not match:
-            return True
-
-        # NOTE: keep weights quantized
-        self.disable_output_quantizers(op_list=[div_1])
-        self.disable_const_quantizers(op_list=[div_1])
-
-        # (x - E(x)) / Sqrt(Var(x) + ε) * γ + β
-        match, mul_add_ops = check_consecutive_ops(div_mul_ops[-1], ["Mul", "Add"], validate_last_op_consumers=False)
-        if not match:
-            return True
-
-        # NOTE: skip bias quantization
-        self.disable_output_quantizers(op_list=mul_add_ops[:1])
-        self.disable_const_quantizers(op_list=mul_add_ops[-1:])
+        # Disable output quantizers for all the intermediate outputs
+        self.disable_output_quantizers(all_ops[:-1])
+        # Disable all constant quantizers except weights
+        self.disable_const_quantizers(all_ops[:-1] if elementwise_affine else all_ops)
         return True

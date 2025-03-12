@@ -167,7 +167,8 @@
 
   "supergroup_pass_list":
   [
-    "LayerNormalization"  
+    "LayerNormalization",
+    "RMSNormalization"
   ],
   "supergroups":
   [

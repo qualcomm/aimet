@@ -50,7 +50,7 @@ def test_layer_norm(elementwise_affine, bias):
     quantization_status = [q_op.enabled for q_op in list(qc_quantize_op_dict.values())]
     # Check if quantization is enabled for all ops
     assert all(quantization_status)
-    apply_graph_passes(graph, qc_quantize_op_dict, ["LayerNormalization"])
+    apply_graph_passes(model, graph, qc_quantize_op_dict, ["LayerNormalization"])
 
     all_ops = graph.ordered_ops
     # Check if quantization is disabled for LayerNormalization intermediate op outputs
@@ -74,7 +74,7 @@ def test_layer_norm_intermediate():
     quantization_status = [q_op.enabled for q_op in list(qc_quantize_op_dict.values())]
     # Check if quantization is enabled for all ops
     assert all(quantization_status)
-    apply_graph_passes(graph, qc_quantize_op_dict, ["LayerNormalization"])
+    apply_graph_passes(model, graph, qc_quantize_op_dict, ["LayerNormalization"])
 
     all_ops = graph.ordered_ops
     # Check if quantization is disabled for LayerNormalization intermediate op outputs

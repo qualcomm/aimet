@@ -40,6 +40,8 @@ from aimet_onnx.graph_passes.graph_pass import GraphPass
 from typing import Dict, List
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
+from aimet_onnx.utils import ModelProto
+
 
 class PassRegistry:
     """
@@ -96,7 +98,7 @@ def register_pass(name: str, override: bool = False):
     return wrapper
 
 
-def apply_graph_passes(connected_graph:ConnectedGraph, op_to_quantizers:Dict[str, QcQuantizeOp], passes_to_run:List[str]):
+def apply_graph_passes(model: ModelProto, connected_graph:ConnectedGraph, op_to_quantizers:Dict[str, QcQuantizeOp], passes_to_run:List[str]):
     """
     Runs list of graph passes on input ConnectedGraph
 
@@ -110,6 +112,6 @@ def apply_graph_passes(connected_graph:ConnectedGraph, op_to_quantizers:Dict[str
     """
     for p in passes_to_run:
         if p in PASS_REGISTRY:
-            PASS_REGISTRY[p](connected_graph, op_to_quantizers)
+            PASS_REGISTRY[p](model, connected_graph, op_to_quantizers)
         else:
             raise ValueError(f"Graph pass requested but not found: {p}")

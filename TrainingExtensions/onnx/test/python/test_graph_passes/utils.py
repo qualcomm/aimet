@@ -52,9 +52,9 @@ def get_dummy_qc_quantize_op_dict(graph: ConnectedGraph) -> Dict[str, QcQuantize
     """
     qc_quantize_op_dict = {}
     for op in graph.ordered_ops:
-        for input in op.inputs:
-            if input.is_const:
-                qc_quantize_op_dict[input.name] = QcQuantizeOp(
+        for op_input in op.inputs:
+            if op_input.is_const:
+                qc_quantize_op_dict[op_input.name] = QcQuantizeOp(
                     quant_info= libquant_info.QcQuantizeInfo(),
                     op_mode=OpMode.oneShotQuantizeDequantize
                 )
@@ -74,9 +74,9 @@ def assert_on_const_quantizers(ops: List[Op], qc_quantize_op_dict: Dict[str, QcQ
         enabled (bool, optional): Condition to check. Defaults to False.
     """
     for op in ops:
-        for input in op.inputs:
-            if input.is_const and input.name in qc_quantize_op_dict:
-                assert qc_quantize_op_dict[input.name].enabled == enabled
+        for op_input in op.inputs:
+            if op_input.is_const and op_input.name in qc_quantize_op_dict:
+                assert qc_quantize_op_dict[op_input.name].enabled == enabled
 
 def assert_on_output_quantizers(ops: List[Op], qc_quantize_op_dict: Dict[str, QcQuantizeOp], enabled: bool = False):
     """

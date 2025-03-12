@@ -323,6 +323,39 @@ def layernorm_model(elementwise_affine=True, bias=True, include_add_ops = False)
     return model
 
 
+def rmsnorm_model(dim: int = 32, elementwise_affine: bool=True, mul_for_pow: bool=False, separate_mul_div: bool=False):
+    class RMSNorm(nn.Module):
+        def __init__(self, dim, elementwise_affine=True, mul_for_pow=False, separate_mul_div=False):
+            super().__init__()
+            self.weight = torch.randn(dim) if elementwise_affine else None
+            self.variance_epsilon = 0.003
+            self.mul_for_pow = mul_for_pow
+            self.separate_mul_div = separate_mul_div
+
+        def forward(self, x):
+            if self.mul_for_pow:
+                variance = (x * x).mean(-1, keepdim=True)
+            else:
+                variance = x.pow(2).mean(-1, keepdim=True)
+
+            if self.separate_mul_div:
+                x = x * torch.rsqrt(variance + self.variance_epsilon)
+            else:
+                x = x / torch.sqrt(variance + self.variance_epsilon)
+
+            if self.weight is not None:
+                return x * self.weight
+            return x
+
+    torch.manual_seed(10)
+    model = RMSNorm(dim=dim, elementwise_affine=elementwise_affine, mul_for_pow=mul_for_pow, separate_mul_div=separate_mul_div)
+    with tempfile.NamedTemporaryFile(prefix="rmsnorm_", suffix=".onnx") as onnx_model_path:
+        x = torch.randn((1, 3, dim, dim))
+        torch.onnx.export(model, x, onnx_model_path.name, input_names=['input'], output_names=['output'], opset_version=16)
+        model = load_model(onnx_model_path.name)
+        return model
+
+
 def conv_relu_model():
     class ConvReluModel(torch.nn.Module):
         def __init__(self):

@@ -34,4 +34,4 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=
+# pylint: disable=missing-module-docstring
