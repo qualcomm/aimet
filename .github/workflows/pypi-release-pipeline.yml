@@ -129,6 +129,11 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install twine
           ls -al downloads/wheelhouse
+      - name: Re-tag wheel file
+        run: |
+          if [ "${{ inputs.variant-id }}" == "torch-gpu" ] ; then
+             wheel tags --remove --python-tag=py38 --abi-tag=none --platform-tag=any downloads/wheelhouse/*.whl
+          fi
       - name: Push to testpypi
         run: |
           case $DEPLOY in
