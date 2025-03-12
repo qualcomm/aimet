@@ -543,3 +543,47 @@ class GroupedBlockEncoding(AffineEncoding):
             }
 
         return encoding_dict
+
+    @classmethod
+    def _from_affine_encoding(cls, encoding: AffineEncoding) -> "GroupedBlockEncoding":
+        # pylint: disable=import-outside-toplevel, protected-access
+        from .quantizer import GroupedBlockQuantizeDequantize
+
+        if isinstance(encoding, GroupedBlockEncoding):
+            return encoding
+
+        if not isinstance(encoding, AffineEncoding):
+            raise ValueError(
+                "Only AffineEncoding can be converted to GroupedBlockEncoding; "
+                f"got {type(encoding)}"
+            )
+
+        if encoding.block_size is None:
+            raise ValueError(
+                "Only blockwise AffineEncodings can be converted to GroupedBlockEncoding; "
+                f"got block_size={encoding.block_size}"
+            )
+
+        block_axis = encoding._get_block_axis()
+        block_grouping = tuple(
+            s_dim if axis == block_axis else 1 for axis, s_dim in enumerate(encoding.scale.shape)
+        )
+        qtzr = GroupedBlockQuantizeDequantize(shape=encoding.scale.shape,
+                                              bitwidth=encoding.bitwidth,
+                                              symmetric=encoding.symmetry,
+                                              decompressed_bw=encoding.bitwidth * 2,
+                                              block_size=encoding.block_size,
+                                              block_grouping=block_grouping)
+        with torch.no_grad():
+            qtzr.min.copy_(encoding.min)
+            qtzr.max.copy_(encoding.max)
+
+        lpbq_scale = qtzr.get_scale()
+
+        # If encoding.scale is equal to LPBQ scale, we can interpret it as LPBQ
+        if torch.allclose(encoding.scale, lpbq_scale):
+            return qtzr.get_encodings()
+
+        raise ValueError(
+            "Failed to interpret encoding as GroupedBlockEncoding."
+        )

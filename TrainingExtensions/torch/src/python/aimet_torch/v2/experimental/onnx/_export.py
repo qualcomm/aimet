@@ -295,8 +295,8 @@ def _get_encoding_from_onnx_node(onnx_model: onnx.ModelProto, quant_node: onnx.N
     """
     Get encoding from quantization node.
     """
-    # pylint: disable=import-outside-toplevel
-    from aimet_torch.v2.quantization.affine.encoding import AffineEncoding
+    # pylint: disable=import-outside-toplevel, protected-access
+    from aimet_torch.v2.quantization.affine.encoding import AffineEncoding, GroupedBlockEncoding
     assert quant_node.op_type in ONNX_QUANTIZER_OP_TYPES
 
     scale, offset = None, None
@@ -326,7 +326,15 @@ def _get_encoding_from_onnx_node(onnx_model: onnx.ModelProto, quant_node: onnx.N
     centroid = math.ceil((qmin + qmax) / 2)
     symmetry = bool(torch.all(offset == -centroid))
 
-    return AffineEncoding(scale, offset, qmin, qmax, symmetry=symmetry, block_size=block_size)
+    encoding = AffineEncoding(scale, offset, qmin, qmax, symmetry=symmetry, block_size=block_size)
+
+    try:
+        # Try converting affine encoding to LPBQ encoding if possible
+        encoding = GroupedBlockEncoding._from_affine_encoding(encoding)
+    except ValueError:
+        pass
+
+    return encoding
 
 
 def _remove_constants(onnx_model: onnx.ModelProto, constant_names: Iterable[str]):
