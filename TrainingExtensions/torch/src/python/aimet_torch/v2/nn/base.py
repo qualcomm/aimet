@@ -741,6 +741,21 @@ class BaseQuantizationMixin(abc.ABC):
     def _derive_bias_scale(self, input_scale: Optional[torch.Tensor], weight_scale: Optional[torch.Tensor]):
         raise NotImplementedError
 
+    def _fold_param_quantizers(self):
+        """
+        Fold param quantizers into parameters to speed up inference.
+        """
+        self._compute_param_encodings(overwrite=False)
+
+        for param_name, param_qtzr in self.param_quantizers.items():
+            if not param_qtzr:
+                continue
+
+            param = getattr(self, param_name)
+            qdq_param = param_qtzr(param).dequantize()
+            setattr(self, param_name, torch.nn.Parameter(qdq_param))
+            self.param_quantizers[param_name] = None
+
 
 def _remove_quantizers(quantizers, keys):
     orig_quantizers = {key: quantizers[key] for key in keys}

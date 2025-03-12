@@ -1363,3 +1363,39 @@ def test_create_int32_bias_quantizer_statistical(qmodule_factory, scale_shape, b
     qmodule._create_int32_bias_quantizer((input,), None)
     bias_qtzr = qmodule.param_quantizers["bias"]
     assert torch.allclose(bias_qtzr(qmodule.bias), qmodule.bias)
+
+
+def test_fold_param_quantizers():
+    """
+    Given: QuantizedLinear with affine weight quantizer
+    """
+    qlinear = QuantizedLinear(10, 10)
+    weight_qtzr = QuantizeDequantize(shape=(10, 1), qmin=-8, qmax=7, symmetric=True)
+    qlinear.param_quantizers["weight"] = weight_qtzr
+    original_weight = qlinear.weight.clone().detach()
+    original_bias = qlinear.bias.clone().detach()
+
+    """
+    When: Call _fold_param_quantizers
+    """
+    qlinear._fold_param_quantizers()
+
+    """
+    Then:
+      1. Weight quantizer should be removed
+      2. Weight should be overwritten with a pre-quantized weight,
+         which is a DequantizedTensor with AffineEncoding
+      3. Other parameters (bias) shouldn't be affected
+    """
+    assert qlinear.param_quantizers["weight"] is None
+
+    assert isinstance(qlinear.weight, DequantizedTensor)
+    assert isinstance(qlinear.weight, torch.nn.Parameter)
+    assert isinstance(qlinear.weight.encoding, AffineEncoding)
+    assert torch.equal(qlinear.weight.encoding.scale, weight_qtzr.get_scale())
+    assert torch.equal(qlinear.weight.encoding.offset, weight_qtzr.get_offset())
+    assert torch.equal(qlinear.weight, weight_qtzr(original_weight))
+
+    assert isinstance(qlinear.bias, torch.Tensor)
+    assert isinstance(qlinear.bias, torch.nn.Parameter)
+    assert torch.equal(qlinear.bias, original_bias)
