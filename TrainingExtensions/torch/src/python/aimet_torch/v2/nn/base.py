@@ -753,7 +753,7 @@ class BaseQuantizationMixin(abc.ABC):
 
             param = getattr(self, param_name)
             qdq_param = param_qtzr(param).dequantize()
-            setattr(self, param_name, torch.nn.Parameter(qdq_param))
+            setattr(self, param_name, torch.nn.Parameter(qdq_param, requires_grad=param.requires_grad))
             self.param_quantizers[param_name] = None
 
 

@@ -1365,15 +1365,19 @@ def test_create_int32_bias_quantizer_statistical(qmodule_factory, scale_shape, b
     assert torch.allclose(bias_qtzr(qmodule.bias), qmodule.bias)
 
 
-def test_fold_param_quantizers():
+@pytest.mark.cuda
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("requires_grad", [True, False])
+def test_fold_param_quantizers(device, requires_grad):
     """
     Given: QuantizedLinear with affine weight quantizer
     """
-    qlinear = QuantizedLinear(10, 10)
-    weight_qtzr = QuantizeDequantize(shape=(10, 1), qmin=-8, qmax=7, symmetric=True)
+    qlinear = QuantizedLinear(10, 10).to(device)
+    qlinear.weight.requires_grad_(requires_grad)
+    weight_qtzr = QuantizeDequantize(shape=(10, 1), qmin=-8, qmax=7, symmetric=True).to(device)
     qlinear.param_quantizers["weight"] = weight_qtzr
-    original_weight = qlinear.weight.clone().detach()
-    original_bias = qlinear.bias.clone().detach()
+    original_weight = qlinear.weight.clone()
+    original_bias = qlinear.bias.clone()
 
     """
     When: Call _fold_param_quantizers
@@ -1389,6 +1393,8 @@ def test_fold_param_quantizers():
     """
     assert qlinear.param_quantizers["weight"] is None
 
+    assert qlinear.weight.device == original_weight.device
+    assert qlinear.weight.requires_grad == original_weight.requires_grad
     assert isinstance(qlinear.weight, DequantizedTensor)
     assert isinstance(qlinear.weight, torch.nn.Parameter)
     assert isinstance(qlinear.weight.encoding, AffineEncoding)
