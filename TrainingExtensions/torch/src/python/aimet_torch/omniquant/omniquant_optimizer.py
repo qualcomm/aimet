@@ -37,8 +37,8 @@
 """ Optimizer for Omniquant """
 
 import os
-import torch
 import tempfile
+import torch
 
 from aimet_torch.utils import CachedDataset
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -102,15 +102,6 @@ class Omniquant:
                     break
 
         quant_sim.compute_encodings(calibration_wrapper, dataloader)
-
-        with tempfile.TemporaryDirectory() as tempdir:
-            cached_dir = os.path.join(tempdir, 'cached_dataset')
-            cached_dataset = CachedDataset(dataloader, omniquant_config.num_batch, cached_dir)
-
-            cached_fp_dataset, cached_qt_dataset = get_block_inputs(
-                model, quant_sim, ".".join([transformer_processor.transformer_block_list_path, "0"]), cached_dataset, omniquant_config.cache_on_cpu,
-                lambda model, input: model.forward(*input), omniquant_config.num_batch, cached_dir, incl_kwargs=True
-            )
 
         with tempfile.TemporaryDirectory() as tempdir:
             cached_dir = os.path.join(tempdir, 'cached_dataset')
