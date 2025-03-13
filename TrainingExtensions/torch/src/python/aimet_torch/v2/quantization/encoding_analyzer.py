@@ -41,6 +41,7 @@
 
 from abc import ABC, abstractmethod
 import math
+import numpy as np
 import warnings
 from dataclasses import dataclass
 from typing import TypeVar, Generic, Tuple, Optional, List
@@ -136,11 +137,7 @@ class _HistogramObserver(_Observer[_Histogram]):
     def __init__(self, shape: tuple, num_bins: int):
         super().__init__(shape)
         self.num_bins = num_bins
-        self.num_histograms = torch.prod(torch.Tensor(self.shape), dtype=int).item()
-        self.stats = []
-        for _ in range(self.num_histograms):
-            self.stats.append(_Histogram())
-
+        self.stats = [_Histogram() for _ in range(np.prod(self.shape, dtype=np.int32))]
 
     # pylint: disable=too-many-locals
     @torch.no_grad()
@@ -157,16 +154,16 @@ class _HistogramObserver(_Observer[_Histogram]):
             *histogram_shape
         )
 
-        for hist_num in range(self.num_histograms):
+        for i, _ in enumerate(self.stats):
             hist_input = input_tensor
 
             for axis, dim in enumerate(padded_histogram_shape):
                 if dim == 1:
                     continue
                 # elements in current axis, ex: could be W*C, C, or 1 for input_shape [H, W, C]
-                numel = torch.prod(torch.Tensor(padded_histogram_shape[axis+1:]), dtype=int)
+                numel = np.prod(padded_histogram_shape[axis+1:], dtype=np.int32)
                 # index where hist_input at current dimension will be sliced at
-                index = (hist_num // numel) % dim
+                index = (i // numel) % dim
                 hist_input = torch.unsqueeze(torch.select(hist_input, axis, index), axis)
 
             hist_min, hist_max = self._get_min_max(hist_input)
@@ -265,9 +262,7 @@ class _HistogramObserver(_Observer[_Histogram]):
             self.stats[index] = _Histogram(expanded_histogram, expanded_bin_edges, updated_min, updated_max)
 
     def reset_stats(self):
-        self.stats = []
-        for _ in range(self.num_histograms):
-            self.stats.append(_Histogram())
+        self.stats = [_Histogram() for _ in self.stats]
 
     def get_stats(self) -> List[_Histogram]:
         return self.stats
