@@ -316,22 +316,24 @@ def _get_minimum_scale(num_steps: int) -> float:
     """
     Return the minimum scale given the number of steps in the quantization grid.
 
-    We define the minimum scale as the smallest scale
-    that can represent input range [-0.005, 0.005] without clipping error
+    We define the minimum scale the largest s <= float32.eps such that
+    -0.005 <= s * min(x_int) <  s * max(x_int) <= 0.005
 
     Following this rule, the minimum scale in practice will be:
 
       | dtype | minimum scale |
       |-------|---------------|
-      |  int4 |    6.67e-04   |
-      |  int8 |    3.92e-05   | (note: float16.eps =  9.7e-04)
-      | int16 |    1.52e-07   | (note: float32.eps = 1.19e-07)
+      |  int4 |    1.19e-07   | (note: float32.eps = 1.19e-07)
+      |  int8 |    1.19e-07   |
+      | int16 |    1.19e-07   |
       | int32 |    2.33e-12   | (note: float64.eps = 2.22e-16)
 
     """
+    fp32_eps = np.finfo(np.float32).eps
+
     _MINIMUM_RANGE_TO_REPRESENT = (-0.005, 0.005)
     _min, _max = _MINIMUM_RANGE_TO_REPRESENT
-    return (_max - _min) / num_steps
+    return min(fp32_eps, (_max - _min) / num_steps)
 
 
 _INT4_MINIMUM_SCALE = _get_minimum_scale(2**4-1)
