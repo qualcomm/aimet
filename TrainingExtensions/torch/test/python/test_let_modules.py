@@ -149,8 +149,6 @@ def test_linear_linear_pair():
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model 
 
-
-    breakpoint()
     #Creating LET Quantized modules from quantized modules
     # new_module1 = LETModule.from_quantized_module(sim.model.l1)
     # new_module2 = LETModule.from_quantized_module(sim.model.l2)

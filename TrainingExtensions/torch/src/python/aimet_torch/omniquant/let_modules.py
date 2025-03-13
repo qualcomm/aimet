@@ -60,37 +60,28 @@ class LETModule():
 
     def _reset_let_params(self):
         self.prev_scale = None
-        self.prev_shift = None
         self.prev_prep_fn = torch.nn.Identity()
         self.foll_scale = None
-        self.foll_shift = None
         self.foll_prep_fn = torch.nn.Identity()
 
     def get_let_params(self):
         let_params = {
             "prev_scale": self.prev_scale,
-            "prev_shift": self.prev_shift,
             "prev_prep_fn": self.prev_prep_fn,
             "foll_scale": self.foll_scale,
-            "foll_shift": self.foll_shift,
             "foll_prep_fn": self.foll_prep_fn,
         }
         return let_params
 
-    def register_let_params(self, p_scale, p_shift, p_prep_fn, f_scale, f_shift, f_prep_fn):
-        # TODO remove shift, we are doing scale only
+    def register_let_params(self, p_scale, p_prep_fn, f_scale, f_prep_fn):
         self.prev_scale = p_scale
-        self.prev_shift = p_shift
         self.prev_prep_fn = p_prep_fn
         self.foll_scale = f_scale
-        self.foll_shift = f_shift
         self.foll_prep_fn = f_prep_fn
-        if prev_shift is not None or foll_shift is not None:
-            assert self.bias is not None
 
     def fold_let_params(self):
         '''
-        Call (usually at the end) to fold the scale/shifts into the model params
+        Call (usually at the end) to fold the scales into the model params
         '''
         self._fold()
         self._reset_let_params()
@@ -159,29 +150,16 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
         if self.prev_scale is not None:
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
-                if self.prev_shift is not None:
-                    prev_shift = self.prev_prep_fn(self.prev_shift)
-                    bias = bias - prev_shift
                 bias = bias / prev_scale
 
             weight = weight / prev_scale.unsqueeze(1)
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            if bias is not None:
-                if self.foll_shift is not None:
-                    foll_shift = self.fprep_fn(self.foll_shift)
-                    bias = bias + torch.matmul(weight, foll_shift)
-
             weight = weight * foll_scale.unsqueeze(0)
         
         return {'weight': weight, 'bias': bias}
 
-    # TODO remove _get_modified_weight, _get_modified_bias
-    def _get_modified_weight(self):
-        return 2*self.weight
-    def _get_modified_bias(self):
-        return self.bias
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
 
@@ -191,12 +169,6 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
                 super().compute_param_encodings()
                 out = super().__call__(*args, **kwargs)                
                 return out
-
-    #def _fold(self):
-    #    params = self._update_parameters()
-    #    with torch.no_grad(): 
-    #        self.weight.copy_(params['weight'])
-    #        self.bias.copy_(params['bias'])
 
 
 class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
@@ -225,11 +197,6 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
                 print("layer norm ", out)
                 return out #super().__call__(*args, **kwargs)
 
-    def _fold(self):
-        params = self._update_parameters()
-        with torch.no_grad(): 
-            self.weight.copy_(params['weight'])
-            self.bias.copy_(params['bias'])
 
 class Norm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -363,8 +330,4 @@ class LETQuantizedRMSNorm(QuantizedNorm, LETModule):
             print("QuantizedLETLlamaRMSNorm ", out)
             return out #super().__call__(*args, **kwargs)
 
-    def _fold(self):
-        params = self._update_parameters()
-        with torch.no_grad(): 
-            self.weight.copy_(params['weight'])
 
