@@ -181,17 +181,8 @@ class _HistogramObserver(_Observer[_Histogram]):
 
     def _get_min_max(self, hist_input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         isfinite = hist_input.isfinite()
-
-        try:
-            min = hist_input[isfinite].min()
-            max = hist_input[isfinite].max()
-        except RuntimeError as e:
-            if not torch.any(isfinite):
-                raise ValueError(
-                    "Failed to build histogram since the input only consists of infinite and/or NaN."
-                ) from e
-            raise e
-
+        min = torch.where(isfinite, hist_input, float('inf')).min()
+        max = torch.where(isfinite, hist_input, -float('inf')).max()
         return min, max
 
     def _create_bin_edges(self, min_val, max_val, device):
@@ -255,8 +246,8 @@ class _HistogramObserver(_Observer[_Histogram]):
             expanded_histogram += histogram_updates.to(expanded_histogram.device)
 
             # clip inf values to hist_min and hist_max
-            expanded_histogram[0] += torch.sum(curr_input == -float('inf'))
-            expanded_histogram[-1] += torch.sum(curr_input == float('inf'))
+            expanded_histogram[0] += torch.sum(curr_input < updated_min)
+            expanded_histogram[-1] += torch.sum(curr_input > updated_max)
 
             expanded_bin_edges = self._create_bin_edges(min_val=updated_min, max_val=updated_max, device=expanded_histogram.device)
             self.stats[index] = _Histogram(expanded_histogram, expanded_bin_edges, updated_min, updated_max)

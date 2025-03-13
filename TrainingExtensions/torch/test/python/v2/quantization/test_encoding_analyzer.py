@@ -526,12 +526,6 @@ class TestPercentileEncodingAnalyzer():
         assert percentile_encoding_analyzer.observer.stats[0].histogram[0] == old_histogram[0] + 2
         assert percentile_encoding_analyzer.observer.stats[0].histogram[-1] == old_histogram[-1] + 1
 
-    def test_handle_only_inf_inputs(self):
-        percentile_encoding_analyzer = PercentileEncodingAnalyzer(shape=(), num_bins=10, percentile=99)
-        input_tensor_1 = torch.tensor([float('inf'), -float('inf'), -float('inf'), float('inf'), float('inf')])
-        with pytest.raises(ValueError):
-            percentile_encoding_analyzer.update_stats(input_tensor_1)
-
     def test_merge_stats_without_resizing(self, percentile_encoding_analyzer):
         input_tensor_1 = torch.tensor([2., 3.5, 4.2, 5.])
         percentile_encoding_analyzer.update_stats(input_tensor_1)
