@@ -58,6 +58,9 @@ class LETModule():
         if source.param_quantizers:
             self.param_quantizers = copy.deepcopy(source.param_quantizers)
 
+    # TODO : ananmukh check if prep func is needed here.
+    # TODO in a different PRsim.model.state_dict()
+    
     def _reset_let_params(self):
         self.prev_scale = None
         self.prev_prep_fn = torch.nn.Identity()
@@ -73,11 +76,9 @@ class LETModule():
         }
         return let_params
 
-    def register_let_params(self, p_scale, p_prep_fn, f_scale, f_prep_fn):
-        self.prev_scale = p_scale
-        self.prev_prep_fn = p_prep_fn
-        self.foll_scale = f_scale
-        self.foll_prep_fn = f_prep_fn
+    def register_let_params(self, prev_scale = None, foll_scale = None):
+        self.prev_scale = prev_scale
+        self.foll_scale = foll_scale
 
     def fold_let_params(self):
         '''
@@ -162,13 +163,12 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
-
         with patch_attr(self, 'weight', params['weight']):
              with patch_attr(self, 'bias', params['bias']):
-                #TODO ananmukh ask kygyuen
+                # TODO: ananmukh remove compute_param_encodings() from here
+                # call it explicitly in training loop in a later PR
                 super().compute_param_encodings()
-                out = super().__call__(*args, **kwargs)                
-                return out
+                return super().__call__(*args, **kwargs) 
 
 
 class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
@@ -193,9 +193,7 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
         with patch_attr(self, 'weight', params['weight']):
             with patch_attr(self, 'bias', params['bias']):
                 super().compute_param_encodings()
-                out = super().__call__(*args, **kwargs)
-                print("layer norm ", out)
-                return out #super().__call__(*args, **kwargs)
+                return super().__call__(*args, **kwargs)
 
 
 class Norm(torch.nn.Module):

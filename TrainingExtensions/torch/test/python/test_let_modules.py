@@ -136,6 +136,7 @@ class LayernormLinearPair(torch.nn.Module):
         x = self.layernorm(input)
         x = self.linear(x)
         return x
+
 #TODO ananmukh Add a test for linear layer bias = false
 def test_linear_linear_pair():
     input_dim = 1#10
@@ -149,10 +150,7 @@ def test_linear_linear_pair():
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model 
 
-    #Creating LET Quantized modules from quantized modules
-    # new_module1 = LETModule.from_quantized_module(sim.model.l1)
-    # new_module2 = LETModule.from_quantized_module(sim.model.l2)
-
+    #Creating LET Quantized modules from quantized module
     new_module1 = LETQuantizedLinear(sim.model.l1)
     new_module2 = LETQuantizedLinear(sim.model.l2)
 
@@ -163,44 +161,57 @@ def test_linear_linear_pair():
 
     # sim_out_with_no_scale  and sim_out is expected to be similar.
     # No scale has been set, hence no modifications to params
-    assert torch.allclose(sim_out, sim_out_with_no_scale, atol=0.01)
-    #breakpoint()
+    assert torch.equal(sim_out, sim_out_with_no_scale)
+
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
     prev_scale = torch.tensor([2])
-    # TODO use register_let_params instead of setting directly
-    sim.model.l1.prev_scale = torch.tensor([2])
-    sim.model.l2.foll_scale = torch.tensor([20])
+    foll_scale = torch.tensor([20])
+    sim.model.l1.register_let_params(prev_scale = prev_scale)
+    sim.model.l2.register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_radn_scale = sim.model(inp) 
-
-    #breakpoint()
-    orig_wt = sim.model.l1.weight.cpu().detach().clone()
-    sim.model.l1.fold_let_params()
-    new_wts = sim.model.l1.weight.cpu().detach()
-    assert torch.allclose(orig_wt, new_wts * prev_scale)
 
     # Model params are updated due to non zero scale. 
     # Prev and foll scale are different, hence sim_out, out_with_radn_scale are expected to be diferent
     assert not torch.allclose(sim_out, out_with_radn_scale, atol=0.01)
 
-    # # Set scale
-    sim.model.l1.prev_scale = torch.tensor([2])
-    sim.model.l2.foll_scale = torch.tensor([2])
+    # # Set scale to 2
+    prev_scale = torch.tensor([2])
+    foll_scale = torch.tensor([2])
+    sim.model.l1.register_let_params(prev_scale = prev_scale)
+    sim.model.l2.register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
     # sim_out and out_with_scale_2 should be close enough 
-    assert  torch.allclose(sim_out, out_with_scale_2, atol=0.01)
+    assert  torch.allclose(sim_out, out_with_scale_2, atol=1e-05)
 
     #remove the qunatizers
     for name, module in sim.model.named_modules():
         if isinstance(module, QuantizationMixin):
             module._remove_all_quantizers()
-            module.reset_let_params()
 
-    out_quantizers_disabled = sim.model(inp)
-    
-    # out_quantizers_disabled and out_fp should be same as quantizers were disabled
-    assert torch.allclose(out_fp, out_quantizers_disabled, atol=0.01)
+    out_with_quantizers_disabled = sim.model(inp)
+    # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
+    assert torch.equal(out_fp, out_with_quantizers_disabled)
+
+    # Test fold
+    l1_let_params = sim.model.l1.get_let_params()
+    l2_let_params = sim.model.l2.get_let_params()
+    orig_wt_l1 = sim.model.l1.weight.cpu().detach().clone()
+    orig_wt_l2 = sim.model.l2.weight.cpu().detach().clone()
+    # Fold the scale into the weights
+    sim.model.l1.fold_let_params()
+    sim.model.l2.fold_let_params()
+    scale_folded_wts_l1 = sim.model.l1.weight.cpu().detach()
+    scale_folded_wts_l2 = sim.model.l2.weight.cpu().detach()
+
+    '''
+    On folding the LET scale to weights we update the original model weights  
+    l1.w = w/s
+    l2.w = w*s
+    '''
+    assert torch.allclose(orig_wt_l1, scale_folded_wts_l1 * l1_let_params['prev_scale'])
+    assert torch.allclose(orig_wt_l2, scale_folded_wts_l2 / l2_let_params['foll_scale'])
 
 
 
