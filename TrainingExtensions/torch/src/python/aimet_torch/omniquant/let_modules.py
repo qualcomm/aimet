@@ -45,13 +45,20 @@ from torch import nn
 import torch.nn.functional as F
 import copy
 from aimet_torch.v2.utils import patch_attr
+from abc import abstractmethod
 
 
 class LETModule():
-    def __init__(self):
-        self.reset_let_params()
+    def __init__(self, source: QuantizationMixin):
+        self._reset_let_params()  
+        if source.input_quantizers:
+            self.input_quantizers = copy.deepcopy(source.input_quantizers)
+        if source.output_quantizers:
+            self.output_quantizers = copy.deepcopy(source.output_quantizers)
+        if source.param_quantizers:
+            self.param_quantizers = copy.deepcopy(source.param_quantizers)
 
-    def reset_let_params(self):
+    def _reset_let_params(self):
         self.prev_scale = None
         self.prev_shift = None
         self.prev_prep_fn = torch.nn.Identity()
@@ -71,6 +78,7 @@ class LETModule():
         return let_params
 
     def register_let_params(self, p_scale, p_shift, p_prep_fn, f_scale, f_shift, f_prep_fn):
+        # TODO remove shift, we are doing scale only
         self.prev_scale = p_scale
         self.prev_shift = p_shift
         self.prev_prep_fn = p_prep_fn
@@ -81,24 +89,30 @@ class LETModule():
             assert self.bias is not None
 
     def fold_let_params(self):
-        self.fold()
-        self.prev_scale = None
-        self.prev_shift = None
-        self.prev_prep_fn = torch.nn.Identity()
-        self.foll_scale = None
-        self.foll_shift = None
-        self.foll_prep_fn = torch.nn.Identity()
+        '''
+        Call (usually at the end) to fold the scale/shifts into the model params
+        '''
+        self._fold()
+        self._reset_let_params()
 
-    def update_quantizers(self, source):
-        self.input_quantizers = copy.deepcopy(source.input_quantizers)
-        self.output_quantizers = copy.deepcopy(source.output_quantizers)
-        self.param_quantizers = copy.deepcopy(source.param_quantizers)
+    def _fold(self):
+        params = self._update_parameters()
+        with torch.no_grad():
+            for k in params:
+                getattr(self, k).copy_(params[k])
 
-    @staticmethod
+    @abstractmethod
+    def _update_parameters(self):
+        assert "Override in child class"
+    
+   
+    @staticmethod # TODO delete
     def from_quantized_module(module):
         # copy w/bias
         # copy q/dq
         # assert module is a quantized module. in the change L -> QL -> QLetL
+
+        #
         '''
         #https://github.com/quic/aimet/blob/6eea45a3b0f21543188598da8a533b6b4369af8e/TrainingExtensions/torch/src/python/aimet_torch/v2/nn/base.py#L383
         # do using load/statedict?
@@ -108,6 +122,7 @@ class LETModule():
         #breakpoint()
         if isinstance(module, QuantizedLinear):
             new_module = LETQuantizedLinear(module.weight.shape[1], module.weight.shape[0])
+            breakpoint()
         elif isinstance(module, QuantizedLayerNorm):
             new_module = LETQuantizedLayerNorm(module.weight.shape)
         elif isinstance(module, QuantizedNorm):
@@ -126,11 +141,16 @@ class LETModule():
         new_module.load_state_dict(module.state_dict())
         return new_module
 
-
 class LETQuantizedLinear(QuantizedLinear, LETModule):
-    def __quant_init__(self):
-        super().__quant_init__()
-        LETModule.__init__(self)
+
+    # def __quant_init__(self):
+    #     print("Iam called &&&&&&&&&&&&&&&&&&&&&&&&&&&")
+    #     super().__quant_init__()
+
+    def __init__(self, module:QuantizationMixin):
+        super().__init__(module.weight.shape[1], module.weight.shape[0])
+        LETModule.__init__(self, module)
+        self.load_state_dict(module.state_dict())
 
     def _update_parameters(self):
         weight = self.weight
@@ -155,47 +175,28 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
 
             weight = weight * foll_scale.unsqueeze(0)
         
-        updated_params = {}
-        updated_params['weight'] = weight
-        updated_params['bias'] = bias
-        return updated_params
+        return {'weight': weight, 'bias': bias}
 
-
+    # TODO remove _get_modified_weight, _get_modified_bias
     def _get_modified_weight(self):
         return 2*self.weight
     def _get_modified_bias(self):
         return self.bias
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
-        print("params from linear", params)
+
         with patch_attr(self, 'weight', params['weight']):
-            with patch_attr(self, 'bias', params['bias']):
+             with patch_attr(self, 'bias', params['bias']):
+                #TODO ananmukh ask kygyuen
                 super().compute_param_encodings()
-                out = super().__call__(*args, **kwargs)
-                
-                #out1 = F.linear(x, params['weight'], params['bias'])
-                print("linear ", out)
+                out = super().__call__(*args, **kwargs)                
                 return out
-    def fold(self):
-        weight = self.weight
-        bias = self.bias
 
-        if self.prev_scale is not None:
-            prev_scale = self.prev_prep_fn(self.prev_scale)
-            if bias is not None:
-                if self.prev_shift is not None:
-                    prev_shift = self.prev_prep_fn(self.prev_shift)
-                    bias.data -= prev_shift
-                bias.data /= prev_scale
-            weight.data /= prev_scale.unsqueeze(1)
-
-        if self.foll_scale is not None:
-            foll_scale = self.foll_prep_fn(self.foll_scale)
-            if bias is not None:
-                if self.foll_shift is not None:
-                    foll_shift = self.foll_prep_fn(foll_shift)
-                    bias.data += torch.matmul(weight, foll_shift)
-            weight.data *= foll_scale.unsqueeze(0)
+    #def _fold(self):
+    #    params = self._update_parameters()
+    #    with torch.no_grad(): 
+    #        self.weight.copy_(params['weight'])
+    #        self.bias.copy_(params['bias'])
 
 
 class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
@@ -212,10 +213,7 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
             if bias is not None:
                 bias = bias / prev_scale
 
-        updated_params = {}
-        updated_params['weight'] = weight
-        updated_params['bias'] = bias
-        return updated_params
+        return {'weight': weight, 'bias': bias}
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
@@ -227,14 +225,11 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
                 print("layer norm ", out)
                 return out #super().__call__(*args, **kwargs)
 
-    def fold(self):
-        weight = self.weight
-        bias = self.bias
-        if self.prev_scale is not None:
-            prev_scale = self.p_prep_fn(self.prev_scale)
-            weight.data /= prev_scale
-            if bias is not None:
-                bias.data /= prev_scale
+    def _fold(self):
+        params = self._update_parameters()
+        with torch.no_grad(): 
+            self.weight.copy_(params['weight'])
+            self.bias.copy_(params['bias'])
 
 class Norm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -325,10 +320,7 @@ class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
             weight = weight / prev_scale
             bias = bias / prev_scale
 
-        updated_params = {}
-        updated_params['weight'] = weight
-        updated_params['bias'] = bias
-        return updated_params
+        return {'weight': weight, 'bias': bias}
     
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
@@ -340,7 +332,9 @@ class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
                 print("LETQuantizedGemmaNorm ", out)
                 return out
 
-    def fold(self):
+    def _fold(self):
+        # TODO: gemma fold can only be caled once
+        # Gemma needs rethinking
         weight = self.weight
         if self.prev_scale is not None:
             prev_scale = self.prev_prep_fn(self.prev_scale)
@@ -358,9 +352,7 @@ class LETQuantizedRMSNorm(QuantizedNorm, LETModule):
             prev_scale = self.prev_prep_fn(self.prev_scale)
             weight = weight / prev_scale
 
-        updated_params = {}
-        updated_params['weight'] = weight
-        return updated_params
+        return {'weight': weight}
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
@@ -371,9 +363,8 @@ class LETQuantizedRMSNorm(QuantizedNorm, LETModule):
             print("QuantizedLETLlamaRMSNorm ", out)
             return out #super().__call__(*args, **kwargs)
 
-    def fold(self):
-        weight = self.weight
-        if self.prev_scale is not None:
-            prev_scale = self.prev_prep_fn(self.prev_scale)
-            weight.data /= prev_scale
+    def _fold(self):
+        params = self._update_parameters()
+        with torch.no_grad(): 
+            self.weight.copy_(params['weight'])
 
