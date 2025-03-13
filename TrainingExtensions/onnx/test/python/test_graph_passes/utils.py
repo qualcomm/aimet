@@ -34,35 +34,10 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.meta.operations import Op
-from aimet_onnx.qc_quantize_op import QcQuantizeOp, OpMode
+from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from typing import Dict, List
-from aimet_common import libquant_info
 
-def get_dummy_qc_quantize_op_dict(graph: ConnectedGraph) -> Dict[str, QcQuantizeOp]:
-    """
-    Returns dummy output name to op name dictionary
-
-    Args:
-        graph (ConnectedGraph): Input graph
-
-    Returns:
-        Dictionary of quantizer name to QcQuantizeOp
-    """
-    qc_quantize_op_dict = {}
-    for op in graph.ordered_ops:
-        for op_input in op.inputs:
-            if op_input.is_const:
-                qc_quantize_op_dict[op_input.name] = QcQuantizeOp(
-                    quant_info= libquant_info.QcQuantizeInfo(),
-                    op_mode=OpMode.oneShotQuantizeDequantize
-                )
-
-        for output in op.outputs:
-            qc_quantize_op_dict[output.name] = QcQuantizeOp(quant_info = libquant_info.QcQuantizeInfo(), op_mode=OpMode.oneShotQuantizeDequantize)
-
-    return qc_quantize_op_dict
 
 def assert_on_const_quantizers(ops: List[Op], qc_quantize_op_dict: Dict[str, QcQuantizeOp], enabled: bool = False):
     """

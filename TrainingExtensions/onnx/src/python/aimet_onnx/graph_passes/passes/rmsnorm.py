@@ -40,6 +40,7 @@ from aimet_common.connected_graph.operation import Op
 from aimet_onnx.graph_passes.graph_pass import SupergroupGraphPass
 from aimet_onnx.graph_passes.pass_registry import register_pass
 from aimet_onnx.graph_passes.utils import check_consecutive_ops, match_pow_2_pattern, get_numpy_array
+from aimet_onnx.utils import ModelProto
 
 @register_pass("RMSNormalization")
 class RMSNormalization(SupergroupGraphPass):
@@ -87,7 +88,7 @@ class RMSNormalization(SupergroupGraphPass):
     """
 
     # pylint: disable=too-many-branches, too-many-return-statements
-    def match_pattern(self, op:Op, model):
+    def match_pattern(self, op: Op, model: ModelProto):
         """
         Match LayerNormalization pattern and collect ops to disable output quantizers
         """

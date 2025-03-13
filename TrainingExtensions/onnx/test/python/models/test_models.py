@@ -298,12 +298,12 @@ def linear_layer_model():
     return model
 
 
-def layernorm_model(elementwise_affine=True, bias=True, include_add_ops = False):
+def layernorm_model(dim=32, elementwise_affine=True, bias=True, include_add_ops = False):
     class LayerNormModel(torch.nn.Module):
-        def __init__(self, include_add_ops = False):
+        def __init__(self, include_add_ops = False, dim=32):
             super(LayerNormModel, self).__init__()
             self.include_add_ops = include_add_ops
-            self.layer_norm = torch.nn.LayerNorm(32, elementwise_affine=elementwise_affine, bias=bias)
+            self.layer_norm = torch.nn.LayerNorm(dim, elementwise_affine=elementwise_affine, bias=bias)
 
         def forward(self, x: torch.Tensor):
             if self.include_add_ops:
@@ -314,9 +314,9 @@ def layernorm_model(elementwise_affine=True, bias=True, include_add_ops = False)
             return x
 
     torch.manual_seed(10)
-    model = LayerNormModel(include_add_ops=include_add_ops).eval()
+    model = LayerNormModel(dim=dim, include_add_ops=include_add_ops).eval()
     with tempfile.NamedTemporaryFile(prefix="layernorm_", suffix=".onnx") as onnx_model_path:
-        x = torch.randn((1, 3, 32, 32))
+        x = torch.randn((1, 3, dim, dim))
         torch.onnx.export(model, x, onnx_model_path.name, input_names=['input'], output_names=['output'], opset_version=16)
         model = load_model(onnx_model_path.name)
 

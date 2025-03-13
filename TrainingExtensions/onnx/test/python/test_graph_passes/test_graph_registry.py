@@ -34,18 +34,59 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-from aimet_onnx.graph_passes.pass_registry import register_pass, apply_graph_passes
+from aimet_common.connected_graph.operation import Op
+from aimet_onnx.graph_passes.pass_registry import register_pass
 from aimet_onnx.graph_passes.graph_pass import SupergroupGraphPass
 from aimet_onnx.graph_passes.utils import get_const_input_names, get_output_names
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.utils import ModelProto
-from aimet_common.connected_graph.operation import Op
+from aimet_onnx.quantsim import QuantizationSimModel, QuantScheme
 
+import numpy as np
+import json
 import pytest
+import tempfile
 
 from ..models.models_for_tests import build_dummy_model
-from .utils import get_dummy_qc_quantize_op_dict
 
+
+def _generate_quantsim_config(supergroup_pass_name: str, file_path: str) -> dict:
+    """
+    Writes QuantSim config with provided supergroup pass name to provided file path
+
+    Args:
+        supergroup_pass_name (str): supergroup pass name to set
+        file_path (str): path to write json config file to
+    """
+    quantsim_config = {
+        "defaults": {
+            "ops": {
+                "is_output_quantized": "True",
+                "is_symmetric": "False"
+            },
+            "params": {
+                "is_quantized": "False",
+                "is_symmetric": "False"
+            }
+        },
+        "params": {},
+        "op_type": {},
+        "supergroup_pass_list": [supergroup_pass_name],
+        "supergroups": [
+            {
+                "op_list": ["Conv", "Relu"]
+            },
+            {
+                "op_list": ["Relu", "MaxPool"]
+            },
+        ],
+        "model_input": {
+            "is_input_quantized": "True"
+        },
+        "model_output": {}
+    }
+    with open(file_path, 'w') as f:
+        json.dump(quantsim_config, f)
 
 @register_pass("DummyTestGraphPass")
 class DummyTestGraphPass(SupergroupGraphPass):
@@ -55,21 +96,27 @@ class DummyTestGraphPass(SupergroupGraphPass):
 
 def test_register_and_apply_graph_pass():
     model = build_dummy_model()
-    graph = ConnectedGraph(model)
-    qc_quantize_ops = get_dummy_qc_quantize_op_dict(graph)
-    apply_graph_passes(model, graph, qc_quantize_ops, ["DummyTestGraphPass"])
-    qc_quantize_ops = list(qc_quantize_ops.values())
-    quantization_status = [q_op.enabled for q_op in qc_quantize_ops]
+    input_data = { "x" : np.random.rand(1, 3, 32, 32).astype(np.float32) }
 
-    # Ensure all output quantizers are disabled
-    assert not any(quantization_status)
+    with tempfile.NamedTemporaryFile(prefix="quantsim_config", suffix=".json") as config_file:
+        _generate_quantsim_config("DummyTestGraphPass", config_file.name)
+        sim = QuantizationSimModel(model, input_data, quant_scheme=QuantScheme.post_training_tf, default_param_bw=8,
+            default_activation_bw=8, config_file=config_file.name)
+
+        graph = ConnectedGraph(model)
+        disable_quantizers = set(get_const_input_names(graph.ordered_ops) + get_output_names(graph.ordered_ops))
+        for name, quantizer in sim.qc_quantize_op_dict.items():
+            # Ensure quantizers are disabled if they are in disable_quantizers set
+            assert quantizer.enabled ^ (name in disable_quantizers)
 
 def test_error_on_unregistered_graph_pass():
     model = build_dummy_model()
-    graph = ConnectedGraph(model)
-    qc_quantize_ops = get_dummy_qc_quantize_op_dict(graph)
 
     with pytest.raises(
         ValueError, match="Graph pass requested but not found:"
     ):
-        apply_graph_passes(model, graph, qc_quantize_ops, ["UnRegisteredGraphPass"])
+        with tempfile.NamedTemporaryFile(prefix="quantsim_config", suffix=".json") as config_file:
+            _generate_quantsim_config("UnsupportedGraphPass", config_file.name)
+            input_data = { "x" : np.random.rand(1, 3, 32, 32).astype(np.float32) }
+            _ = QuantizationSimModel(model, input_data, quant_scheme=QuantScheme.post_training_tf, default_param_bw=8,
+                                default_activation_bw=8, config_file=config_file.name)

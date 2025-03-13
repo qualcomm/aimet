@@ -148,7 +148,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
 
         # Run supergroup passes if specified in config
         supergroup_pass_list = self._get_supergroup_pass_list()
-        apply_graph_passes(self._model, self._conn_graph, self._quant_ops_dict, supergroup_pass_list)
+        apply_graph_passes(self._model.model, self._conn_graph, self._quant_ops_dict, supergroup_pass_list)
 
     def _map_quantizers_to_ops(self) -> Dict[str, OpToQuantizers]:
         """

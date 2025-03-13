@@ -34,55 +34,57 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-from ..models.test_models import layernorm_model
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
-from aimet_onnx.graph_passes.pass_registry import apply_graph_passes
-from .utils import assert_on_const_quantizers, assert_on_output_quantizers, get_dummy_qc_quantize_op_dict
+from aimet_onnx.quantsim import QuantizationSimModel, QuantScheme
+
+import numpy as np
 import pytest
+
+from ..models.test_models import layernorm_model
+from .utils import assert_on_const_quantizers, assert_on_output_quantizers
+
 
 @pytest.mark.parametrize("elementwise_affine", [True, False])
 @pytest.mark.parametrize("bias", [True, False])
 def test_layer_norm(elementwise_affine, bias):
-    model = layernorm_model(elementwise_affine=elementwise_affine, bias=bias)
+    dim = 32
+    model = layernorm_model(dim=dim, elementwise_affine=elementwise_affine, bias=bias)
     graph = ConnectedGraph(model)
-    qc_quantize_op_dict = get_dummy_qc_quantize_op_dict(graph)
 
-    quantization_status = [q_op.enabled for q_op in list(qc_quantize_op_dict.values())]
-    # Check if quantization is enabled for all ops
-    assert all(quantization_status)
-    apply_graph_passes(model, graph, qc_quantize_op_dict, ["LayerNormalization"])
+    input_data = { "x" : np.random.rand(1, 3, dim, dim).astype(np.float32) }
+    sim = QuantizationSimModel(model, input_data, quant_scheme=QuantScheme.post_training_tf, default_param_bw=8,
+                            default_activation_bw=8, config_file="htp_v81")
 
     all_ops = graph.ordered_ops
     # Check if quantization is disabled for LayerNormalization intermediate op outputs
-    assert_on_output_quantizers(all_ops[:-1], qc_quantize_op_dict)
+    assert_on_output_quantizers(all_ops[:-1], sim.qc_quantize_op_dict)
     # Check if quantization is enabled for last op of LayerNormalization sub-graph
-    assert_on_output_quantizers(all_ops[-1:], qc_quantize_op_dict, enabled=True)
+    assert_on_output_quantizers(all_ops[-1:], sim.qc_quantize_op_dict, enabled=True)
 
     # Check if quantization is disabled for LayerNormalization sub-graph constant ops except layernorm.weight
     if elementwise_affine:
         layernorm_weight = all_ops[-2 if bias else -1]
         all_ops.remove(layernorm_weight)
-        assert_on_const_quantizers([layernorm_weight], qc_quantize_op_dict, enabled=True)
+        assert_on_const_quantizers([layernorm_weight], sim.qc_quantize_op_dict, enabled=True)
 
-    assert_on_const_quantizers(all_ops, qc_quantize_op_dict)
+    assert_on_const_quantizers(all_ops, sim.qc_quantize_op_dict)
 
 def test_layer_norm_intermediate():
-    model = layernorm_model(include_add_ops=True)
+    dim = 32
+    model = layernorm_model(dim=dim, include_add_ops=True)
     graph = ConnectedGraph(model)
-    qc_quantize_op_dict = get_dummy_qc_quantize_op_dict(graph)
 
-    quantization_status = [q_op.enabled for q_op in list(qc_quantize_op_dict.values())]
-    # Check if quantization is enabled for all ops
-    assert all(quantization_status)
-    apply_graph_passes(model, graph, qc_quantize_op_dict, ["LayerNormalization"])
+    input_data = { "x" : np.random.rand(1, 3, dim, dim).astype(np.float32) }
+    sim = QuantizationSimModel(model, input_data, quant_scheme=QuantScheme.post_training_tf, default_param_bw=8,
+                            default_activation_bw=8, config_file="htp_v81")
 
     all_ops = graph.ordered_ops
     # Check if quantization is disabled for LayerNormalization intermediate op outputs
-    assert_on_output_quantizers(all_ops[1:-2], qc_quantize_op_dict)
+    assert_on_output_quantizers(all_ops[1:-2], sim.qc_quantize_op_dict)
     # Check if quantization is enabled for last op of LayerNormalization sub-graph
-    assert_on_output_quantizers(all_ops[-2:-1], qc_quantize_op_dict, enabled=True)
+    assert_on_output_quantizers(all_ops[-2:-1], sim.qc_quantize_op_dict, enabled=True)
     # Check if quantization is disabled for LayerNormalization sub-graph constant ops except layernorm.weight
     layernorm_weight = all_ops[-3]
     all_ops.remove(layernorm_weight)
-    assert_on_const_quantizers(all_ops, qc_quantize_op_dict)
-    assert_on_const_quantizers([layernorm_weight], qc_quantize_op_dict, enabled=True)
+    assert_on_const_quantizers(all_ops, sim.qc_quantize_op_dict)
+    assert_on_const_quantizers([layernorm_weight], sim.qc_quantize_op_dict, enabled=True)
