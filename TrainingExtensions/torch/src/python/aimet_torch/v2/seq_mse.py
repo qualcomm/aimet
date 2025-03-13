@@ -47,10 +47,8 @@ from aimet_common.utils import AimetLogger
 from aimet_torch._base.seq_mse import SequentialMseBase, SeqMseParams, SUPPORTED_MODULES
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase, QuantizeDequantize, GroupedBlockQuantizeDequantize
-from aimet_torch.v2.quantization.affine.backends import torch_builtins
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.utils import reduce, _is_reducible
 from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
 
 __all__ = [
@@ -187,8 +185,15 @@ class SequentialMse(SequentialMseBase):
         quantize_dequantize = QuantizeDequantize(quantizer.shape, quantizer.bitwidth, quantizer.symmetric,
                                                  block_size=quantizer.block_size).to(x_min.device)
 
+        min_tensor = x_min
+        max_tensor = x_max
+        if quantizer.block_size and quantizer.block_size[1] != -1:
+            min_tensor = min_tensor.repeat_interleave(quantizer.block_size[1], 1)
+            max_tensor = max_tensor.repeat_interleave(quantizer.block_size[1], 1)
+
+
         with quantize_dequantize.compute_encodings():
-            _ = quantize_dequantize(torch.stack([x_min, x_max])) # pylint: disable=not-callable
+            _ = quantize_dequantize(torch.stack([min_tensor, max_tensor])) # pylint: disable=not-callable
                                                                  # (pylint throws a false alarm)
 
         quantizer.set_range(quantize_dequantize.min, quantize_dequantize.max)
@@ -247,46 +252,8 @@ class SequentialMse(SequentialMseBase):
         if not isinstance(quant_module, (torch.nn.Conv2d, torch.nn.Linear)):
             raise ValueError('Unsupported module: ', quant_module)
 
-        block_size = quant_module.param_quantizers['weight'].block_size
-        if block_size is None:
-            # Per tensor or per channel case
-            assert _is_reducible(quant_module.weight.shape, quant_module.param_quantizers['weight'].shape)
-            if cls._is_symmetric_quantizer(quant_module.param_quantizers['weight']):
-                max_tensor = reduce(quant_module.weight.abs(),
-                                    quant_module.param_quantizers['weight'].shape, torch.max).values
-                min_tensor = -max_tensor
-            else:
-                max_tensor = reduce(quant_module.weight,
-                                    quant_module.param_quantizers['weight'].shape, torch.max).values
-                min_tensor = reduce(quant_module.weight,
-                                    quant_module.param_quantizers['weight'].shape, torch.min).values
-        else:
-            # Reshape tensor so each dimension is split into (num_blocks, block_size)
-            weight = torch_builtins.reshape_tensor_for_blocks(quant_module.weight,
-                                                              quant_module.param_quantizers['weight'].shape,
-                                                              block_size)
-            indices_to_reduce = cls._get_indices_to_reduce(block_size, weight)
-
-            # Obtain max_tensor and min_tensor which are equivalent in shape to the original weight, but with block
-            # values modified to be the block minimum and maximum.
-            # For example assume the original weight is 1 output channel and 6 input channels, with block size 2:
-            # Original weight:           [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
-            # Then, max tensor would be: [[2.0, 2.0, 4.0, 4.0, 6.0, 6.0]]
-            if cls._is_symmetric_quantizer(quant_module.param_quantizers['weight']):
-                max_tensor = torch.maximum(weight,
-                                           torch.amax(weight.abs(),
-                                                      indices_to_reduce,
-                                                      keepdim=True)).reshape(quant_module.weight.shape)
-                min_tensor = -max_tensor
-            else:
-                max_tensor = torch.maximum(weight,
-                                           torch.amax(weight,
-                                                      indices_to_reduce,
-                                                      keepdim=True)).reshape(quant_module.weight.shape)
-                min_tensor = torch.minimum(weight,
-                                           torch.amin(weight,
-                                                      indices_to_reduce,
-                                                      keepdim=True)).reshape(quant_module.weight.shape)
+        max_tensor = quant_module.param_quantizers['weight'].get_max()
+        min_tensor = quant_module.param_quantizers['weight'].get_min()
 
         return min_tensor, max_tensor
 
@@ -368,12 +335,6 @@ class SequentialMse(SequentialMseBase):
                     total_loss.append(loss)
 
             best_indices = torch.stack(total_loss).min(0)[1]
-            block_size = cls._get_input_channel_block_size(quant_module)
-            # In the input_channels dimension, best_indices is of size num_blocks. We use repeat_interleave to expand
-            # each blockwise index into block_size number of indices. This makes best_indices input_channels dimension
-            # become size num_blocks * block_size, and allows for elementwise operation with min_tensor and max_tensor.
-            if block_size != quant_module.weight.shape[1]:
-                best_indices = best_indices.repeat_interleave(block_size, dim=-1)
 
         # Unsqueeze best_indices until it matches dim length of max_tensor
         while best_indices.dim() < max_tensor.dim():

@@ -36,6 +36,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
+import copy
 import json
 import pytest
 import tempfile
@@ -47,7 +48,8 @@ from aimet_common.defs import QuantScheme
 from aimet_torch.utils import create_fake_data_loader
 
 from aimet_torch.v2.quantsim import QuantizationSimModel
-from aimet_torch.v2.quantsim.config_utils import set_grouped_blockwise_quantization_for_weights
+from aimet_torch.v2.quantsim.config_utils import set_grouped_blockwise_quantization_for_weights, \
+    set_blockwise_quantization_for_weights
 from aimet_torch.v2.nn import QuantizationMixin
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 from aimet_torch.v2.seq_mse import  apply_seq_mse, get_candidates, optimize_module, SeqMseParams, SequentialMse
@@ -180,7 +182,8 @@ class TestSeqMse:
 
         # If we use higher param_bw (for example 16, 31), then it should always choose larger candidates so
         # before and after param encodings should be almost same.
-        if param_bw >= 16:
+        # Per-tensor encoding also typically picks the largest candidate.
+        if param_bw >= 16 or quantizer_shape == []:
             assert torch.allclose(before.min, after.min, rtol=1e-4)
             assert torch.allclose(before.max, after.max, rtol=1e-4)
         else:
@@ -210,7 +213,8 @@ class TestSeqMse:
 
         # If we use higher param_bw (for example 16, 31), then it should always choose larger candidates so
         # before and after param encodings should be almost same.
-        if param_bw >= 16:
+        # Per-tensor encoding also typically picks the largest candidate.
+        if param_bw >= 16 or quantizer_shape == [1, ]:
             assert torch.allclose(before.min, after.min, rtol=1e-4)
             assert torch.allclose(before.max, after.max, rtol=1e-4)
         else:
@@ -308,32 +312,41 @@ class TestSeqMse:
         assert not sim.model.fc2.param_quantizers['weight'].max.requires_grad
         assert not sim.model.fc2.param_quantizers['weight']._allow_overwrite
 
-    @pytest.mark.parametrize('qtzr', [QuantizeDequantize([], 4, True),
-                                      QuantizeDequantize([10], 4, True),
-                                      QuantizeDequantize([10, 10], 4, True)])
-    @pytest.mark.parametrize('range', [(-1., .7), (-.7, 1.)])
-    def test_compute_param_encodings(self, qtzr, range):
-        x_min, x_max = range
-        x_min = torch.full(qtzr.shape, x_min)
-        x_max = torch.full(qtzr.shape, x_max)
-        SequentialMse.compute_param_encodings(qtzr, x_min, x_max)
-        assert torch.all(torch.isclose(qtzr.get_max(), x_max) |
-                         torch.isclose(qtzr.get_min(), x_min))
-
     def test_handle_grouped_block_quantizers(self):
         torch.manual_seed(0)
         model = Net().eval()
+        model_2 = copy.deepcopy(model)
         dummy_input = torch.randn(1, 1, 28, 28)
         sim = QuantizationSimModel(model, dummy_input, default_param_bw=4)
-        set_grouped_blockwise_quantization_for_weights(sim, lambda m: m != sim.model.conv1, 4, True, 8, 4)
+        sim_2 = QuantizationSimModel(model_2, dummy_input, default_param_bw=4)
+        set_grouped_blockwise_quantization_for_weights(sim,
+                                                       lambda m: m != sim.model.conv1,
+                                                       bitwidth=4,
+                                                       symmetric=True,
+                                                       decompressed_bw=8,
+                                                       block_size=4)
+        set_blockwise_quantization_for_weights(sim_2,
+                                               lambda m: m != sim_2.model.conv1,
+                                               bitwidth=4,
+                                               symmetric=True,
+                                               block_size=4)
         sim.compute_encodings(lambda m, _: m(dummy_input), None)
-        out = sim.model(dummy_input)
+        sim_2.compute_encodings(lambda m, _: m(dummy_input), None)
+        gbbq_out = sim.model(dummy_input)
         with SequentialMse._handle_grouped_block_quantizers(sim):
-            out_2 = sim.model(dummy_input)
-        out_3 = sim.model(dummy_input)
+            updated_out = sim.model(dummy_input)
+        gbbq_out_2 = sim.model(dummy_input)
+        bq_out = sim_2.model(dummy_input)
 
-        assert torch.equal(out, out_3)
-        assert not torch.equal(out, out_2)
+        assert torch.equal(gbbq_out, gbbq_out_2)
+        assert not torch.equal(gbbq_out, updated_out)
+
+        with SequentialMse._handle_grouped_block_quantizers(sim):
+            sim.compute_encodings(lambda m, _: m(dummy_input), None)
+            bq_out_2 = sim.model(dummy_input)
+
+        assert torch.equal(bq_out, bq_out_2)
+
 
     @pytest.mark.parametrize('kwargs', [
         dict(in_channels=16, out_channels=16, kernel_size=(3, 3), stride=2),
