@@ -134,11 +134,6 @@ class LETModule():
         return new_module
 
 class LETQuantizedLinear(QuantizedLinear, LETModule):
-
-    # def __quant_init__(self):
-    #     print("Iam called &&&&&&&&&&&&&&&&&&&&&&&&&&&")
-    #     super().__quant_init__()
-
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape[1], module.weight.shape[0])
         LETModule.__init__(self, module)
@@ -220,7 +215,7 @@ class GemmaRmsNorm(Norm):
 
         return out
 
-LlamaRmsNorm = Norm
+#LlamaRmsNorm = Norm
 
 #https://github.qualcomm.com/qualcomm-ai/aimet/blob/6eea45a3b0f21543188598da8a533b6b4369af8e/TrainingExtensions/torch/src/python/aimet_torch/v2/nn/modules/custom.py#L484
 @QuantizationMixin.implements(Norm)
@@ -245,7 +240,7 @@ class QuantizedNorm(QuantizationMixin, Norm):
             out = super().forward(hidden_states)
 
         if self.output_quantizers[0]:
-            out = self.output_quantizers[0](hidden_states)
+            out = self.output_quantizers[0](out)
         breakpoint()
         return out
 
@@ -305,11 +300,52 @@ class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
             prev_scale = self.prev_prep_fn(self.prev_scale)
             weight.data = weight.data / prev_scale + 1 / prev_scale - 1
 
+try:
+    from transformers.models.llama.modelling_llama import LlamaRMSNorm
+except ImportError:
+    class LlamaRMSNorm(torch.nn.Module):
+        def __init__(self, dim: int, eps: float = 1e-6):
+            super().__init__()
+            self.eps = eps
+            self.weight = nn.Parameter(torch.ones(dim))
+            
 
-class LETQuantizedRMSNorm(QuantizedNorm, LETModule):
+        def _norm(self, x):
+            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+        def forward(self, x):
+            return self.weight * self._norm(x)
+
+@QuantizationMixin.implements(LlamaRMSNorm)
+class QuantizedLlamaRMSNorm(QuantizationMixin, LlamaRMSNorm):
     def __quant_init__(self):
         super().__quant_init__()
-        LETModule.__init__(self)
+
+        # Declare the number of input/output quantizers
+        self.input_quantizers = torch.nn.ModuleList([None])
+        self.output_quantizers = torch.nn.ModuleList([None])
+
+    def forward(self, hidden_states):
+        # Quantize input tensors
+        if self.input_quantizers[0]:
+            hidden_states = self.input_quantizers[0](hidden_states)
+
+        # Run forward with quantized inputs and parameters
+        with self._patch_quantized_parameters():
+            ret = super().forward(hidden_states)
+
+        # Quantize output tensors
+        if self.output_quantizers[0]:
+            ret = self.output_quantizers[0](ret)
+
+        return ret
+
+
+class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
+    def __init__(self, module:QuantizationMixin):
+        super().__init__(module.weight.shape)
+        LETModule.__init__(self, module)
+        self.load_state_dict(module.state_dict())
 
     def _update_parameters(self):
         weight = self.weight
@@ -321,11 +357,8 @@ class LETQuantizedRMSNorm(QuantizedNorm, LETModule):
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
-        print("params from LETQuantizedRMSNorm", params)
         with patch_attr(self, 'weight', params['weight']):
             super().compute_param_encodings()
-            out = super().__call__(*args, **kwargs)
-            print("QuantizedLETLlamaRMSNorm ", out)
-            return out #super().__call__(*args, **kwargs)
+            return super().__call__(*args, **kwargs)
 
 
