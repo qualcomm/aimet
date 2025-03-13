@@ -316,7 +316,7 @@ def _get_minimum_scale(num_steps: int) -> float:
     """
     Return the minimum scale given the number of steps in the quantization grid.
 
-    We define the minimum scale the largest s <= float32.eps such that
+    We define the minimum scale as the largest s <= float32.eps such that
     -0.005 <= s * min(x_int) <  s * max(x_int) <= 0.005
 
     Following this rule, the minimum scale in practice will be:
