@@ -169,7 +169,7 @@ class _HistogramObserver(_Observer[_Histogram]):
                 index = (hist_num // numel) % dim
                 hist_input = torch.unsqueeze(torch.select(hist_input, axis, index), axis)
 
-            hist_min, hist_max = self._handle_inputs(hist_input)
+            hist_min, hist_max = self._get_min_max(hist_input)
 
             bin_edges = self._create_bin_edges(min_val=hist_min, max_val=hist_max, device=input_tensor.device)
             histogram = torch.histc(hist_input.to(torch.float), bins=self.num_bins, min=bin_edges[0], max=bin_edges[-1])
@@ -182,12 +182,18 @@ class _HistogramObserver(_Observer[_Histogram]):
 
         return hist_stats
 
-    def _handle_inputs(self, hist_input):
-        if not torch.any(hist_input.isfinite()):
-            raise ValueError('Input tensor cannot contain only infinite or only NaN values')
+    def _get_min_max(self, hist_input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        isfinite = hist_input.isfinite()
 
-        min = hist_input[hist_input.isfinite()].min()
-        max = hist_input[hist_input.isfinite()].max()
+        try:
+            min = hist_input[isfinite].min()
+            max = hist_input[isfinite].max()
+        except RuntimeError as e:
+            if not torch.any(isfinite):
+                raise ValueError(
+                    "Failed to build histogram since the input only consists of infinite and/or NaN."
+                ) from e
+            raise e
 
         return min, max
 
