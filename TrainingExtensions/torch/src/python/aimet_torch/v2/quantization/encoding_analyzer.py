@@ -229,7 +229,7 @@ class _HistogramObserver(_Observer[_Histogram]):
             else:
                 dest_bin_width = (updated_max - updated_min) / self.num_bins
                 src_bin_width = (curr_stats.max - curr_stats.min) / self.num_bins
-                histogram_updates = torch.zeros(self.num_bins).to(input_tensor.device)
+                histogram_updates = torch.zeros(self.num_bins, device=input_tensor.device)
 
                 src_bin_start = curr_stats.min + (src_bin_width * torch.arange(0, self.num_bins, device=input_tensor.device))
                 dest_bin_index = self._get_bin_num(dest_bin_width, updated_min, src_bin_start)
