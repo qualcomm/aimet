@@ -95,6 +95,7 @@ class SeqMseParams:
     forward_fn: Callable = default_forward_fn
 
     def __post_init__(self):
+        # pylint: disable=attribute-defined-outside-init
         if self.loss_fn == "mse":
             self._loss_fn = functional.mse_loss
         elif self.loss_fn == "l1":
@@ -104,7 +105,8 @@ class SeqMseParams:
         else:
             raise ValueError(f"Invalid loss function: {self.loss_fn}")
 
-    def get_loss_fn(self):
+    def get_loss_fn(self) -> Callable:
+        """ Returns loss function """
         return self._loss_fn
 
 
@@ -415,8 +417,8 @@ class SequentialMseBase(ABC):
         """
         loss_fn = params.get_loss_fn()
         channel_dim = xqwq.shape[-1]
-        xqwq = xqwq.reshape(-1,  xqwq.shape[-1])
-        xw = xw.reshape(-1, xw.shape[-1])
+        xqwq = xqwq.reshape(-1, channel_dim)
+        xw = xw.reshape(-1, channel_dim)
         loss = loss_fn(xqwq, xw, reduction="none").sum(0)
         assert loss.size() == torch.Size([channel_dim])
         return loss

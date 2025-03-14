@@ -41,7 +41,6 @@ from typing import List, Optional, Tuple
 import contextlib
 import torch
 from torch import nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from aimet_common.utils import AimetLogger
