@@ -42,6 +42,7 @@ import pytest
 import tempfile
 from pathlib import Path
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 from aimet_common.defs import QuantScheme
@@ -50,7 +51,7 @@ from aimet_torch.utils import create_fake_data_loader
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantsim.config_utils import set_grouped_blockwise_quantization_for_weights, \
     set_blockwise_quantization_for_weights
-from aimet_torch.v2.nn import QuantizationMixin
+from aimet_torch.v2.nn import QuantizationMixin, QuantizedLinear
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 from aimet_torch.v2.seq_mse import  apply_seq_mse, get_candidates, optimize_module, SeqMseParams, SequentialMse
 from .models_.mnist_torch_model import Net
@@ -142,11 +143,13 @@ class SplittableModel(torch.nn.Module):
         return x
 
 
-class TestSeqMse:
+@pytest.fixture(autouse=True)
+def seed():
+    torch.manual_seed(0)
 
+class TestSeqMse:
     def test_seq_mse(self):
         """ test get_candidates() """
-        torch.manual_seed(0)
         linear = torch.nn.Linear(2, 4)
         x_max = torch.max(linear.weight.abs(), dim=1)[0]
         x_min = None
@@ -163,7 +166,6 @@ class TestSeqMse:
     @pytest.mark.parametrize("qparam_requires_grad", [True, False])
     def test_optimize_module_linear(self, quantizer_shape, block_size, param_bw, loss_fn, qparam_requires_grad):
         """ test optimize module for linear """
-        torch.manual_seed(0)
         linear = torch.nn.Linear(64, 128)
         wrapper = QuantizationMixin.from_module(linear)
 
@@ -190,6 +192,60 @@ class TestSeqMse:
             assert not torch.allclose(before.min, after.min)
             assert not torch.allclose(before.max, after.max)
 
+    @pytest.mark.parametrize(
+        "quantizer_shape, block_size", [
+        ([],              None),
+        ((128, 1),        None),
+        ((128, 8),        (1, 16))
+    ])
+    @pytest.mark.parametrize("loss_fn", ["mse", "l1", "sqnr"])
+    def test_compute_loss_vectorized_impl(self, quantizer_shape, block_size, loss_fn):
+        """
+        Given: QuantizedLinear with blockwise weight encoding
+        """
+        in_channels = 128
+        out_channels = 128
+        num_blocks = in_channels // block_size[1] if block_size else 1
+
+        linear = QuantizedLinear(in_channels, out_channels)
+        linear.param_quantizers["weight"] = QuantizeDequantize(shape=quantizer_shape,
+                                                               bitwidth=4,
+                                                               symmetric=True,
+                                                               block_size=block_size)
+        linear.input_quantizers[0] = QuantizeDequantize(shape=(),
+                                                              bitwidth=16,
+                                                              symmetric=False)
+
+        x = torch.randn(10, 128, in_channels)
+        w = linear.weight
+
+        with linear.compute_encodings():
+            _ = linear(x)
+
+        xq = linear.input_quantizers[0](x)
+        wq = linear.param_quantizers["weight"](w)
+        params = SeqMseParams(num_batches=1, loss_fn=loss_fn)
+
+        """
+        When: Call _compute_loss
+        Then: Output should be equal to computing reconstruction loss of each block separately
+        """
+        loss = SequentialMse._compute_loss(linear, x, xq, w, wq, params=params)
+        blk_size = in_channels // num_blocks
+        xw = torch.stack([
+            F.linear(x[:, :, i * blk_size:(i+1) * blk_size],
+                     w[:,    i * blk_size:(i+1) * blk_size])
+            for i in range(num_blocks)
+        ], dim=-1).reshape(-1, out_channels, num_blocks)
+        xqwq = torch.stack([
+            F.linear(xq[:, :, i * blk_size:(i+1) * blk_size],
+                     wq[:,    i * blk_size:(i+1) * blk_size])
+            for i in range(num_blocks)
+        ], dim=-1).reshape(-1, out_channels, num_blocks)
+        expected_loss = params.get_loss_fn()(xw, xqwq, reduction="none").sum(0)
+
+        assert torch.allclose(expected_loss, loss)
+
     @pytest.mark.parametrize("quantizer_shape, block_size", [[[1, ], None],
                                                              [[32, 1, 1, 1], None],
                                                              [[32, 3, 1, 1], [1, 2, -1, -1]]])
@@ -197,7 +253,6 @@ class TestSeqMse:
     @pytest.mark.parametrize("loss_fn", ['mse', 'l1', 'sqnr'])
     def test_optimize_module_conv(self, quantizer_shape, block_size, param_bw, loss_fn):
         """ test optimize module for linear """
-        torch.manual_seed(0)
         conv = torch.nn.Conv2d(6, 32, 3)
         wrapper = QuantizationMixin.from_module(conv)
         wrapper.param_quantizers['weight'] = QuantizeDequantize(shape=quantizer_shape, bitwidth=param_bw,
@@ -227,7 +282,6 @@ class TestSeqMse:
     @pytest.mark.parametrize("qscheme", [QuantScheme.post_training_tf, QuantScheme.training_range_learning_with_tf_init])
     def test_apply_seq_mse(self, unlabeled_data_loader, inp_symmetry, loss_fn, qscheme):
         """ test apply_seq_mse end-to-end """
-        torch.manual_seed(0)
         model = Net().eval().cuda()
         dummy_input = torch.randn(1, 1, 28, 28).cuda()
         sim = QuantizationSimModel(model, dummy_input, default_param_bw=4, quant_scheme=qscheme)
@@ -252,8 +306,6 @@ class TestSeqMse:
     @pytest.mark.parametrize("qscheme", [QuantScheme.post_training_tf, QuantScheme.training_range_learning_with_tf_init])
     def test_seq_mse_with_and_without_checkpoints_config(self, inp_symmetry, loss_fn, qscheme):
         """ test apply_seq_mse end-to-end with and without checkpoints configs """
-        torch.manual_seed(0)
-
         data_loader = create_fake_data_loader(dataset_size=2, batch_size=1, image_size=(3, 32, 32))
         model = SplittableModel().eval()
         dummy_input = torch.randn(1, 3, 32, 32)
@@ -298,7 +350,6 @@ class TestSeqMse:
     @pytest.mark.parametrize("qscheme", [QuantScheme.post_training_tf, QuantScheme.training_range_learning_with_tf_init])
     def test_apply_seq_mse_with_modules_to_exclude(self, unlabeled_data_loader, qscheme):
         """ test apply_seq_mse end-to-end with exclusion list """
-        torch.manual_seed(0)
         model = Net().eval()
         dummy_input = torch.randn(1, 1, 28, 28)
         sim = QuantizationSimModel(model, dummy_input, default_param_bw=4, quant_scheme=qscheme)
@@ -313,7 +364,6 @@ class TestSeqMse:
         assert not sim.model.fc2.param_quantizers['weight']._allow_overwrite
 
     def test_handle_grouped_block_quantizers(self):
-        torch.manual_seed(0)
         model = Net().eval()
         model_2 = copy.deepcopy(model)
         dummy_input = torch.randn(1, 1, 28, 28)

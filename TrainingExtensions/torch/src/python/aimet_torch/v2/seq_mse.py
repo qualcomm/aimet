@@ -296,10 +296,10 @@ class SequentialMse(SequentialMseBase):
             #                  reshape                     permute
             #   * x: (N,    Cin) -> (N,    NUM_BLK, BLK_SIZE) -> (NUM_BLK, N, BLK_SIZE)
             #   * w: (Cout, Cin) -> (Cout, NUM_BLK, BLK_SIZE) -> (NUM_BLK, BLK_SIZE, Cout)
-            x = x.view(-1, num_blocks, block_size).permute(1, 0, 2)
-            w = w.view(out_channels, num_blocks, block_size).permute(1, 2, 0)
-            xq = xq.view(-1, num_blocks, block_size).permute(1, 0, 2)
-            wq = wq.view(out_channels, num_blocks, block_size).permute(1, 2, 0)
+            x = x.reshape(-1, num_blocks, block_size).permute(1, 0, 2)
+            w = w.reshape(out_channels, num_blocks, block_size).permute(1, 2, 0)
+            xq = xq.reshape(-1, num_blocks, block_size).permute(1, 0, 2)
+            wq = wq.reshape(out_channels, num_blocks, block_size).permute(1, 2, 0)
 
             # Blockwise batched matmul
             #           xw        =           x            @           w
