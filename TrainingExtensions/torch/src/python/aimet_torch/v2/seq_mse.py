@@ -287,27 +287,43 @@ class SequentialMse(SequentialMseBase):
         block_size = cls._get_input_channel_block_size(quant_module)
 
         if isinstance(quant_module, torch.nn.Linear):
+            # General strategy (Linear):
+            # Compute blockwise reconstruction loss using batched matrix multiplication
             out_channels = quant_module.weight.shape[0]
             in_channels = quant_module.weight.shape[1]
             num_blocks = in_channels // block_size
 
+            # Reshape and permute x and w
+            #                  reshape                     permute
+            #   * x: (N,    Cin) -> (N,    NUM_BLK, BLK_SIZE) -> (NUM_BLK, N, BLK_SIZE)
+            #   * w: (Cout, Cin) -> (Cout, NUM_BLK, BLK_SIZE) -> (NUM_BLK, BLK_SIZE, Cout)
             x = x.view(-1, num_blocks, block_size).permute(1, 0, 2)
             w = w.view(out_channels, num_blocks, block_size).permute(1, 2, 0)
-
             xq = xq.view(-1, num_blocks, block_size).permute(1, 0, 2)
             wq = wq.view(out_channels, num_blocks, block_size).permute(1, 2, 0)
 
+            # Blockwise batched matmul
+            #           xw        =           x            @           w
+            #  (NUM_BLK, N, Cout)   (NUM_BLK, N, BLK_SIZE)   (NUM_BLK, BLK_SIZE, Cout)
             xw = torch.bmm(x, w)
             xqwq = torch.bmm(xq, wq)
 
-            xw = xw.permute(1, 0, 2).sum(0, keepdim=True)
-            xqwq = xqwq.permute(1, 0, 2).sum(0, keepdim=True)
+            # Permute to restore axis 0 back to batch dimension
+            #                          permute
+            #   * xw: (NUM_BLK, N, Cout) -> (N, Cout, NUM_BLK)
+            xw = xw.permute(1, 2, 0)
+            xqwq = xqwq.permute(1, 2, 0)
 
-            loss = params.get_loss_fn()(xw, xqwq, reduction="none").view(num_blocks, out_channels)
-            return loss.T
+            loss = params.get_loss_fn()(xw, xqwq, reduction="none").sum(0).view(out_channels, num_blocks)
+            return loss
 
-        # General strategy: split weights and input per block, and run a separate forward pass for each split.
+        # General strategy (Conv):
+        # Split weights and input per block, and run a separate forward pass for each split.
         # In the case of per tensor and per channel, the entire input channel is treated as one block.
+
+        # NOTE: Similar to Linear, convolution can be also vectorized with depthwise grouped conv.
+        #       However, vectorizing convolution in this manner harms the performance
+        #       because PyTorch grouped convolution kernels are much slower than regular convolution
         assert isinstance(quant_module, torch.nn.Conv2d)
         w_blocks = torch.split(w, block_size, dim=1)
         wq_blocks = torch.split(wq, block_size, dim=1)
