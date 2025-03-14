@@ -328,6 +328,10 @@ def remove_activation_quantizers(modules):
     '''
     Removes activation quantizers for the modules provided
     '''
+    if not isinstance(modules, torch.nn.Module):
+        # Shallow copy in case modules is an iterator
+        modules = list(modules)
+
     context_1 = remove_input_quantizers(modules)
     context_2 = remove_output_quantizers(modules)
     # pylint: disable=protected-access
@@ -338,6 +342,10 @@ def remove_all_quantizers(modules):
     '''
     Removes all quantizers for the modules provided
     '''
+    if not isinstance(modules, torch.nn.Module):
+        # Shallow copy in case modules is an iterator
+        modules = list(modules)
+
     context_1 = remove_activation_quantizers(modules)
     context_2 = remove_param_quantizers(modules)
     # pylint: disable=protected-access

@@ -43,11 +43,20 @@ import torch
 from .models_.test_models import ModelWithMatMul2, BasicConv2d
 from aimet_common.defs import QuantScheme
 from aimet_torch.v2.experimental import set_matmul_second_input_producer_to_8bit_symmetric
-from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.utils import get_all_quantizers, disable_all_quantizers
-from aimet_torch.v2.utils import allow_recompute, enable_recompute, reduce, patch_attr, remove_all_quantizers, remove_activation_quantizers, remove_input_quantizers, remove_output_quantizers, remove_param_quantizers
+from aimet_torch.v2.utils import (
+    allow_recompute,
+    enable_recompute,
+    reduce,
+    patch_attr,
+    remove_all_quantizers,
+    remove_activation_quantizers,
+    remove_input_quantizers,
+    remove_output_quantizers,
+    remove_param_quantizers,
+)
 
 @pytest.mark.parametrize('reduce_dim, target_shape', [
     # | reduce dim   | target shape |
@@ -252,6 +261,15 @@ def test_remove_all_quantizers(impl):
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
     
+    # Should also work with iterators
+    with remove_activation_quantizers(qsim.qmodules()):
+        for module in qsim.model.modules():
+            if isinstance(module, BaseQuantizationMixin):
+                assert all(quant is None for quant in module.input_quantizers)
+                assert all(quant is None for quant in module.output_quantizers)
+
+    assert module_list == list(qsim.model.modules())
+
     # Ensures that permanent removal of quantizers works
     impl(qsim.model)
     for module in qsim.model.modules():
@@ -278,7 +296,16 @@ def test_remove_activation_quantizers():
     
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
-    
+
+    # Should also work with iterators
+    with remove_activation_quantizers(qsim.qmodules()):
+        for module in qsim.model.modules():
+            if isinstance(module, BaseQuantizationMixin):
+                assert all(quant is None for quant in module.input_quantizers)
+                assert all(quant is None for quant in module.output_quantizers)
+
+    assert module_list == list(qsim.model.modules())
+
     # Ensures that permanent removal of quantizers works
     remove_activation_quantizers(qsim.model)
     for module in qsim.model.modules():
