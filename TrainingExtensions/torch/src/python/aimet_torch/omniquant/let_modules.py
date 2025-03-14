@@ -36,7 +36,11 @@
 # =============================================================================
 
 #from transformers.models.llama.modelling_llama import LlamaRMSNorm
-from aimet_torch.v2.nn import QuantizedLinear, QuantizedLayerNorm
+from aimet_torch.v2.nn import (
+    QuantizedLinear,
+    QuantizedLayerNorm,
+    QuantizedConv2d,
+)
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 import torch
@@ -166,10 +170,44 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
                 return super().__call__(*args, **kwargs) 
 
 
+class LETQuantizedConv2d(QuantizedConv2d, LETModule):
+    def __init__(self, module:QuantizationMixin):
+        super().__init__(module.weight.shape[1], module.weight.shape[0], module.kernel_size, module.stride, module.padding)
+        LETModule.__init__(self, module)
+        self.load_state_dict(module.state_dict())
+
+    def _update_parameters(self):
+        weight = self.weight
+        bias = self.bias
+        
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            if bias is not None:
+                bias = bias / prev_scale
+
+            weight = weight / prev_scale.unsqueeze(1)
+
+        if self.foll_scale is not None:
+            foll_scale = self.foll_prep_fn(self.foll_scale)
+            weight = weight * foll_scale.unsqueeze(0)
+        
+        return {'weight': weight, 'bias': bias}
+
+    def __call__(self, *args, **kwargs):
+        params = self._update_parameters()
+        with patch_attr(self, 'weight', params['weight']):
+             with patch_attr(self, 'bias', params['bias']):
+                # TODO: ananmukh remove compute_param_encodings() from here
+                # call it explicitly in training loop in a later PR
+                super().compute_param_encodings()
+                return super().__call__(*args, **kwargs) 
+
+
 class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
-    def __quant_init__(self):
-        super().__quant_init__()
-        LETModule.__init__(self)
+    def __init__(self, module:QuantizationMixin):
+        super().__init__(module.weight.shape)
+        LETModule.__init__(self, module)
+        self.load_state_dict(module.state_dict())
 
     def _update_parameters(self):
         weight = self.weight
