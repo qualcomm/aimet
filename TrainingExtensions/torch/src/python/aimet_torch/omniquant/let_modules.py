@@ -62,9 +62,7 @@ class LETModule():
         if source.param_quantizers:
             self.param_quantizers = copy.deepcopy(source.param_quantizers)
 
-    # TODO : ananmukh check if prep func is needed here.
-    # TODO in a different PRsim.model.state_dict()
-    
+    # TODO : ananmukh check if prep func can be removed from here
     def _reset_let_params(self):
         self.prev_scale = None
         self.prev_prep_fn = torch.nn.Identity()
@@ -100,42 +98,6 @@ class LETModule():
     @abstractmethod
     def _update_parameters(self):
         assert "Override in child class"
-    
-   
-    @staticmethod # TODO delete
-    def from_quantized_module(module):
-        # copy w/bias
-        # copy q/dq
-        # assert module is a quantized module. in the change L -> QL -> QLetL
-
-        #
-        '''
-        #https://github.com/quic/aimet/blob/6eea45a3b0f21543188598da8a533b6b4369af8e/TrainingExtensions/torch/src/python/aimet_torch/v2/nn/base.py#L383
-        # do using load/statedict?
-        '''
-        assert isinstance(module, QuantizationMixin), f"LET is only supported for quantized modules"
-        shape = module.param_quantizers['weight'].shape
-        #breakpoint()
-        if isinstance(module, QuantizedLinear):
-            new_module = LETQuantizedLinear(module.weight.shape[1], module.weight.shape[0])
-            breakpoint()
-        elif isinstance(module, QuantizedLayerNorm):
-            new_module = LETQuantizedLayerNorm(module.weight.shape)
-        elif isinstance(module, QuantizedNorm):
-            new_module = LETQuantizedRMSNorm(module.weight.shape)
-        if isinstance(module, QuantizedGemmaNorm):
-            new_module = LETQuantizedGemmaNorm(module.weight.shape)
-        else:
-            pass
-            "TODO : ananmukh Throw descriptive error"
-        if module.param_quantizers:
-            new_module.param_quantizers['weight'] = QuantizeDequantize(shape=shape, bitwidth=8, symmetric=True)
-        if module.input_quantizers[0]:
-            new_module.input_quantizers[0] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=False)
-        if module.output_quantizers[0]:
-            new_module.output_quantizers[0] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=False)
-        new_module.load_state_dict(module.state_dict())
-        return new_module
 
 class LETQuantizedLinear(QuantizedLinear, LETModule):
     def __init__(self, module:QuantizationMixin):
@@ -222,121 +184,13 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
-        print("params from layernorm", params)
         with patch_attr(self, 'weight', params['weight']):
             with patch_attr(self, 'bias', params['bias']):
+                # TODO: ananmukh remove compute_param_encodings() from here
+                # call it explicitly in training loop in a later PR
                 super().compute_param_encodings()
                 return super().__call__(*args, **kwargs)
 
-
-class Norm(torch.nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.rand(dim))
-        
-
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-    def forward(self, x):
-        return self.weight * self._norm(x)
-
-class GemmaRmsNorm(Norm):
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__(dim, eps)
-        self.bias = torch.tensor(1)
-    
-    def forward(self, x):
-        #print("from GemmaRmsNorm", self.weight , self.bias)
-        out = (self.weight + self.bias) * super()._norm(x)
-
-        return out
-
-#LlamaRmsNorm = Norm
-
-#https://github.qualcomm.com/qualcomm-ai/aimet/blob/6eea45a3b0f21543188598da8a533b6b4369af8e/TrainingExtensions/torch/src/python/aimet_torch/v2/nn/modules/custom.py#L484
-@QuantizationMixin.implements(Norm)
-class QuantizedNorm(QuantizationMixin, Norm):
-    def __quant_init__(self):
-        super().__quant_init__()
-        self.param_quantizers = nn.ModuleDict({})
-        self.input_quantizers = nn.ModuleList([None])
-        self.output_quantizers = nn.ModuleList([None])
-
-    def forward(self, hidden_states):
-        weight = self.weight
-        
-        if self.input_quantizers[0]:
-            hidden_states = self.input_quantizers[0](hidden_states)
-        
-        # if self.param_quantizers:
-        #     self.param_quantizers['weight'] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=True)
-        
-        
-        with self._patch_quantized_parameters():
-            out = super().forward(hidden_states)
-
-        if self.output_quantizers[0]:
-            out = self.output_quantizers[0](out)
-        breakpoint()
-        return out
-
-@QuantizationMixin.implements(GemmaRmsNorm)
-class QuantizedGemmaNorm(QuantizationMixin, GemmaRmsNorm):
-    def __quant_init__(self):
-        super().__quant_init__()
-        self.param_quantizers = nn.ModuleDict({})
-        self.input_quantizers = nn.ModuleList([None])
-        self.output_quantizers = nn.ModuleList([None])
-
-    def forward(self, hidden_states):
-        #weight = self.weight
-        if self.input_quantizers[0]:
-            hidden_states = self.input_quantizers[0](hidden_states)
-
-        # if self.param_quantizers.weight:
-        #     weight = self.param_quantizers.weight(weight)
-
-        with self._patch_quantized_parameters():
-            hidden_states = super().forward(hidden_states)
-
-        if self.output_quantizers[0]:
-            hidden_states = self.output_quantizers[0](hidden_states)
-        return hidden_states
-
-class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
-    def __quant_init__(self):
-        super().__quant_init__()
-        LETModule.__init__(self)
-
-    def _update_parameters(self):
-        weight = self.weight
-        bias = 1
-        if self.prev_scale is not None:
-            prev_scale = self.prev_prep_fn(self.prev_scale)
-            weight = weight / prev_scale
-            bias = bias / prev_scale
-
-        return {'weight': weight, 'bias': bias}
-    
-    def __call__(self, *args, **kwargs):
-        params = self._update_parameters()
-        print("params from LETQuantizedGemmaNorm", params)
-        with patch_attr(self, 'weight', params['weight']):
-            with patch_attr(self, 'bias', params['bias']):
-                super().compute_param_encodings()
-                out = super().__call__(*args, **kwargs)
-                print("LETQuantizedGemmaNorm ", out)
-                return out
-
-    def _fold(self):
-        # TODO: gemma fold can only be caled once
-        # Gemma needs rethinking
-        weight = self.weight
-        if self.prev_scale is not None:
-            prev_scale = self.prev_prep_fn(self.prev_scale)
-            weight.data = weight.data / prev_scale + 1 / prev_scale - 1
 
 try:
     from transformers.models.llama.modelling_llama import LlamaRMSNorm
@@ -347,7 +201,6 @@ except ImportError:
             self.eps = eps
             self.weight = nn.Parameter(torch.ones(dim))
             
-
         def _norm(self, x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
@@ -396,7 +249,81 @@ class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
         with patch_attr(self, 'weight', params['weight']):
+            # TODO: ananmukh remove compute_param_encodings() from here
+            # call it explicitly in training loop in a later PR
             super().compute_param_encodings()
             return super().__call__(*args, **kwargs)
 
 
+
+try:
+    from transformers.models.gemma.modeling_gemma.py import GemmaRMSNorm
+except ImportError:
+    class GemmaRMSNorm(nn.Module):
+        def __init__(self, dim: int, eps: float = 1e-6):
+            super().__init__()
+            self.eps = eps
+            self.weight = nn.Parameter(torch.zeros(dim))
+
+        def _norm(self, x):
+            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+        def forward(self, x):
+            output = self._norm(x.float())
+            # Llama does x.to(float16) * w whilst Gemma is (x * w).to(float16)
+            # See https://github.com/huggingface/transformers/pull/29402
+            output = output * (1.0 + self.weight.float())
+            return output.type_as(x)
+
+@QuantizationMixin.implements(GemmaRMSNorm)
+class QuantizedGemmaNorm(QuantizationMixin, GemmaRMSNorm):
+    def __quant_init__(self):
+        super().__quant_init__()
+        self.input_quantizers = nn.ModuleList([None])
+        self.output_quantizers = nn.ModuleList([None])
+        self.bias = 1
+
+
+    def forward(self, hidden_states):
+        weight = self.weight
+        bias = self.bias
+        if self.input_quantizers[0]:
+            hidden_states = self.input_quantizers[0](hidden_states)
+
+        if self.param_quantizers.weight:
+            weight = self.param_quantizers.weight(weight)
+
+        ret = self._norm(hidden_states.float())
+        ret = ret * (bias+weight)
+
+        if self.output_quantizers[0]:
+            ret = self.output_quantizers[0](ret)
+        return ret
+
+class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
+    def __init__(self, module:QuantizationMixin):
+        super().__init__(module.weight.shape)
+        LETModule.__init__(self, module)
+        self.load_state_dict(module.state_dict())
+
+    def _update_parameters(self):
+        weight = self.weight
+        bias = self.bias
+        if self.prev_scale is not None:
+            prev_scale = self.prev_prep_fn(self.prev_scale)
+            weight = weight / prev_scale
+            bias = bias / prev_scale
+
+        return {'weight': weight, 'bias': bias}
+
+    def __call__(self, *args, **kwargs):
+        params = self._update_parameters()
+        with patch_attr(self, 'weight', params['weight']):
+            with patch_attr(self, 'bias', params['bias']):
+                super().compute_param_encodings()
+                return super().__call__(*args, **kwargs)
+
+    def fold(self):
+        param = self._update_parameters()
+        with torch.no_grad():
+            self.weight.copy_(param['weight'])

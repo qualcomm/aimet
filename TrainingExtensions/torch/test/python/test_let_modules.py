@@ -54,8 +54,11 @@ from aimet_torch.omniquant.let_modules import (
     LETQuantizedLlamaRMSNorm,
     LETQuantizedLayerNorm,
     LETQuantizedConv2d,
+    LETQuantizedGemmaNorm,
+    QuantizedGemmaNorm,
+    QuantizedLlamaRMSNorm,
 )
-from aimet_torch.omniquant.let_modules import Norm,GemmaRmsNorm
+
 from aimet_torch.utils import is_vector_encoding
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
@@ -63,43 +66,17 @@ from aimet_torch.v2.quantsim import QuantizationSimModel
 from torch import nn
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 import copy
-#TODO ananmukh check this
-#from llama_model.modeling_llama import LlamaRotaryEmbedding, LlamaRMSNorm
 config_file = "/prj/qct/compute_aisw/ananmukh/morpheus/remote_dev/aimet-main/aimet/config/htp_quantsim_config_v73.json"
 '''
-TODO:
-1. add test for gemmarmsnorm->linearpair
-2. add more comments
-2. add test for layernorm->linear pair
+TODO: ananmukh 
+add doc string comments
 '''
-
-def _reset_quantizers(source, target):
-        breakpoint()
-        target.input_quantizers = copy.deepcopy(source.input_quantizers)
-        target.output_quantizers = copy.deepcopy(source.output_quantizers)
-        target.param_quantizers = copy.deepcopy(source.param_quantizers)
-
-
-# ananmukh use quantized_linear = QuantizationMixin.from_module(linear)
-def _reset_model(source, target):
-    shape = source.param_quantizers['weight'].shape
-    if source.param_quantizers:
-        target.param_quantizers['weight'] = QuantizeDequantize(shape=shape, bitwidth=8, symmetric=True)
-    if source.input_quantizers[0]:
-        target.input_quantizers[0] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=False)
-    if source.output_quantizers[0]:
-        target.output_quantizers[0] = QuantizeDequantize(shape=(), bitwidth=8, symmetric=False)
-    target.load_state_dict(source.state_dict())
 
 class LinearLinearPair(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(LinearLinearPair, self).__init__()
         self.l1 = torch.nn.Linear(input_dim, hidden_dim)
-        self.l1.weight.data.fill_(2)
-        self.l1.bias.data.fill_(1)
         self.l2 = torch.nn.Linear(hidden_dim, output_dim)
-        self.l2.weight.data = torch.tensor([[150., 6.]])
-        self.l2.bias.data.fill_(10)
 
     def forward(self, input):
         x = self.l1(input)
@@ -115,7 +92,7 @@ class ConvConvPair(torch.nn.Module):
         self.relu2 = nn.ReLU() 
 
     def forward(self, input):
-        x = self.relu1(self.conv1(input))  # Apply first conv layer and activation
+        x = self.relu1(self.conv1(input))
         x = self.relu2(self.conv2(x))
         return x
 
@@ -133,8 +110,7 @@ class RmsNormLinearPair(torch.nn.Module):
 class GemmaRmsNormLinearPair(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(GemmaRmsNormLinearPair, self).__init__()
-        self.gemmarmsnorm = GemmaRmsNorm(input_dim)
-        torch.nn.init.uniform_(self.gemmarmsnorm.weight, -0.5, 0.5)
+        self.gemmarmsnorm = GemmaRMSNorm(input_dim)
         self.linear = nn.Linear(input_dim, output_dim)
         
     def forward(self, x):
@@ -155,12 +131,11 @@ class LayernormLinearPair(torch.nn.Module):
 
 #TODO ananmukh Add a test for linear layer bias = false
 def test_linear_linear_pair():
-    input_dim = 1#10
-    hidden_dim = 2#20
-    output_dim = 1#5
+    input_dim = 10
+    hidden_dim = 20
+    output_dim = 5
     model = LinearLinearPair(input_dim, hidden_dim, output_dim).eval()
-    #inp = torch.rand(1, input_dim)
-    inp = torch.ones(1, 1)
+    inp = torch.rand(1, input_dim)
     out_fp = model(inp)
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
@@ -185,7 +160,6 @@ def test_linear_linear_pair():
     sim.model.l1.register_let_params(prev_scale = prev_scale)
     sim.model.l2.register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
-    breakpoint()
     out_with_rand_scale = sim.model(inp) 
 
     # Model params are updated due to non zero scale. 
@@ -322,29 +296,8 @@ except ImportError:
 
         def forward(self, x):
             return self.weight * self._norm(x)
-@QuantizationMixin.implements(LlamaRMSNorm)
-class QuantizedLlamaRMSNorm(QuantizationMixin, LlamaRMSNorm):
-    def __quant_init__(self):
-        super().__quant_init__()
 
-        # Declare the number of input/output quantizers
-        self.input_quantizers = torch.nn.ModuleList([None])
-        self.output_quantizers = torch.nn.ModuleList([None])
-
-    def forward(self, hidden_states):
-        # Quantize input tensors
-        if self.input_quantizers[0]:
-            hidden_states = self.input_quantizers[0](hidden_states)
-
-        # Run forward with quantized inputs and parameters
-        with self._patch_quantized_parameters():
-            ret = super().forward(hidden_states)
-
-        # Quantize output tensors
-        if self.output_quantizers[0]:
-            ret = self.output_quantizers[0](ret)
-
-        return ret
+QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
 
 def test_llamarmsnorm_linear_pair():
     input_dim = 3
@@ -485,6 +438,27 @@ def test_layernorm_linear_pair():
     assert torch.allclose(orig_wt_ln, scale_folded_wts_layernorm * ln_let_params['prev_scale'])
     assert torch.allclose(orig_wt_lin, scale_folded_wts_linear / lin_let_params['foll_scale'])
 
+try:
+    from transformers.models.gemma.modeling_gemma.py import GemmaRMSNorm
+except ImportError:
+    class GemmaRMSNorm(nn.Module):
+        def __init__(self, dim: int, eps: float = 1e-6):
+            super().__init__()
+            self.eps = eps
+            self.weight = nn.Parameter(torch.zeros(dim))
+
+        def _norm(self, x):
+            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+        def forward(self, x):
+            output = self._norm(x.float())
+            # Llama does x.to(float16) * w whilst Gemma is (x * w).to(float16)
+            # See https://github.com/huggingface/transformers/pull/29402
+            output = output * (1.0 + self.weight.float())
+            return output.type_as(x)
+
+QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
+
 def test_gemmarmsnorm_linear_pair():
     input_dim = 3
     output_dim = 2
@@ -494,104 +468,67 @@ def test_gemmarmsnorm_linear_pair():
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model 
-    # Replace with let module
-    # new_module1 = QuantizedLETGemmaRMSNorm.initialize_from_original_module(sim.model.gemmarmsnorm)
-    # _copy_quantizers(sim.model.gemmarmsnorm, new_module1)
-    # new_module2 = LETLinear(input_dim, output_dim)
-    # _update_quantizers(sim.model.linear, new_module2)
-
-    new_module1 = LETModule.from_quantized_module(sim.model.gemmarmsnorm)
-    new_module2 = LETModule.from_quantized_module(sim.model.linear)
+ 
+    #Creating LET Quantized modules from quantized module
+    new_module1 = LETQuantizedGemmaNorm(sim.model.gemmarmsnorm)
+    new_module2 = LETQuantizedLinear(sim.model.linear)
     setattr(sim.model, 'gemmarmsnorm', new_module1)
     setattr(sim.model, 'linear',  new_module2)
-
+    # forward pass through toy model with let module
     sim_out_no_scale = sim.model(inp) 
+
     # sim_out_with_no_scale  and sim_out is expected to be similar.
     # No scale has been set, hence no modifications to params
-    assert torch.allclose(sim_out_no_scale, sim_out, atol=0.01)
+    assert torch.equal(sim_out_no_scale, sim_out)
 
 
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
-    sim.model.gemmarmsnorm.prev_scale = torch.tensor([2])
-    sim.model.linear.foll_scale = torch.tensor([3])
+    prev_scale = torch.tensor([2])
+    foll_scale = torch.tensor([3])
+    sim.model.gemmarmsnorm.register_let_params(prev_scale = prev_scale)
+    sim.model.linear.register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_rand_scale = sim.model(inp)
+
     # Model params are updated due to non zero scale. 
     # Prev and foll scale are different, hence sim_out, out_with_rand_scale are expected to be diferent
-    breakpoint()
     assert not torch.allclose(sim_out, out_with_rand_scale, atol=0.01)
 
 
     #set scale = 1.
-    sim.model.gemmarmsnorm.prev_scale = torch.tensor([2])
-    sim.model.linear.foll_scale = torch.tensor([2])
+    prev_scale = torch.tensor([2])
+    foll_scale = torch.tensor([2])
+    sim.model.gemmarmsnorm.register_let_params(prev_scale = prev_scale)
+    sim.model.linear.register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
-    breakpoint()
     # sim_out and out_with_scale_2 should be close enough
-    assert torch.allclose(sim_out, out_with_scale_2, atol=0.01)
+    assert torch.allclose(sim_out, out_with_scale_2)
 
     #remove the qunatizers
     for name, module in sim.model.named_modules():
         if isinstance(module, QuantizationMixin):
             module._remove_all_quantizers()
-            module.reset_let_params()
 
-    out_without_quantizers = sim.model(inp)
-    breakpoint()
-    # out_quantizers_disabled and out_fp should be same as quantizers were disabled
-    #assert torch.allclose(out_fp, out_without_quantizers, atol=0.01)
+    out_with_quantizers_disabled = sim.model(inp)
+    # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
+    assert torch.equal(out_fp, out_with_quantizers_disabled)
 
+    # Test fold
+    gemmarmsnorm_let_params = sim.model.gemmarmsnorm.get_let_params()
+    linear_let_params = sim.model.linear.get_let_params()
+    orig_wt_gemmarmsnorm = sim.model.gemmarmsnorm.weight.cpu().detach().clone()
+    orig_wt_linear = sim.model.linear.weight.cpu().detach().clone()
+    # Fold the scale into the weights
+    sim.model.gemmarmsnorm.fold()
+    sim.model.linear.fold_let_params()
+    scale_folded_wts_gemmarmsnorm = sim.model.gemmarmsnorm.weight.cpu().detach()
+    scale_folded_wts_linear = sim.model.linear.weight.cpu().detach()
+    '''
+    On folding the LET scale to weights we update the original model weights  
+    l1.w = w/s
+    l2.w = w*s
+    '''
+    assert torch.allclose(orig_wt_gemmarmsnorm, scale_folded_wts_gemmarmsnorm * gemmarmsnorm_let_params['prev_scale'])
+    assert torch.allclose(orig_wt_linear, scale_folded_wts_linear / linear_let_params['foll_scale'])
 
-
-class LinearToyModel(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LinearToyModel, self).__init__()
-        self.l1 = torch.nn.Linear(input_dim, output_dim)
-        self.l1.weight.data.fill_(2)
-        self.l1.bias.data.fill_(1)
-
-    def forward(self, input):
-        x = self.l1(input)
-        return x
-def test_compute_encodings():
-    model = LinearToyModel(1,1)
-    x = [i for i in range(1,10)]
-    y = [i for i in range(10, 0, -1)]
-    input = x+y
-    for item in input:
-        inp = torch.tensor(item, dtype=torch.float32)
-        out_fp = model(inp.unsqueeze(0))
-        print("ANANMUKH****** ",out_fp)
-    dummy_inp = torch.tensor(1, dtype=torch.float32).unsqueeze(0)
-    sim = QuantizationSimModel(model, dummy_inp, config_file=config_file)
-    breakpoint()
-    inp1 = torch.tensor(input[0], dtype=torch.float32)
-    sim.compute_encodings(lambda model, _: model(inp1.unsqueeze(0)), None)
-    sim_out = sim.model(inp1.unsqueeze(0))
-    print("ANANMUKH SIMMMM 1****** ",sim_out, sim.model.l1.input_quantizers[0].min, sim.model.l1.input_quantizers[0].max)
-    for item in input[1:-1]:
-        
-        inp = torch.tensor(item, dtype=torch.float32)
-        if item ==10:
-            sim.compute_encodings(lambda model, _: model(inp.unsqueeze(0)), None)
-        sim_out = sim.model(inp.unsqueeze(0))
-        #breakpoint()
-        print("ANANMUKH SIMMMM ****** ",sim_out, sim.model.l1.input_quantizers[0].min, sim.model.l1.input_quantizers[0].max)
-
-    inp2 = torch.tensor(input[-1], dtype=torch.float32)
-    sim.compute_encodings(lambda model, _: model(inp2.unsqueeze(0)), None)
-    sim_out = sim.model(inp1.unsqueeze(0))
-    print("ANANMUKH SIMMMM 2****** ",sim_out, sim.model.l1.input_quantizers[0].min, sim.model.l1.input_quantizers[0].max)
-    # for item in input:
-    #     inp = torch.tensor(item, dtype=torch.float32)
-    #     sim.compute_encodings(lambda model, _: model(inp.unsqueeze(0)), None)
-    #     sim_out = sim.model(inp.unsqueeze(0))
-    #     #breakpoint()
-    #     print("ANANMUKH SIMMMM ****** ",sim_out, sim.model.l1.input_quantizers[0].min, sim.model.l1.input_quantizers[0].max)
-
-
-test_llamarmsnorm_linear_pair()
-test_linear_linear_pair()
-test_layernorm_linear_pair()
-test_conv_conv_pair()
