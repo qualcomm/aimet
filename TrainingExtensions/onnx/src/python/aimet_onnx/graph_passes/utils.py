@@ -58,22 +58,22 @@ def _get_numpy_array(model: ModelProto, param_name: str) -> Optional[np.ndarray]
     """
     return numpy_helper.to_array(ParamUtils.get_param_by_name(model, param_name))
 
-def is_constant_scalar(model: ModelProto, input: Product, expected_value: Union[int | float]) -> bool:
+def is_constant_scalar(model: ModelProto, op_input: Product, expected_value: Union[int | float]) -> bool:
     """
     Returns True if provided input is constant with scalar value equal to expected value.
 
     Args:
         model (ModelProto): source Model
-        input (Product): input to check for constant value for
+        op_input (Product): input to check for constant value for
         expected_value (Union[int | float]): expected value
 
     Returns:
-        bool: returns True if input is constant with same scalar value.
+        bool: returns True if op_input is constant with same scalar value.
     """
-    if not input.is_const:
+    if not op_input.is_const:
         return False
 
-    value = _get_numpy_array(model, input.name)
+    value = _get_numpy_array(model, op_input.name)
     return value.ndim == 0 and value == expected_value
 
 def match_pow_2_pattern(op: Op, model: ModelProto) -> bool:
