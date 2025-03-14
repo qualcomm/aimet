@@ -89,6 +89,7 @@ class LETModule():
         self._fold()
         self._reset_let_params()
 
+    @abstractmethod
     def _fold(self):
         params = self._update_parameters()
         with torch.no_grad():
@@ -101,6 +102,7 @@ class LETModule():
 
 class LETQuantizedLinear(QuantizedLinear, LETModule):
     def __init__(self, module:QuantizationMixin):
+        # TODO pass in all params to ctor
         super().__init__(module.weight.shape[1], module.weight.shape[0])
         LETModule.__init__(self, module)
         self.load_state_dict(module.state_dict())
@@ -134,6 +136,7 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
 
 class LETQuantizedConv2d(QuantizedConv2d, LETModule):
     def __init__(self, module:QuantizationMixin):
+        # TODO pass in all params to ctor
         super().__init__(module.weight.shape[1], module.weight.shape[0], module.kernel_size, module.stride, module.padding)
         LETModule.__init__(self, module)
         self.load_state_dict(module.state_dict())
@@ -281,8 +284,7 @@ class QuantizedGemmaNorm(QuantizationMixin, GemmaRMSNorm):
         super().__quant_init__()
         self.input_quantizers = nn.ModuleList([None])
         self.output_quantizers = nn.ModuleList([None])
-        self.bias = 1
-
+        self.bias = 1 # TODO bias is a bad name, change to something else
 
     def forward(self, hidden_states):
         weight = self.weight
@@ -323,7 +325,8 @@ class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
                 super().compute_param_encodings()
                 return super().__call__(*args, **kwargs)
 
-    def fold(self):
+    def _fold(self):
+        # Do not want bias to be copied.
         param = self._update_parameters()
         with torch.no_grad():
             self.weight.copy_(param['weight'])

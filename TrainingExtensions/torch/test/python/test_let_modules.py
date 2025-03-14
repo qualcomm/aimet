@@ -59,6 +59,12 @@ from aimet_torch.omniquant.let_modules import (
     QuantizedLlamaRMSNorm,
 )
 
+from aimet_torch.v2.nn import (
+    QuantizedLinear,
+    QuantizedLayerNorm,
+    QuantizedConv2d,
+)
+
 from aimet_torch.utils import is_vector_encoding
 from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
@@ -72,82 +78,60 @@ TODO: ananmukh
 add doc string comments
 '''
 
-class LinearLinearPair(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(LinearLinearPair, self).__init__()
-        self.l1 = torch.nn.Linear(input_dim, hidden_dim)
-        self.l2 = torch.nn.Linear(hidden_dim, output_dim)
+## TODO replace with actual map
+def get_let_module(mdl):
+    if isinstance(mdl, QuantizedLinear):
+        return LETQuantizedLinear
+    elif isinstance(mdl, QuantizedLayerNorm):
+        return LETQuantizedLayerNorm
+    elif isinstance(mdl, QuantizedConv2d):
+        return LETQuantizedConv2d
+    elif isinstance(mdl, QuantizedLlamaRMSNorm):
+        return LETQuantizedLlamaRMSNorm
+    elif isinstance(mdl, QuantizedGemmaNorm):
+        return LETQuantizedGemmaNorm
+    else:
+        assert False
 
-    def forward(self, input):
-        x = self.l1(input)
-        x = self.l2(x)
-        return x
+def covert_sim_to_letsim(sim):
+    for idx, mdl in enumerate(sim.model):
+        sim.model[idx] = get_let_module(mdl)(mdl)
+    return sim
 
-class ConvConvPair(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(ConvConvPair, self).__init__()
-        self.conv1  = torch.nn.Conv2d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1)
-        self.relu1 = nn.ReLU()
-        self.conv2 = torch.nn.Conv2d(in_channels=hidden_dim, out_channels=output_dim, kernel_size=3, stride=1, padding=1)
-        self.relu2 = nn.ReLU() 
+def fold_test(sim):
+    # Test fold
+    # On folding the LET scale to weights we update the original model weights  
+    # l1.w = w/s
+    # l2.w = w*s
+    for idx, module in enumerate(sim.model):
+        let_params = module.get_let_params()
+        orig_wt = module.weight.cpu().detach().clone()
+        module.fold_let_params() # Fold the scale into the weights
+        scale_folded_wts = module.weight.cpu().detach()
+        if let_params['prev_scale'] is None:
+            factor = 1 / let_params['foll_scale']
+        else:
+            factor = let_params['prev_scale']
+        assert torch.equal(orig_wt, scale_folded_wts * factor)
 
-    def forward(self, input):
-        x = self.relu1(self.conv1(input))
-        x = self.relu2(self.conv2(x))
-        return x
-
-class RmsNormLinearPair(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(RmsNormLinearPair, self).__init__()
-        self.n1 = LlamaRMSNorm((input_dim,))
-        self.l1 = torch.nn.Linear(input_dim, output_dim)
-
-    def forward(self, input):
-        x = self.n1(input)
-        x = self.l1(x)
-        return x
-
-class GemmaRmsNormLinearPair(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(GemmaRmsNormLinearPair, self).__init__()
-        self.gemmarmsnorm = GemmaRMSNorm(input_dim)
-        self.linear = nn.Linear(input_dim, output_dim)
-        
-    def forward(self, x):
-        x = self.gemmarmsnorm(x)
-        x = self.linear(x)
-        return x
-
-class LayernormLinearPair(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LayernormLinearPair, self).__init__()
-        self.layernorm  = nn.LayerNorm(input_dim)
-        self.linear = nn.Linear(input_dim, output_dim)
-
-    def forward(self, input):
-        x = self.layernorm(input)
-        x = self.linear(x)
-        return x
 
 #TODO ananmukh Add a test for linear layer bias = false
 def test_linear_linear_pair():
     input_dim = 10
     hidden_dim = 20
     output_dim = 5
-    model = LinearLinearPair(input_dim, hidden_dim, output_dim).eval()
+    model = nn.Sequential(
+        torch.nn.Linear(input_dim, hidden_dim),
+        torch.nn.Linear(hidden_dim, output_dim),
+        ).eval()
     inp = torch.rand(1, input_dim)
     out_fp = model(inp)
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model 
 
-    # Creating LET Quantized modules from quantized module
-    new_module1 = LETQuantizedLinear(sim.model.l1)
-    new_module2 = LETQuantizedLinear(sim.model.l2)
+    sim = covert_sim_to_letsim(sim)
 
-    setattr(sim.model, 'l1', new_module1)
-    setattr(sim.model, 'l2',  new_module2)
-    # forward pass through toy model with let module
     sim_out_with_no_scale = sim.model(inp) 
 
     # sim_out_with_no_scale  and sim_out is expected to be similar.
@@ -157,8 +141,8 @@ def test_linear_linear_pair():
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([20])
-    sim.model.l1.register_let_params(prev_scale = prev_scale)
-    sim.model.l2.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_rand_scale = sim.model(inp) 
 
@@ -169,8 +153,8 @@ def test_linear_linear_pair():
     # Set scale to 2
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([2])
-    sim.model.l1.register_let_params(prev_scale = prev_scale)
-    sim.model.l2.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
     # sim_out and out_with_scale_2 should be close enough 
@@ -185,30 +169,19 @@ def test_linear_linear_pair():
     # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
     assert torch.equal(out_fp, out_with_quantizers_disabled)
 
-    # Test fold
-    l1_let_params = sim.model.l1.get_let_params()
-    l2_let_params = sim.model.l2.get_let_params()
-    orig_wt_l1 = sim.model.l1.weight.cpu().detach().clone()
-    orig_wt_l2 = sim.model.l2.weight.cpu().detach().clone()
-    # Fold the scale into the weights
-    sim.model.l1.fold_let_params()
-    sim.model.l2.fold_let_params()
-    scale_folded_wts_l1 = sim.model.l1.weight.cpu().detach()
-    scale_folded_wts_l2 = sim.model.l2.weight.cpu().detach()
+    fold_test(sim)
 
-    '''
-    On folding the LET scale to weights we update the original model weights  
-    l1.w = w/s
-    l2.w = w*s
-    '''
-    assert torch.equal(orig_wt_l1, scale_folded_wts_l1 * l1_let_params['prev_scale'])
-    assert torch.equal(orig_wt_l2, scale_folded_wts_l2 / l2_let_params['foll_scale'])
+
 
 def test_conv_conv_pair():
     input_dim = 10
     hidden_dim = 20
     output_dim = 5
-    model = ConvConvPair(input_dim, hidden_dim, output_dim).eval()
+    model = nn.Sequential(
+        torch.nn.Conv2d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1),
+        torch.nn.Conv2d(in_channels=hidden_dim, out_channels=output_dim, kernel_size=3, stride=1, padding=1)
+        ).eval()
+
     inp = torch.rand(1, input_dim, 32, 32)
     out_fp = model(inp)
     
@@ -216,12 +189,8 @@ def test_conv_conv_pair():
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
 
-    #Creating LET Quantized modules from quantized module
-    new_module1 = LETQuantizedConv2d(sim.model.conv1)
-    new_module2 = LETQuantizedConv2d(sim.model.conv2)
+    sim = covert_sim_to_letsim(sim)
 
-    setattr(sim.model, 'conv1', new_module1)
-    setattr(sim.model, 'conv2',  new_module2)
     # forward pass through toy model with let module
     sim_out_with_no_scale = sim.model(inp) 
 
@@ -232,8 +201,8 @@ def test_conv_conv_pair():
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([20])
-    sim.model.conv1.register_let_params(prev_scale = prev_scale)
-    sim.model.conv2.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
 
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_radn_scale = sim.model(inp)
@@ -245,8 +214,8 @@ def test_conv_conv_pair():
     # Set scale to 2
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([2])
-    sim.model.conv1.register_let_params(prev_scale = prev_scale)
-    sim.model.conv2.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
     # sim_out and out_with_scale_2 should be close enough 
@@ -261,23 +230,7 @@ def test_conv_conv_pair():
     # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
     assert torch.equal(out_fp, out_with_quantizers_disabled)
 
-    # Test fold
-    conv1_let_params = sim.model.conv1.get_let_params()
-    conv2_let_params = sim.model.conv2.get_let_params()
-    orig_wt_conv1 = sim.model.conv1.weight.cpu().detach().clone()
-    orig_wt_conv2 = sim.model.conv2.weight.cpu().detach().clone()
-    # Fold the scale into the weights
-    sim.model.conv1.fold_let_params()
-    sim.model.conv2.fold_let_params()
-    scale_folded_wts_conv1 = sim.model.conv1.weight.cpu().detach()
-    scale_folded_wts_conv2 = sim.model.conv2.weight.cpu().detach()
-    '''
-    On folding the LET scale to weights we update the original model weights  
-    l1.w = w/s
-    l2.w = w*s
-    '''
-    assert torch.allclose(orig_wt_conv1, scale_folded_wts_conv1 * conv1_let_params['prev_scale'])
-    assert torch.allclose(orig_wt_conv2, scale_folded_wts_conv2 / conv2_let_params['foll_scale'])
+    fold_test(sim)
 
 
 
@@ -302,19 +255,18 @@ QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlam
 def test_llamarmsnorm_linear_pair():
     input_dim = 3
     output_dim = 2
-    model = RmsNormLinearPair(input_dim, output_dim).eval()
+    model = nn.Sequential(
+        LlamaRMSNorm((input_dim,)),
+        torch.nn.Linear(input_dim, output_dim),
+        ).eval()
+    
     inp = torch.rand(1, input_dim)
     out_fp = model(inp)
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
 
-    #Creating LET Quantized modules from quantized module
-    new_module1 = LETQuantizedLlamaRMSNorm(sim.model.n1)
-    new_module2 = LETQuantizedLinear(sim.model.l1)
- 
-    setattr(sim.model, 'n1', new_module1)
-    setattr(sim.model, 'l1',  new_module2)
+    sim = covert_sim_to_letsim(sim)
     # forward pass through toy model with let module
     sim_out_no_scale = sim.model(inp)
 
@@ -325,8 +277,8 @@ def test_llamarmsnorm_linear_pair():
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([3])
-    sim.model.n1.register_let_params(prev_scale = prev_scale)
-    sim.model.l1.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
 
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_rand_scale = sim.model(inp)
@@ -337,8 +289,8 @@ def test_llamarmsnorm_linear_pair():
     #set scale = 2.
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([2])
-    sim.model.n1.register_let_params(prev_scale = prev_scale)
-    sim.model.l1.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
     # sim_out and out_with_scale_2 should be close enough
@@ -352,40 +304,25 @@ def test_llamarmsnorm_linear_pair():
     # out_quantizers_disabled and out_fp should be same as quantizers were disabled
     assert torch.allclose(out_fp, out_without_quantizers, atol=0.03)
 
-    # Test fold
-    n1_let_params = sim.model.n1.get_let_params()
-    l1_let_params = sim.model.l1.get_let_params()
-    orig_wt_n1 = sim.model.n1.weight.cpu().detach().clone()
-    orig_wt_l1 = sim.model.l1.weight.cpu().detach().clone()
-    # Fold the scale into the weights
-    sim.model.n1.fold_let_params()
-    sim.model.l1.fold_let_params()
-    scale_folded_wts_n1 = sim.model.n1.weight.cpu().detach()
-    scale_folded_wts_l1 = sim.model.l1.weight.cpu().detach()
-    '''
-    On folding the LET scale to weights we update the original model weights  
-    l1.w = w/s
-    l2.w = w*s
-    '''
-    assert torch.equal(orig_wt_n1, scale_folded_wts_n1 * n1_let_params['prev_scale'])
-    assert torch.equal(orig_wt_l1, scale_folded_wts_l1 / l1_let_params['foll_scale'])
+    fold_test(sim)
 
 
 def test_layernorm_linear_pair():
     input_dim = 4
     output_dim = 2
-    model = LayernormLinearPair(input_dim, output_dim).eval()
+
+    model = nn.Sequential(
+        nn.LayerNorm(input_dim),
+        nn.Linear(input_dim, output_dim)
+        ).eval()
+
     inp = torch.rand(1, input_dim)
     out_fp = model(inp)
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
 
-    # Creating LET Quantized modules from quantized module
-    new_module1 = LETQuantizedLayerNorm(sim.model.layernorm)
-    new_module2 = LETQuantizedLinear(sim.model.linear)
-    setattr(sim.model, 'layernorm', new_module1)
-    setattr(sim.model, 'linear',  new_module2)
+    sim = covert_sim_to_letsim(sim)
 
     # sim_out_with_no_scale  and sim_out is expected to be similar.
     # No scale has been set, hence no modifications to params
@@ -395,8 +332,8 @@ def test_layernorm_linear_pair():
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
     prev_scale = torch.tensor([10])
     foll_scale = torch.tensor([100])
-    sim.model.layernorm.register_let_params(prev_scale = prev_scale)
-    sim.model.linear.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_rand_scale = sim.model(inp)
     # Model params are updated due to non zero scale. 
@@ -405,8 +342,8 @@ def test_layernorm_linear_pair():
 
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([2])
-    sim.model.layernorm.register_let_params(prev_scale = prev_scale)
-    sim.model.linear.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
     # sim_out and out_with_scale_2 should be close enough 
@@ -420,23 +357,7 @@ def test_layernorm_linear_pair():
     # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
     assert torch.allclose(out_fp, out_with_quantizers_disabled, atol=0.01)
 
-    # Test fold
-    ln_let_params = sim.model.layernorm.get_let_params()
-    lin_let_params = sim.model.linear.get_let_params()
-    orig_wt_ln = sim.model.layernorm.weight.cpu().detach().clone()
-    orig_wt_lin = sim.model.linear.weight.cpu().detach().clone()
-    # Fold the scale into the weights
-    sim.model.layernorm.fold_let_params()
-    sim.model.linear.fold_let_params()
-    scale_folded_wts_layernorm = sim.model.layernorm.weight.cpu().detach()
-    scale_folded_wts_linear = sim.model.linear.weight.cpu().detach()
-    '''
-    On folding the LET scale to weights we update the original model weights  
-    l1.w = w/s
-    l2.w = w*s
-    '''
-    assert torch.allclose(orig_wt_ln, scale_folded_wts_layernorm * ln_let_params['prev_scale'])
-    assert torch.allclose(orig_wt_lin, scale_folded_wts_linear / lin_let_params['foll_scale'])
+    fold_test(sim)
 
 try:
     from transformers.models.gemma.modeling_gemma.py import GemmaRMSNorm
@@ -462,18 +383,18 @@ QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNo
 def test_gemmarmsnorm_linear_pair():
     input_dim = 3
     output_dim = 2
-    model = GemmaRmsNormLinearPair(input_dim, output_dim).eval()
+    model = nn.Sequential(
+        GemmaRMSNorm(input_dim),
+        nn.Linear(input_dim, output_dim),
+        ).eval()
+
     inp = torch.rand(1, input_dim)
     out_fp = model(inp)
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model 
  
-    #Creating LET Quantized modules from quantized module
-    new_module1 = LETQuantizedGemmaNorm(sim.model.gemmarmsnorm)
-    new_module2 = LETQuantizedLinear(sim.model.linear)
-    setattr(sim.model, 'gemmarmsnorm', new_module1)
-    setattr(sim.model, 'linear',  new_module2)
+    sim = covert_sim_to_letsim(sim)
     # forward pass through toy model with let module
     sim_out_no_scale = sim.model(inp) 
 
@@ -481,12 +402,11 @@ def test_gemmarmsnorm_linear_pair():
     # No scale has been set, hence no modifications to params
     assert torch.equal(sim_out_no_scale, sim_out)
 
-
     # Setting different prev and foll scale to test if all params/quantizers are getting updated
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([3])
-    sim.model.gemmarmsnorm.register_let_params(prev_scale = prev_scale)
-    sim.model.linear.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_rand_scale = sim.model(inp)
 
@@ -498,8 +418,8 @@ def test_gemmarmsnorm_linear_pair():
     #set scale = 1.
     prev_scale = torch.tensor([2])
     foll_scale = torch.tensor([2])
-    sim.model.gemmarmsnorm.register_let_params(prev_scale = prev_scale)
-    sim.model.linear.register_let_params(foll_scale = foll_scale)
+    sim.model[0].register_let_params(prev_scale = prev_scale)
+    sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
     # sim_out and out_with_scale_2 should be close enough
@@ -514,21 +434,5 @@ def test_gemmarmsnorm_linear_pair():
     # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
     assert torch.equal(out_fp, out_with_quantizers_disabled)
 
-    # Test fold
-    gemmarmsnorm_let_params = sim.model.gemmarmsnorm.get_let_params()
-    linear_let_params = sim.model.linear.get_let_params()
-    orig_wt_gemmarmsnorm = sim.model.gemmarmsnorm.weight.cpu().detach().clone()
-    orig_wt_linear = sim.model.linear.weight.cpu().detach().clone()
-    # Fold the scale into the weights
-    sim.model.gemmarmsnorm.fold()
-    sim.model.linear.fold_let_params()
-    scale_folded_wts_gemmarmsnorm = sim.model.gemmarmsnorm.weight.cpu().detach()
-    scale_folded_wts_linear = sim.model.linear.weight.cpu().detach()
-    '''
-    On folding the LET scale to weights we update the original model weights  
-    l1.w = w/s
-    l2.w = w*s
-    '''
-    assert torch.allclose(orig_wt_gemmarmsnorm, scale_folded_wts_gemmarmsnorm * gemmarmsnorm_let_params['prev_scale'])
-    assert torch.allclose(orig_wt_linear, scale_folded_wts_linear / linear_let_params['foll_scale'])
+    fold_test(sim)
 
