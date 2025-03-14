@@ -41,6 +41,7 @@ from typing import List, Optional, Tuple
 import contextlib
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from aimet_common.utils import AimetLogger
@@ -277,33 +278,55 @@ class SequentialMse(SequentialMseBase):
                       xq: torch.Tensor,
                       w: torch.Tensor,
                       wq: torch.Tensor,
-                      params) -> torch.Tensor:
+                      params: SeqMseParams) -> torch.Tensor:
         """
         Compute loss for the given (x, w) and (xq, wq) input/weight pairs. Assumes that block size will be on
         input_channel dimension.
         """
         # pylint: disable=too-many-locals
-        # General strategy: split weights and input per block, and run a separate forward pass for each split.
-        # In the case of per tensor and per channel, the entire input channel is treated as one block.
-        block_size = cls._get_input_channel_block_size(quant_module)
-        w_blocks = torch.split(w, block_size, dim=1)
-        wq_blocks = torch.split(wq, block_size, dim=1)
-        if isinstance(quant_module, torch.nn.Linear):
-            x_blocks = torch.split(x, block_size, dim=-1)
-            xq_blocks = torch.split(xq, block_size, dim=-1)
-        else:
-            assert isinstance(quant_module, torch.nn.Conv2d)
-            groups = quant_module.groups
-            x_blocks = torch.split(x, block_size * groups, dim=-3)
-            xq_blocks = torch.split(xq, block_size * groups, dim=-3)
+        assert isinstance(quant_module, (nn.Linear, nn.Conv2d))
 
-        block_losses = []
-        for idx, x_block in enumerate(x_blocks):
-            xqwq, xw = cls.compute_outputs(quant_module, x_block, xq_blocks[idx], w_blocks[idx], wq_blocks[idx])
-            block_losses.append(cls.compute_recon_loss(xqwq, xw, params))
-        # Stack losses in the input channel dimension
-        block_losses = torch.stack(block_losses, dim=-1)
-        return block_losses
+        block_size = cls._get_input_channel_block_size(quant_module)
+        out_channels = quant_module.weight.shape[0]
+        in_channels = quant_module.weight.shape[1]
+        num_blocks = in_channels // block_size
+
+        if isinstance(quant_module, torch.nn.Linear):
+            x = x.view(-1, num_blocks, block_size).permute(1, 0, 2)
+            w = w.view(out_channels, num_blocks, block_size).permute(1, 2, 0)
+            xw = torch.bmm(x, w)
+
+            xq = xq.view(-1, num_blocks, block_size).permute(1, 0, 2)
+            wq = wq.view(out_channels, num_blocks, block_size).permute(1, 2, 0)
+            xqwq = torch.bmm(xq, wq)
+
+            xw = xw.permute(1, 0, 2).sum(0, keepdim=True)
+            xqwq = xqwq.permute(1, 0, 2).sum(0, keepdim=True)
+
+        else:
+            w = w.transpose(0, 1).reshape(out_channels * in_channels, 1, *w.shape[-2:])
+            wq = wq.transpose(0, 1).reshape(out_channels * in_channels, 1, *wq.shape[2:])
+
+            xw = F.conv2d(x, w,
+                          stride=quant_module.stride,
+                          dilation=quant_module.dilation,
+                          padding=quant_module.padding,
+                          groups=quant_module.groups * in_channels)
+
+            xqwq = F.conv2d(xq, wq,
+                            stride=quant_module.stride,
+                            dilation=quant_module.dilation,
+                            padding=quant_module.padding,
+                            groups=quant_module.groups * in_channels)
+
+            xw = xw.view(-1, num_blocks, block_size, out_channels, *xw.shape[-2:]) \
+                   .sum([0, 2, 4, 5], keepdim=True)
+            xqwq = xqwq.view(-1, num_blocks, block_size, out_channels, *xqwq.shape[-2:]) \
+                       .sum([0, 2, 4, 5], keepdim=True)
+
+        loss = params.get_loss_fn()(xw, xqwq, reduction="none").view(num_blocks, out_channels)
+
+        return loss.T
 
     @classmethod
     def optimize_module(cls,
