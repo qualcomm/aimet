@@ -37,13 +37,15 @@
 # pylint: disable=missing-module-docstring
 
 from aimet_common.connected_graph.operation import Op
+from aimet_onnx.meta.product import Product
 from aimet_onnx.utils import ParamUtils, ModelProto
-from typing import List, Tuple, Optional
+
 from onnx import numpy_helper
 import numpy as np
+from typing import List, Tuple, Optional, Union
 
 
-def get_numpy_array(model: ModelProto, param_name: str) -> Optional[np.ndarray]:
+def _get_numpy_array(model: ModelProto, param_name: str) -> Optional[np.ndarray]:
     """
     returns param value as a numpy array from model if present, otherwise None.
 
@@ -55,6 +57,24 @@ def get_numpy_array(model: ModelProto, param_name: str) -> Optional[np.ndarray]:
         Optional[nd.array]: returns nd.array if parameter exists. Otherwise, None.
     """
     return numpy_helper.to_array(ParamUtils.get_param_by_name(model, param_name))
+
+def is_constant_scalar(model: ModelProto, input: Product, expected_value: Union[int | float]) -> bool:
+    """
+    Returns True if provided input is constant with scalar value equal to expected value.
+
+    Args:
+        model (ModelProto): source Model
+        input (Product): input to check for constant value for
+        expected_value (Union[int | float]): expected value
+
+    Returns:
+        bool: returns True if input is constant with same scalar value.
+    """
+    if not input.is_const:
+        return False
+
+    value = _get_numpy_array(model, input.name)
+    return value.ndim == 0 and value == expected_value
 
 def match_pow_2_pattern(op: Op, model: ModelProto) -> bool:
     """
@@ -70,10 +90,7 @@ def match_pow_2_pattern(op: Op, model: ModelProto) -> bool:
     if op.type == "Mul":
         return op.inputs[0] == op.inputs[1]
     if op.type == "Pow":
-        if not op.inputs[1].is_const:
-            return False
-
-        return get_numpy_array(model, op.inputs[1].name) == 2
+        return is_constant_scalar(model, op.inputs[1], 2)
     return False
 
 def match_and_get_next_op(op: Op, op_type: str) -> Op:

@@ -39,7 +39,7 @@
 from aimet_common.connected_graph.operation import Op
 from aimet_onnx.graph_passes.graph_pass import SupergroupGraphPass
 from aimet_onnx.graph_passes.pass_registry import register_pass
-from aimet_onnx.graph_passes.utils import check_consecutive_ops, match_pow_2_pattern, get_numpy_array
+from aimet_onnx.graph_passes.utils import check_consecutive_ops, match_pow_2_pattern, is_constant_scalar
 from aimet_onnx.utils import ModelProto
 
 @register_pass("RMSNormalization")
@@ -106,7 +106,7 @@ class RMSNormalization(SupergroupGraphPass):
         div_op = all_ops[-1]
 
         # Div pattern 1: x * (1 / Sqrt(E(Pow(x, 2)) + ε))
-        if div_op.inputs[0].is_const and get_numpy_array(model, div_op.inputs[0].name) == 1 and len(div_op.output_ops) == 1:
+        if is_constant_scalar(model, div_op.inputs[0], 1) and len(div_op.output_ops) == 1:
             mul_op = div_op.output_ops[0]
             # Mul input order can be anything.
             input_names = { input.name for input in mul_op.inputs }
