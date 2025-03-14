@@ -249,7 +249,7 @@ def test_remove_all_quantizers(impl):
     module_list = []
     for module in qsim.model.modules():
         module_list.append(module)
-    
+
     # Ensures that temporary removal of quantizers works
     with impl(qsim.model):
         for module in qsim.model.modules():
@@ -257,16 +257,17 @@ def test_remove_all_quantizers(impl):
                 assert all(quant is None for quant in module.input_quantizers)
                 assert all(quant is None for quant in module.output_quantizers)
                 assert all(value is None for value in module.param_quantizers.values())
-    
+
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
-    
+
     # Should also work with iterators
-    with remove_activation_quantizers(qsim.qmodules()):
+    with remove_all_quantizers(qsim.qmodules()):
         for module in qsim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 assert all(quant is None for quant in module.input_quantizers)
                 assert all(quant is None for quant in module.output_quantizers)
+                assert all(value is None for value in module.param_quantizers.values())
 
     assert module_list == list(qsim.model.modules())
 
@@ -286,14 +287,14 @@ def test_remove_activation_quantizers():
     module_list = []
     for module in qsim.model.modules():
         module_list.append(module)
-    
+
     # Ensures that temporary removal of quantizers works
     with remove_activation_quantizers(qsim.model):
         for module in qsim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 assert all(quant is None for quant in module.input_quantizers)
                 assert all(quant is None for quant in module.output_quantizers)
-    
+
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
 
@@ -321,16 +322,16 @@ def test_remove_param_quantizers():
     module_list = []
     for module in qsim.model.modules():
         module_list.append(module)
-    
+
     # Ensures that temporary removal of quantizers works
     with remove_param_quantizers(qsim.model):
         for module in qsim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 assert all(value is None for value in module.param_quantizers.values())
-    
+
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
-    
+
     # Ensures that permanent removal of quantizers works
     remove_param_quantizers(qsim.model)
     for module in qsim.model.modules():
@@ -345,16 +346,16 @@ def test_remove_input_quantizers():
     module_list = []
     for module in qsim.model.modules():
         module_list.append(module)
-    
+
     # Ensures that temporary removal of quantizers works
     with remove_input_quantizers(qsim.model):
         for module in qsim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 assert all(quant is None for quant in module.input_quantizers)
-    
+
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
-    
+
     # Ensures that permanent removal of quantizers works
     remove_input_quantizers(qsim.model)
     for module in qsim.model.modules():
@@ -369,17 +370,17 @@ def test_remove_output_quantizers():
     module_list = []
     for module in qsim.model.modules():
         module_list.append(module)
-    
+
     # Ensures that temporary removal of quantizers works
     with remove_output_quantizers(qsim.model):
         for module in qsim.model.modules():
             if isinstance(module, BaseQuantizationMixin):
                 assert all(quant is None for quant in module.output_quantizers)
-    
-    
+
+
     # Ensures that quantizers are restored properly
     assert module_list == list(qsim.model.modules())
-    
+
     # Ensures that permanent removal of quantizers works
     remove_output_quantizers(qsim.model)
     for module in qsim.model.modules():
