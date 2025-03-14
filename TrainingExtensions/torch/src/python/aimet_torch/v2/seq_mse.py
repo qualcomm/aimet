@@ -187,9 +187,12 @@ class SequentialMse(SequentialMseBase):
 
         min_tensor = x_min
         max_tensor = x_max
-        if quantizer.block_size and quantizer.block_size[1] != -1:
-            min_tensor = min_tensor.repeat_interleave(quantizer.block_size[1], 1)
-            max_tensor = max_tensor.repeat_interleave(quantizer.block_size[1], 1)
+        if quantizer.block_size:
+            for axis, blk_size in enumerate(quantizer.block_size):
+                if blk_size == -1:
+                    continue
+                min_tensor = min_tensor.repeat_interleave(blk_size, axis)
+                max_tensor = max_tensor.repeat_interleave(blk_size, axis)
 
 
         with quantize_dequantize.compute_encodings():
@@ -317,7 +320,7 @@ class SequentialMse(SequentialMseBase):
         :param params: Sequenial MSE parameters
         """
         # pylint: disable=too-many-locals
-        with SafeGatheredParameters(quant_module.parameters(recurse=False)):
+        with SafeGatheredParameters(quant_module.parameters(recurse=True)):
             min_tensor, max_tensor = cls.get_min_and_max_for_candidate_selection(quant_module)
 
             total_loss = []
