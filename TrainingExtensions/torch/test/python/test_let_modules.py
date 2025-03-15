@@ -55,8 +55,13 @@ from aimet_torch.omniquant.let_modules import (
     LETQuantizedLayerNorm,
     LETQuantizedConv2d,
     LETQuantizedGemmaNorm,
-    QuantizedGemmaNorm,
+)
+
+from aimet_torch.omniquant.module_defns import (
+    GemmaRMSNorm,
+    LlamaRMSNorm,
     QuantizedLlamaRMSNorm,
+    QuantizedGemmaNorm,
 )
 
 from aimet_torch.v2.nn import (
@@ -116,7 +121,20 @@ def fold_test(sim):
 
 
 #TODO ananmukh Add a test for linear layer bias = false
-def test_linear_linear_pair():
+
+
+def conv_conv():
+    input_dim = 10
+    hidden_dim = 20
+    output_dim = 5
+    model = nn.Sequential(
+        torch.nn.Conv2d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1),
+        torch.nn.Conv2d(in_channels=hidden_dim, out_channels=output_dim, kernel_size=3, stride=1, padding=1)
+        ).eval()
+    inp = torch.rand(1, input_dim, 32, 32)
+    return model, inp
+
+def lin_lin():
     input_dim = 10
     hidden_dim = 20
     output_dim = 5
@@ -125,66 +143,51 @@ def test_linear_linear_pair():
         torch.nn.Linear(hidden_dim, output_dim),
         ).eval()
     inp = torch.rand(1, input_dim)
-    out_fp = model(inp)
-    sim = QuantizationSimModel(model, inp, config_file=config_file)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    sim_out = sim.model(inp) #Quantized toy model 
+    return model, inp
 
-    sim = covert_sim_to_letsim(sim)
-
-    sim_out_with_no_scale = sim.model(inp) 
-
-    # sim_out_with_no_scale  and sim_out is expected to be similar.
-    # No scale has been set, hence no modifications to params
-    assert torch.equal(sim_out, sim_out_with_no_scale)
-
-    # Setting different prev and foll scale to test if all params/quantizers are getting updated
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([20])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_rand_scale = sim.model(inp) 
-
-    # Model params are updated due to non zero scale. 
-    # Prev and foll scale are different, hence sim_out, out_with_rand_scale are expected to be diferent
-    assert not torch.allclose(sim_out, out_with_rand_scale, atol=0.01)
-
-    # Set scale to 2
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([2])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_scale_2 = sim.model(inp)
-    # sim_out and out_with_scale_2 should be close enough 
-    assert  torch.allclose(sim_out, out_with_scale_2, atol=1e-05)
-
-    # remove the qunatizers
-    for name, module in sim.model.named_modules():
-        if isinstance(module, QuantizationMixin):
-            module._remove_all_quantizers()
-
-    out_with_quantizers_disabled = sim.model(inp)
-    # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
-    assert torch.equal(out_fp, out_with_quantizers_disabled)
-
-    fold_test(sim)
-
-
-
-def test_conv_conv_pair():
-    input_dim = 10
-    hidden_dim = 20
-    output_dim = 5
+QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
+def rms_lin():
+    input_dim = 3
+    output_dim = 2
     model = nn.Sequential(
-        torch.nn.Conv2d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1),
-        torch.nn.Conv2d(in_channels=hidden_dim, out_channels=output_dim, kernel_size=3, stride=1, padding=1)
+        LlamaRMSNorm((input_dim,)),
+        torch.nn.Linear(input_dim, output_dim),
+        ).eval()
+    
+    inp = torch.rand(1, input_dim)
+    return model, inp
+
+QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
+def gemmarms_lin():
+    input_dim = 3
+    output_dim = 2
+    model = nn.Sequential(
+        GemmaRMSNorm(input_dim),
+        nn.Linear(input_dim, output_dim),
         ).eval()
 
-    inp = torch.rand(1, input_dim, 32, 32)
+    inp = torch.rand(1, input_dim)
+    return model,inp
+
+
+def layernorm_lin():
+    input_dim = 4
+    output_dim = 2
+
+    model = nn.Sequential(
+        nn.LayerNorm(input_dim),
+        nn.Linear(input_dim, output_dim)
+        ).eval()
+
+    inp = torch.rand(1, input_dim)
+    return model, inp
+
+@pytest.mark.parametrize("inp_fn", [conv_conv, lin_lin, rms_lin, gemmarms_lin, layernorm_lin])
+def test_pair(inp_fn):
+    model, inp = inp_fn()
+
     out_fp = model(inp)
-    
+
     sim = QuantizationSimModel(model, inp, config_file=config_file)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
@@ -233,206 +236,4 @@ def test_conv_conv_pair():
     fold_test(sim)
 
 
-
-try:
-    from transformers.models.llama.modelling_llama import LlamaRMSNorm
-except ImportError:
-    class LlamaRMSNorm(torch.nn.Module):
-        def __init__(self, dim: int, eps: float = 1e-6):
-            super().__init__()
-            self.eps = eps
-            self.weight = nn.Parameter(torch.ones(dim))
-            
-
-        def _norm(self, x):
-            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-        def forward(self, x):
-            return self.weight * self._norm(x)
-
-QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
-
-def test_llamarmsnorm_linear_pair():
-    input_dim = 3
-    output_dim = 2
-    model = nn.Sequential(
-        LlamaRMSNorm((input_dim,)),
-        torch.nn.Linear(input_dim, output_dim),
-        ).eval()
-    
-    inp = torch.rand(1, input_dim)
-    out_fp = model(inp)
-    sim = QuantizationSimModel(model, inp, config_file=config_file)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    sim_out = sim.model(inp) #Quantized toy model
-
-    sim = covert_sim_to_letsim(sim)
-    # forward pass through toy model with let module
-    sim_out_no_scale = sim.model(inp)
-
-    # sim_out_no_scale  and sim_out is expected to be similar.
-    # No scale has been set, hence no modifications to params
-    assert torch.equal(sim_out, sim_out_no_scale)
-
-    # Setting different prev and foll scale to test if all params/quantizers are getting updated
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([3])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_rand_scale = sim.model(inp)
-    # Model params are updated due to non zero scale. 
-    # Prev and foll scale are different, hence sim_out, out_with_rand_scale are expected to be diferent
-    assert not torch.allclose(sim_out, out_with_rand_scale, atol=0.01)
-
-    #set scale = 2.
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([2])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_scale_2 = sim.model(inp)
-    # sim_out and out_with_scale_2 should be close enough
-    assert torch.allclose(sim_out, out_with_scale_2, atol=0.01)
-
-    #remove the qunatizers
-    for name, module in sim.model.named_modules():
-        if isinstance(module, QuantizationMixin):
-            module._remove_all_quantizers()
-    out_without_quantizers = sim.model(inp)
-    # out_quantizers_disabled and out_fp should be same as quantizers were disabled
-    assert torch.allclose(out_fp, out_without_quantizers, atol=0.03)
-
-    fold_test(sim)
-
-
-def test_layernorm_linear_pair():
-    input_dim = 4
-    output_dim = 2
-
-    model = nn.Sequential(
-        nn.LayerNorm(input_dim),
-        nn.Linear(input_dim, output_dim)
-        ).eval()
-
-    inp = torch.rand(1, input_dim)
-    out_fp = model(inp)
-    sim = QuantizationSimModel(model, inp, config_file=config_file)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    sim_out = sim.model(inp) #Quantized toy model
-
-    sim = covert_sim_to_letsim(sim)
-
-    # sim_out_with_no_scale  and sim_out is expected to be similar.
-    # No scale has been set, hence no modifications to params
-    sim_out_no_scale = sim.model(inp)
-    assert torch.equal(sim_out, sim_out_no_scale)
-
-    # Setting different prev and foll scale to test if all params/quantizers are getting updated
-    prev_scale = torch.tensor([10])
-    foll_scale = torch.tensor([100])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_rand_scale = sim.model(inp)
-    # Model params are updated due to non zero scale. 
-    # Prev and foll scale are different, hence sim_out, out_with_rand_scale are expected to be diferent
-    #assert not torch.allclose(sim_out, out_with_rand_scale, atol=0.01)
-
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([2])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_scale_2 = sim.model(inp)
-    # sim_out and out_with_scale_2 should be close enough 
-    assert torch.allclose(sim_out, out_with_scale_2, atol=0.02)
-
-    for name, module in sim.model.named_modules():
-        if isinstance(module, QuantizationMixin):
-            module._remove_all_quantizers()
-
-    out_with_quantizers_disabled = sim.model(inp)
-    # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
-    assert torch.allclose(out_fp, out_with_quantizers_disabled, atol=0.01)
-
-    fold_test(sim)
-
-try:
-    from transformers.models.gemma.modeling_gemma.py import GemmaRMSNorm
-except ImportError:
-    class GemmaRMSNorm(nn.Module):
-        def __init__(self, dim: int, eps: float = 1e-6):
-            super().__init__()
-            self.eps = eps
-            self.weight = nn.Parameter(torch.zeros(dim))
-
-        def _norm(self, x):
-            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-        def forward(self, x):
-            output = self._norm(x.float())
-            # Llama does x.to(float16) * w whilst Gemma is (x * w).to(float16)
-            # See https://github.com/huggingface/transformers/pull/29402
-            output = output * (1.0 + self.weight.float())
-            return output.type_as(x)
-
-QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
-
-def test_gemmarmsnorm_linear_pair():
-    input_dim = 3
-    output_dim = 2
-    model = nn.Sequential(
-        GemmaRMSNorm(input_dim),
-        nn.Linear(input_dim, output_dim),
-        ).eval()
-
-    inp = torch.rand(1, input_dim)
-    out_fp = model(inp)
-    sim = QuantizationSimModel(model, inp, config_file=config_file)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    sim_out = sim.model(inp) #Quantized toy model 
- 
-    sim = covert_sim_to_letsim(sim)
-    # forward pass through toy model with let module
-    sim_out_no_scale = sim.model(inp) 
-
-    # sim_out_with_no_scale  and sim_out is expected to be similar.
-    # No scale has been set, hence no modifications to params
-    assert torch.equal(sim_out_no_scale, sim_out)
-
-    # Setting different prev and foll scale to test if all params/quantizers are getting updated
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([3])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_rand_scale = sim.model(inp)
-
-    # Model params are updated due to non zero scale. 
-    # Prev and foll scale are different, hence sim_out, out_with_rand_scale are expected to be diferent
-    assert not torch.allclose(sim_out, out_with_rand_scale, atol=0.01)
-
-
-    #set scale = 1.
-    prev_scale = torch.tensor([2])
-    foll_scale = torch.tensor([2])
-    sim.model[0].register_let_params(prev_scale = prev_scale)
-    sim.model[1].register_let_params(foll_scale = foll_scale)
-    sim.compute_encodings(lambda model, _: model(inp), None)
-    out_with_scale_2 = sim.model(inp)
-    # sim_out and out_with_scale_2 should be close enough
-    assert torch.allclose(sim_out, out_with_scale_2)
-
-    #remove the qunatizers
-    for name, module in sim.model.named_modules():
-        if isinstance(module, QuantizationMixin):
-            module._remove_all_quantizers()
-
-    out_with_quantizers_disabled = sim.model(inp)
-    # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
-    assert torch.equal(out_fp, out_with_quantizers_disabled)
-
-    fold_test(sim)
 

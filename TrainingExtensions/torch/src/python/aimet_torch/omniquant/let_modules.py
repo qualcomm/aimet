@@ -50,6 +50,12 @@ import torch.nn.functional as F
 import copy
 from aimet_torch.v2.utils import patch_attr
 from abc import abstractmethod
+from aimet_torch.omniquant.module_defns import (
+    GemmaRMSNorm,
+    LlamaRMSNorm,
+    QuantizedLlamaRMSNorm,
+    QuantizedGemmaNorm,
+)
 
 
 class LETModule():
@@ -194,47 +200,7 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
                 super().compute_param_encodings()
                 return super().__call__(*args, **kwargs)
 
-
-try:
-    from transformers.models.llama.modelling_llama import LlamaRMSNorm
-except ImportError:
-    class LlamaRMSNorm(torch.nn.Module):
-        def __init__(self, dim: int, eps: float = 1e-6):
-            super().__init__()
-            self.eps = eps
-            self.weight = nn.Parameter(torch.ones(dim))
-            
-        def _norm(self, x):
-            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-        def forward(self, x):
-            return self.weight * self._norm(x)
-
-@QuantizationMixin.implements(LlamaRMSNorm)
-class QuantizedLlamaRMSNorm(QuantizationMixin, LlamaRMSNorm):
-    def __quant_init__(self):
-        super().__quant_init__()
-
-        # Declare the number of input/output quantizers
-        self.input_quantizers = torch.nn.ModuleList([None])
-        self.output_quantizers = torch.nn.ModuleList([None])
-
-    def forward(self, hidden_states):
-        # Quantize input tensors
-        if self.input_quantizers[0]:
-            hidden_states = self.input_quantizers[0](hidden_states)
-
-        # Run forward with quantized inputs and parameters
-        with self._patch_quantized_parameters():
-            ret = super().forward(hidden_states)
-
-        # Quantize output tensors
-        if self.output_quantizers[0]:
-            ret = self.output_quantizers[0](ret)
-
-        return ret
-
-
+QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
 class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape)
@@ -257,51 +223,7 @@ class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
             super().compute_param_encodings()
             return super().__call__(*args, **kwargs)
 
-
-
-try:
-    from transformers.models.gemma.modeling_gemma.py import GemmaRMSNorm
-except ImportError:
-    class GemmaRMSNorm(nn.Module):
-        def __init__(self, dim: int, eps: float = 1e-6):
-            super().__init__()
-            self.eps = eps
-            self.weight = nn.Parameter(torch.zeros(dim))
-
-        def _norm(self, x):
-            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-        def forward(self, x):
-            output = self._norm(x.float())
-            # Llama does x.to(float16) * w whilst Gemma is (x * w).to(float16)
-            # See https://github.com/huggingface/transformers/pull/29402
-            output = output * (1.0 + self.weight.float())
-            return output.type_as(x)
-
-@QuantizationMixin.implements(GemmaRMSNorm)
-class QuantizedGemmaNorm(QuantizationMixin, GemmaRMSNorm):
-    def __quant_init__(self):
-        super().__quant_init__()
-        self.input_quantizers = nn.ModuleList([None])
-        self.output_quantizers = nn.ModuleList([None])
-        self.bias = 1 # TODO bias is a bad name, change to something else
-
-    def forward(self, hidden_states):
-        weight = self.weight
-        bias = self.bias
-        if self.input_quantizers[0]:
-            hidden_states = self.input_quantizers[0](hidden_states)
-
-        if self.param_quantizers.weight:
-            weight = self.param_quantizers.weight(weight)
-
-        ret = self._norm(hidden_states.float())
-        ret = ret * (bias+weight)
-
-        if self.output_quantizers[0]:
-            ret = self.output_quantizers[0](ret)
-        return ret
-
+QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
 class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape)
