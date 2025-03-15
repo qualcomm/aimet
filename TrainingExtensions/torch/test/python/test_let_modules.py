@@ -2,7 +2,7 @@
 # =============================================================================
 #  @@-COPYRIGHT-START-@@
 #
-#  Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+#  Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -77,11 +77,48 @@ from aimet_torch.v2.quantsim import QuantizationSimModel
 from torch import nn
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
 import copy
-config_file = "/prj/qct/compute_aisw/ananmukh/morpheus/remote_dev/aimet-main/aimet/config/htp_quantsim_config_v73.json"
+
 '''
 TODO: ananmukh 
 add doc string comments
 '''
+
+def _generate_quantsim_config(file_path: str) -> dict:
+    """
+    Writes QuantSim config with provided supergroup pass name to provided file path
+
+    Args:
+        file_path (str): path to write json config file to
+    """
+    quantsim_config = {
+        "defaults": {
+            "ops": {
+                "is_output_quantized": "True",
+            },
+            "params": {
+                "is_quantized": "True",
+                "is_symmetric": "True"
+            },
+            "strict_symmetric": "False",
+            "per_channel_quantization": "True",
+        },
+        "params": {"bias": {"is_quantized": "False"}},
+        "op_type": {},
+        "supergroups": [
+            {
+                "op_list": ["Conv", "Relu"]
+            },
+            {
+                "op_list": ["Relu", "MaxPool"]
+            },
+        ],
+        "model_input": {
+            "is_input_quantized": "True"
+        },
+        "model_output": {}
+    }
+    with open(file_path, 'w') as f:
+        json.dump(quantsim_config, f)
 
 ## TODO replace with actual map
 def get_let_module(mdl):
@@ -188,7 +225,10 @@ def test_pair(inp_fn):
 
     out_fp = model(inp)
 
-    sim = QuantizationSimModel(model, inp, config_file=config_file)
+    with tempfile.NamedTemporaryFile(prefix="quantsim_config", suffix=".json") as config_file:
+        #breakpoint()
+        _generate_quantsim_config(config_file.name)
+        sim = QuantizationSimModel(model, inp, config_file=config_file.name)
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
 
