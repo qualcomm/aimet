@@ -64,12 +64,15 @@ class Omniquant:
         :param output_path: path where to store artifacts.
         :return: Model with Omniquant weights.
         """
-        # Need to disable dynamic_cache for LET blockwise training.
-        assert not quant_sim.model.config.use_cache, "Expect quant_sim.model.config.use_cache to be False, but got True."
-        assert not model.config.use_cache, "Expect model.config.use_cache to be False, but got True"
+        # Need to disable dynamic_cache for LET blockwise training, and restore after optimization.
+        quant_sim_use_cache_bool, model_use_cache_bool = quant_sim.model.config.use_cache, model.config.use_cache
+        quant_sim.model.config.use_cache, model.config.use_cache = False, False
 
-        cls.valiadte_omniquant_config(omniquant_config)
+        cls.validate_omniquant_config(omniquant_config)
         quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
+
+        # Restore dynamic caching flag for quant sim and fp model.
+        quant_sim.model.config.use_cache, model.config.use_cache = quant_sim_use_cache_bool, model_use_cache_bool
         return quant_sim.model
 
     # pylint: disable=too-many-locals
@@ -184,7 +187,7 @@ class Omniquant:
         optimizer.zero_grad()
 
     @classmethod
-    def valiadte_omniquant_config(cls, omniquant_config):
+    def validate_omniquant_config(cls, omniquant_config):
         """ Validate omniquant config """
         # input_symmetry should be one of qtqt, qtfp, fpqt, fpfp
         input_symmetry_error_msg = f"Expect omniquant_config.input_symmetry be one of qtqt, qtfp, fpqt, fpfp but got {omniquant_config.input_symmetry}."
