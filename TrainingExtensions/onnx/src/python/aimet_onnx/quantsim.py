@@ -968,6 +968,8 @@ class QuantizationSimModel:
                             atr.i = libpymo.PtrToInt64(src_qtzr.quant_info)
                             return
 
+            raise RuntimeError(f"Did not find quantizer for tensor {dst_qtzr_node_name}")
+
         def _set_qtzr(tensor_name: str, src_qtzr: QcQuantizeOp):
             """
             Set the dst quantizer by src quantizer and update quant_info attribute (pointer to the libquant_info object)
