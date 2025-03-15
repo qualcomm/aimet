@@ -962,57 +962,34 @@ class QuantizationSimModel:
             :param src_qtzr: source quantizer.
             """
             for node in self.model.graph().node:
-                if node.op_type == 'QcQuantizeOp' and node.name == dst_qtzr_node_name:
+                if node.op_type == 'QcQuantizeOp' and node.input[0] == dst_qtzr_node_name:
                     for atr in node.attribute:
                         if atr.name == "quant_info":
                             atr.i = libpymo.PtrToInt64(src_qtzr.quant_info)
                             return
 
-        def _set_qtzr(dst_qtzr: QcQuantizeOp, src_qtzr: QcQuantizeOp):
+        def _set_qtzr(tensor_name: str, src_qtzr: QcQuantizeOp):
             """
             Set the dst quantizer by src quantizer and update quant_info attribute (pointer to the libquant_info object)
              in the graph node.
 
-            :param dst_qtzr: destination quantizer.
+            :param tensor_name: destination of quantizer.
             :param src_qtzr: source quantizer
             """
-            for name, qtzr in self.qc_quantize_op_dict.items():
-                if dst_qtzr == qtzr:
-                    self.qc_quantize_op_dict[name] = src_qtzr
-                    dst_qtzr_node_name = 'QcQuantizeOp_' + name
-                    # update quant_info attribute (pointer to the libquant_info object) in the graph node.
-                    _set_quant_info(dst_qtzr_node_name, src_qtzr)
-                    return
+            self.qc_quantize_op_dict[tensor_name] = src_qtzr
+            _set_quant_info(tensor_name, src_qtzr)
 
-        def _set_src_qtzr(x: Product, consumer: Op, src_qtzr):
+        def _set_src_qtzr(x: Product, src_qtzr):
+            if x.name in self.qc_quantize_op_dict:
+                _set_qtzr(x.name, src_qtzr)
+
             producer = x.producer
 
-            if not producer:
-                # ``x`` is a root input (i.e. has no producer).
-                # In this case, set the input quantizer of the consumer to ``src_qtzr``
-                i = consumer.inputs.index(x)
-                inp_qtzr, _, __ = self.get_op_quantizers(consumer)
-                if i >= len(inp_qtzr):
-                    return
-
-                _set_qtzr(dst_qtzr=inp_qtzr[i], src_qtzr=src_qtzr)
-                return
-
-            _, out_qtzr, __ = self.get_op_quantizers(producer)
-
-            if out_qtzr:
-                # There exists output quantizer associated with the graph node ``producer``
-                # In this case, set the output quantizer of the producer to ``src_qtzr`
-                outputs = producer.outputs
-                i = outputs.index(x)
-                _set_qtzr(dst_qtzr=out_qtzr[i], src_qtzr=src_qtzr)
-
-            if not out_qtzr or producer.type in op_outputs_to_ignore:
-                # 1. There is no output quantizer associated with the graph node ``producer``, or
-                # 2. op is a math invariant op (reshape, permute, etc.).
-                # In these cases, propagate encoding further to the ancestors
-                for inp in producer.inputs:
-                    _set_src_qtzr(inp, consumer=producer, src_qtzr=src_qtzr)
+            # 1. There is no output quantizer associated with the graph node ``producer``, or
+            # 2. op is a math invariant op (reshape, permute, etc.).
+            # In these cases, propagate encoding to first input
+            if producer and producer.inputs:
+                _set_src_qtzr(producer.inputs[0], src_qtzr=src_qtzr)
 
         for op in reversed(cg.ordered_ops):
             if op.type not in op_types_to_tie_qtzrs:
@@ -1030,7 +1007,7 @@ class QuantizationSimModel:
                 raise RuntimeError(msg)
 
             for inp in op.inputs:
-                _set_src_qtzr(inp, consumer=op, src_qtzr=out_qtzr[0])
+                _set_src_qtzr(inp, src_qtzr=out_qtzr[0])
 
 
 # pylint: disable=too-many-locals, too-many-branches
