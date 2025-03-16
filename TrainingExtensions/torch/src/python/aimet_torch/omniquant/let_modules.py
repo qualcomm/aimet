@@ -60,7 +60,10 @@ from aimet_torch.omniquant.module_defns import (
 
 class LETModule():
     def __init__(self, source: QuantizationMixin):
-        self._reset_let_params()  
+        self._reset_let_params()
+        self.param_quantizers = nn.ModuleDict({})
+        self.input_quantizers = nn.ModuleList([None])
+        self.output_quantizers = nn.ModuleList([None])
         if source.input_quantizers:
             self.input_quantizers = copy.deepcopy(source.input_quantizers)
         if source.output_quantizers:
@@ -121,12 +124,11 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 bias = bias / prev_scale
-
-            weight = weight / prev_scale.unsqueeze(1)
+            weight = weight / prev_scale
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale.unsqueeze(0)
+            weight = weight * foll_scale
         
         return {'weight': weight, 'bias': bias}
 
@@ -156,11 +158,11 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
             if bias is not None:
                 bias = bias / prev_scale
 
-            weight = weight / prev_scale.unsqueeze(1)
+            weight = weight / prev_scale
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale.unsqueeze(0)
+            weight = weight * foll_scale
         
         return {'weight': weight, 'bias': bias}
 

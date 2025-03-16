@@ -182,7 +182,6 @@ def lin_lin():
     inp = torch.rand(1, input_dim)
     return model, inp
 
-QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
 def rms_lin():
     input_dim = 3
     output_dim = 2
@@ -194,7 +193,6 @@ def rms_lin():
     inp = torch.rand(1, input_dim)
     return model, inp
 
-QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
 def gemmarms_lin():
     input_dim = 3
     output_dim = 2
@@ -220,6 +218,7 @@ def layernorm_lin():
     return model, inp
 
 @pytest.mark.parametrize("inp_fn", [conv_conv, lin_lin, rms_lin, gemmarms_lin, layernorm_lin])
+#@pytest.mark.parametrize("inp_fn", [lin_lin])
 def test_pair(inp_fn):
     model, inp = inp_fn()
 
