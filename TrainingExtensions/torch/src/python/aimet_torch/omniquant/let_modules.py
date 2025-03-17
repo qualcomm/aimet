@@ -61,15 +61,13 @@ from aimet_torch.omniquant.module_defns import (
 class LETModule():
     def __init__(self, source: QuantizationMixin):
         self._reset_let_params()
-        self.param_quantizers = nn.ModuleDict({})
-        self.input_quantizers = nn.ModuleList([None])
-        self.output_quantizers = nn.ModuleList([None])
-        if source.input_quantizers:
-            self.input_quantizers = copy.deepcopy(source.input_quantizers)
-        if source.output_quantizers:
-            self.output_quantizers = copy.deepcopy(source.output_quantizers)
-        if source.param_quantizers:
-            self.param_quantizers = copy.deepcopy(source.param_quantizers)
+        # TODO in e2e integration decide what happens if some of the quantizers are None/missing
+        # For now we assume all 3 values are present, else we throw an error
+        for quantizers in ['input_quantizers', 'output_quantizers', 'param_quantizers']:
+            src_quant = getattr(source, quantizers)
+            assert src_quant, f'{quantizers} should not be none for LETModule'
+            setattr(self, quantizers, copy.deepcopy(src_quant))
+
 
     # TODO : ananmukh check if prep func can be removed from here
     def _reset_let_params(self):
