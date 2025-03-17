@@ -39,6 +39,7 @@
 import os
 import tempfile
 import torch
+from torch import nn
 
 from aimet_torch.utils import CachedDataset
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -155,7 +156,7 @@ class Omniquant:
         let_param = []
         for _pair in qt_let_pair_list:
             for q_module in _pair.prev + _pair.follow:
-                let_param.extend([q_module.get_let_param().values])
+                let_param.extend([_v for _v in q_module.get_let_param().values if isinstance(_v, nn.parameter)])
 
         grouped_params = [
                 {"params": let_param, "lr": omniquant_config.let_lr, "weight_decay":  0.},
