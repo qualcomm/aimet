@@ -87,6 +87,8 @@ class LETModule():
         }
         return let_params
 
+    # TODO ananmukh: scale is meant to be a nn.parameter shared between 2 nn.modules. Need to check
+    # during end-to-end integration whats the best way to initialize scale
     def register_let_params(self, prev_scale = None, foll_scale = None):
         self.prev_scale = prev_scale
         self.foll_scale = foll_scale
@@ -120,15 +122,17 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
         weight = self.weight
         bias = self.bias
         
+        #TODO: ananmukh check if unsqueeze is needed during end-to-end interation
+        # currently system's team has a non scaler sctivation scale for a linear-linear pair
         if self.prev_scale is not None:
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 bias = bias / prev_scale
-            weight = weight / prev_scale
+            weight = weight / prev_scale.unsqueeze(1)
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale
+            weight = weight * foll_scale.unsqueeze(1)
         
         return {'weight': weight, 'bias': bias}
 
@@ -158,11 +162,11 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
             if bias is not None:
                 bias = bias / prev_scale
 
-            weight = weight / prev_scale
+            weight = weight / prev_scale.unsqueeze(1)
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale
+            weight = weight * foll_scale.unsqueeze(1)
         
         return {'weight': weight, 'bias': bias}
 

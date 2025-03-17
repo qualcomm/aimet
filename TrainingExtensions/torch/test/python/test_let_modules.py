@@ -218,16 +218,15 @@ def layernorm_lin():
     return model, inp
 
 @pytest.mark.parametrize("inp_fn", [conv_conv, lin_lin, rms_lin, gemmarms_lin, layernorm_lin])
-#@pytest.mark.parametrize("inp_fn", [lin_lin])
 def test_pair(inp_fn):
     model, inp = inp_fn()
 
     out_fp = model(inp)
 
     with tempfile.NamedTemporaryFile(prefix="quantsim_config", suffix=".json") as config_file:
-        #breakpoint()
         _generate_quantsim_config(config_file.name)
         sim = QuantizationSimModel(model, inp, config_file=config_file.name)
+
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
 
@@ -272,6 +271,7 @@ def test_pair(inp_fn):
     # out_with_quantizers_disabled and out_fp should be same as quantizers were disabled
     assert torch.equal(out_fp, out_with_quantizers_disabled)
 
+    # Test for folding scales into weight
     fold_test(sim)
 
 
