@@ -35,23 +35,25 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
-#from transformers.models.llama.modelling_llama import LlamaRMSNorm
+# pylint: disable=missing-module-docstring
 from aimet_torch.v2.nn import (
     QuantizedLinear,
     QuantizedLayerNorm,
     QuantizedConv2d,
 )
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
-import torch
-import copy
 from aimet_torch.v2.utils import patch_attr
-from abc import abstractmethod
 from aimet_torch.omniquant.module_defns import (
     GemmaRMSNorm,
     LlamaRMSNorm,
     QuantizedLlamaRMSNorm,
     QuantizedGemmaNorm,
 )
+
+import torch
+import copy
+from abc import abstractmethod
+
 
 # TODO add docstring
 
@@ -86,7 +88,7 @@ class LETModule():
 
     # TODO ananmukh: scale is meant to be a nn.parameter shared between 2 nn.modules. Need to check
     # during end-to-end integration whats the best way to initialize scale
-    # pylint: disable=missing-function-docstring
+    # pylint: disable=missing-function-docstring, attribute-defined-outside-init
     def register_let_params(self, prev_scale = None, foll_scale = None):
         self.prev_scale = prev_scale
         self.foll_scale = foll_scale

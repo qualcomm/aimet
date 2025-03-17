@@ -34,6 +34,8 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+
+# pylint: disable=missing-module-docstring
 import torch
 from torch import nn
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
@@ -42,6 +44,9 @@ try:
     from transformers.models.llama.modelling_llama import LlamaRMSNorm
 except ImportError:
     class LlamaRMSNorm(torch.nn.Module):
+        '''
+        Define llama rms norm if import from transformers fails
+        '''
         def __init__(self, dim: int, eps: float = 1e-6):
             super().__init__()
             self.eps = eps
@@ -49,12 +54,15 @@ except ImportError:
 
         def _norm(self, x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
+        # pylint: disable=missing-function-docstring
         def forward(self, x):
             return self.weight * self._norm(x)
 
 @QuantizationMixin.implements(LlamaRMSNorm)
 class QuantizedLlamaRMSNorm(QuantizationMixin, LlamaRMSNorm):
+    '''
+        Define QuantizedLlamaRMSNorm
+    '''
     def __quant_init__(self):
         super().__quant_init__()
 
@@ -62,6 +70,7 @@ class QuantizedLlamaRMSNorm(QuantizationMixin, LlamaRMSNorm):
         self.input_quantizers = torch.nn.ModuleList([None])
         self.output_quantizers = torch.nn.ModuleList([None])
 
+    # pylint: disable=arguments-differ
     def forward(self, hidden_states):
         # Quantize input tensors
         if self.input_quantizers[0]:
@@ -81,6 +90,9 @@ try:
     from transformers.models.gemma.modeling_gemma.py import GemmaRMSNorm
 except ImportError:
     class GemmaRMSNorm(nn.Module):
+        '''
+        Define gemma rms norm if import from transformers fails
+        '''
         def __init__(self, dim: int, eps: float = 1e-6):
             super().__init__()
             self.eps = eps
@@ -89,6 +101,7 @@ except ImportError:
         def _norm(self, x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
+        # pylint: disable=arguments-differ,missing-function-docstring
         def forward(self, x):
             output = self._norm(x.float())
             # Llama does x.to(float16) * w whilst Gemma is (x * w).to(float16)
@@ -98,12 +111,16 @@ except ImportError:
 
 @QuantizationMixin.implements(GemmaRMSNorm)
 class QuantizedGemmaNorm(QuantizationMixin, GemmaRMSNorm):
+    '''
+        Define QuantizedGemmaNorm
+    '''
     def __quant_init__(self):
         super().__quant_init__()
         self.input_quantizers = nn.ModuleList([None])
         self.output_quantizers = nn.ModuleList([None])
         self.bias = 1 # TODO bias is a bad name, change to something else
 
+    # pylint: disable=arguments-differ
     def forward(self, hidden_states):
         weight = self.weight
         bias = self.bias

@@ -70,16 +70,15 @@ from torch import nn
 def get_let_module(mdl):
     if isinstance(mdl, QuantizedLinear):
         return LETQuantizedLinear
-    elif isinstance(mdl, QuantizedLayerNorm):
+    if isinstance(mdl, QuantizedLayerNorm):
         return LETQuantizedLayerNorm
-    elif isinstance(mdl, QuantizedConv2d):
+    if isinstance(mdl, QuantizedConv2d):
         return LETQuantizedConv2d
-    elif isinstance(mdl, QuantizedLlamaRMSNorm):
+    if isinstance(mdl, QuantizedLlamaRMSNorm):
         return LETQuantizedLlamaRMSNorm
-    elif isinstance(mdl, QuantizedGemmaNorm):
+    if isinstance(mdl, QuantizedGemmaNorm):
         return LETQuantizedGemmaNorm
-    else:
-        assert False
+    assert False, "Let Quantized module is not implemented"
 
 # pylint: disable=missing-function-docstring
 def covert_sim_to_letsim(sim):
@@ -93,7 +92,7 @@ def fold_test(sim):
     # On folding the LET scale to weights we update the original model weights
     # l1.w = w/s
     # l2.w = w*s
-    for idx, module in enumerate(sim.model):
+    for _, module in enumerate(sim.model):
         let_params = module.get_let_params()
         orig_wt = module.weight.cpu().detach().clone()
         module.fold_let_params() # Fold the scale into the weights
@@ -190,6 +189,7 @@ def test_pair(inp_fn):
     # sim_out and out_with_scale_2 should be close enough
     assert  torch.allclose(sim_out, out_with_scale_2, atol=1e-05)
 
+    #pylint: disable=protected-access
     #remove the qunatizers
     for _, module in sim.model.named_modules():
         if isinstance(module, QuantizationMixin):
