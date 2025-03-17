@@ -2814,7 +2814,7 @@ def model_with_4d_matmul_weight():
 
 def gather_concat_model():
     #
-    # x ---------------------
+    # x -- Mul ---------------
     #                        |
     # y -- Mul -- Cast --- Gather -- Concat
 
@@ -2828,9 +2828,10 @@ def gather_concat_model():
                 numpy_helper.from_array(np.array([2.]).astype('float32'), name='scale')
             ],
             nodes=[
-                helper.make_node("Mul", ["y", "scale"], ["z"], name="mul"),
+                helper.make_node("Mul", ['x', 'scale'], ['x_2'], name="mul_1"),
+                helper.make_node("Mul", ["y", "scale"], ["z"], name="mul_2"),
                 helper.make_node("Cast", ["z"], ["z_int"], name="cast", to=TensorProto.INT64),
-                helper.make_node("Gather", ["x", "z_int"], ["w"], name="gather", axis=1),
+                helper.make_node("Gather", ["x_2", "z_int"], ["w"], name="gather", axis=1),
                 helper.make_node("Concat", ["w"], ["out"], name="concat", axis=0)
             ]
         )

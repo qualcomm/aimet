@@ -985,13 +985,14 @@ class QuantizationSimModel:
             if x.name in self.qc_quantize_op_dict:
                 _set_qtzr(x.name, src_qtzr)
 
-            producer = x.producer
+            else:
+                producer = x.producer
 
-            # 1. There is no output quantizer associated with the graph node ``producer``, or
-            # 2. op is a math invariant op (reshape, permute, etc.).
-            # In these cases, propagate encoding to first input
-            if producer and producer.inputs:
-                _set_src_qtzr(producer.inputs[0], src_qtzr=src_qtzr)
+                # 1. There is no output quantizer associated with the graph node ``producer``, or
+                # 2. op is a math invariant op (reshape, permute, etc.).
+                # In these cases, propagate encoding to first input
+                if producer and producer.inputs:
+                    _set_src_qtzr(producer.inputs[0], src_qtzr=src_qtzr)
 
         for op in reversed(cg.ordered_ops):
             if op.type not in op_types_to_tie_qtzrs:
