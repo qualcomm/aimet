@@ -37,7 +37,6 @@
 import torch
 from torch import nn
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
-from aimet_torch.v2.quantization.affine import QuantizeDequantize
 
 try:
     from transformers.models.llama.modelling_llama import LlamaRMSNorm
@@ -47,7 +46,6 @@ except ImportError:
             super().__init__()
             self.eps = eps
             self.weight = nn.Parameter(torch.ones(dim))
-            
 
         def _norm(self, x):
             return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)

@@ -42,11 +42,7 @@ from aimet_torch.v2.nn import (
     QuantizedConv2d,
 )
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
-from aimet_torch.v2.quantization.affine import QuantizeDequantize
 import torch
-from torch import Tensor
-from torch import nn
-import torch.nn.functional as F
 import copy
 from aimet_torch.v2.utils import patch_attr
 from abc import abstractmethod
@@ -57,7 +53,9 @@ from aimet_torch.omniquant.module_defns import (
     QuantizedGemmaNorm,
 )
 
+# TODO add docstring
 
+# pylint: disable=missing-module-docstring, missing-class-docstring
 class LETModule():
     def __init__(self, source: QuantizationMixin):
         self._reset_let_params()
@@ -76,6 +74,7 @@ class LETModule():
         self.foll_scale = None
         self.foll_prep_fn = torch.nn.Identity()
 
+    # pylint: disable=missing-function-docstring
     def get_let_params(self):
         let_params = {
             "prev_scale": self.prev_scale,
@@ -87,6 +86,7 @@ class LETModule():
 
     # TODO ananmukh: scale is meant to be a nn.parameter shared between 2 nn.modules. Need to check
     # during end-to-end integration whats the best way to initialize scale
+    # pylint: disable=missing-function-docstring
     def register_let_params(self, prev_scale = None, foll_scale = None):
         self.prev_scale = prev_scale
         self.foll_scale = foll_scale
@@ -104,26 +104,27 @@ class LETModule():
         with torch.no_grad():
             for k in params:
                 param = getattr(self, k)
-                if param != None:
+                if param is not None:
                     param.copy_(params[k])
 
     @abstractmethod
     def _update_parameters(self):
-        assert "Override in child class"
+        assert False, "Override in child class"
 
+# pylint: disable=too-many-ancestors, missing-class-docstring
 class LETQuantizedLinear(QuantizedLinear, LETModule):
     def __init__(self, module:QuantizationMixin):
         # TODO pass in all params to ctor
-        super().__init__(module.weight.shape[1], module.weight.shape[0], bias=module.bias!=None)
+        super().__init__(module.weight.shape[1], module.weight.shape[0], bias=module.bias is not None)
         LETModule.__init__(self, module)
         self.load_state_dict(module.state_dict())
 
     def _update_parameters(self):
         weight = self.weight
         bias = self.bias
-        
-        #TODO: ananmukh check if unsqueeze is needed during end-to-end interation
-        # currently system's team has a non scaler sctivation scale for a linear-linear pair
+
+        #TODO: ananmukh check if unsqueeze is needed during end-to-end integration
+        # currently system's team has a non scaler activation scale for a linear-linear pair
         if self.prev_scale is not None:
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
@@ -133,30 +134,30 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
             weight = weight * foll_scale
-        
+
         return {'weight': weight, 'bias': bias}
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
         with patch_attr(self, 'weight', params['weight']):
-             with patch_attr(self, 'bias', params['bias']):
+            with patch_attr(self, 'bias', params['bias']):
                 # TODO: ananmukh remove compute_param_encodings() from here
                 # call it explicitly in training loop in a later PR
                 super().compute_param_encodings()
-                return super().__call__(*args, **kwargs) 
+                return super().__call__(*args, **kwargs)
 
-
+# pylint: disable=too-many-ancestors, missing-class-docstring
 class LETQuantizedConv2d(QuantizedConv2d, LETModule):
     def __init__(self, module:QuantizationMixin):
         # TODO pass in all params to ctor
-        super().__init__(module.weight.shape[1], module.weight.shape[0], module.kernel_size, module.stride, module.padding, bias=module.bias!=None)
+        super().__init__(module.weight.shape[1], module.weight.shape[0], module.kernel_size, module.stride, module.padding, bias=module.bias is not None)
         LETModule.__init__(self, module)
         self.load_state_dict(module.state_dict())
 
     def _update_parameters(self):
         weight = self.weight
         bias = self.bias
-        
+
         #TODO: ananmukh check if unsqueeze is needed during end-to-end interation
         # currently system's team has a non scaler sctivation scale for a linear-linear pair
         if self.prev_scale is not None:
@@ -168,19 +169,19 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
             weight = weight * foll_scale
-        
+
         return {'weight': weight, 'bias': bias}
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
         with patch_attr(self, 'weight', params['weight']):
-             with patch_attr(self, 'bias', params['bias']):
+            with patch_attr(self, 'bias', params['bias']):
                 # TODO: ananmukh remove compute_param_encodings() from here
                 # call it explicitly in training loop in a later PR
                 super().compute_param_encodings()
-                return super().__call__(*args, **kwargs) 
+                return super().__call__(*args, **kwargs)
 
-
+# pylint: disable=too-many-ancestors, missing-class-docstring
 class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
         super().__init__(module.weight.shape)
@@ -207,6 +208,7 @@ class LETQuantizedLayerNorm(QuantizedLayerNorm, LETModule):
                 super().compute_param_encodings()
                 return super().__call__(*args, **kwargs)
 
+# pylint: disable=missing-class-docstring
 QuantizedLlamaRMSNorm = QuantizationMixin.implements(LlamaRMSNorm)(QuantizedLlamaRMSNorm)
 class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
     def __init__(self, module:QuantizationMixin):
@@ -230,6 +232,7 @@ class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
             super().compute_param_encodings()
             return super().__call__(*args, **kwargs)
 
+# pylint: disable=missing-class-docstring
 QuantizedGemmaNorm = QuantizationMixin.implements(GemmaRMSNorm)(QuantizedGemmaNorm)
 class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
     def __init__(self, module:QuantizationMixin):

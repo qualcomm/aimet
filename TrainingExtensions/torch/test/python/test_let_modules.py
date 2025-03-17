@@ -38,9 +38,7 @@
 import pytest
 import torch
 
-from aimet_common import quantsim
 from aimet_torch.omniquant.let_modules import (
-    LETModule,
     LETQuantizedLinear,
     LETQuantizedLlamaRMSNorm,
     LETQuantizedLayerNorm,
@@ -64,13 +62,10 @@ from aimet_torch.v2.nn import (
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from torch import nn
-import copy
 
-'''
-TODO: ananmukh 
-add doc string comments
-'''
+# TODO: ananmukh add doc string comments
 
+# pylint: disable=missing-function-docstring
 ## TODO replace with actual map
 def get_let_module(mdl):
     if isinstance(mdl, QuantizedLinear):
@@ -86,14 +81,16 @@ def get_let_module(mdl):
     else:
         assert False
 
+# pylint: disable=missing-function-docstring
 def covert_sim_to_letsim(sim):
     for idx, mdl in enumerate(sim.model):
         sim.model[idx] = get_let_module(mdl)(mdl)
     return sim
 
+# pylint: disable=missing-function-docstring
 def fold_test(sim):
     # Test fold
-    # On folding the LET scale to weights we update the original model weights  
+    # On folding the LET scale to weights we update the original model weights
     # l1.w = w/s
     # l2.w = w*s
     for idx, module in enumerate(sim.model):
@@ -107,7 +104,7 @@ def fold_test(sim):
             factor = let_params['prev_scale']
         assert torch.equal(orig_wt, scale_folded_wts * factor)
 
-
+# pylint: disable=missing-function-docstring
 def get_conv_conv(bias):
     def conv_conv():
         input_dim = 10
@@ -121,6 +118,7 @@ def get_conv_conv(bias):
         return model, inp
     return conv_conv
 
+# pylint: disable=missing-function-docstring
 def get_lin_lin(bias):
     def lin_lin():
         input_dim = 10
@@ -134,6 +132,7 @@ def get_lin_lin(bias):
         return model, inp
     return lin_lin
 
+# pylint: disable=missing-function-docstring
 def get_norm_lin(NormLayer):
     def norm_lin():
         input_dim = 3
@@ -147,6 +146,7 @@ def get_norm_lin(NormLayer):
         return model,inp
     return norm_lin
 
+# pylint: disable=missing-function-docstring
 @pytest.mark.parametrize("inp_fn", [get_conv_conv(True), get_conv_conv(False), get_lin_lin(True), get_lin_lin(False), \
                                     get_norm_lin(GemmaRMSNorm), get_norm_lin(nn.LayerNorm), get_norm_lin(LlamaRMSNorm)])
 def test_pair(inp_fn):
@@ -161,7 +161,7 @@ def test_pair(inp_fn):
     sim = covert_sim_to_letsim(sim)
 
     # forward pass through toy model with let module
-    sim_out_with_no_scale = sim.model(inp) 
+    sim_out_with_no_scale = sim.model(inp)
 
     # sim_out_with_no_scale  and sim_out is expected to be similar.
     # No scale has been set, hence no modifications to params
@@ -176,7 +176,7 @@ def test_pair(inp_fn):
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_radn_scale = sim.model(inp)
 
-    # Model params are updated due to non zero scale. 
+    # Model params are updated due to non zero scale.
     # Prev and foll scale are different, hence sim_out, out_with_radn_scale are expected to be diferent
     assert not torch.allclose(sim_out, out_with_radn_scale, atol=0.01)
 
@@ -187,11 +187,11 @@ def test_pair(inp_fn):
     sim.model[1].register_let_params(foll_scale = foll_scale)
     sim.compute_encodings(lambda model, _: model(inp), None)
     out_with_scale_2 = sim.model(inp)
-    # sim_out and out_with_scale_2 should be close enough 
+    # sim_out and out_with_scale_2 should be close enough
     assert  torch.allclose(sim_out, out_with_scale_2, atol=1e-05)
 
     #remove the qunatizers
-    for name, module in sim.model.named_modules():
+    for _, module in sim.model.named_modules():
         if isinstance(module, QuantizationMixin):
             module._remove_all_quantizers()
 
