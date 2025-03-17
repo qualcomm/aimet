@@ -103,7 +103,9 @@ class LETModule():
         params = self._update_parameters()
         with torch.no_grad():
             for k in params:
-                getattr(self, k).copy_(params[k])
+                param = getattr(self, k)
+                if param != None:
+                    param.copy_(params[k])
 
     @abstractmethod
     def _update_parameters(self):
@@ -112,7 +114,7 @@ class LETModule():
 class LETQuantizedLinear(QuantizedLinear, LETModule):
     def __init__(self, module:QuantizationMixin):
         # TODO pass in all params to ctor
-        super().__init__(module.weight.shape[1], module.weight.shape[0])
+        super().__init__(module.weight.shape[1], module.weight.shape[0], bias=module.bias!=None)
         LETModule.__init__(self, module)
         self.load_state_dict(module.state_dict())
 
@@ -126,11 +128,11 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 bias = bias / prev_scale
-            weight = weight / prev_scale.unsqueeze(1)
+            weight = weight / prev_scale
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale.unsqueeze(1)
+            weight = weight * foll_scale
         
         return {'weight': weight, 'bias': bias}
 
@@ -147,7 +149,7 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
 class LETQuantizedConv2d(QuantizedConv2d, LETModule):
     def __init__(self, module:QuantizationMixin):
         # TODO pass in all params to ctor
-        super().__init__(module.weight.shape[1], module.weight.shape[0], module.kernel_size, module.stride, module.padding)
+        super().__init__(module.weight.shape[1], module.weight.shape[0], module.kernel_size, module.stride, module.padding, bias=module.bias!=None)
         LETModule.__init__(self, module)
         self.load_state_dict(module.state_dict())
 
@@ -155,16 +157,17 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
         weight = self.weight
         bias = self.bias
         
+        #TODO: ananmukh check if unsqueeze is needed during end-to-end interation
+        # currently system's team has a non scaler sctivation scale for a linear-linear pair
         if self.prev_scale is not None:
             prev_scale = self.prev_prep_fn(self.prev_scale)
             if bias is not None:
                 bias = bias / prev_scale
-
-            weight = weight / prev_scale.unsqueeze(1)
+            weight = weight / prev_scale
 
         if self.foll_scale is not None:
             foll_scale = self.foll_prep_fn(self.foll_scale)
-            weight = weight * foll_scale.unsqueeze(1)
+            weight = weight * foll_scale
         
         return {'weight': weight, 'bias': bias}
 

@@ -83,43 +83,6 @@ TODO: ananmukh
 add doc string comments
 '''
 
-def _generate_quantsim_config(file_path: str) -> dict:
-    """
-    Writes QuantSim config with provided supergroup pass name to provided file path
-
-    Args:
-        file_path (str): path to write json config file to
-    """
-    quantsim_config = {
-        "defaults": {
-            "ops": {
-                "is_output_quantized": "True",
-            },
-            "params": {
-                "is_quantized": "True",
-                "is_symmetric": "True"
-            },
-            "strict_symmetric": "False",
-            "per_channel_quantization": "True",
-        },
-        "params": {"bias": {"is_quantized": "False"}},
-        "op_type": {},
-        "supergroups": [
-            {
-                "op_list": ["Conv", "Relu"]
-            },
-            {
-                "op_list": ["Relu", "MaxPool"]
-            },
-        ],
-        "model_input": {
-            "is_input_quantized": "True"
-        },
-        "model_output": {}
-    }
-    with open(file_path, 'w') as f:
-        json.dump(quantsim_config, f)
-
 ## TODO replace with actual map
 def get_let_module(mdl):
     if isinstance(mdl, QuantizedLinear):
@@ -160,27 +123,31 @@ def fold_test(sim):
 #TODO ananmukh Add a test for linear layer bias = false
 
 
-def conv_conv():
-    input_dim = 10
-    hidden_dim = 20
-    output_dim = 5
-    model = nn.Sequential(
-        torch.nn.Conv2d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1),
-        torch.nn.Conv2d(in_channels=hidden_dim, out_channels=output_dim, kernel_size=3, stride=1, padding=1)
-        ).eval()
-    inp = torch.rand(1, input_dim, 32, 32)
-    return model, inp
+def get_conv_conv(bias):
+    def conv_conv():
+        input_dim = 10
+        hidden_dim = 20
+        output_dim = 5
+        model = nn.Sequential(
+            torch.nn.Conv2d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=3, stride=1, padding=1, bias=bias),
+            torch.nn.Conv2d(in_channels=hidden_dim, out_channels=output_dim, kernel_size=3, stride=1, padding=1, bias=bias)
+            ).eval()
+        inp = torch.rand(1, input_dim, 32, 32)
+        return model, inp
+    return conv_conv
 
-def lin_lin():
-    input_dim = 10
-    hidden_dim = 20
-    output_dim = 5
-    model = nn.Sequential(
-        torch.nn.Linear(input_dim, hidden_dim),
-        torch.nn.Linear(hidden_dim, output_dim),
-        ).eval()
-    inp = torch.rand(1, input_dim)
-    return model, inp
+def get_lin_lin(bias):
+    def lin_lin():
+        input_dim = 10
+        hidden_dim = 20
+        output_dim = 5
+        model = nn.Sequential(
+            torch.nn.Linear(input_dim, hidden_dim, bias=bias),
+            torch.nn.Linear(hidden_dim, output_dim, bias=bias),
+            ).eval()
+        inp = torch.rand(1, input_dim)
+        return model, inp
+    return lin_lin
 
 def rms_lin():
     input_dim = 3
@@ -217,16 +184,13 @@ def layernorm_lin():
     inp = torch.rand(1, input_dim)
     return model, inp
 
-@pytest.mark.parametrize("inp_fn", [conv_conv, lin_lin, rms_lin, gemmarms_lin, layernorm_lin])
+@pytest.mark.parametrize("inp_fn", [get_conv_conv(True), get_conv_conv(False), get_lin_lin(True), get_lin_lin(False), rms_lin, gemmarms_lin, layernorm_lin])
 def test_pair(inp_fn):
     model, inp = inp_fn()
 
     out_fp = model(inp)
 
-    with tempfile.NamedTemporaryFile(prefix="quantsim_config", suffix=".json") as config_file:
-        _generate_quantsim_config(config_file.name)
-        sim = QuantizationSimModel(model, inp, config_file=config_file.name)
-
+    sim = QuantizationSimModel(model, inp, config_file="htp_v81")
     sim.compute_encodings(lambda model, _: model(inp), None)
     sim_out = sim.model(inp) #Quantized toy model
 
@@ -273,6 +237,3 @@ def test_pair(inp_fn):
 
     # Test for folding scales into weight
     fold_test(sim)
-
-
-
