@@ -35,17 +35,8 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """Test Let modules"""
-import itertools
-import json
-import os
-import tempfile
-from contextlib import contextmanager
-from typing import Union, Tuple
-
 import pytest
 import torch
-from torch.utils.data import DataLoader, Dataset
-
 
 from aimet_common import quantsim
 from aimet_torch.omniquant.let_modules import (
@@ -70,12 +61,9 @@ from aimet_torch.v2.nn import (
     QuantizedConv2d,
 )
 
-from aimet_torch.utils import is_vector_encoding
-from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from torch import nn
-from aimet_torch.v2.quantization.affine import QuantizeDequantize
 import copy
 
 '''
@@ -120,9 +108,6 @@ def fold_test(sim):
         assert torch.equal(orig_wt, scale_folded_wts * factor)
 
 
-#TODO ananmukh Add a test for linear layer bias = false
-
-
 def get_conv_conv(bias):
     def conv_conv():
         input_dim = 10
@@ -149,42 +134,21 @@ def get_lin_lin(bias):
         return model, inp
     return lin_lin
 
-def rms_lin():
-    input_dim = 3
-    output_dim = 2
-    model = nn.Sequential(
-        LlamaRMSNorm((input_dim,)),
-        torch.nn.Linear(input_dim, output_dim),
-        ).eval()
-    
-    inp = torch.rand(1, input_dim)
-    return model, inp
+def get_norm_lin(NormLayer):
+    def norm_lin():
+        input_dim = 3
+        output_dim = 2
+        model = nn.Sequential(
+            NormLayer(input_dim),
+            nn.Linear(input_dim, output_dim),
+            ).eval()
 
-def gemmarms_lin():
-    input_dim = 3
-    output_dim = 2
-    model = nn.Sequential(
-        GemmaRMSNorm(input_dim),
-        nn.Linear(input_dim, output_dim),
-        ).eval()
+        inp = torch.rand(1, input_dim)
+        return model,inp
+    return norm_lin
 
-    inp = torch.rand(1, input_dim)
-    return model,inp
-
-
-def layernorm_lin():
-    input_dim = 4
-    output_dim = 2
-
-    model = nn.Sequential(
-        nn.LayerNorm(input_dim),
-        nn.Linear(input_dim, output_dim)
-        ).eval()
-
-    inp = torch.rand(1, input_dim)
-    return model, inp
-
-@pytest.mark.parametrize("inp_fn", [get_conv_conv(True), get_conv_conv(False), get_lin_lin(True), get_lin_lin(False), rms_lin, gemmarms_lin, layernorm_lin])
+@pytest.mark.parametrize("inp_fn", [get_conv_conv(True), get_conv_conv(False), get_lin_lin(True), get_lin_lin(False), \
+                                    get_norm_lin(GemmaRMSNorm), get_norm_lin(nn.LayerNorm), get_norm_lin(LlamaRMSNorm)])
 def test_pair(inp_fn):
     model, inp = inp_fn()
 
