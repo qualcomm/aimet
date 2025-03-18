@@ -127,7 +127,9 @@ class TestOmniquant:
         emb_dim = 10
         dummy_input = torch.randn(1, seq_len, emb_dim)
         fake_llama_model = FakeLlamaModel(layer_num, seq_len, head_num, emb_dim)
-        fake_llama_model(dummy_input)
+        with torch.no_grad():
+            # Make sure model is runnable.
+            fake_llama_model(dummy_input)
 
         with add_costum_model_class_to_support_model_group(FakeLlamaModel, "LlamaModelGroup"):
             llama_processor = decoder_processor.get_transformer_processor(fake_llama_model)
