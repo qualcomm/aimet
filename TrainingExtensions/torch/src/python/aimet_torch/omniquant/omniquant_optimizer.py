@@ -188,7 +188,6 @@ class Omniquant:
         qt_output = qt_block(*_args, **_kwargs)[0]
 
         loss = loss_fn(qt_output, target_outputs)
-        print(loss)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
