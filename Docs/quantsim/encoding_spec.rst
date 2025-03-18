@@ -200,9 +200,9 @@ Certain keys will only be present for certain quantization types, as indicated i
    * - is_sym
      - bool
      - True if encoding is symmetric, False otherwise
-     - X
-     - X
-     - X
+     - X (INT only)
+     - X (INT only)
+     - X (INT only)
      - X
    * - scale
      - fp32[]
