@@ -43,7 +43,7 @@ import pytest
 from aimet_torch.omniquant import decoder_processor
 
 @contextlib.contextmanager
-def add_costum_model_class_to_support_model_group(model_class, target_group_name):
+def add_custom_model_class_to_support_model_group(model_class, target_group_name):
     """
     Add model_class Class to decoder_processor.target_group_name.
     """
@@ -131,7 +131,7 @@ class TestOmniquant:
             # Make sure model is runnable.
             fake_llama_model(dummy_input)
 
-        with add_costum_model_class_to_support_model_group(FakeLlamaModel, "LlamaModelGroup"):
+        with add_custom_model_class_to_support_model_group(FakeLlamaModel, "LlamaModelGroup"):
             llama_processor = decoder_processor.get_transformer_processor(fake_llama_model)
             assert llama_processor.__name__ == "LlamaProcessor"
 
