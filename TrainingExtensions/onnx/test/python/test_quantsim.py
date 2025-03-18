@@ -1858,6 +1858,21 @@ class TestEncodingPropagation:
         with _apply_constraints(True):
             sim = QuantizationSimModel(model)
 
+    def test_gather_concat(self):
+        model = models_for_tests.gather_concat_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model)
+
+        sim.compute_encodings(lambda sess, x: sess.run(None, x), make_dummy_input(model))
+        concat_out_scale = sim.qc_quantize_op_dict["out"].get_encodings()[0].delta
+
+        # Encoding should propagate through the 'x' input of Gather
+        assert sim.qc_quantize_op_dict["x_2"].get_encodings()[0].delta == concat_out_scale
+        # Encoding should not propagate through the 'indices' input of Gather
+        assert not sim.qc_quantize_op_dict["z"].get_encodings()[0].delta == concat_out_scale
+        # Encoding should not propagate through Mul
+        assert not sim.qc_quantize_op_dict["x"].get_encodings()[0].delta == concat_out_scale
+
     def test_clamp_activation_encodings(self):
         model = models_for_tests.matmul_add_model()
         dummy_input = {'model_input': np.expand_dims(np.identity(8, np.float32), axis=(0, 1))}

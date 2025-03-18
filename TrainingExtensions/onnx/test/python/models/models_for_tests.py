@@ -2811,3 +2811,31 @@ def model_with_4d_matmul_weight():
     )
     onnx.checker.check_model(model, True)
     return model
+
+def gather_concat_model():
+    #
+    # x -- Mul ---------------
+    #                        |
+    # y -- Mul -- Cast --- Gather -- Concat
+
+    model = helper.make_model(
+        graph=helper.make_graph(
+            name="GatherConcatModel",
+            inputs=[helper.make_tensor_value_info('x', TensorProto.FLOAT, shape=[10, 10]),
+                    helper.make_tensor_value_info('y', TensorProto.FLOAT, shape=[2])],
+            outputs=[helper.make_tensor_value_info("out", TensorProto.FLOAT, shape=[10, 2])],
+            initializer=[
+                numpy_helper.from_array(np.array([2.]).astype('float32'), name='scale')
+            ],
+            nodes=[
+                helper.make_node("Mul", ['x', 'scale'], ['x_2'], name="mul_1"),
+                helper.make_node("Mul", ["y", "scale"], ["z"], name="mul_2"),
+                helper.make_node("Cast", ["z"], ["z_int"], name="cast", to=TensorProto.INT64),
+                helper.make_node("Gather", ["x_2", "z_int"], ["w"], name="gather", axis=1),
+                helper.make_node("Concat", ["w"], ["out"], name="concat", axis=0)
+            ]
+        )
+    )
+    onnx.checker.check_model(model, True)
+    return model
+
