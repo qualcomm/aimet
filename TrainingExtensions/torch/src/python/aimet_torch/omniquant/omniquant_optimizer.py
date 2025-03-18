@@ -36,6 +36,7 @@
 # =============================================================================
 """ Optimizer for Omniquant """
 
+import contextlib
 import os
 import tempfile
 import torch
@@ -65,15 +66,20 @@ class Omniquant:
         :param output_path: path where to store artifacts.
         :return: Model with Omniquant weights.
         """
-        # Need to disable dynamic_cache for LET blockwise training, and restore after optimization.
-        quant_sim_use_cache_bool, model_use_cache_bool = quant_sim.model.config.use_cache, model.config.use_cache
-        quant_sim.model.config.use_cache, model.config.use_cache = False, False
+        @contextlib.contextmanager
+        def disable_dynamic_cache():
+            # Disable dynamic_cache for LET blockwise training, and restore after optimization.
+            quant_sim_use_cache_bool, model_use_cache_bool = quant_sim.model.config.use_cache, model.config.use_cache
+            quant_sim.model.config.use_cache, model.config.use_cache = False, False
+            try:
+                yield
+            finally:
+                quant_sim.model.config.use_cache, model.config.use_cache = quant_sim_use_cache_bool, model_use_cache_bool
 
         cls.validate_omniquant_config(omniquant_config)
-        quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
+        with disable_dynamic_cache():
+            quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
 
-        # Restore dynamic caching flag for quant sim and fp model.
-        quant_sim.model.config.use_cache, model.config.use_cache = quant_sim_use_cache_bool, model_use_cache_bool
         return quant_sim.model
 
     # pylint: disable=too-many-locals
@@ -156,7 +162,7 @@ class Omniquant:
         let_param = []
         for _pair in qt_let_pair_list:
             for q_module in _pair.prev + _pair.follow:
-                let_param.extend([_v for _v in q_module.get_let_param().values if isinstance(_v, nn.parameter)])
+                let_param.extend([_v for _v in q_module.get_let_param().values() if isinstance(_v, nn.Parameter)])
 
         grouped_params = [
                 {"params": let_param, "lr": omniquant_config.let_lr, "weight_decay":  0.},
@@ -182,7 +188,7 @@ class Omniquant:
         qt_output = qt_block(*_args, **_kwargs)[0]
 
         loss = loss_fn(qt_output, target_outputs)
-
+        print(loss)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
