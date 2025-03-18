@@ -554,7 +554,7 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
         self.max_parallelism = max_parallelism
 
     @torch.no_grad()
-    def update_stats(self, input_tensor: torch.Tensor) -> _Statistics:
+    def update_stats(self, input_tensor: torch.Tensor) -> _Histogram:
         """
         :meta private:
         """
@@ -715,3 +715,46 @@ class SqnrEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
             # Apply the gamma "fudge factor" to the clipped errors
             square_error = torch.where(clipped, square_error * gamma, square_error)
         return torch.sum(square_error, dim=-1)
+
+
+class TfEnhancedEncodingAnalyzer(SqnrEncodingAnalyzer):
+    """
+    Subclass of SQNR encoding analyzer which mimics the behavior of v1 tf-enhanced encodng analyzer
+
+    This class is only meant to encourage aimet_torch.v1 users to switch to v2
+    without accuracy degradation, since some of the models of the v1 users
+    are reliant on the hardcoded hyperparameters (and even some bugs) of v1 tf-enhanced.
+    """
+
+    # Hardcoded hyperparameters in v1 tf-enhanced
+    _V1_HISTOGRAM_NUM_BINS = 512
+    _V1_ASYMMETRIC_DELTA_CANDIDATES = 17
+    _V1_SYMMETRIC_DELTA_CANDIDATES = 101
+    _V1_OFFSET_CANDIDATES = 21
+    _V1_GAMMA = 3.0 # a.k.a "fudge factor"
+
+    def __init__(self, shape: tuple):
+        super().__init__(shape=shape,
+                         num_bins=self._V1_HISTOGRAM_NUM_BINS,
+                         asymmetric_delta_candidates=self._V1_ASYMMETRIC_DELTA_CANDIDATES,
+                         symmetric_delta_candidates=self._V1_SYMMETRIC_DELTA_CANDIDATES,
+                         offset_candidates=self._V1_OFFSET_CANDIDATES,
+                         gamma=self._V1_GAMMA)
+        self._range_of_first_input: Tuple[torch.Tensor, torch.Tensor] = None
+
+    @torch.no_grad()
+    def update_stats(self, input_tensor: torch.Tensor) -> _Histogram:
+        if self._range_of_first_input is None:
+            input0_min = reduce(input_tensor, shape=self.observer.shape, reduce_op=torch.min).values
+            input0_max = reduce(input_tensor, shape=self.observer.shape, reduce_op=torch.max).values
+            self._range_of_first_input = (input0_min, input0_max)
+
+        input0_min, input0_max = self._range_of_first_input
+        input0_centroid = (input0_min + input0_max) / 2
+        # NOTE: The range of v1 histogram is fixed with 3x range of the first input.
+        #       Unfortunately, many existing user models in v1 are heavily reliant
+        #       to this static nature of v1 histogram. To mimic this behavior in v2,
+        #       we clip the all inputs with 3x range of the first input
+        input_tensor = input_tensor.clamp(min=input0_centroid - (input0_centroid - input0_min) * 3,
+                                          max=input0_centroid + (input0_max - input0_centroid) * 3)
+        return super().update_stats(input_tensor)
