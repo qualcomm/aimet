@@ -892,13 +892,9 @@ class QuantizationSimModel:
         :param filename_prefix: filename to save encoding files
         """
         if quantsim.encoding_version == '0.6.1':
-            msg = _red("Encoding version 0.6.1 will be deprecated in a future release, with version 1.0.0 becoming "
-                       "the default. If your code depends on parsing the exported encodings file, ensure that it is "
-                       "updated to be able to parse 1.0.0 format.\n"
-                       "To swap the encoding version to 1.0.0, run the following lines prior to calling quantsim "
-                       "export:\n\n"
-                       "from aimet_common import quantsim\n"
-                       "quantsim.encoding_version = '1.0.0'")
+            msg = _red("Encoding version 0.6.1 was deprecated in favor of 1.0.0 since aimet-onnx==2.1. "
+                       "If your code depends on parsing the exported encodings file, ensure that it is "
+                       "updated to be able to parse 1.0.0 format")
             warnings.warn(msg, DeprecationWarning, stacklevel=2)
         self._export_encodings(os.path.join(path, filename_prefix) + '.encodings')
         self.remove_quantization_nodes()
