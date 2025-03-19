@@ -5,10 +5,21 @@ ENV CONDA_PREFIX=/opt/conda
 ENV CONDA=${CONDA_PREFIX}/bin/conda
 ENV CONDA_DEFAULT_ENV=dev
 
-RUN apt update && \
+ARG TARGETPLATFORM
+
+RUN if  [ "$TARGETPLATFORM" = "linux/amd64" ] ; then \
+        export MINIFORGE_DOWNLOAD_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"; \
+    elif  [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
+        export MINIFORGE_DOWNLOAD_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"; \
+    else \
+        echo "Unsupported TARGETPLATFORM: $TARGETPLATFORM"; \
+        exit 1; \
+    fi && \
+    apt update && \
     DEBIAN_FRONTEND=noninteractive apt install --yes --no-install-recommends \
         acl \
         ca-certificates \
+        cmake \
         curl \
         # manylinux2014 requires gcc 10 and cuda doesn't support gcc>11
         g++-10 \
@@ -22,7 +33,7 @@ RUN apt update && \
         sudo \
     && rm -rf /var/lib/apt/lists/* \
     && echo '%users ALL = (ALL) NOPASSWD: ALL' > /etc/sudoers.d/passwordless \
-    && curl -o /tmp/conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh' \
+    && curl -o /tmp/conda.sh -L ${MINIFORGE_DOWNLOAD_URL} \
     && mkdir -m 777 -p ${CONDA_PREFIX} \
     && setfacl -d -m o::rwx ${CONDA_PREFIX} \
     && bash /tmp/conda.sh -u -b -p ${CONDA_PREFIX} \
