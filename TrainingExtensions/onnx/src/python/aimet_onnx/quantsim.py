@@ -49,6 +49,7 @@ import numpy as np
 import onnx
 
 from onnx import helper
+from onnx.numpy_helper import from_array, to_array
 import onnxruntime as ort
 from onnxruntime import SessionOptions, InferenceSession
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
@@ -138,7 +139,7 @@ class QuantizationSimModel:
     """
 
     def __init__(self,
-                 model: ModelProto,
+                 model: Union[ModelProto, ONNXModel],
                  dummy_input: Dict[str, np.ndarray] = None,
                  quant_scheme: QuantScheme = QuantScheme.min_max,
                  rounding_mode: str = 'nearest',
@@ -151,9 +152,11 @@ class QuantizationSimModel:
         if isinstance(quant_scheme, str):
             quant_scheme = QuantScheme.from_str(quant_scheme)
 
+        if isinstance(model, ModelProto):
+            model = ONNXModel(model)
+
         self.model = model
-        if not isinstance(model, ONNXModel):
-            self.model = ONNXModel(model)
+
         if not dummy_input:
             dummy_input = make_dummy_input(self.model.model)
 
@@ -755,7 +758,7 @@ class QuantizationSimModel:
                     f"Couldn't find the value of \"{bias.name}\" statically from the graph."
                 )
 
-            bias = onnx.numpy_helper.to_array(bias_proto)
+            bias = to_array(bias_proto)
 
             bias_scale = np.maximum(abs(bias) / 2**31, _INT32_MINIMUM_SCALE)
 
@@ -1011,6 +1014,155 @@ class QuantizationSimModel:
 
             for inp in op.inputs:
                 _set_src_qtzr(inp, src_qtzr=out_qtzr[0])
+
+    def _to_onnx_qdq(self) -> onnx.ModelProto:
+        """
+        Return a copy of ModelProto with all QcQuantizeOp replaced with
+        onnx::QuantizeLinear and/or DequantizeLinear
+        """
+        onnx_opset_version = next(
+            opset.version for opset in self.model.opset_import() if opset.domain == ""
+        )
+
+        if onnx_opset_version < 10:
+            raise RuntimeError(
+                "onnx::QuantizeLinaer and DequantizeLinear are only supported in opset >= 10; "
+                f"got {onnx_opset_version}"
+            )
+
+        if onnx_opset_version < 21 and any(
+            qtzr.quant_info.usePerChannelMode and
+            qtzr.tensor_quantizer_params and
+            qtzr.quant_info.blockSize > 0
+            for qtzr in self.qc_quantize_op_dict.values()
+        ):
+            raise RuntimeError(
+                "onnx::QuantizeLinaer and DequantizeLinear only supports "
+                f"blockwise quantization in opset >= 21; got {onnx_opset_version}"
+            )
+
+        model_copy = onnx.ModelProto()
+        model_copy.CopyFrom(self.model.model)
+
+        aimet_qc_quantize_nodes = [
+            node for node in model_copy.graph.node
+            if node.op_type == "QcQuantizeOp"
+            and node.domain in ("aimet.customop.cpu", "aimet.customop.cuda")
+        ]
+
+        for aimet_node in aimet_qc_quantize_nodes:
+            model_copy.graph.node.remove(aimet_node)
+
+            qtzr = self.qc_quantize_op_dict[aimet_node.input[0]]
+            encodings = qtzr._export_2_0_0_encodings() # pylint: disable=protected-access
+
+            if encodings:
+                # Affine quantizer
+                # Replace QcQuantizeOp with onnx::QuantizeLinear and DequantizeLinear
+                _add_onnx_qdq_node(model_copy,
+                                   input_name=aimet_node.input[0],
+                                   output_name=aimet_node.output[0],
+                                   node_name_prefix=aimet_node.name,
+                                   encodings=encodings)
+            else:
+                # Float or disabled quantizer.
+                # In this case, we don't add any QuantizeLinear or DequantizeLinear,
+                # but we should perform extra graph surgery to relay
+                # the producer of QcQuantizerOp's input and
+                # the consumer of QcQuantizerOp's output
+                for node in model_copy.graph.node:
+                    for i, _ in enumerate(node.input):
+                        if node.input[i] == aimet_node.output[0]:
+                            node.input[i] = aimet_node.input[0]
+
+        # TODO: Unfortunately, this sanity check doesn't pass yet because the
+        #       QcQuantizeOp nodes inserted during QuantizationSimModel.__init__
+        #       aren't topologically sorted, but onnx.checker asserts topological
+        #       order of all nodes. Needs to be fixed asap.
+        # onnx.checker.check_model(model_copy, True)
+        return model_copy
+
+
+def _add_onnx_qdq_node(model: onnx.ModelProto,
+                       input_name: str,
+                       output_name: str,
+                       node_name_prefix: str,
+                       encodings: dict):
+    """
+    Add onnx::QuantizeLinear and/or onnx::DequantizeLinear as below
+
+     -------> onnx::QuantizeLinear -------------> onnx::DequantizeLinear ----->
+    (input)                        (input_int)                           (output)
+
+
+    except for int32 bias encodings, for which we take alternative representation as below
+    since onnx::QuantizeLinear doesn't allow int32 outputs.
+
+    -------------> onnx::DequantizeLinear ----->
+    (bias_int)                           (bias_qdq)
+
+    """
+    output_dtype = encodings["output_dtype"]
+    axis = encodings["axis"]
+    block_size = encodings["block_size"]
+
+    y_scale = np.array(encodings["y_scale"]).astype(np.float32)
+    if encodings["y_zero_point"]:
+        y_zero_point = np.array(encodings["y_zero_point"]).astype(output_dtype)
+    else:
+        y_zero_point = np.zeros(y_scale.shape).astype(output_dtype)
+
+    if output_dtype in ("int32", "uint32"):
+        nodes_to_add = [
+            helper.make_node('DequantizeLinear',
+                      name=f"{node_name_prefix}_dq",
+                      inputs=[f"{input_name}_int", f"{input_name}_scale", f"{input_name}_zero_point"],
+                      outputs=[output_name],
+                      axis=axis,
+                      block_size=block_size)
+        ]
+
+        bias = utils.ParamUtils.get_param_by_name(model, input_name)
+        tensors_to_remove = [bias]
+
+        bias_int32 = (to_array(bias) / y_scale).round()
+        if output_dtype == "int32":
+            bias_int32 = bias_int32.clip(-2**31, 2**31-1)
+        else:
+            bias_int32 = bias_int32.clip(0, 2**32-1)
+
+        tensors_to_add = [
+            from_array(bias_int32.astype(output_dtype), name=f"{input_name}_int"),
+            from_array(y_scale, name=f"{input_name}_scale"),
+            from_array(y_zero_point, name=f"{input_name}_zero_point"),
+        ]
+    else:
+        nodes_to_add = [
+            helper.make_node('QuantizeLinear',
+                      name=f"{node_name_prefix}_q",
+                      inputs=[input_name, f"{input_name}_scale", f"{input_name}_zero_point"],
+                      outputs=[f"{input_name}_int"],
+                      axis=axis,
+                      block_size=block_size),
+            helper.make_node('DequantizeLinear',
+                      name=f"{node_name_prefix}_dq",
+                      inputs=[f"{input_name}_int", f"{input_name}_scale", f"{input_name}_zero_point"],
+                      outputs=[output_name],
+                      axis=axis,
+                      block_size=block_size)
+        ]
+        tensors_to_remove = []
+        tensors_to_add = [
+            from_array(y_scale, name=f"{input_name}_scale"),
+            from_array(y_zero_point, name=f"{input_name}_zero_point"),
+        ]
+
+    for n in nodes_to_add:
+        model.graph.node.append(n)
+    for t in tensors_to_remove:
+        model.graph.initializer.remove(t)
+    for t in tensors_to_add:
+        model.graph.initializer.append(t)
 
 
 # pylint: disable=too-many-locals, too-many-branches

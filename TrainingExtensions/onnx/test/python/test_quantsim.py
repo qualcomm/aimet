@@ -46,6 +46,7 @@ import functools
 
 import onnx.numpy_helper
 import torch
+import torchvision
 import numpy as np
 from onnx import load_model
 import onnx
@@ -2199,3 +2200,43 @@ def test_bias_export(model_factory, input_shape, block_size, lpbq, tmp_path):
         bias_value = onnx.numpy_helper.to_array(bias_proto)
         expected_bias_scale = np.maximum(abs(bias_value) / 2**31, _INT32_MINIMUM_SCALE)
         assert np.allclose(bias_scale, expected_bias_scale)
+
+
+@pytest.mark.parametrize("export_int32_bias_encodings", [
+    False,
+    # TODO: Simulating int32 bias quantize-dequantize in AIMET doesn't
+    #       produce output close enough to equivalent onnx QDQ graph.
+    # True,
+])
+def test_onnx_qdq(export_int32_bias_encodings):
+    """
+    Given: Resnet18
+    """
+    model = torchvision.models.resnet18(pretrained=False)
+    input = torch.randn(32, 3, 224, 224)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "model.onnx")
+        torch.onnx.export(model, input, path, input_names=["input"], output_names=["output"])
+        sim = QuantizationSimModel(onnx.load_model(path))
+
+    """
+    When: Create a pure onnx model with sim._to_onnx_qdq()
+    Then: Output of the pure onnx model should be equal to that of sim.session
+    """
+    sim.compute_encodings(lambda sess, _: sess.run(None, {"input": input.numpy()}), None)
+
+    if export_int32_bias_encodings:
+        sim._concretize_int32_bias_quantizers()
+
+    out_sim, = sim.session.run(None, {"input": input.numpy()})
+
+    onnx_qdq_model = sim._to_onnx_qdq()
+    sess = ort.InferenceSession(onnx_qdq_model.SerializeToString(), providers=['CPUExecutionProvider'])
+    out_onnx_qdq, = sess.run(None, {"input": input.numpy()})
+
+    # Tolerate off-by-three error.
+    # Off-by-N error can occur due to slight numerical differences between
+    # AIMET QcQuantizOp and onnx::QuantizeLinear/DequantizeLinear
+    atol = 3 * sim.qc_quantize_op_dict["output"].get_encodings()[0].delta
+    assert np.allclose(out_sim, out_onnx_qdq, atol=atol)
