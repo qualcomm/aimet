@@ -43,11 +43,13 @@ Layer groups: Groups of layers that are immediately connected and can be decompo
 """
 # pylint: disable=too-many-lines
 
+import functools
 from typing import Tuple, List, Union, Dict
+import warnings
 import numpy as np
 import torch
 
-from aimet_common.utils import AimetLogger
+from aimet_common.utils import AimetLogger, _red
 from aimet_common.cross_layer_equalization import ClsLayerType, ClsSetInfo, ClsImpl, HbfImpl
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
@@ -683,6 +685,22 @@ class PythonHbfImpl(HbfImpl):
             cls_pair_info.layer2.bias.copy_(torch.from_numpy(_bias_curr_layer).reshape_as(cls_pair_info.layer2.bias)).to(
                 device=cls_pair_info.layer2.bias.device, dtype=cls_pair_info.layer2.bias.dtype)
 
+
+def _warn_relu6(fn):
+    msg = f"{fn.__qualname__} removed unsafe optimization for ReLU6 since aimet-torch==2.3. " \
+        "If you need to enable unsafe optimization for ReLU6, " \
+        "please consider replacing all torch.nn.ReLU6 layers with torch.nn.ReLU"
+
+    @functools.wraps(fn)
+    def fn_wrapper(model, *args, **kwargs):
+        if any(isinstance(module, torch.nn.ReLU6) for module in model.modules()):
+            warnings.warn(_red(msg), DeprecationWarning, stacklevel=2)
+        return fn(model, *args, **kwargs)
+
+    return fn_wrapper
+
+
+@_warn_relu6
 def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple]] = None,
                    dummy_input: Union[torch.Tensor, Tuple] = None):
     """
@@ -712,6 +730,7 @@ def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple
                                      dummy_input=dummy_input)
 
 
+@_warn_relu6
 def equalize_bn_folded_model(model: torch.nn.Module,
                              input_shapes: Union[Tuple, List[Tuple]],
                              folded_pairs: List[Tuple[torch.nn.Module, torch.nn.BatchNorm2d]],
@@ -735,11 +754,6 @@ def equalize_bn_folded_model(model: torch.nn.Module,
             bn_dict[conv_bn[0]] = conv_bn[1]
 
         with place_model(model, torch.device('cpu')):
-            # replace any ReLU6 layers with ReLU
-            utils.replace_modules(model,
-                                  lambda module: isinstance(module, torch.nn.ReLU6),
-                                  lambda _: torch.nn.ReLU())
-
             # perform cross-layer scaling on applicable layer sets
             cls_set_info_list = CrossLayerScaling.scale_model(model, input_shapes, dummy_input=dummy_input)
 
