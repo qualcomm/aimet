@@ -157,7 +157,7 @@ class TestTrainingExtensionBnFold:
         with unittest.mock.patch('aimet_torch.bias_correction.call_analytical_correct_bias') as analytical_mock:
             with unittest.mock.patch('aimet_torch.bias_correction.call_empirical_correct_bias') as empirical_mock:
                 bias_correction.correct_bias(model, params, 2, data_loader, 2,
-                                             dummy_input, conv_bn_dict, perform_only_empirical_bias_corr=False)
+                                             conv_bn_dict, perform_only_empirical_bias_corr=False)
         assert analytical_mock.call_count == 9
         assert empirical_mock.call_count == 9
         assert model.model[1][0].bias.detach().cpu().numpy() is not None
@@ -178,7 +178,7 @@ class TestTrainingExtensionBnFold:
                                   quant_scheme=QuantScheme.post_training_tf, config_file=None
                                   )
         with unittest.mock.patch('aimet_torch.bias_correction.call_empirical_correct_bias') as empirical_mock:
-            bias_correction.correct_bias(model, params, 2, data_loader, 2, dummy_input)
+            bias_correction.correct_bias(model, params, 2, data_loader, 2)
 
         assert empirical_mock.call_count == 4
         assert np.allclose(model.conv1.bias.detach().cpu().numpy(),
@@ -231,8 +231,8 @@ class TestTrainingExtensionBnFold:
 
         with unittest.mock.patch('aimet_torch.bias_correction.call_analytical_correct_bias') as analytical_mock:
             with unittest.mock.patch('aimet_torch.bias_correction.call_empirical_correct_bias') as empirical_mock:
-                bias_correction.correct_bias(model, params, 2, data_loader, 2, dummy_input,
-                                             conv_bn_dict, perform_only_empirical_bias_corr=False, layers_to_ignore = layers_to_ignore)
+                bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
+                                             perform_only_empirical_bias_corr=False, layers_to_ignore = layers_to_ignore)
 
         assert analytical_mock.call_count == 8 # one layer ignored
         assert empirical_mock.call_count == 9
@@ -251,7 +251,7 @@ class TestTrainingExtensionBnFold:
 
         with unittest.mock.patch('aimet_torch.bias_correction.call_analytical_correct_bias') as analytical_mock:
             with unittest.mock.patch('aimet_torch.bias_correction.call_empirical_correct_bias') as empirical_mock:
-                bias_correction.correct_bias(model, params, 2, data_loader, 2, dummy_input,
+                bias_correction.correct_bias(model, params, 2, data_loader, 2,
                                              conv_bn_dict, perform_only_empirical_bias_corr=False,
                                              layers_to_ignore=[])
 
@@ -278,7 +278,7 @@ class TestTrainingExtensionBnFold:
 
         with unittest.mock.patch('aimet_torch.bias_correction.call_analytical_correct_bias') as analytical_mock:
             with unittest.mock.patch('aimet_torch.bias_correction.call_empirical_correct_bias') as empirical_mock:
-                bias_correction.correct_bias(model, params, 2, data_loader, 2, dummy_input,
+                bias_correction.correct_bias(model, params, 2, data_loader, 2,
                                              conv_bn_dict, perform_only_empirical_bias_corr=False,
                                              layers_to_ignore=[])
 
@@ -314,7 +314,7 @@ class TestTrainingExtensionBnFold:
 
         conv_bn_dict = find_all_conv_bn_with_activation(model, dummy_input)
         params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
-        bias_correction.correct_bias(model, params, 2, data_loader, 2, dummy_input, conv_bn_dict,
+        bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
                                      perform_only_empirical_bias_corr=perform_empirical)
         params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
         assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))
@@ -349,7 +349,7 @@ class TestTrainingExtensionBnFold:
 
         conv_bn_dict = find_all_conv_bn_with_activation(model, dummy_input)
         params_before = [m.bias.clone() for m in conv_bn_dict.keys()]
-        bias_correction.correct_bias(model, params, 2, data_loader, 2, dummy_input, conv_bn_dict,
+        bias_correction.correct_bias(model, params, 2, data_loader, 2, conv_bn_dict,
                                      perform_only_empirical_bias_corr=False)
         params_after = [m.bias.clone() for m in conv_bn_dict.keys()]
         assert not all(torch.equal(b_prev, b_after) for b_prev, b_after in zip(params_before, params_after))

@@ -439,18 +439,6 @@ def is_leaf_module(module):
            (CustomSparseConv3DLayer is not None and isinstance(module, CustomSparseConv3DLayer))
 
 
-def get_input_shape(data_loader):
-    """
-    Returns shape of input tensors
-    :param data_loader: labelled dataloader
-    :return: shape or tuple of shapes
-    """
-    data, _ = next(iter(data_loader))
-    if isinstance(data, (tuple, list)):
-        input_shapes = [torch.Tensor.size(inst) for inst in data]
-        return input_shapes
-    return torch.Tensor.size(data)
-
 def has_hooks(module: torch.nn.Module):
     """ Returns True if the module uses hooks. """
     # pylint: disable=protected-access
@@ -530,7 +518,7 @@ def create_rand_tensors_given_shapes(input_shape, device: torch.device):
     return rand_tensors
 
 
-def get_ordered_lists_of_conv_fc(model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tuple]) -> List:
+def get_ordered_lists_of_conv_fc(model: torch.nn.Module, dummy_input: Union[torch.Tensor, Tuple, List]) -> List:
     """
     Finds order of nodes in graph
     :param model: model

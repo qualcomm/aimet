@@ -40,7 +40,6 @@
 import itertools
 from typing import Callable, Tuple, List, Union, Dict
 import copy
-import warnings
 
 import torch
 import torch.nn
@@ -48,7 +47,7 @@ import numpy as np
 
 from aimet_common.graph_pattern_matcher import PatternType
 from aimet_common.graph_searcher import GraphSearcher
-from aimet_common.utils import AimetLogger, _red
+from aimet_common.utils import AimetLogger
 from aimet_common.bias_correction import (
     ConvBnInfoType,
     ConvBnPatternHandler,
@@ -71,23 +70,23 @@ class StopForwardException(Exception):
     """ Dummy exception to early-terminate forward-pass """
 
 
-def forward_pass(model: torch.nn.Module, batch: Union[torch.Tensor, Tuple]):
+def forward_pass(model: torch.nn.Module, input_batch: Union[torch.Tensor, Tuple, List]):
     """
     forward pass depending model allocation on CPU / GPU till StopForwardException
     :param model: model
-    :param batch: batch
+    :param input_batch: model input
     :return: Nothing
     """
-    # first check if the model is on GPU or not
-    if isinstance(batch, torch.Tensor):
-        batch = [batch]
+    if isinstance(input_batch, torch.Tensor):
+        input_batch = [input_batch]
 
+    input_batch = list(input_batch)
     if utils.is_model_on_gpu(model):
-        batch = [i.cuda() for i in batch]
+        input_batch = [input.cuda() for input in input_batch]
 
     try:
         with utils.in_eval_mode(model), torch.no_grad():
-            _ = model(*batch)
+            _ = model(*input_batch)
     except StopForwardException:
         pass
 
@@ -121,7 +120,7 @@ def register_fwd_hook_for_layer(layer: torch.nn.Module, hook: Callable) -> torch
     return hook_handle
 
 
-def get_output_data(layer: torch.nn.Module, model: torch.nn.Module, images_in_one_batch: Union[torch.Tensor, Tuple]) -> np.ndarray:
+def get_output_data(layer: torch.nn.Module, model: torch.nn.Module, images_in_one_batch: Union[torch.Tensor, Tuple, List]) -> np.ndarray:
     """
     Function to get output values of a layer
     :param layer: layer
@@ -224,7 +223,7 @@ def call_analytical_correct_bias(layer: torch.nn.Module,
 
 # pylint: disable=too-many-arguments
 def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_samples: int,
-                 data_loader, num_bias_correct_samples: int, dummy_input: Union[torch.Tensor, Tuple] = None,
+                 data_loader, num_bias_correct_samples: int,
                  conv_bn_dict: Union[Dict[torch.nn.Module, ConvBnInfoType], None] = None,
                  perform_only_empirical_bias_corr: bool = True,
                  layers_to_ignore: List[torch.nn.Module] = None):
@@ -238,7 +237,6 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_sa
     :param model: Model to be corrected
     :param quant_params: Named tuple for quantization simulation for bias correction
     :param num_quant_samples: number of samples of images to pass through quantization sim for bias correction.
-    :param dummy_input: Dummy input to the model.
     :param data_loader: data loader for the model
     :param num_bias_correct_samples: number of samples for Bias correction
     :param conv_bn_dict: Dict of conv and bn with information related to activation. If None, the function calc it
@@ -253,12 +251,8 @@ def correct_bias(model: torch.nn.Module, quant_params: QuantParams, num_quant_sa
     # Find batch size
     batch_size = data_loader.batch_size
 
-    # Create dummy input
-    if dummy_input is None:
-        input_shape = utils.get_input_shape(data_loader)
-        dummy_input = utils.create_rand_tensors_given_shapes(input_shape, utils.get_device(model))
-        msg = _red("Please provide dummy input argument. From next release it will be made compulsory")
-        warnings.warn(msg, UserWarning, stacklevel=2)
+    dummy_input, _ = next(iter(data_loader))
+    dummy_input = dummy_input.to(utils.get_device(model))
 
     # Rounding up number of samples to batch size
     n_batches_bias_correction = int(np.ceil(num_bias_correct_samples / batch_size))
