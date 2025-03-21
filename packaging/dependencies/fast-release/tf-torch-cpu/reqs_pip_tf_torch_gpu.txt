@@ -9,7 +9,7 @@ matplotlib>=3
 networkx
 numpy<2
 onnx
-onnxruntime~=1.18.1
+onnxruntime~=1.19.0
 onnxscript
 osqp
 pandas
