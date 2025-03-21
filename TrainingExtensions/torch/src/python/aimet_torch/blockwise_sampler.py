@@ -43,25 +43,16 @@ import torch
 
 from aimet_torch import QuantizationSimModel, utils
 
-@contextlib.contextmanager
-def place_tensor_on_device(tensor: torch.Tensor, device):
-    original_device = tensor.device
-    try:
-        tensor.to(device)
-        yield
-    finally:
-        tensor.to(original_device)
-
 class BlockwiseSampler:
     """Class providing blockwise sampling utilities"""
     def __init__(self,
                  sim: QuantizationSimModel,
                  blocks: List[Union[torch.nn.Module, torch.nn.ModuleList]],
-                 samples,
+                 dataloader,
                  num_samples: int):
         self.sim = sim
         self.blocks = blocks
-        self.samples = samples
+        self.samples = [next(dataloader) for _ in range(num_samples)]
 
     def run_inference(self, sample) -> Generator[torch.Tensor, None, None]:
         @dataclass
