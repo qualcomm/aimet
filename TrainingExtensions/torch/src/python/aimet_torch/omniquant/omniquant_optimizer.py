@@ -38,10 +38,13 @@
 
 import contextlib
 import os
+from pathlib import Path
+from safetensors.numpy import save_file
 import tempfile
 import torch
 from torch import nn
 
+from aimet_torch._base.quantsim import logger
 from aimet_torch.utils import CachedDataset
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch._base.adaround.activation_sampler import get_block_inputs, get_block_outputs
@@ -51,7 +54,8 @@ from .omniquant_config import OmniquantConfig
 from .let_modules import LETModule
 from ._utils import _convert_sim_to_letsim, _convert_letsim_to_sim
 
-OMNIQUANT_ARTIFACT_DIR = "./aimet_omniquant_artifact/"
+OMNIQUANT_ARTIFACT_DIR = "./aimet_omniqunat_artifact/"
+OMNIQUANT_METADATA_SAFETENSOR_NAME = "aimet_omniquant_metadata.safetensor"
 
 class Omniquant:
     """
@@ -79,7 +83,7 @@ class Omniquant:
                 yield
             finally:
                 quant_sim.model.config.use_cache, model.config.use_cache = quant_sim_use_cache_bool, model_use_cache_bool
-
+        output_path = Path(output_path)
         os.makedirs(output_path, exist_ok=True)
 
         cls.validate_omniquant_config(omniquant_config)
@@ -151,11 +155,12 @@ class Omniquant:
 
         # pylint: disable=protected-access
         # pylint: disable=unnecessary-comprehension
+        cls._dump_meta_data(quant_sim.model, output_path)
+
         with torch.no_grad():
             _convert_letsim_to_sim(quant_sim)
 
         # QDQ on models to fold quantizations into weight params.
-        cls._dump_meta_data(quant_sim.model, output_path)
         quant_sim._apply_qdq_to_model_parameters(quant_sim.model)
 
         # quantized module -> original module
@@ -222,6 +227,13 @@ class Omniquant:
     @classmethod
     def _dump_meta_data(cls, model, output_path):
         """ Traverse quantized model, get LET scales, and dump {module_name: scale} dict to output path. """
+        meta_data = {}
         for name, module in model.named_modules():
             if isinstance(module, LETModule):
-                print(f"{name}: prev: {module.prev_scale}, foll: {module.foll_scale}")
+                if module.prev_scale is not None:
+                    meta_data[f"{name}.prev"] = module.prev_scale.data.numpy()
+                if  module.foll_scale is not None:
+                    meta_data[f"{name}.foll"] = module.foll_scale.data.numpy()
+
+        save_file(meta_data, output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME)
+        logger.info(f"Aimet omniquant metadata saved at {(output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME).absolute()}")
