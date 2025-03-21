@@ -37,6 +37,7 @@
 
 """Blockwise sampling utilty"""
 import contextlib
+from dataclasses import dataclass
 from typing import List, Union, Tuple, Generator
 import torch
 
@@ -56,49 +57,48 @@ class BlockwiseSampler:
     def __init__(self,
                  sim: QuantizationSimModel,
                  blocks: List[Union[torch.nn.Module, torch.nn.ModuleList]],
-                 dataloader,
-                 num_samples: int,
-                 enable_caching: bool = True):
+                 samples,
+                 num_samples: int):
         self.sim = sim
         self.blocks = blocks
-        self.samples = [next(dataloader) for _ in range(num_samples)]
-        self.hooks = []
-        self.enable_caching = enable_caching
+        self.samples = samples
 
-    def run_inference(self, sample) -> Generator[torch.Tensor]:
-        class StopForwardException(utils.StopForwardException):
+    def run_inference(self, sample) -> Generator[torch.Tensor, None, None]:
+        @dataclass
+        class InputHolder:
+            args: tuple
+            kwargs: dict
+
+        class StopForwardExceptionWithInput(utils.StopForwardException):
             def __init__(self, captured_input):
                 self.captured_input = captured_input
 
-        def hook_fn(module, input):
-            raise StopForwardException(input)
-
-        self.hooks.append(self.blocks[0].register_forward_pre_hook(hook_fn))
+        def hook_fn(module, args, kwargs):
+            raise StopForwardExceptionWithInput(InputHolder(args, kwargs))
 
         with torch.no_grad():
             try:
+                hook = self.blocks[0].register_forward_pre_hook(hook_fn, with_kwargs=True)
                 self.sim.model(sample)
-            except StopForwardException as e:
+            except StopForwardExceptionWithInput as e:
+                hook.remove()
                 next_block_input = e.captured_input
-                with place_tensor_on_device(next_block_input, "cpu"):
-                    yield next_block_input
+                yield next_block_input
 
             for block in self.blocks:
-                next_block_input = block(next_block_input)
-                with place_tensor_on_device(next_block_input, "cpu"):
-                    yield next_block_input
+                next_block_input.args = block(*next_block_input.args, **next_block_input.kwargs)
+                yield next_block_input
 
-        for hook in self.hooks:
-            hook.remove()
 
-    def sample(self) -> Generator[Tuple[Union[torch.nn.Module, torch.nn.ModuleList], torch.Tensor, torch.Tensor]]:
+    def sample(self) -> Generator[Tuple[Union[torch.nn.Module, torch.nn.ModuleList], torch.Tensor, torch.Tensor], None, None]:
         fp_inferences = [self.run_inference(sample) for sample in self.samples]
         qt_inferences = [self.run_inference(sample) for sample in self.samples]
-        block = iter(self.blocks)
+
+        blocks = iter(self.blocks)
 
         while True:
             try:
-                block = next(block)
+                block = next(blocks)
 
                 # Quantizers must be ENABLED when calculating quantized block inputs
                 qt_block_inputs = [next(block_input) for block_input in qt_inferences]
