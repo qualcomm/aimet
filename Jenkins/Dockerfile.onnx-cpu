@@ -163,7 +163,7 @@ RUN python3 -m pip --no-cache-dir install \
         onnx~=1.16.1 \
         onnxscript \
         onnxsim \
-        onnxruntime~=1.18.1 \
+        onnxruntime~=1.19.0 \
         onnxruntime-extensions \
         opencv-python \
         peft \

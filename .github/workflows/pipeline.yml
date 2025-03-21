@@ -135,7 +135,7 @@ jobs:
                  "VER_PYTHON":      "3.10",
                  "VER_TENSORFLOW":  "",
                  "VER_TORCH":       "",
-                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_ONNXRUNTIME": "1.19.2",
                  "ENABLE_TESTS":    "ON",
                  "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
@@ -146,8 +146,8 @@ jobs:
                  "VER_PYTHON":      "3.10",
                  "VER_TENSORFLOW":  "",
                  "VER_TORCH":       "",
-                 "VER_ONNXRUNTIME": "1.18.1",
-                 "VER_CUDA":        "11.8.0",
+                 "VER_ONNXRUNTIME": "1.19.2",
+                 "VER_CUDA":        "12.1.0",
                  "ENABLE_TESTS":    "ON",
                  "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
@@ -164,7 +164,7 @@ jobs:
                  "VER_PYTHON":      "3.10",
                  "VER_TENSORFLOW":  "2.12.*",
                  "VER_TORCH":       "2.1.2",
-                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_ONNXRUNTIME": "1.19.2",
                  "VER_CUDA":        "",
                  "ENABLE_TESTS":    "OFF",
                  "BUILD_TARGETS":   "all;doc",

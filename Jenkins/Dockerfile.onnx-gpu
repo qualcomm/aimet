@@ -37,7 +37,7 @@
 # Docker image file to build and test AIMET for ONNX in a GPU environment
 
 ARG REGISTRY
-FROM ${REGISTRY}nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+FROM ${REGISTRY}nvidia/cuda:12.0.0-devel-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
@@ -67,6 +67,15 @@ RUN apt-get update > /dev/null && \
 
 # Install certificates
 RUN sudo update-ca-certificates
+
+RUN cudnn_tar="cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz" \
+    && wget "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/${cudnn_tar}" -O "/tmp/cudnn.tar.xz" \
+    && mkdir "/tmp/cudnn" \
+    && tar -Jxvf /tmp/cudnn.tar.xz --strip-components=1 -C "/tmp/cudnn" \
+    && cp -a /tmp/cudnn/include/cudnn*.h /usr/include \
+    && cp -a /tmp/cudnn/lib/* /usr/lib/x86_64-linux-gnu \
+    && chmod a+r /usr/include/cudnn*.h /usr/lib/x86_64-linux-gnu/libcudnn* \
+    && rm -rf /tmp/cudnn*
 
 # Modified version of bash.bashrc that adjusts the prompt
 ### COPY bash.bashrc /etc/
@@ -146,7 +155,7 @@ RUN python3 -m pip --no-cache-dir install \
         cffi \
         click \
         cma \
-        cumm-cu118 \
+        cumm-cu120 \
         cvxpy \
         cylp \
         cython \
@@ -174,7 +183,7 @@ RUN python3 -m pip --no-cache-dir install \
         onnx~=1.16.1 \
         onnxscript \
         onnxsim \
-        onnxruntime~=1.18.1 \
+        onnxruntime~=1.19.0 \
         onnxruntime-extensions \
         opencv-python \
         peft \
@@ -193,7 +202,7 @@ RUN python3 -m pip --no-cache-dir install \
         PyYAML \
         scikit-learn \
         scipy==1.8.1 \
-        spconv-cu118 \
+        spconv-cu120 \
         sphinx \
         sphinx-autodoc-typehints \
         sphinx-copybutton \
@@ -263,9 +272,9 @@ RUN python3 -m pip --no-cache-dir install Pillow-SIMD==9.0.0.post1
 # Force-install the LATEST version of Python3 Torch Packages, then pin back some dependencies
 RUN unset PIP_CONFIG_FILE && \
     python3 -m pip install --upgrade --force-reinstall --isolated \
-        torch -f https://download.pytorch.org/whl/cu118/torch \
-        torchaudio -f https://download.pytorch.org/whl/cu118/torchaudio \
-        torchvision -f https://download.pytorch.org/whl/cu118/torchvision \
+        torch -f https://download.pytorch.org/whl/cu121/torch \
+        torchaudio -f https://download.pytorch.org/whl/cu121/torchaudio \
+        torchvision -f https://download.pytorch.org/whl/cu121/torchvision \
         numpy==1.24.4 \
         fsspec[http]==2024.6.1
 
