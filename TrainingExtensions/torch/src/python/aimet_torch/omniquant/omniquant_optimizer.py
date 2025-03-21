@@ -38,6 +38,7 @@
 
 import contextlib
 import os
+import tempfile
 import torch
 from torch import nn
 
@@ -48,7 +49,7 @@ from aimet_torch._base.adaround.activation_sampler import get_block_inputs, get_
 from .decoder_processor import get_transformer_processor
 from .omniquant_config import OmniquantConfig
 from .let_modules import LETModule
-from ._utils import _covert_sim_to_letsim
+from ._utils import _covert_sim_to_letsim, _convert_letsim_to_sim
 
 OMNIQUANT_ARTIFACT_DIR = "./aimet_omniqunat_artifact/"
 
@@ -150,8 +151,14 @@ class Omniquant:
 
         # pylint: disable=protected-access
         # pylint: disable=unnecessary-comprehension
+
+        with torch.no_grad():
+            _convert_letsim_to_sim(quant_sim)
+
         # QDQ on models to fold quantizations into weight params.
         quant_sim._apply_qdq_to_model_parameters(quant_sim.model)
+
+        # quantized module -> original module
         all_modules_in_original_model = [module for module in quant_sim.model.modules()]
         quant_sim._remove_quantization_wrappers(quant_sim.model, all_modules_in_original_model)
 

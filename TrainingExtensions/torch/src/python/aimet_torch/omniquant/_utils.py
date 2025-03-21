@@ -47,6 +47,7 @@ from aimet_torch.omniquant.module_defns import (
     QuantizedGemmaNorm,
 )
 from aimet_torch.omniquant.let_modules import (
+    LETModule,
     LETQuantizedLinear,
     LETQuantizedLlamaRMSNorm,
     LETQuantizedLayerNorm,
@@ -80,3 +81,13 @@ def _covert_sim_to_letsim(sim):
             parent_module = ".".join(name.split(".")[:-1])
             leaf_module_name = name.split(".")[-1]
             setattr(sim.model.get_submodule(parent_module), leaf_module_name, let_module)
+
+
+def _convert_letsim_to_sim(sim):
+    """ Convert LET sim to original sim model inplace. """
+    for name, module in sim.model.named_modules():
+        if isinstance(module, LETModule):
+            source_quant_module = module.update_source_quant_module()
+            parent_module = ".".join(name.split(".")[:-1])
+            leaf_module_name = name.split(".")[-1]
+            setattr(sim.model.get_submodule(parent_module), leaf_module_name, source_quant_module)

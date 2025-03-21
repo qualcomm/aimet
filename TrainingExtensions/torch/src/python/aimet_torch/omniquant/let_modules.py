@@ -68,7 +68,6 @@ class LETModule():
             assert src_quant, f'{quantizers} should not be none for LETModule'
             setattr(self, quantizers, copy.deepcopy(src_quant))
 
-
     # TODO : ananmukh check if prep func can be removed from here
     def _reset_let_params(self):
         self.prev_scale = None
@@ -115,6 +114,26 @@ class LETModule():
     def _update_parameters(self):
         assert False, "Override in child class"
 
+    def update_source_quant_module(self):
+        """ Create original quantize module with new quantizer and parameter. """
+        source_quant_module = self._get_source_quant_module()
+        for quantizers in ['input_quantizers', 'output_quantizers', 'param_quantizers']:
+            let_quant = getattr(self, quantizers)
+            assert let_quant, f'{quantizers} should not be none for LETModule'
+            setattr(source_quant_module, quantizers, copy.deepcopy(let_quant))
+
+        for w_b in ["weight", "bias"]:
+            updated_param = getattr(self, w_b, None)
+            if updated_param is not None:
+                source_param = getattr(source_quant_module, w_b)
+                source_param.copy_(updated_param)
+
+        return source_quant_module
+
+    @abstractmethod
+    def _get_source_quant_module(self):
+        assert False, "Override in child class"
+
 # pylint: disable=too-many-ancestors, missing-class-docstring
 @QuantizationMixin.implements(QuantizedLinear)
 class LETQuantizedLinear(QuantizedLinear, LETModule):
@@ -141,6 +160,9 @@ class LETQuantizedLinear(QuantizedLinear, LETModule):
             weight = weight * foll_scale
 
         return {'weight': weight, 'bias': bias}
+
+    def _get_source_quant_module(self):
+        return QuantizedLinear(self.weight.shape[1], self.weight.shape[0], bias=self.bias is not None)
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
@@ -177,6 +199,9 @@ class LETQuantizedConv2d(QuantizedConv2d, LETModule):
             weight = weight * foll_scale.reshape(1, -1, 1, 1)
 
         return {'weight': weight, 'bias': bias}
+
+    def _get_source_quant_module(self):
+        return QuantizedConv2d(self.weight.shape[1], self.weight.shape[0], self.kernel_size, self.stride, self.padding, bias=self.bias is not None)
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
@@ -232,6 +257,9 @@ class LETQuantizedLlamaRMSNorm(QuantizedLlamaRMSNorm, LETModule):
 
         return {'weight': weight}
 
+    def _get_source_quant_module(self):
+        return QuantizedLlamaRMSNorm(self.weight.shape)
+
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
         with patch_attr(self, 'weight', params['weight']):
@@ -258,6 +286,9 @@ class LETQuantizedGemmaNorm(QuantizedGemmaNorm, LETModule):
             bias = bias / prev_scale
 
         return {'weight': weight, 'bias': bias}
+
+    def _get_source_quant_module(self):
+        return QuantizedGemmaNorm(self.weight.shape)
 
     def __call__(self, *args, **kwargs):
         params = self._update_parameters()
