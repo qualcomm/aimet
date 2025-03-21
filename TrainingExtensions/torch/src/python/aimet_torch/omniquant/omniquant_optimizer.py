@@ -155,6 +155,7 @@ class Omniquant:
             _convert_letsim_to_sim(quant_sim)
 
         # QDQ on models to fold quantizations into weight params.
+        cls._dump_meta_data(quant_sim.model, output_path)
         quant_sim._apply_qdq_to_model_parameters(quant_sim.model)
 
         # quantized module -> original module
@@ -217,3 +218,10 @@ class Omniquant:
         assert len(omniquant_config.input_symmetry) == 4, input_symmetry_error_msg
         assert omniquant_config.input_symmetry[:2] in ("qt", "fp"), input_symmetry_error_msg
         assert omniquant_config.input_symmetry[2:] in ("qt", "fp"), input_symmetry_error_msg
+
+    @classmethod
+    def _dump_meta_data(cls, model, output_path):
+        """ Traverse quantized model, get LET scales, and dump {module_name: scale} dict to output path. """
+        for name, module in model.named_modules():
+            if isinstance(module, LETModule):
+                print(f"{name}: prev: {module.prev_scale}, foll: {module.foll_scale}")
