@@ -114,7 +114,7 @@ class LETModule():
     def _update_parameters(self):
         assert False, "Override in child class"
 
-    def update_source_quant_module(self):
+    def get_source_quant_module(self):
         """ Create original quantize module with new quantizer and parameter. """
         source_quant_module = self._get_source_quant_module()
         for quantizers in ['input_quantizers', 'output_quantizers', 'param_quantizers']:
