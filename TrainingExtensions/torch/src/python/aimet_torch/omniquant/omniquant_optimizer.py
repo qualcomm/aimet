@@ -51,11 +51,11 @@ from .omniquant_config import OmniquantConfig
 from .let_modules import LETModule
 from ._utils import _covert_sim_to_letsim, _convert_letsim_to_sim
 
-OMNIQUANT_ARTIFACT_DIR = "./aimet_omniqunat_artifact/"
+OMNIQUANT_ARTIFACT_DIR = "./aimet_omniquant_artifact/"
 
 class Omniquant:
     """
-    Omniqunat for Post Training Quantization (PTQ)
+    Omniquant for Post Training Quantization (PTQ)
     """
     @classmethod
     def apply_omniquant(cls, quant_sim: QuantizationSimModel, model: torch.nn.Module, omniquant_config: OmniquantConfig, dataloader,
@@ -67,7 +67,7 @@ class Omniquant:
         :param model: Original fp32 model from which quant_sim was created.
         :param omniquant_config: Configuration for Omniquant optimization.
         :param dataloader: Dataloader used to train model.
-        :param output_path: path where to store artifacts.
+        :param output_path: Path to save {layer_name: scale} metadata safetensor.
         :return: Model with Omniquant weights.
         """
         @contextlib.contextmanager
