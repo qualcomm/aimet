@@ -550,6 +550,29 @@ def change_tensor_device_placement(input_data, device: torch.device):
                     input_data)
 
 
+def nested_map(data, fn: Callable[[torch.Tensor], torch.Tensor]):
+    """
+    Apply a function to a nested tuple, list, or dict of tensors.
+    :param data: Tensor, or a nested tuple, list, or dict of tensors.
+    :param fn: Function to apply to the tensors
+    :return: Nested structure of tensors with function applied
+    """
+    if isinstance(data, torch.Tensor):
+        return fn(data)
+
+    if isinstance(data, (tuple, list)):
+        cls = tuple if isinstance(data, tuple) else list
+        return cls(nested_map(x, fn) for x in data)
+
+    if isinstance(data, dict):
+        return {
+            key: nested_map(value, fn) for key, value in data.items()
+        }
+
+    logger.debug('unexpected input type=%s, expecting torch.Tensor, tuple, list, or dict. skipping..', type(data))
+    return data
+
+
 def find_num_inout_tensors_per_module(model: torch.nn.Module, input_tensor) -> Dict:
     """
     Returns a map of module -> number of output tensors, for all the children modules of the

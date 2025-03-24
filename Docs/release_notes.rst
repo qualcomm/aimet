@@ -6,6 +6,21 @@
 Release notes
 #############
 
+2.2.0
+=====
+
+* New Features
+    * PyTorch and ONNX
+        * Added "min_max" (`QuantScheme.min_max`) as a new name for "post_training_tf" quant scheme
+    * ONNX
+        * Introduced supergroup pattern-matching for complicated patterns such as LayerNormalization and RMSNorm
+* Bug Fixes
+    * PyTorch
+        * Restored :mod:`aimet_torch.v1` tf-enhanced behavior
+        * Updated Sequential MSE candidate logic to compute encoding candidates. Vectorized blockwise sequential MSE loss calculation for :mod:`nn.Linear`
+    * ONNX
+        * Fixed bug in :func:`QuantizationSimModel._tie_quantizers()` which propagates encodings to first op of parent ops if parent op is not quantizable
+
 2.1.0
 =====
 
