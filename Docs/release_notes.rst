@@ -13,7 +13,7 @@ Release notes
     * PyTorch and ONNX
         * Added "min_max" (`QuantScheme.min_max`) as a new name for "post_training_tf" quant scheme
     * ONNX
-        * Introduced new option in config file to disable quantizers for operations such as LayerNorm and RMSNorm, which are decomposed in ONNX and are core operators in QNN
+        * Introduced supergroup pattern-matching for complicated patterns such as LayerNormalization and RMSNorm
 * Bug Fixes
     * PyTorch
         * Restored :mod:`aimet_torch.v1` tf-enhanced behavior
