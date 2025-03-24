@@ -166,6 +166,8 @@ class ModuleData:
         handle = add_hook_to_get_activation(self._model.model, self._module_name)
         sess = QuantizationSimModel.build_session(self._model.model, self._providers, self._user_onnx_libs)
         if self._module_name in model_input:
+            # Workaround memory corruption bug in onnxruntime >= 1.19 when a graph output is also a graph input
+            # https://github.com/microsoft/onnxruntime/issues/21922
             outputs = [model_input[self._module_name]]
         else:
             outputs = sess.run([self._module_name], model_input)
