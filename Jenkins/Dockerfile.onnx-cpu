@@ -182,7 +182,6 @@ RUN python3 -m pip --no-cache-dir install \
         PyYAML \
         scikit-learn \
         scipy==1.8.1 \
-        spconv \
         sphinx \
         sphinx-autodoc-typehints \
         sphinx-copybutton \
