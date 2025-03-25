@@ -45,7 +45,7 @@ jobs:
                  "VER_PYTHON":      "3.10",
                  "VER_TENSORFLOW":  "",
                  "VER_TORCH":       "",
-                 "VER_ONNXRUNTIME": "1.18.1",
+                 "VER_ONNXRUNTIME": "1.19.2",
                  "VER_CUDA":        "",
                  "ENABLE_TESTS":    "ON",
                  "BUILD_TARGETS":   "all",
