@@ -1026,8 +1026,19 @@ class QuantizationSimModel:
 
         if onnx_opset_version < 10:
             raise RuntimeError(
-                "onnx::QuantizeLinaer and DequantizeLinear are only supported in opset >= 10; "
+                "onnx::QuantizeLinear and DequantizeLinear are only supported in opset >= 10; "
                 f"got {onnx_opset_version}"
+            )
+
+        if onnx_opset_version < 13 and any(
+            qtzr.quant_info.usePerChannelMode and
+            qtzr.tensor_quantizer_params and
+            qtzr.tensor_quantizer_params.channel_axis is not None
+            for qtzr in self.qc_quantize_op_dict.values()
+        ):
+            raise RuntimeError(
+                "onnx::QuantizeLinear and DequantizeLinear only supports "
+                f"per-channel quantization in opset >= 13; got {onnx_opset_version}"
             )
 
         if onnx_opset_version < 21 and any(
@@ -1037,7 +1048,7 @@ class QuantizationSimModel:
             for qtzr in self.qc_quantize_op_dict.values()
         ):
             raise RuntimeError(
-                "onnx::QuantizeLinaer and DequantizeLinear only supports "
+                "onnx::QuantizeLinear and DequantizeLinear only supports "
                 f"blockwise quantization in opset >= 21; got {onnx_opset_version}"
             )
 
@@ -1166,7 +1177,7 @@ def _add_onnx_qdq_node(model: onnx.ModelProto,
             model.graph.initializer.remove(t)
         except ValueError:
             for node in model.graph.node:
-                if node.op_type == "Constant" and node.output[0] == t:
+                if node.op_type == "Constant" and node.output[0] == t.name:
                     model.graph.node.remove(node)
                     break
             else:
