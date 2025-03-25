@@ -2205,7 +2205,8 @@ def test_bias_export(model_factory, input_shape, block_size, lpbq, tmp_path):
 @pytest.mark.parametrize("export_int32_bias_encodings", [
     False,
     # TODO: Simulating int32 bias quantize-dequantize in AIMET doesn't
-    #       produce output close enough to equivalent onnx QDQ graph.
+    #       produce output close enough to equivalent onnx QDQ graph
+    #       due to numerical instability
     # True,
 ])
 def test_onnx_qdq(export_int32_bias_encodings):

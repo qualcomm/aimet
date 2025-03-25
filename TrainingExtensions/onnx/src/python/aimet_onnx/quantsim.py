@@ -1102,6 +1102,7 @@ def _add_onnx_qdq_node(model: onnx.ModelProto,
     (bias_int)                           (bias_qdq)
 
     """
+    # pylint: disable=too-many-branches
     output_dtype = encodings["output_dtype"]
     axis = encodings["axis"]
     block_size = encodings["block_size"]
@@ -1159,8 +1160,18 @@ def _add_onnx_qdq_node(model: onnx.ModelProto,
 
     for n in nodes_to_add:
         model.graph.node.append(n)
+
     for t in tensors_to_remove:
-        model.graph.initializer.remove(t)
+        try:
+            model.graph.initializer.remove(t)
+        except ValueError:
+            for node in model.graph.node:
+                if node.op_type == "Constant" and node.output[0] == t:
+                    model.graph.node.remove(node)
+                    break
+            else:
+                raise
+
     for t in tensors_to_add:
         model.graph.initializer.append(t)
 
