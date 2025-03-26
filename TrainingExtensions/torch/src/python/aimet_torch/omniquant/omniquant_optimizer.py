@@ -236,4 +236,4 @@ class Omniquant:
                     meta_data[f"{name}.foll"] = module.foll_scale.data.numpy()
 
         save_file(meta_data, output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME)
-        logger.info(f"Aimet omniquant metadata saved at {(output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME).absolute()}")
+        logger.info("Aimet omniquant metadata saved at %s", (output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME).absolute())
