@@ -43,7 +43,6 @@ Layer groups: Groups of layers that are immediately connected and can be decompo
 """
 # pylint: disable=too-many-lines
 
-import functools
 from typing import Tuple, List, Union, Dict
 import warnings
 import numpy as np
@@ -686,21 +685,22 @@ class PythonHbfImpl(HbfImpl):
                 device=cls_pair_info.layer2.bias.device, dtype=cls_pair_info.layer2.bias.dtype)
 
 
-def _warn_relu6(fn):
-    msg = f"{fn.__qualname__} removed unsafe optimization for ReLU6 since aimet-torch==2.3. " \
-        "If you need to enable unsafe optimization for ReLU6, " \
-        "please consider replacing all torch.nn.ReLU6 layers with torch.nn.ReLU"
+def _warn_relu6(model: torch.nn.Module):
+    if not any(isinstance(module, torch.nn.ReLU6) for module in model.modules()):
+        return
 
-    @functools.wraps(fn)
-    def fn_wrapper(model, *args, **kwargs):
-        if any(isinstance(module, torch.nn.ReLU6) for module in model.modules()):
-            warnings.warn(_red(msg), DeprecationWarning, stacklevel=2)
-        return fn(model, *args, **kwargs)
+    msg = " ".join([
+        "Cross Layer Scaling (CLS) technique works for combination of conv-conv or conv-relu-conv layers.",
+        "Specifically, CLS does not work for combination of conv-relu6-conv layers.",
+        "For aimet-torch<2.3, AIMET was force changing relu6 layers to relu in the model."
+        "Since aimet-torch==2.3, AIMET will no longer do this."
+        "As a result, combination of conv-relu6-conv layers won't be scaled."
+        "User can modify their model to change relu6 to relu before invoking AIMET,"
+        "if this transformation does not impact floating point accuracy of the model."
+    ])
+    warnings.warn(_red(msg), DeprecationWarning, stacklevel=3)
 
-    return fn_wrapper
 
-
-@_warn_relu6
 def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple]] = None,
                    dummy_input: Union[torch.Tensor, Tuple] = None):
     """
@@ -711,6 +711,8 @@ def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple
     :param dummy_input: A dummy input to the model. Can be a Tensor or a Tuple of Tensors. dummy_input will be
      placed on CPU if not already.
     """
+    _warn_relu6(model)
+
     if isinstance(model, torch.nn.DataParallel):
         equalize_model(model.module, input_shapes, dummy_input)
     else:
@@ -730,7 +732,6 @@ def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple
                                      dummy_input=dummy_input)
 
 
-@_warn_relu6
 def equalize_bn_folded_model(model: torch.nn.Module,
                              input_shapes: Union[Tuple, List[Tuple]],
                              folded_pairs: List[Tuple[torch.nn.Module, torch.nn.BatchNorm2d]],
@@ -746,6 +747,8 @@ def equalize_bn_folded_model(model: torch.nn.Module,
      placed on CPU if not already.
     :param folded_pairs: List of pairs of folded layers
     """
+    _warn_relu6(model)
+
     if isinstance(model, torch.nn.DataParallel):
         equalize_bn_folded_model(model.module, input_shapes, folded_pairs, dummy_input=dummy_input)
     else:
