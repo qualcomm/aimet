@@ -138,7 +138,6 @@ def optional_dependencies() -> dict[str, list[str]]:
             "pytest-github-report",
             "pytorch-ignite",
             "safetensors",
-            "spconv",
             "torchvision",
             "transformers",
         ],
@@ -172,11 +171,8 @@ def optional_dependencies() -> dict[str, list[str]]:
     from packaging import version
     v = version.parse(torch.__version__)
 
-    optional_dependencies.update({
-        "v1-deps": [
-            f"torch=={v.major}.{v.minor}.*"
-        ]
-    })
+    optional_dependencies["test"].append("spconv")
+    optional_dependencies["v1-deps"].append(f"torch=={v.major}.{v.minor}.*")
 
     return optional_dependencies
 
