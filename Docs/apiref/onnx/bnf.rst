@@ -10,3 +10,4 @@ aimet_onnx.batch_norm_fold
 **Top-level API**
 
 .. autofunction:: aimet_onnx.batch_norm_fold.fold_all_batch_norms_to_weight
+   :no-index:

@@ -10,3 +10,4 @@ aimet_tensorflow.batch_norm_fold
 **Top-level API**
 
 .. autofunction:: aimet_tensorflow.keras.batch_norm_fold.fold_all_batch_norms
+   :no-index:

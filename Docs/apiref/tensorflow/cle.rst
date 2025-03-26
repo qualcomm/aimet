@@ -10,3 +10,4 @@ aimet_tensorflow.cross_layer_equalization
 **Top-level API**
 
 .. autofunction:: aimet_tensorflow.keras.cross_layer_equalization.equalize_model
+   :no-index:

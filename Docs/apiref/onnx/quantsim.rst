@@ -11,14 +11,17 @@ aimet_onnx.quantsim
     It is recommended to use onnx-simplifier before creating quantsim model.
 
 .. autoclass:: aimet_onnx.quantsim.QuantizationSimModel
+   :no-index:
 
 **The following API can be used to compute encodings for calibration.**
 
 .. automethod:: aimet_onnx.quantsim.QuantizationSimModel.compute_encodings
+   :no-index:
 
 **The following API can be used to export the quantized model to target.**
 
 .. automethod:: aimet_onnx.quantsim.QuantizationSimModel.export
+   :no-index:
 
 Enum Definition
 ===============
@@ -27,3 +30,4 @@ Enum Definition
 
 .. autoclass:: aimet_common.defs.QuantScheme
     :members:
+    :no-index:

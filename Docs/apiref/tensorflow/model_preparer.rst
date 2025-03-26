@@ -165,3 +165,4 @@ API
 ===
 
 .. autofunction:: aimet_tensorflow.keras.model_preparer.prepare_model
+   :no-index:

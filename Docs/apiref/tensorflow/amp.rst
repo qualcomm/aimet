@@ -10,11 +10,13 @@ aimet_tensorflow.mixed_precision
 **Top-level API for Regular AMP**
 
 .. autofunction:: aimet_tensorflow.keras.mixed_precision.choose_mixed_precision
+   :no-index:
 
 
 **Top-level API for Fast AMP (AMP 2.0)**
 
 .. autofunction:: aimet_tensorflow.keras.mixed_precision.choose_fast_mixed_precision
+   :no-index:
 
 .. note::
 
@@ -26,11 +28,13 @@ Currently only two candidates are supported - ((8,int), (8,int)) & ((16,int), (8
 
 .. autoclass:: aimet_tensorflow.keras.amp.quantizer_groups.QuantizerGroup
    :members:
+   :no-index:
 
 **CallbackFunc Definition**
 
 .. autoclass:: aimet_common.defs.CallbackFunc
    :members:
+   :no-index:
 
 ..
   # end-before

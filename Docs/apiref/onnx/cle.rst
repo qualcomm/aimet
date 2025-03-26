@@ -10,3 +10,4 @@ aimet_onnx.cross_layer_equalization
 **Top-level API**
 
 .. autofunction:: aimet_onnx.cross_layer_equalization.equalize_model
+   :no-index:

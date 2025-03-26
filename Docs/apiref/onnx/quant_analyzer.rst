@@ -13,10 +13,13 @@ aimet_onnx.quant_analyzer
     It is recommended to use onnx-simplifier before applying quant-analyzer.
 
 .. autoclass:: aimet_onnx.quant_analyzer.QuantAnalyzer
+   :no-index:
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.enable_per_layer_mse_loss
+   :no-index:
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.analyze
+   :no-index:
 
 **Alternatively, you can run specific utility**
 

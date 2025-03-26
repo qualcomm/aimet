@@ -10,11 +10,13 @@ aimet_onnx.seq_mse
 **Top level APIs**
 
 .. autofunction:: aimet_onnx.sequential_mse.seq_mse.SequentialMse.apply_seq_mse
+   :no-index:
 
 **Sequential MSE parameters**
 
 .. autoclass:: aimet_onnx.sequential_mse.seq_mse.SeqMseParams
     :members:
+    :no-index:
 
 ..
   # end-before

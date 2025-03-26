@@ -10,7 +10,7 @@ aimet_onnx.mixed_precision
 **Top-level API**
 
 .. autofunction:: aimet_onnx.mixed_precision.choose_mixed_precision
-
+   :no-index:
 
 .. note::
 
@@ -21,14 +21,17 @@ aimet_onnx.mixed_precision
 
 .. autoclass:: aimet_onnx.amp.quantizer_groups.QuantizerGroup
    :members:
+   :no-index:
 
 **CallbackFunc Definition**
 
 .. autoclass:: aimet_common.defs.CallbackFunc
    :members:
+   :no-index:
 
 .. autoclass:: aimet_onnx.amp.mixed_precision_algo.EvalCallbackFactory
    :members:
+   :no-index:
 
 ..
   # end-before

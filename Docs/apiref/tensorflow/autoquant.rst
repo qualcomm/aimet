@@ -12,3 +12,4 @@ aimet_tensorflow.auto_quant_v2
 .. autoclass:: aimet_tensorflow.keras.auto_quant_v2.AutoQuantWithAutoMixedPrecision
     :members:
     :member-order: bysource
+    :no-index:
