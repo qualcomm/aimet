@@ -73,7 +73,7 @@ def get_let_module(mdl):
         case _:
             assert False, "Let Quantized module is not implemented"
 
-def _covert_sim_to_letsim(sim):
+def _convert_sim_to_letsim(sim):
     """ Convert sim to sim model with LET quantizers inplace. """
     for name, module in sim.model.named_modules():
         if isinstance(module, _SUPPORT_QUANTIZED_MODULES):

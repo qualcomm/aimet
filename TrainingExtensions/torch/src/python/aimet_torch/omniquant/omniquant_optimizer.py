@@ -49,7 +49,7 @@ from aimet_torch._base.adaround.activation_sampler import get_block_inputs, get_
 from .decoder_processor import get_transformer_processor
 from .omniquant_config import OmniquantConfig
 from .let_modules import LETModule
-from ._utils import _covert_sim_to_letsim, _convert_letsim_to_sim
+from ._utils import _convert_sim_to_letsim, _convert_letsim_to_sim
 
 OMNIQUANT_ARTIFACT_DIR = "./aimet_omniquant_artifact/"
 
@@ -83,7 +83,7 @@ class Omniquant:
         os.makedirs(output_path, exist_ok=True)
 
         cls.validate_omniquant_config(omniquant_config)
-        _covert_sim_to_letsim(quant_sim)
+        _convert_sim_to_letsim(quant_sim)
         with disable_dynamic_cache():
             quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
 
@@ -140,7 +140,7 @@ class Omniquant:
                         cls._block_wise_training(omniquant_config, fp_input, qt_input, fp_block, qt_block, qt_let_pair_list)
 
                 # fold_let_params
-                for _, module in model.named_modules():
+                for module in model.modules():
                     if isinstance(module, LETModule):
                         module.fold_let_params()
 
@@ -151,7 +151,6 @@ class Omniquant:
 
         # pylint: disable=protected-access
         # pylint: disable=unnecessary-comprehension
-
         with torch.no_grad():
             _convert_letsim_to_sim(quant_sim)
 
