@@ -1,0 +1,19 @@
+##
+## Create New Github Action (used for experimenting new Github Actions)
+##
+
+name: Create New Github Action
+
+on:
+  # Allows this workflow to be callable
+  workflow_call:
+
+  # Allows this workflow to be manually triggered.
+  workflow_dispatch:
+jobs:
+  dummy:
+    name: Dummy
+    runs-on: [ubuntu-latest]
+    steps:
+      - run: exit 1
+
