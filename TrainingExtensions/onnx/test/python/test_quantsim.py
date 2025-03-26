@@ -59,6 +59,7 @@ from aimet_common import libquant_info
 from aimet_common import _libpymo as libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, EncodingType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
+from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.quantsim import (
     QuantizationSimModel,
     load_encodings_to_sim,
@@ -354,6 +355,25 @@ class TestQuantSim:
 
             assert len(encoding_data['activation_encodings']) + len(encoding_data['param_encodings']) == \
                    len(sim.qc_quantize_op_dict.keys())
+
+            # Check that exported model is the same as original model
+            model = single_residual_model().model
+            exported_model = onnx.load(os.path.join(tempdir, "quant_sim_model.onnx"))
+
+            for idx, t in enumerate(model.graph.input):
+                assert t.name == exported_model.graph.input[idx].name
+
+            for idx, t in enumerate(model.graph.output):
+                assert t.name == exported_model.graph.output[idx].name
+
+            model_cg = ConnectedGraph(model)
+            exported_cg = ConnectedGraph(exported_model)
+            for name, op in model_cg.get_all_ops().items():
+                for idx, tensor in enumerate(op.inputs):
+                    assert tensor.name == exported_cg.get_all_ops()[name].inputs[idx].name
+
+                for idx, tensor in enumerate(op.outputs):
+                    assert tensor.name == exported_cg.get_all_ops()[name].outputs[idx].name
 
     @pytest.mark.cuda
     def test_compare_encodings_cpu_gpu(self):

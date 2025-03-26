@@ -723,16 +723,29 @@ class QuantizationSimModel:
         Removes all QcQuantizeOp layers from model
         """
         nodes_to_remove = []
+        tensor_name_map = {}
         for node in model.nodes():
             if node.op_type == 'QcQuantizeOp':
                 nodes_to_remove.append(node)
-            else:
-                for name in node.input:
-                    model.replace_input_of_all_nodes(name, name.replace('_qdq', '').replace('_updated', ''))
-        model.remove_nodes(nodes_to_remove)
+                tensor_name_map[node.output[0]] = node.input[0]
 
-        for node in model.graph().output:
-            node.name = node.name.replace('_updated', '')
+        for node in nodes_to_remove:
+            model.model.graph.node.remove(node)
+
+        for node in model.nodes():
+            for i, tensor in enumerate(node.input):
+                if tensor not in tensor_name_map:
+                    continue
+                node.input[i] = tensor_name_map[tensor]
+
+            for i, tensor in enumerate(node.output):
+                if tensor not in tensor_name_map:
+                    continue
+                node.output[i] = tensor_name_map[tensor]
+
+        for i, tensor in enumerate(model.graph().output):
+            if tensor.name in tensor_name_map:
+                model.graph().output[i].name = tensor_name_map[tensor.name]
 
         return model
 
