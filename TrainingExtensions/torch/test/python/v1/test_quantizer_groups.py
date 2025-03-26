@@ -48,6 +48,7 @@ from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch import onnx_utils
 from aimet_torch._base.nn.modules import custom
+from aimet_torch.nn.modules.custom import Add, Multiply
 from torchvision.models import mobilenet_v3_large as mobilenetv3
 from ..models import test_models
 
@@ -131,14 +132,47 @@ class TestQuantizerGroups:
         assert quantizer_groups[3].parameter_quantizers == ('fc1',)
         assert len(quantizer_groups[-1].output_quantizers) == 1
 
+    def test_find_quantizer_groups_2(self):
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super(Model, self).__init__()
+                self.multiply = Multiply()
+                self.add = Add()
+
+            def forward(self, x1, x2, x3):
+                x = self.multiply(x1, x2)
+                x = self.add(x, x3)
+                return x
+
+        model = Model()
+        dummy_input = (torch.randn(1, 3), torch.randn(1, 3), torch.randn(1, 3))
+        sim = QuantizationSimModel(model, dummy_input)
+        sim.compute_encodings(lambda m, _: m(*dummy_input), None)
+        _, groups = find_quantizer_group(sim)
+
+        assert len(groups) == 5
+        expected_quantizers = {'multiply_input_quantizer_idx_0',
+                               'multiply_input_quantizer_idx_1',
+                               'multiply',
+                               'add_input_quantizer_idx_1',
+                               'add'}
+        for group in groups:
+            quantizers = group.input_quantizers + group.output_quantizers
+            assert len(quantizers) == 1
+            assert quantizers[0] in expected_quantizers
+            expected_quantizers.remove(quantizers[0])
+        assert len(expected_quantizers) == 0
+
     def test_multiple_inputs_qg(self):
         model = test_models.ModelWithMatMul3()
         dummy_input = torch.randn(10, 10)
         sim = QuantizationSimModel(model, dummy_input=(dummy_input, dummy_input))
         _, quantizer_groups = find_quantizer_group(sim)
+        assert len(quantizer_groups) == 3
         assert(quantizer_groups[0].get_input_quantizer_modules() == ("matmul_1", ))
-        assert (quantizer_groups[0].input_quantizers == (
-        'matmul_1_input_quantizer_idx_0', 'matmul_1_input_quantizer_idx_1'))
+        assert(quantizer_groups[1].get_input_quantizer_modules() == ("matmul_1", ))
+        assert (quantizer_groups[0].input_quantizers == ('matmul_1_input_quantizer_idx_0',))
+        assert (quantizer_groups[1].input_quantizers == ('matmul_1_input_quantizer_idx_1',))
 
     def test_quantizer_groups_for_model_with_two_inputs_and_two_outputs(self):
         dummy_input = (torch.rand(32, 1, 28, 28), torch.rand(32, 1, 28, 28))

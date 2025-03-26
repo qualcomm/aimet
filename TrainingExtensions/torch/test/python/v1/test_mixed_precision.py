@@ -1069,7 +1069,6 @@ class TestAutoMixedPrecision:
                                 }
                             },
                         ],
-                    "is_input_quantized": "True",
                     "is_output_quantized": "True",
                     "params": {
                         "weight": {
