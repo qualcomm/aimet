@@ -43,7 +43,6 @@ from typing import Any
 import torch
 from torchvision import models
 from aimet_common.defs import QuantScheme
-from aimet_torch.model_preparer import prepare_model
 from aimet_torch.v1.quant_analyzer import QuantAnalyzer, CallbackFunc
 # End step 0
 
@@ -102,7 +101,6 @@ def quant_analyzer_example():
     model = models.resnet18(pretrained=True).cuda().eval()
     input_shape = (1, 3, 224, 224)
     dummy_input = torch.randn(*input_shape).cuda()
-    prepared_model = prepare_model(model)
 
     # User action required
     # User should pass actual argument(s) of the callback functions.
@@ -111,7 +109,7 @@ def quant_analyzer_example():
     # End step 3
 
     # Step 4. Create QuantAnalyzer object
-    quant_analyzer = QuantAnalyzer(model=prepared_model,
+    quant_analyzer = QuantAnalyzer(model=model,
                                    dummy_input=dummy_input,
                                    forward_pass_callback=forward_pass_callback_fn,
                                    eval_callback=eval_callback_fn)

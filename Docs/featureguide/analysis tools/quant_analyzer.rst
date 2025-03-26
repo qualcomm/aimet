@@ -17,7 +17,7 @@ Analysis descriptions
 
 QuantAnalyzer performs the following analyses.
 
-1: Sensitivity to weight and activation quantization
+1. Sensitivity to weight and activation quantization
 ----------------------------------------------------
 
 QuantAnalyzer compares the accuracies of the original FP32 model, an activation-only quantized model,
@@ -30,7 +30,7 @@ not be very helpful.
 
 Quantized accuracy metrics for your model are printed as part of AIMET logging.
 
-2: Per-layer quantizer enablement
+2. Per-layer quantizer enablement
 ---------------------------------
 
 Sometimes the accuracy drop incurred from quantization can be attributed to only a subset of layers
@@ -53,7 +53,7 @@ model accuracy metrics for each layer.
 JSON files `per_layer_quant_enabled.json` and `per_layer_quant_disabled.json` are also produced,
 containing the data shown in the .html plots.
 
-3: Per-layer encodings min-max range
+3. Per-layer encodings min-max range
 ------------------------------------
 
 As part of quantization, encoding parameters for each quantizer must be calculated.
@@ -70,7 +70,7 @@ and each parameter quantizer, containing the encoding min/max values for each.
 If per-channel quantization (PCQ) is enabled, encoding min and max values are shown for all the channels
 of each weight parameter.
 
-4: Per-layer statistics histogram
+4. Per-layer statistics histogram
 ---------------------------------
 
 Under the TF-enhanced quantization scheme, min/max encoding values for each quantizer are obtained
@@ -81,7 +81,7 @@ When this quantization scheme is selected, QuantAnalyzer outputs the histogram o
 These plots are available as part of the `activations_pdf` and `weights_pdf` folders. There is a
 separate .html plot for each quantizer.
 
-5: Per-layer mean-square-error loss
+5. Per-layer mean-square-error loss
 -----------------------------------
 
 QuantAnalyzer can monitor each layer's output in the original FP32 model as well as the corresponding
@@ -147,7 +147,7 @@ Import required libraries.
             :end-before: # End step 0
 
 
-Step 2 Preparing the calibration callback
+Step 2 Preparing calibration callback
 -----------------------------------------
 
 Prepare the callback for calibration.
@@ -188,7 +188,7 @@ Prepare the callback for calibration.
             :start-after: # Step 1. Prepare forward pass callback
             :end-before: # End step 1
 
-Step 3 Preparing the evaluation callback 
+Step 3 Preparing evaluation callback
 ----------------------------------------
 
 Prepare the callback for quantized model evaluation.
@@ -259,10 +259,10 @@ Prepare the model, callback functions, and dataloader as required per platform.
             :start-after: # Step 3. Prepare model, callback functions and dataloader
             :end-before: # End step 3
 
-Step 5 Creating the QuantAnalyzer 
+Step 5 Creating QuantAnalyzer
 ---------------------------------
 
-Create the QuantAnalyzer.
+Create QuantAnalyzer.
 
 .. tab-set::
     :sync-group: platform
@@ -295,7 +295,7 @@ Create the QuantAnalyzer.
 Step 6 Running the analysis
 ---------------------------
 
-Finally, run the QuantAnalyzer to analyze the data.
+Finally, run QuantAnalyzer to analyze the data.
 
 .. tab-set::
     :sync-group: platform
