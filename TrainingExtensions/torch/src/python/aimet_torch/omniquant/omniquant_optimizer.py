@@ -54,7 +54,7 @@ from .omniquant_config import OmniquantConfig
 from .let_modules import LETModule
 from ._utils import _convert_sim_to_letsim, _convert_letsim_to_sim
 
-OMNIQUANT_ARTIFACT_DIR = "./aimet_omniqunat_artifact/"
+OMNIQUANT_ARTIFACT_DIR = "./aimet_omniquant_artifact/"
 OMNIQUANT_METADATA_SAFETENSOR_NAME = "aimet_omniquant_metadata.safetensor"
 
 class Omniquant:
