@@ -165,7 +165,8 @@ class SequentialMseBase(ABC):
                                                      tempdir)
             else:
                 dummy_input = change_tensor_device_placement(next(iter(data_loader)), get_device(model))
-                fp32_modules = get_ordered_list_of_modules(model, dummy_input, fwd_func=params.forward_fn)
+                fp32_modules = get_ordered_list_of_modules(model, dummy_input, fwd_func=params.forward_fn,
+                                                           ignore_duplicates=True)
                 fp32_modules = [(name, module) for name, module in fp32_modules if isinstance(module, SUPPORTED_MODULES)]
                 if modules_to_exclude:
                     fp32_modules = [(name, module) for name, module in fp32_modules if not module in modules_to_exclude]
@@ -234,7 +235,7 @@ class SequentialMseBase(ABC):
             args, kwargs = cached_fp_dataset[0]
             assert not kwargs
             assert len(args) == 1
-            fp32_modules = get_ordered_list_of_modules(fp_block, args[0], fwd_func=fwd_fn_modulelist)
+            fp32_modules = get_ordered_list_of_modules(fp_block, args[0], fwd_func=fwd_fn_modulelist, ignore_duplicates=True)
             fp32_modules = [(name, module) for name, module in fp32_modules if isinstance(module, SUPPORTED_MODULES)]
             if modules_to_exclude:
                 fp32_modules = [(name, module) for name, module in fp32_modules if not module in modules_to_exclude]

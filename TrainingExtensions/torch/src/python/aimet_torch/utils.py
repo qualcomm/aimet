@@ -454,20 +454,26 @@ def has_hooks(module: torch.nn.Module):
 
 def get_ordered_list_of_modules(model: torch.nn.Module,
                                 dummy_input: Union[torch.Tensor, List[torch.Tensor], Tuple],
-                                fwd_func=None) -> List:
+                                fwd_func=None,
+                                ignore_duplicates=False) -> List:
     """
     Finds ordered modules in given model.
     :param model: PyTorch model.
     :param dummy_input: Dummy input to the model. Used to parse model graph.
     :param fwd_func: forward function for model inference
+    :param ignore_duplicates: If True, don't add a module to ordered_list again if it was already seen before.
     :return: List of module name, module in order.
     """
+    seen_modules = set()
     def _hook_to_collect_name_of_module(module, _, __):
         """
         hook to find name of module
         """
         module_name = module_to_name_dict[module]
+        if module_name in seen_modules and ignore_duplicates:
+            return
         list_modules.append([module_name, module])
+        seen_modules.add(module_name)
 
     module_to_name_dict = {}
     for name, module in model.named_modules():

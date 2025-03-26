@@ -122,6 +122,15 @@ class TestTrainingExtensionsUtils(unittest.TestCase):
 
         self.assertEqual(60, len(all_ops))
 
+    def test_get_ordered_ops_with_reuse(self):
+        relu = torch.nn.ReLU()
+        model = torch.nn.Sequential(relu, relu)
+        dummy_input = torch.randn(1, 1)
+        all_ops = utils.get_ordered_list_of_modules(model, dummy_input)
+        assert len(all_ops) == 2
+        all_ops = utils.get_ordered_list_of_modules(model, dummy_input, ignore_duplicates=True)
+        assert len(all_ops) == 1
+
     def test_get_reused_modules(self):
         """ Test get_reused_modules utility """
         model = ModelWithReusedNodes()
