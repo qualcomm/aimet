@@ -65,12 +65,19 @@ class BlockwiseSampler:
         self.num_samples = num_samples
 
     def run_inference(self, sample) -> Generator[torch.Tensor, None, None]:
+        """
+        Helper function to run inference on the model using the given sample, pausing and yielding the results after
+        each block.
+        """
+
         @dataclass
         class InputHolder:
+            """Dataclass to hold input args and kwargs to a pytorch module."""
             args: tuple
             kwargs: dict
 
         class StopForwardExceptionWithInput(utils.StopForwardException):
+            """Exception raised in order to stop forward execution through the model. Holds module input data."""
             def __init__(self, captured_input):
                 self.captured_input = captured_input
 
@@ -82,6 +89,7 @@ class BlockwiseSampler:
                 hook = self.blocks[0].register_forward_pre_hook(hook_fn, with_kwargs=True)
                 self.sim.model(sample)
             except StopForwardExceptionWithInput as e:
+                # pylint: disable=used-before-assignment
                 hook.remove()
                 next_block_input = e.captured_input
                 yield next_block_input.args
@@ -94,6 +102,11 @@ class BlockwiseSampler:
 
 
     def sample(self) -> Generator[Tuple[Union[torch.nn.Module, torch.nn.ModuleList], torch.Tensor, torch.Tensor], None, None]:
+        """
+        Main generator function for blockwise sampler. Each loop of this generator yields a tuple of
+        (block, [list of FP inputs to block], [list of QT inputs to block]) based on the list of blocks provided during
+        initialization.
+        """
         fp_inferences = []
         qt_inferences = []
 
