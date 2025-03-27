@@ -10,18 +10,8 @@ aimet_onnx.quantsim
 .. note::
     It is recommended to use onnx-simplifier before creating quantsim model.
 
-.. autoclass:: aimet_onnx.quantsim.QuantizationSimModel
-
-**The following API can be used to compute encodings for calibration.**
-
-.. automethod:: aimet_onnx.quantsim.QuantizationSimModel.compute_encodings
-
-**The following API can be used to export the quantized model to target.**
-
-.. automethod:: aimet_onnx.quantsim.QuantizationSimModel.export
-
-Enum Definition
-===============
+.. autoclass:: aimet_torch.QuantizationSimModel
+   :members: compute_encodings, export
 
 **Quant Scheme Enum**
 

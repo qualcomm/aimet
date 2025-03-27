@@ -41,7 +41,7 @@ import contextlib
 import tempfile
 from pathlib import Path
 import os
-from typing import Dict, List, Union, Tuple, Optional
+from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar, Union
 import itertools
 import json
 import warnings
@@ -113,6 +113,10 @@ def _apply_constraints(flag: bool):
         yield
     finally:
         _tie_qtzrs = orig_flag
+
+
+class _NOT_SPECIFIED:
+    pass
 
 
 # pylint: disable=missing-class-docstring, too-many-arguments, too-many-locals, too-many-instance-attributes
@@ -647,19 +651,60 @@ class QuantizationSimModel:
         """
         self.model.save_model_to_file(os.path.join(self._path, filename_prefix) + '.onnx')
 
-    def compute_encodings(self, forward_pass_callback, forward_pass_callback_args):
-        """
-        Compute and return the encodings of each tensor quantizer
+    @overload
+    def compute_encodings(self, forward_pass_callback: Callable[[ort.InferenceSession], Any]): # pylint: disable=arguments-differ
+        ...
 
-        :param forward_pass_callback: A callback function that simply runs forward passes on the model. This callback
-            function should use representative data for the forward pass, so the calculated encodings work for all
-            data samples. This callback internally chooses the number of data samples it wants to use for calculating
-            encodings.
-        :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is. Up to
-            the user to determine the type of this parameter. E.g. could be simply an integer representing the number
-            of data samples to use. Or could be a tuple of parameters or an object representing something more complex.
-            If set to None, forward_pass_callback will be invoked with no parameters.
+    T = TypeVar('T')
+
+    @overload
+    def compute_encodings(self, # pylint: disable=arguments-differ
+                          forward_pass_callback: Callable[[ort.InferenceSession, T], Any],
+                          forward_pass_callback_args: T):
+        ...
+
+    del T
+
+    def compute_encodings(self, forward_pass_callback, forward_pass_callback_args=_NOT_SPECIFIED):
+        r"""
+        Computes encodings for all quantizers in the model.
+
+        This API will invoke `forward_pass_callback`, a function written by the user that runs
+        forward pass(es) of the quantized model with a small, representative subset of the training dataset.
+        By doing so, the quantizers in the quantized model will observe the inputs and initialize
+        their quantization encodings according to the observed input statistics.
+
+        This function is overloaded with the following signatures:
+
+        .. function:: compute_encodings(forward_pass_callback)
+           :noindex:
+
+           :param forward_pass_callback_: A function that takes a quantized model and runs forward passes
+               with a small, representative subset of training dataset
+           :type forward_pass_callback_: Callable[[ort.InferenceSession], Any]
+
+        .. function:: compute_encodings(forward_pass_callback, forward_pass_callback_args)
+           :noindex:
+
+           :param forward_pass_callback_: A function that takes a quantized model and runs forward passes
+               with a small, representative subset of training dataset
+           :type forward_pass_callback_: Callable[[ort.InferenceSession, T], Any]
+           :param T forward_pass_callback_args: The second argument to `forward_pass_callback`.
+
+        Example:
+
+            >>> sim = QuantizationSimModel(...)
+            >>> def run_forward_pass(session: ort.InferenceSession):
+            ...     for input in dataset:
+            ...         _ = sess.run(None, {"input": input})
+            ...
+            >>> sim.compute_encodings(run_forward_pass)
         """
+        if forward_pass_callback_args is _NOT_SPECIFIED:
+            args = (self.session,)
+        else:
+            args = (self.session, forward_pass_callback_args)
+
         for op_name, qc_op in self.qc_quantize_op_dict.items():
             qc_op.reset_encoding_stats()
             if op_name in self.activation_names:
@@ -669,7 +714,8 @@ class QuantizationSimModel:
                 if qc_op.is_encoding_frozen():
                     qc_op.op_mode = OpMode.quantizeDequantize
 
-        forward_pass_callback(self.session, forward_pass_callback_args)
+        forward_pass_callback(*args)
+
         for op_name, qc_op in self.qc_quantize_op_dict.items():
             if qc_op.data_type == QuantizationDataType.int and not qc_op.is_encoding_frozen():
                 qc_op.compute_encodings()
