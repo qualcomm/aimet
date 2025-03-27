@@ -40,14 +40,14 @@
 import os
 import contextlib
 from collections import OrderedDict, defaultdict
-from typing import Union, Tuple, Dict, List, Collection, Type, Generator
+from typing import Any, Callable, Union, Tuple, Dict, List, Collection, Type, Generator
 from abc import ABC, abstractmethod
 import torch
 from torch.utils.data import DataLoader
 
 from aimet_common.quant_analyzer import save_json, export_per_layer_sensitivity_analysis_plot,\
     create_and_export_min_max_ranges_plot, export_per_layer_mse_plot
-from aimet_common.utils import AimetLogger, CallbackFunc
+from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme
 from aimet_torch import utils
 from aimet_torch._base.quantsim import _QuantizationSimModelInterface
@@ -70,8 +70,8 @@ class QuantAnalyzerBase(ABC):
     def __init__(self,
                  model: torch.nn.Module,
                  dummy_input: Union[torch.Tensor, Tuple],
-                 forward_pass_callback: CallbackFunc,
-                 eval_callback: CallbackFunc,
+                 forward_pass_callback: Callable[[torch.nn.Module], Any],
+                 eval_callback: Callable[[torch.nn.Module], float],
                  modules_to_ignore: List[torch.nn.Module] = None,
                  ):
         """
@@ -86,10 +86,10 @@ class QuantAnalyzerBase(ABC):
                 representing the model performance evaluated against entire test/evaluation dataset.
         :param modules_to_ignore: Excludes certain modules from being analyzed.
         """
-        if not isinstance(forward_pass_callback, CallbackFunc):
-            raise ValueError('forward_pass_callback and its argument(s) are not encapsulated by CallbackFunc class.')
-        if not isinstance(eval_callback, CallbackFunc):
-            raise ValueError('eval_callback and its argument(s) are not encapsulated by CallbackFunc class.')
+        if not callable(forward_pass_callback):
+            raise ValueError('forward_pass_callback is expected to be callable; got {type(forward_pass_callback)}')
+        if not callable(eval_callback):
+            raise ValueError('eval_callback is expected to be callable; got {type(eval_callback)}')
 
         self._model = model
         self._dummy_input = dummy_input
@@ -233,7 +233,7 @@ class QuantAnalyzerBase(ABC):
         :return: Scaler value representing model performance.
         """
         with utils.in_eval_mode(model), torch.no_grad():
-            return self._eval_callback.func(model, self._eval_callback.args)
+            return self._eval_callback(model)
 
     def _sort_quant_wrappers_based_on_occurrence(self, sim: _QuantizationSimModelInterface) -> Dict:
         """

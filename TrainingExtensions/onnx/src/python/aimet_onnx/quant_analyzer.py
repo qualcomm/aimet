@@ -39,7 +39,7 @@
 
 import os
 import re
-from typing import Union, Tuple, Dict, List, Iterable
+from typing import Any, Callable, Union, Tuple, Dict, List, Iterable
 import copy
 from collections import defaultdict
 
@@ -49,7 +49,7 @@ import onnxruntime as ort
 from onnxruntime.quantization.onnx_model import ONNXModel
 from sklearn.metrics import mean_squared_error
 
-from aimet_common.utils import AimetLogger, CallbackFunc
+from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme
 from aimet_common.quant_analyzer import save_json, export_per_layer_sensitivity_analysis_plot, \
     create_and_export_min_max_ranges_plot, export_per_layer_mse_plot, export_stats_histogram_plot
@@ -77,8 +77,8 @@ class QuantAnalyzer:
     def __init__(self,
                  model: Union[ModelProto, ONNXModel],
                  dummy_input: Dict[str, np.ndarray],
-                 forward_pass_callback: CallbackFunc,
-                 eval_callback: CallbackFunc,
+                 forward_pass_callback: Callable[[ort.InferenceSession], Any],
+                 eval_callback: Callable[[ort.InferenceSession], float],
                  ):
         """
         :param model: FP32 model to analyze for quantization.
@@ -91,10 +91,10 @@ class QuantAnalyzer:
                 performance. This callback function is expected to return scalar value
                 representing the model performance evaluated against entire test/evaluation dataset.
         """
-        if not isinstance(forward_pass_callback, CallbackFunc):
-            raise ValueError('forward_pass_callback and its argument(s) are not encapsulated by CallbackFunc class.')
-        if not isinstance(eval_callback, CallbackFunc):
-            raise ValueError('eval_callback and its argument(s) are not encapsulated by CallbackFunc class.')
+        if not callable(forward_pass_callback):
+            raise ValueError('forward_pass_callback is expected to be callable; got {type(forward_pass_callback)}')
+        if not callable(eval_callback):
+            raise ValueError('eval_callback is expected to be callable; got {type(eval_callback)}')
 
         self._onnx_model = model
         if not isinstance(self._onnx_model, ONNXModel):
@@ -216,7 +216,7 @@ class QuantAnalyzer:
             path_or_bytes=model.SerializeToString(),
             providers=providers,
         )
-        return self._eval_callback.func(session, self._eval_callback.args)
+        return self._eval_callback(session)
 
     def _eval_weight_quantized_model(self, sim: QuantizationSimModel)-> float:
         """
@@ -229,7 +229,7 @@ class QuantAnalyzer:
         """
         enabled_activation_quantizers = self._get_enabled_activation_quantizers(sim)
         self._enable_disable_quantizers(enabled_activation_quantizers, enabled=False)
-        eval_score = self._eval_callback.func(sim.session, self._eval_callback.args)
+        eval_score = self._eval_callback(sim.session)
         self._enable_disable_quantizers(enabled_activation_quantizers, enabled=True)
         return eval_score
 
@@ -244,7 +244,7 @@ class QuantAnalyzer:
         """
         enabled_param_quantizers = self._get_enabled_param_quantizers(sim)
         self._enable_disable_quantizers(enabled_param_quantizers, enabled=False)
-        eval_score = self._eval_callback.func(sim.session, self._eval_callback.args)
+        eval_score = self._eval_callback(sim.session)
         self._enable_disable_quantizers(enabled_param_quantizers, enabled=True)
         return eval_score
 
@@ -391,7 +391,7 @@ class QuantAnalyzer:
             self._enable_disable_quantizers(enabled_quantizers, enabled=enabled_before)
 
             # Record eval score.
-            eval_score_dict[op_name] = self._eval_callback.func(sim.session, self._eval_callback.args)
+            eval_score_dict[op_name] = self._eval_callback(sim.session)
             _logger.debug("For layer: %s, the eval score is: %f", op_name, eval_score_dict[op_name])
 
             self._enable_disable_quantizers(enabled_quantizers, enabled=enabled_after)

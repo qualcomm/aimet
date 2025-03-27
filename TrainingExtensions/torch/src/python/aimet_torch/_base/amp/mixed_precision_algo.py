@@ -100,8 +100,10 @@ class EvalCallbackFactory:
 
     _DEFAULT_SQNR_NUM_SAMPLES = 128
 
-
-    def sqnr(self, num_samples: int = _DEFAULT_SQNR_NUM_SAMPLES) -> CallbackFunc:
+    def sqnr(
+        self,
+        num_samples: int = _DEFAULT_SQNR_NUM_SAMPLES
+    ) -> Callable[[torch.nn.Module], float]:
         """
         Returns SQNR eval callback.
 
@@ -134,7 +136,6 @@ def _evaluate_sqnr(model: torch.nn.Module, _: Any,
     Compute SQNR given a model and a data loader.
 
     :param model: Root module
-    :param _: Placeholder for CallbackFunc
     :param data_loader: Data loader to evaluate SQNR from
     :param forward_fn: Function that runs forward pass and returns the output tensor.
     :param num_samples: Number of samples used for evaluation
@@ -217,10 +218,10 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
     def __init__(self, sim: _QuantizationSimModelInterface,
                  dummy_input: Union[torch.Tensor, Tuple],
                  candidates: List[CANDIDATE_WITH_DTYPE],
-                 eval_callback_for_phase1: CallbackFunc,
-                 eval_callback_for_phase2: CallbackFunc,
+                 eval_callback_for_phase1: Callable[[torch.nn.Module], float],
+                 eval_callback_for_phase2: Callable[[torch.nn.Module], float],
                  results_dir: str, clean_start: bool,
-                 forward_pass_callback: CallbackFunc,
+                 forward_pass_callback: Callable[[torch.nn.Module], Any],
                  use_all_amp_candidates: bool = False,
                  phase2_reverse: bool = False,
                  phase1_optimize: bool = False):
@@ -230,19 +231,17 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
         :param dummy_input: Dummy input to the model. If the model has more than one input, pass a tuple.
                             User is expected to place the tensors on the appropriate device.
         :param candidates: List of Tuple of all possible [bitwidth, QuantizationDataType] values to quantize to
-        :param eval_callback_for_phase1: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. This evaluation callback used to measure sensitivity of each
+        :param eval_callback_for_phase1: Callable object used to measure sensitivity of each
                                      quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
                                      module. Therefore, a user might want to run the phase 1 with a smaller dataset
-        :param eval_callback_for_phase2: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. Evaluation callback used to get accuracy of quantized model
+        :param eval_callback_for_phase2: Callale object used to get accuracy of quantized model
                                      for phase 2 calculations. The phase 2 involves finding pareto front curve
         :param results_dir: Path to save results and cache intermediate results
         :param clean_start: If true, any cached information from previous runs will be deleted prior to starting the
                             mixed-precision analysis. If false, prior cached information will be used if applicable. Note
                             it is the user's responsibility to set this flag to true if anything in the model or
                             quantization parameters changes compared to the previous run.
-        :param forward_pass_callback: An object of CallbackFunc class which takes in Forward pass function (callable) and its
+        :param forward_pass_callback: Callable object used to compute quantization encodings
                                   function parameters. Forward pass callback used to compute quantization encodings
         :param use_all_amp_candidates: Using the “supported_kernels” field in the config file (under defaults
                     and op_type sections), a list of supported candidates can be specified. All the AMP candidates
@@ -258,12 +257,15 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
         self.phase1_optimize = phase1_optimize
         self.dummy_input = dummy_input
 
-        super().__init__(sim, candidates,
-                                                       eval_callback_for_phase1,
-                                                       eval_callback_for_phase2,
-                                                       forward_pass_callback,
-                                                       mac_dict,
-                                                       results_dir, clean_start, phase2_reverse)
+        super().__init__(sim,
+                         candidates,
+                         eval_callback_for_phase1,
+                         eval_callback_for_phase2,
+                         forward_pass_callback,
+                         mac_dict,
+                         results_dir,
+                         clean_start,
+                         phase2_reverse)
 
         supported_kernels = reformat_supported_kernels(sim.get_supported_kernels())
 
@@ -413,16 +415,14 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
         self._sim.compute_encodings(self.algo_params.forward_pass_callback, self.algo_params.forward_pass_callback_args)
         return accuracy_list
 
-
-
-    def _evaluate_model(self, eval_callback) -> float:
+    def _evaluate_model(self, eval_callback: Callable[[torch.nn.Module], float]) -> float:
         """
         Evaluates a model
 
         :param eval_callback: Callback function that contains eval function and eval args
         :return: Eval score
         """
-        return eval_callback.func(self._sim.model, eval_callback.args)
+        return eval_callback(self._sim.model)
 
     def _find_quantizer_group(self, sim) -> Tuple[Dict, List[QuantizerGroup]]:
         """

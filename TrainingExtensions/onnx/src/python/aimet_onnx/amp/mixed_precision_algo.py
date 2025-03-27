@@ -44,7 +44,7 @@ import functools
 from typing import Any, Callable, Tuple, List, Dict
 import json
 import numpy as np
-import onnxruntime
+import onnxruntime as ort
 
 from aimet_common.utils import AimetLogger, save_json_yaml
 from aimet_common.defs import CallbackFunc
@@ -91,7 +91,7 @@ class EvalCallbackFactory:
     """
     def __init__(self,
                  data_loader: DataLoader,
-                 forward_fn: Callable = None):
+                 forward_fn: Callable[[ort.InferenceSession, Any], np.ndarray] = None):
         """
         :param data_loader: Data loader to be used for evaluation
         :param forward_fn: Function that runs forward pass and returns the output tensor.
@@ -117,7 +117,11 @@ class EvalCallbackFactory:
 
     _DEFAULT_SQNR_NUM_SAMPLES = 128
 
-    def sqnr(self, sim: QuantizationSimModel, num_samples: int = _DEFAULT_SQNR_NUM_SAMPLES) -> CallbackFunc:
+    def sqnr(
+        self,
+        sim: QuantizationSimModel,
+        num_samples: int = _DEFAULT_SQNR_NUM_SAMPLES
+    ) -> Callable[[ort.InferenceSession], float]:
         """
         Returns SQNR eval callback.
         NOTE: sim object is required to enable/disable quantizer_info objects associated with quant ops.
@@ -135,12 +139,12 @@ class EvalCallbackFactory:
         return CallbackFunc(evaluate_sqnr)
 
 
-def _default_forward_fn(sess, inputs):
+def _default_forward_fn(sess: ort.InferenceSession, inputs: Any) -> np.ndarray:
     output_tensors = sess.run(None, {'input': inputs})[0]
     return output_tensors
 
 
-def _evaluate_sqnr(session: onnxruntime.InferenceSession, _: Any,
+def _evaluate_sqnr(session: ort.InferenceSession, _: Any,
                    sim: QuantizationSimModel,
                    data_loader: DataLoader,
                    forward_fn: Callable,
@@ -150,7 +154,6 @@ def _evaluate_sqnr(session: onnxruntime.InferenceSession, _: Any,
     Compute SQNR given a model and a data loader.
 
     :param session: sim session
-    :param _: Placeholder for CallbackFunc
     :param sim: Quantization sim model
     :param data_loader: Data loader to evaluate SQNR from
     :param forward_fn: Function that runs forward pass and returns the output tensor.
@@ -206,29 +209,26 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
     # pylint: disable=too-many-arguments
     def __init__(self, sim: QuantizationSimModel,
                  candidates: List[CANDIDATE_WITH_DTYPE],
-                 eval_callback_for_phase1: CallbackFunc,
-                 eval_callback_for_phase2: CallbackFunc,
+                 eval_callback_for_phase1: Callable[[ort.InferenceSession], float],
+                 eval_callback_for_phase2: Callable[[ort.InferenceSession], float],
                  results_dir: str, clean_start: bool,
-                 forward_pass_callback: CallbackFunc,
+                 forward_pass_callback: Callable[[ort.InferenceSession], Any],
                  use_all_amp_candidates: bool = False,
                  phase1_optimize: bool = False):
         """
         :param sim: Quantized sim model
         :param candidates: List of Tuple of all possible [bitwidth, QuantizationDataType] values to quantize to
-        :param eval_callback_for_phase1: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. This evaluation callback used to measure sensitivity of each
+        :param eval_callback_for_phase1: Callable object used to measure sensitivity of each
                                      quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
                                      module. Therefore, a user might want to run the phase 1 with a smaller dataset
-        :param eval_callback_for_phase2: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. Evaluation callback used to get accuracy of quantized model
+        :param eval_callback_for_phase2: Callale object used to get accuracy of quantized model
                                      for phase 2 calculations. The phase 2 involves finding pareto front curve
         :param results_dir: Path to save results and cache intermediate results
         :param clean_start: If true, any cached information from previous runs will be deleted prior to starting the
                             mixed-precision analysis. If false, prior cached information will be used if applicable. Note
                             it is the user's responsibility to set this flag to true if anything in the model or
                             quantization parameters changes compared to the previous run.
-        :param forward_pass_callback: An object of CallbackFunc class which takes in Forward pass function (callable) and its
-                                  function parameters. Forward pass callback used to compute quantization encodings
+        :param forward_pass_callback: Callable object used to compute quantization encodings
         :param use_all_amp_candidates: Using the “supported_kernels” field in the config file (under defaults
                     and op_type sections), a list of supported candidates can be specified. All the AMP candidates
                     which are passed through the “candidates” field may not be supported based on the data passed
@@ -449,14 +449,14 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
         os.remove(param_path)
         os.remove(act_path)
 
-    def _evaluate_model(self, eval_callback: CallbackFunc) -> float:
+    def _evaluate_model(self, eval_callback: Callable[[ort.InferenceSession], float]) -> float:
         """
         Evaluates a model
 
         :param eval_callback: Callback function that contains eval function and eval args
         :return: Eval score
         """
-        return eval_callback.func(self._sim.session, eval_callback.args)
+        return eval_callback(self._sim.session)
 
     def _find_quantizer_group(self, sim: QuantizationSimModel) -> Tuple[Dict[str, QcQuantizeOp], List[QuantizerGroup]]:
         """

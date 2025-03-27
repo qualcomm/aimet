@@ -36,7 +36,9 @@
 # =============================================================================
 """ Mixed precision inference """
 
-from typing import Union, Tuple, List
+from typing import Any, Callable, Union, Tuple, List
+
+import onnxruntime as ort
 
 from aimet_common.utils import AimetLogger
 from aimet_common.amp.utils import (
@@ -45,7 +47,6 @@ from aimet_common.amp.utils import (
     CANDIDATE_WITH_DTYPE,
     AMPSearchAlgo,
 )
-from aimet_common.defs import CallbackFunc
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
 from aimet_onnx.amp.quantizer_groups import QuantizerGroup
@@ -55,9 +56,12 @@ logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
 
 # pylint: disable=too-many-arguments
 def choose_mixed_precision(sim: QuantizationSimModel,
-                           candidates: List[CANDIDATE_WITH_DTYPE], eval_callback_for_phase1: CallbackFunc,
-                           eval_callback_for_phase2: CallbackFunc, allowed_accuracy_drop: Union[None, float],
-                           results_dir: str, clean_start: bool, forward_pass_callback: CallbackFunc,
+                           candidates: List[CANDIDATE_WITH_DTYPE],
+                           eval_callback_for_phase1: Callable[[ort.InferenceSession], float],
+                           eval_callback_for_phase2: Callable[[ort.InferenceSession], float],
+                           allowed_accuracy_drop: Union[None, float],
+                           results_dir: str, clean_start: bool,
+                           forward_pass_callback: Callable[[ort.InferenceSession], Any],
                            use_all_amp_candidates: bool = False, phase1_optimize: bool = True,
                            amp_search_algo: AMPSearchAlgo = AMPSearchAlgo.Binary) -> \
         Union[List[Tuple[int, float, QuantizerGroup, int]], None]:
@@ -72,13 +76,11 @@ def choose_mixed_precision(sim: QuantizationSimModel,
                     ((Activation bitwidth - 16, Activation data type - float), (Parameter bitwidth - 16, parameter data type - float))
                     candidates will be [((8, QuantizationDataType.int), (16, QuantizationDataType.int)),
                                         ((16, QuantizationDataType.float), (16, QuantizationDataType.float))]
-    :param eval_callback_for_phase1: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. This evaluation callback used to measure sensitivity of each
-                                     quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
-                                     module. Therefore, a user might want to run the phase 1 with a smaller dataset
-    :param eval_callback_for_phase2: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. Evaluation callback used to get accuracy of quantized model
-                                     for phase 2 calculations. The phase 2 involves finding pareto front curve
+    :param eval_callback_for_phase1: Callable object used to measure sensitivity of each
+                                 quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
+                                 module. Therefore, a user might want to run the phase 1 with a smaller dataset
+    :param eval_callback_for_phase2: Callale object used to get accuracy of quantized model
+                                 for phase 2 calculations. The phase 2 involves finding pareto front curve
     :param allowed_accuracy_drop: Maximum allowed drop in accuracy from FP32 baseline. The pareto front curve is plotted only till the point where the allowable
                                   accuracy drop is met. To get a complete plot for picking points on the curve, the user
                                   can set the allowable accuracy drop to None.
@@ -87,8 +89,7 @@ def choose_mixed_precision(sim: QuantizationSimModel,
                         mixed-precision analysis. If false, prior cached information will be used if applicable. Note
                         it is the user's responsibility to set this flag to true if anything in the model or
                         quantization parameters changes compared to the previous run.
-    :param forward_pass_callback: An object of CallbackFunc class which takes in Forward pass function (callable) and its
-                                  function parameters. Forward pass callback used to compute quantization encodings
+    :param forward_pass_callback: Callable object used to compute quantization encodings
     :param use_all_amp_candidates: Using the “supported_kernels” field in the config file (under defaults
                     and op_type sections), a list of supported candidates can be specified. All the AMP candidates
                     which are passed through the “candidates” field may not be supported based on the data passed

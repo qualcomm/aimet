@@ -43,12 +43,12 @@ import abc
 import json
 import time
 from collections import defaultdict, OrderedDict
-from typing import Callable, Tuple, List, Dict, Union
+from typing import Any, Callable, Tuple, List, Dict, Union
 import pickle
 import functools
 import  math
 
-from aimet_common.defs import QuantizationDataType, CallbackFunc
+from aimet_common.defs import QuantizationDataType
 from aimet_common.utils import AimetLogger
 from aimet_common.amp.quantizer_groups import QuantizerGroupBase
 from aimet_common.amp.utils import (
@@ -77,18 +77,18 @@ class GreedyMixedPrecisionAlgoParams:
     """ Bundle parameters needed for GreedyMixedPrecisionAlgo together for reducing amount of function parameters """
 
     # pylint: disable=too-many-arguments
-    def __init__(self, candidates: List[CANDIDATE_WITH_DTYPE], forward_pass_callback: CallbackFunc,
-                 eval_callback_for_phase1: CallbackFunc, eval_callback_for_phase2: CallbackFunc):
+    def __init__(self,
+                 candidates: List[CANDIDATE_WITH_DTYPE],
+                 forward_pass_callback: Callable[[Any], Any],
+                 eval_callback_for_phase1: Callable[[Any], float],
+                 eval_callback_for_phase2: Callable[[Any], float]):
         """
         :param candidates: List of Tuples of all possible bitwidth values to quantize to (excluding max bitwidth)
-        :param forward_pass_callback: An object of CallbackFunc class which takes in Forward pass function (callable) and its
-                                  function parameters. Forward pass callback used to compute quantization encodings
-        :param eval_callback_for_phase1: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. This evaluation callback used to measure sensitivity of each
+        :param forward_pass_callback: Callable object used to compute quantization encodings
+        :param eval_callback_for_phase1: Callable object used to measure sensitivity of each
                                      quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
                                      module. Therefore, a user might want to run the phase 1 with a smaller dataset
-        :param eval_callback_for_phase2: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. Evaluation callback used to get accuracy of quantized model
+        :param eval_callback_for_phase2: Callale object used to get accuracy of quantized model
                                      for phase 2 calculations. The phase 2 involves finding pareto front curve
         """
         self.candidates = candidates
@@ -104,9 +104,9 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
             self,
             sim,
             candidates: List[CANDIDATE_WITH_DTYPE],
-            eval_callback_for_phase1: CallbackFunc,
-            eval_callback_for_phase2: CallbackFunc,
-            forward_pass_callback: CallbackFunc,
+            eval_callback_for_phase1: Callable[[Any], float],
+            eval_callback_for_phase2: Callable[[Any], float],
+            forward_pass_callback: Callable[[Any], Any],
             mac_dict: Dict,
             results_dir: str,
             clean_start: bool,
@@ -115,15 +115,12 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
         """
         :param sim: Quantized sim model
         :param candidates: List of Tuple of all possible bitwidth values to quantize to
-        :param eval_callback_for_phase1: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. This evaluation callback used to measure sensitivity of each
+        :param eval_callback_for_phase1: Callable object used to measure sensitivity of each
                                      quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
                                      module. Therefore, a user might want to run the phase 1 with a smaller dataset
-        :param eval_callback_for_phase2: An object of CallbackFunc class which takes in Eval function (callable) and eval
-                                     function parameters. Evaluation callback used to get accuracy of quantized model
+        :param eval_callback_for_phase2: Callale object used to get accuracy of quantized model
                                      for phase 2 calculations. The phase 2 involves finding pareto front curve
-        :param forward_pass_callback: An object of CallbackFunc class which takes in Forward pass function (callable) and its
-                                      function parameters. Forward pass callback used to compute quantization encodings
+        :param forward_pass_callback: Callable object used to compute quantization encodings
         :param mac_dict: Dictionary mapping modules to mac counts
         :param results_dir: Path to save results and cache intermediate results
         :param clean_start: If true, any cached information from previous runs will be deleted prior to starting the
@@ -406,7 +403,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
         self._sim.compute_encodings(self.algo_params.forward_pass_callback,
                                     self.algo_params.forward_pass_callback_args)
 
-    def evaluate_model(self, eval_callback: CallbackFunc) -> float:
+    def evaluate_model(self, eval_callback: Callable[[Any], float]) -> float:
         """
         Evaluates a model and assert that the eval score is non-negative.
 
@@ -428,7 +425,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC): # pylint: disable=too-many-instance-att
         return eval_score
 
     @abc.abstractmethod
-    def _evaluate_model(self, eval_callback: CallbackFunc) -> float:
+    def _evaluate_model(self, eval_callback: Callable[[Any], float]) -> float:
         """
         Evaluates a model
 

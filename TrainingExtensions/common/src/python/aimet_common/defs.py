@@ -414,6 +414,10 @@ class CallbackFunc:
         self.func = func
         self.args = func_callback_args
 
+    def __call__(self, arg):
+        return self.func(arg, self.args)
+
+
 class EncodingType(Enum):
     """ Encoding type """
     PER_TENSOR = 0
