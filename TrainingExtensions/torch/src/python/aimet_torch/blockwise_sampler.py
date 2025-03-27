@@ -36,23 +36,33 @@
 # =============================================================================
 
 """Blockwise sampling utilty"""
-import contextlib
+import itertools
 from dataclasses import dataclass
 from typing import List, Union, Tuple, Generator
 import torch
+from torch.utils.data import DataLoader
 
 from aimet_torch import QuantizationSimModel, utils
 
 class BlockwiseSampler:
-    """Class providing blockwise sampling utilities"""
+    """
+    Class providing blockwise sampling utilities. Specifically, BlockWise sampler allows users to specify a list of
+    sequential blocks in the module, and the sampler will yield each block, along with the FP and QT inputs to that
+    block as a part of the sample() loop.
+    BlockwiseSampler caches each block input and resumes computation from that point when the user returns control to
+    the sampling loop. This way, excess computational costs for large models is avoided, and the loop is able to make
+    use of any user adjustments to quantization parameters for a particular block made in the sampling loop.
+    NOTE: users CAN NOT modify model weights during the sample() loop
+    """
     def __init__(self,
                  sim: QuantizationSimModel,
-                 blocks: List[Union[torch.nn.Module, torch.nn.ModuleList]],
-                 dataloader,
+                 blocks: List[torch.nn.Module],
+                 dataloader: DataLoader,
                  num_samples: int):
         self.sim = sim
         self.blocks = blocks
-        self.samples = [next(dataloader) for _ in range(num_samples)]
+        self.dataloader = dataloader
+        self.num_samples = num_samples
 
     def run_inference(self, sample) -> Generator[torch.Tensor, None, None]:
         @dataclass
@@ -74,16 +84,22 @@ class BlockwiseSampler:
             except StopForwardExceptionWithInput as e:
                 hook.remove()
                 next_block_input = e.captured_input
-                yield next_block_input
+                yield next_block_input.args
 
             for block in self.blocks:
                 next_block_input.args = block(*next_block_input.args, **next_block_input.kwargs)
-                yield next_block_input
+                if not isinstance(next_block_input.args, tuple):
+                    next_block_input.args = (next_block_input.args,)
+                yield next_block_input.args
 
 
     def sample(self) -> Generator[Tuple[Union[torch.nn.Module, torch.nn.ModuleList], torch.Tensor, torch.Tensor], None, None]:
-        fp_inferences = [self.run_inference(sample) for sample in self.samples]
-        qt_inferences = [self.run_inference(sample) for sample in self.samples]
+        fp_inferences = []
+        qt_inferences = []
+
+        for sample in itertools.islice(self.dataloader, self.num_samples):
+            fp_inferences.append(self.run_inference(sample))
+            qt_inferences.append(self.run_inference(sample))
 
         blocks = iter(self.blocks)
 
