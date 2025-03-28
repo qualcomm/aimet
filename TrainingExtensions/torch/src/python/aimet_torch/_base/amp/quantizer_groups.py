@@ -361,8 +361,9 @@ def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, Lis
                     supported_kernel_ops.append(child_module_name)
 
                 if parameter_quantizers:
-                    # In the case of parameter quantizers, even if there is more than 1 input quantizer (unexpected),
-                    # add to the same quantizer group for now. Better handling needs to be identified.
+                    if len(input_quantizers) > 1:
+                        # Unexpected case of having multiple inputs with a parameter. Leave these out of quantizer group selection.
+                        continue
                     quantizer_group = QuantizerGroup(
                         input_quantizers=input_quantizers,
                         parameter_quantizers=parameter_quantizers,
@@ -409,8 +410,9 @@ def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, Lis
         # Don't add quantizer group if it is empty
         if input_quantizers or output_quantizers or parameter_quantizers:
             if parameter_quantizers:
-                # In the case of parameter quantizers, even if there is more than one input or output quantizer
-                # (unexpected), add to the same quantizer group for now. Better handling needs to be identified.
+                if len(input_quantizers) + len(output_quantizers) > 1:
+                    # Unexpected case of having multiple inputs with a parameter. Leave these out of quantizer group selection.
+                    continue
                 quantizer_group = QuantizerGroup(
                     input_quantizers=input_quantizers,
                     output_quantizers=output_quantizers,
