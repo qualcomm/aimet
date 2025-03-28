@@ -127,7 +127,6 @@ RUN python3 -m pip --no-cache-dir install \
         attrs>=19.1.0 \
         behave==1.2.6 \
         bert-tensorflow \
-        blosc \
         cffi \
         click \
         cma \

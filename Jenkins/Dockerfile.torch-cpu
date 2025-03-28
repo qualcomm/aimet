@@ -130,7 +130,6 @@ RUN python3 -m pip --no-cache-dir install \
         astroid \
         attrs>=19.1.0 \
         behave==1.2.6 \
-        blosc==1.10.1 \
         cffi \
         click \
         cma \
