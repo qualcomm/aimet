@@ -128,7 +128,7 @@ def optional_dependencies() -> dict[str, list[str]]:
         ],
         "test": [
             "beautifulsoup4",
-            "deepspeed",
+            "deepspeed<=0.16.4",
             "matplotlib",
             "onnxruntime-extensions",
             "onnxsim",
