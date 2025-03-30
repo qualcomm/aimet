@@ -44,7 +44,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 # Import AIMET specific modules
-from aimet_common import _libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.defs import QuantScheme
 from aimet_common.defs import AdaroundConstants
 

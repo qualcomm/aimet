@@ -55,7 +55,7 @@ else:
 # pylint: disable=wrong-import-position
 from aimet_common.defs import QuantScheme, MAP_ROUND_MODE_TO_PYMO
 
-from aimet_common import _libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
 from aimet_tensorflow.keras.model_preparer import _KerasModelPreparer
 from aimet_tensorflow.keras.quant_sim.qc_quantize_wrapper import QcQuantizeWrapper

@@ -40,7 +40,7 @@ from typing import List
 import tensorflow as tf
 import numpy as np
 
-from aimet_common import _libpymo as pymo
+from aimet_common import libpymo as pymo
 from aimet_common.defs import CostMetric
 from aimet_common.utils import AimetLogger
 from aimet_tensorflow.keras.layer_database import Layer

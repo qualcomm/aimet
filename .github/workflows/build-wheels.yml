@@ -76,7 +76,7 @@ jobs:
           if [ "${{ matrix.id }}" == "tf-torch-cpu" ] ; then
             # Force-install tensorflow 2.10.1 since aimet isn't compatible with > 2.10
             # FIXME: Remove this line
-            python3 -m pip install tensorflow-cpu==2.10.1 --no-deps
+            python3 -m pip install tensorflow-cpu==2.10.1 keras==2.10.0 tensorflow-model-optimization --no-deps
             # Required to work around tensorflow-protobuf version mismatch
             export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
           fi

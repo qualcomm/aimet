@@ -41,7 +41,7 @@ import typing
 import numpy as np
 import tensorflow as tf
 
-from aimet_common import _libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
 from aimet_tensorflow.keras.batch_norm_fold import fold_all_batch_norms
 from aimet_tensorflow.keras.graphsearchtuils import GraphSearchUtils, ClsSet
