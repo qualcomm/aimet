@@ -1,0 +1,28 @@
+name: Forward AIMET commits to public repo (Test)
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    env:
+      INTERNAL_REPO_DIR: "aimet-repo"
+      INTERNAL_SRC_BRANCH: "develop"
+      # TODO: rename to develop when we start one-way push
+      PUBLIC_DST_BRANCH: "dev/bhushans/test-sync"
+    steps:
+      - name: Checkout internal repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.INTERNAL_SRC_BRANCH }}
+          path: ${{ env.INTERNAL_REPO_DIR }}
+          fetch-depth: 0
+      - name: Push to public repository
+        run: |
+          cd ${INTERNAL_REPO_DIR}
+          git remote add public-origin https://${{ secrets.PUBLIC_REPO_PAT }}@github.com/quic/aimet.git
+          git push public-origin ${{ env.INTERNAL_SRC_BRANCH }}:${{ env.PUBLIC_DST_BRANCH }}
+
