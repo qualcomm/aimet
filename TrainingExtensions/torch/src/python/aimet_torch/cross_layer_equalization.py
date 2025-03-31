@@ -692,8 +692,8 @@ def _warn_relu6(model: torch.nn.Module):
     msg = " ".join([
         "Cross Layer Scaling (CLS) technique works for combination of conv-conv or conv-relu-conv layers.",
         "Specifically, CLS does not work for combination of conv-relu6-conv layers.",
-        "For aimet-torch<2.3, AIMET was force changing relu6 layers to relu in the model."
-        "Since aimet-torch==2.3, AIMET will no longer do this."
+        "For aimet-torch<2.4, AIMET was force changing relu6 layers to relu in the model."
+        "Since aimet-torch==2.4, AIMET will no longer do this."
         "As a result, combination of conv-relu6-conv layers won't be scaled."
         "User can modify their model to change relu6 to relu before invoking AIMET,"
         "if this transformation does not impact floating point accuracy of the model."
