@@ -146,7 +146,7 @@ RUN python3 -m pip --no-cache-dir install \
         cython \
         dataclasses \
         Deprecated \
-        "deepspeed<=0.16.4" \
+        deepspeed \
         docutils \
         furo \
         graphviz \
