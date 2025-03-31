@@ -345,4 +345,4 @@ Based on your machine learning framework, choose one of the install procedures b
 
 
 
-.. |torch_whl_suffix| replace:: \-cp310-none-any.whl
+.. |torch_whl_suffix| replace:: \-py38-none-any.whl
