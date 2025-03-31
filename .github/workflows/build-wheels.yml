@@ -92,6 +92,7 @@ jobs:
         if: matrix.VER_TORCH
         run: |
           set -x
+          . /etc/profile.d/conda.sh
           python3 -m pip install --force-reinstall wheel
           wheel tags --remove --abi-tag=none --platform-tag=any wheelhouse/aimet*.whl
           ls -al wheelhouse/
