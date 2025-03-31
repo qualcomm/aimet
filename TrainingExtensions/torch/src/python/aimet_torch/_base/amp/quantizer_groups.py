@@ -363,6 +363,8 @@ def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, Lis
                 if parameter_quantizers:
                     if len(input_quantizers) > 1:
                         # Unexpected case of having multiple inputs with a parameter. Leave these out of quantizer group selection.
+                        logger.debug(f'Skipping unsupported case of multiple inputs with params detected for input op '
+                                     f'{child}.')
                         continue
                     quantizer_group = QuantizerGroup(
                         input_quantizers=input_quantizers,
@@ -412,6 +414,8 @@ def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, Lis
             if parameter_quantizers:
                 if len(input_quantizers) + len(output_quantizers) > 1:
                     # Unexpected case of having multiple inputs with a parameter. Leave these out of quantizer group selection.
+                    logger.debug(f'Skipping unsupported case of multiple inputs with params detected for parents '
+                                 f'{parents} and children {children}.')
                     continue
                 quantizer_group = QuantizerGroup(
                     input_quantizers=input_quantizers,
