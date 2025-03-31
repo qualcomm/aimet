@@ -739,12 +739,15 @@ def test_seqmse_with_zero3_offload(per_channel_quantsim_config,
     sim_deepspeed.model.requires_grad_(True)
     params = SeqMseParams(num_batches=2, inp_symmetry=inp_symmetry, loss_fn=loss_fn)
     apply_seq_mse(model_baseline, sim_deepspeed, unlabeled_data_loader, params)
-    assert not sim_deepspeed.model.fc1.param_quantizers['weight'].min.requires_grad
-    assert not sim_deepspeed.model.fc1.param_quantizers['weight'].max.requires_grad
-    assert not sim_deepspeed.model.fc1.param_quantizers['weight']._allow_overwrite
-    assert not sim_deepspeed.model.fc2.param_quantizers['weight'].min.requires_grad
-    assert not sim_deepspeed.model.fc2.param_quantizers['weight'].max.requires_grad
-    assert not sim_deepspeed.model.fc2.param_quantizers['weight']._allow_overwrite
+
+    with ds.runtime.zero.GatheredParameters(sim_deepspeed.model.fc1.param_quantizers['weight'].parameters()):
+        assert not sim_deepspeed.model.fc1.param_quantizers['weight'].min.requires_grad
+        assert not sim_deepspeed.model.fc1.param_quantizers['weight'].max.requires_grad
+        assert not sim_deepspeed.model.fc1.param_quantizers['weight']._allow_overwrite
+    with ds.runtime.zero.GatheredParameters(sim_deepspeed.model.fc2.param_quantizers['weight'].parameters()):
+        assert not sim_deepspeed.model.fc2.param_quantizers['weight'].min.requires_grad
+        assert not sim_deepspeed.model.fc2.param_quantizers['weight'].max.requires_grad
+        assert not sim_deepspeed.model.fc2.param_quantizers['weight']._allow_overwrite
 
     # Compute encodings for all the activations and remaining non-supported modules
     with ds.runtime.zero.GatheredParameters(sim_deepspeed.model.fc1.param_quantizers.parameters()):

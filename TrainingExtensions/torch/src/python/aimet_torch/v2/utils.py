@@ -154,30 +154,18 @@ def _patch_param_or_buffer(module: torch.nn.Module,
     if orig_param_or_buffer is not None:
         assert new_param_or_buffer.shape == orig_param_or_buffer.shape
 
-    # Modify module.__dict__.
-    # module.__dict__ is the primary lookup table which has higher priority than __getattr__ method.
-    # Once we overwrite module.__dict__[param_or_buffer_name] with quantized_params,
-    # getattr(module, param_or_buffer_name) will return module.__dict__[param_or_buffer_name] directly
-    # without falling back to torch.nn.Module's __getattr__ method which returns
-    # the original parameter stored in module._parameters or module._buffers.
-    action = lambda: module.__dict__.update({param_or_buffer_name: new_param_or_buffer})
-
-    if param_or_buffer_name in module.__dict__:
+    if param_or_buffer_name in module._parameters:
+        container = module._parameters
+    elif param_or_buffer_name in module._buffers:
+        container = module._buffers
+    elif param_or_buffer_name in module.__dict__:
         # Some non-standard modules (e.g. replicas of torch.nn.DataParallel) store their parameters
-        # directly to module.__dict__. In that case, the cleanup function should restore the dict
-        # so that module.__dict__[param_or_buffer_name] points back to the original parameter again.
-        assert module.__dict__[param_or_buffer_name] is orig_param_or_buffer
-        cleanup = lambda: module.__dict__.update({param_or_buffer_name: orig_param_or_buffer})
+        container = module.__dict__
     else:
-        if param_or_buffer_name in module._parameters:
-            assert module._parameters[param_or_buffer_name] is orig_param_or_buffer
-        elif param_or_buffer_name in module._buffers:
-            assert module._buffers[param_or_buffer_name] is orig_param_or_buffer
-        else:
-            raise RuntimeError(f"'{param_or_buffer_name}' is not a valid name of parameter of buffer of {type(module)}.")
+        raise RuntimeError(f"'{param_or_buffer_name}' is not a valid name of parameter of buffer of {type(module)}.")
 
-        cleanup = lambda: module.__dict__.pop(param_or_buffer_name)
-
+    action = lambda: container.update({param_or_buffer_name: new_param_or_buffer})
+    cleanup = lambda: container.update({param_or_buffer_name: orig_param_or_buffer})
 
     return _ContextManager(action, cleanup)
 

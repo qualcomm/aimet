@@ -138,12 +138,12 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         """
         Returns true if the quantization parameters are initialized.
         """
-        for param_name, _ in self.named_parameters():
-            if not self._is_initialized(param_name):
-                return False
-        return True
+        return all(
+            self._is_initialized(param_name, param)
+            for param_name, param in self.named_parameters()
+        )
 
-    def _is_initialized(self, param_name) -> bool:
+    def _is_initialized(self, param_name: str, current_param: torch.nn.Parameter) -> bool:
         # pylint: disable=protected-access
 
         initial_param_weakref, initial_param_version = self._initial_parameters[param_name]
@@ -152,8 +152,6 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         if initial_param is None:
             # The initial parameter object doesn't exist in memory space anymore.
             return True
-
-        current_param = getattr(self, param_name)
 
         if current_param is initial_param and current_param._version == initial_param_version:
             # 1. Current parameter is the identical object as the initial parameter
@@ -195,8 +193,8 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         Get extra state that describes which parameters are initialized.
         """
         extra_state_dict = OrderedDict({
-            param_name: torch.tensor(self._is_initialized(param_name))
-            for param_name, _ in self.named_parameters()
+            param_name: torch.tensor(self._is_initialized(param_name, param))
+            for param_name, param in self.named_parameters()
         })
 
         # NOTE: This is a hack to bypass a bug in PyTorch onnx export
