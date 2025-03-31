@@ -94,7 +94,7 @@ jobs:
           set -x
           . /etc/profile.d/conda.sh
           python3 -m pip install --force-reinstall wheel
-          wheel tags --remove --abi-tag=none --platform-tag=any wheelhouse/aimet*.whl
+          wheel tags --remove --python-tag=py38 --abi-tag=none --platform-tag=any wheelhouse/aimet*.whl
           ls -al wheelhouse/
       - name: Upload AIMET wheel file
         uses: actions/upload-artifact@v3
