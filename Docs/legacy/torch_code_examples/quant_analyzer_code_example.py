@@ -43,13 +43,13 @@ from typing import Any
 import torch
 from torchvision import models
 from aimet_common.defs import QuantScheme
-from aimet_torch.quant_analyzer import QuantAnalyzer, CallbackFunc
+from aimet_torch.quant_analyzer import QuantAnalyzer
 # End step 0
 
 # Step 1. Prepare forward pass callback
 # NOTE: In the actual use cases, the users should implement this part to serve
 #       their own goals if necessary.
-def forward_pass_callback(model: torch.nn.Module, _: Any = None) -> None:
+def forward_pass_callback(model: torch.nn.Module) -> None:
     """
     NOTE: This is intended to be the user-defined model calibration function.
     AIMET requires the above signature. So if the user's calibration function does not
@@ -60,9 +60,6 @@ def forward_pass_callback(model: torch.nn.Module, _: Any = None) -> None:
     be subset of entire train/validation dataset (~1000 images/samples).
 
     :param model: PyTorch model.
-    :param _: Argument(s) of this callback function. Up to the user to determine the type of this parameter.
-    E.g. could be simply an integer representing the number of data samples to use. Or could be a tuple of
-    parameters or an object representing something more complex.
     """
     # User action required
     # User should create data loader/iterable using representative dataset and simply run
@@ -72,7 +69,7 @@ def forward_pass_callback(model: torch.nn.Module, _: Any = None) -> None:
 # Step 2. Prepare eval callback
 # NOTE: In the actual use cases, the users should implement this part to serve
 #       their own goals if necessary.
-def eval_callback(model: torch.nn.Module, _: Any = None) -> float:
+def eval_callback(model: torch.nn.Module) -> float:
     """
     NOTE: This is intended to be the user-defined model evaluation function.
     AIMET requires the above signature. So if the user's calibration function does not
@@ -83,9 +80,6 @@ def eval_callback(model: torch.nn.Module, _: Any = None) -> float:
     test/evaluation dataset.
 
     :param model: PyTorch model.
-    :param _: Argument(s) of this callback function. Up to the user to determine the type of this parameter.
-    E.g. could be simply an integer representing the number of data samples to use. Or could be a tuple of
-    parameters or an object representing something more complex.
     :return: Scalar value representing the model performance.
     """
     # User action required
@@ -101,18 +95,13 @@ def quant_analyzer_example():
     model = models.resnet18(pretrained=True).cuda().eval()
     input_shape = (1, 3, 224, 224)
     dummy_input = torch.randn(*input_shape).cuda()
-
-    # User action required
-    # User should pass actual argument(s) of the callback functions.
-    forward_pass_callback_fn = CallbackFunc(forward_pass_callback, func_callback_args=None)
-    eval_callback_fn = CallbackFunc(eval_callback, func_callback_args=None)
     # End step 3
 
     # Step 4. Create QuantAnalyzer object
     quant_analyzer = QuantAnalyzer(model=model,
                                    dummy_input=dummy_input,
-                                   forward_pass_callback=forward_pass_callback_fn,
-                                   eval_callback=eval_callback_fn)
+                                   forward_pass_callback=forward_pass_callback,
+                                   eval_callback=eval_callback)
 
     # User action required
     # User should use unlabeled dataloader, so if the dataloader yields labels as well user should use discard them.
