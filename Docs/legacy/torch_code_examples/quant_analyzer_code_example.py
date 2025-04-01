@@ -43,7 +43,7 @@ from typing import Any
 import torch
 from torchvision import models
 from aimet_common.defs import QuantScheme
-from aimet_torch.v1.quant_analyzer import QuantAnalyzer, CallbackFunc
+from aimet_torch.quant_analyzer import QuantAnalyzer, CallbackFunc
 # End step 0
 
 # Step 1. Prepare forward pass callback
