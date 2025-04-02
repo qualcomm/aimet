@@ -240,7 +240,7 @@ class QuantizationSimModel(_QuantizationSimModelBase): # pylint: disable=missing
                  default_output_bw: int = 8,
                  default_param_bw: int = 8,
                  in_place: bool = False,
-                 config_file: str = None,
+                 config_file: Optional[str] = None,
                  default_data_type: QuantizationDataType = QuantizationDataType.int):
         if not quant_scheme:
             old_default = QuantScheme.post_training_tf_enhanced
