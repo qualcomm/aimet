@@ -473,7 +473,7 @@ def prepare_model(model: torch.nn.Module,
 def _trace_model(model: torch.nn.Module,
                  modules_to_exclude: Optional[List[torch.nn.Module]],
                  module_classes_to_exclude: Optional[List[Callable]],
-                 concrete_args: Optional[Dict[str, Any]]) -> [torch.fx.GraphModule, Dict]:
+                 concrete_args: Optional[Dict[str, Any]]) -> tuple[torch.fx.GraphModule, Dict]:
     """
     Returns traced model and dictionary of node name to the scope of module which contains the node.
 
