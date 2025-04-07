@@ -272,4 +272,4 @@ Environment setup
     source /usr/local/lib/python3.10/dist-packages/aimet_common/bin/envsetup.sh
 
 
-.. |torch_whl_suffix| replace:: \-cp310-none-any.whl
+.. |torch_whl_suffix| replace:: \-py38-none-any.whl

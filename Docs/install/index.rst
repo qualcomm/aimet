@@ -221,7 +221,7 @@ For most users, installing the pre-built AIMET package via the pip package manag
 experience. However, if you want to use the latest code or contribute to AIMET, you need to build it
 from source. To build the latest AIMET code from the source, see `build AIMET from source <https://github.com/quic/aimet/blob/develop/packaging/docker_install.md>`_.
 
-.. |torch_whl_suffix| replace:: \-cp310-none-any.whl
+.. |torch_whl_suffix| replace:: \-py38-none-any.whl
 .. |whl_suffix| replace:: \-cp310-cp310-manylinux_2_34_x86_64.whl
 .. |download_url| replace:: \https://github.com/quic/aimet/releases/download/
 .. |torch_pkg_url| replace:: \https://download.pytorch.org/whl/torch_stable.html
