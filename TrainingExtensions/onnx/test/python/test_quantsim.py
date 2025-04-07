@@ -56,7 +56,7 @@ from onnxsim import simplify
 
 from aimet_common import quantsim
 from aimet_common import libquant_info
-from aimet_common import _libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, EncodingType
 from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_onnx.meta.connectedgraph import ConnectedGraph

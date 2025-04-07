@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from typing import Union, List, Optional, Dict, Tuple
 import numpy as np
 
-from aimet_common import _libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.defs import QuantScheme, MAP_QUANT_SCHEME_TO_PYMO, QuantizationDataType, EncodingType
 from aimet_common import libquant_info
 from aimet_common.utils import deprecated

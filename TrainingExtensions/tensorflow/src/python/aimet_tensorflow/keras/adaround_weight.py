@@ -44,7 +44,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import Progbar
 
-from aimet_common import _libpymo as libpymo
+from aimet_common import libpymo
 from aimet_common.utils import AimetLogger
 from aimet_common.defs import QuantScheme
 from aimet_common.quantsim_config.json_config_importer import JsonConfigImporter, ConfigDictKeys, ConfigDictType
