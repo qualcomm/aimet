@@ -1,9 +1,7 @@
-name: Forward AIMET commits to public repo
+name: Forward AIMET commits to public repo (test)
 
 on:
-  push:
-    branches:
-      - develop
+  workflow_dispatch:
 
 jobs:
   repo-sync:
@@ -11,8 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       INTERNAL_REPO_DIR: "aimet-repo"
-      INTERNAL_SRC_BRANCH: "develop"
-      PUBLIC_DST_BRANCH: "develop"
+      INTERNAL_SRC_BRANCH: "dev/bhushans/test-branch"
+      PUBLIC_DST_BRANCH: "dev/bhushans/test-branch"
     steps:
       - name: Checkout internal repo
         uses: actions/checkout@v4
@@ -23,6 +21,6 @@ jobs:
       - name: Push to public repository
         run: |
           cd ${INTERNAL_REPO_DIR}
-          git remote add public-origin https://${{ secrets.PUBLIC_REPO_PAT }}@github.com/quic/aimet.git
+          git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/quic/aimet.git
           git push public-origin ${{ env.INTERNAL_SRC_BRANCH }}:${{ env.PUBLIC_DST_BRANCH }}
 
