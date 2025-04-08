@@ -4,7 +4,8 @@
 AIMET documentation versions
 ############################
 
-* `2.2.0 (current) <https://quic.github.io/aimet-pages/releases/2.2.0/index.html>`_
+* `2.3.0 (current) <https://quic.github.io/aimet-pages/releases/2.3.0/index.html>`_
+* `2.2.0 <https://quic.github.io/aimet-pages/releases/2.2.0/index.html>`_
 * `2.1.0 <https://quic.github.io/aimet-pages/releases/2.1.0/index.html>`_
 * `2.0.0 <https://quic.github.io/aimet-pages/releases/2.0.0/index.html>`_
 * `1.35.1 <https://quic.github.io/aimet-pages/releases/1.35.1/user_guide/index.html>`_

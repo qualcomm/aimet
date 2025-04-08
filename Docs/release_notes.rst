@@ -6,6 +6,19 @@
 Release notes
 #############
 
+2.3.0
+=====
+
+* New Features
+    * ONNX
+        * Upgraded CUDA to 12.1.0
+        * Upgraded ONNX-Runtime to 1.19.2
+        * Reduced :func:`QuantizationSimModel.export()` time
+
+* Bug Fixes
+    * ONNX
+        * Fixed bug in :func:`QuantizationSimModel.export()` to export ONNX models with external weights to one file
+
 2.2.0
 =====
 
