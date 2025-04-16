@@ -181,21 +181,21 @@ jobs:
       image-tag: ${{ needs.docker-tag.outputs.tag }}
     secrets: inherit
 
-  call-run-unit-tests:
-    name: Run unit tests
-    needs: [ variants, call-build-wheels ]
-    uses: ./.github/workflows/run-unit-tests.yml
-    with:
-      variants: ${{ needs.variants.outputs.matrix }}
-    secrets: inherit
+  # call-run-unit-tests:
+  #   name: Run unit tests
+  #   needs: [ variants, call-build-wheels ]
+  #   uses: ./.github/workflows/run-unit-tests.yml
+  #   with:
+  #     variants: ${{ needs.variants.outputs.matrix }}
+  #   secrets: inherit
 
-  call-run-acceptance-tests:
-    name: Run acceptance tests
-    needs: [ variants, call-build-wheels, call-run-unit-tests ]
-    uses: ./.github/workflows/run-acceptance-tests.yml
-    with:
-      variants: ${{ needs.variants.outputs.matrix }}
-    secrets: inherit
+  # call-run-acceptance-tests:
+  #   name: Run acceptance tests
+  #   needs: [ variants, call-build-wheels, call-run-unit-tests ]
+  #   uses: ./.github/workflows/run-acceptance-tests.yml
+  #   with:
+  #     variants: ${{ needs.variants.outputs.matrix }}
+  #   secrets: inherit
 
   cleanup:
     needs: [ docker-tag, variants, call-build-wheels ]

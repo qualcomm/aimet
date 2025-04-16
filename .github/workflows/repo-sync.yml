@@ -5,24 +5,35 @@ on:
     branches:
       - develop
 
+  workflow_dispatch:
+    inputs:
+      src_branch:
+        description: "Internal source branch to sync"
+        default: "dev/bhushans/test-develop"
+        type: string
+      dst_branch:
+        description: "External destination branch to sync"
+        default: "dev/bhushans/test-develop"
+        type: string
+
 jobs:
   repo-sync:
     if: github.server_url != 'https://github.com'
     runs-on: ubuntu-latest
     env:
       INTERNAL_REPO_DIR: "aimet-repo"
-      INTERNAL_SRC_BRANCH: "develop"
-      PUBLIC_DST_BRANCH: "develop"
+      # INTERNAL_SRC_BRANCH: ${{ inputs.src_branch }}
+      # PUBLIC_DST_BRANCH: ${{ inputs.dst_branch }}
     steps:
       - name: Checkout internal repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.INTERNAL_SRC_BRANCH }}
+          ref: ${{ inputs.src_branch }}
           path: ${{ env.INTERNAL_REPO_DIR }}
           fetch-depth: 0
       - name: Push to public repository
         run: |
           cd ${INTERNAL_REPO_DIR}
           git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/quic/aimet.git
-          git push public-origin ${{ env.INTERNAL_SRC_BRANCH }}:${{ env.PUBLIC_DST_BRANCH }}
+          git push public-origin ${{ inputs.src_branch }}:${{ inputs.dst_branch }}
 
