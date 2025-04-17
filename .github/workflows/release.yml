@@ -1,6 +1,10 @@
 name: Release AIMET
 
 on:
+  push:
+    branches:
+      - "dev/bhushans/release_gh"
+
   workflow_dispatch:
     inputs:
       version:
@@ -9,14 +13,14 @@ on:
         type: string
       push_to_pypi:
         description: "Push to pypi if true"
-        required: true
+        # required: true
         type: boolean
-        default: true
+        default: false
       push_docs:
         description: "Puts up PR on aimet-pages"
-        required: true
+        # required: true
         type: boolean
-        default: true
+        default: false
 
 env:
   # RELEASE_BRANCH: "release-aimet-"{{ inputs.version }}
