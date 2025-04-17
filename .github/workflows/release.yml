@@ -34,19 +34,14 @@ jobs:
 
   build_wheels_and_test:
     name: Run nightly to build wheels and test basic tests
-    runs-on: ubuntu-latest
     uses: ./.github/workflows/nightly-pipeline.yml
-    with:
-      ref: "dev/bhushans/release_gh"
+    secrets: inherit
     # TODO: pass release internal branch to build wheels for
 
   push_release_branch_to_public:
     name: Create public release branch
-    runs-on: ubuntu-latest
     uses: ./.github/workflows/repo-sync.yml
     with:
       src_branch: "dev/bhushans/release_gh"
       dst_branch: "dev/bhushans/release_gh"
-
-
-
+    secrets: inherit

@@ -5,7 +5,7 @@ on:
     branches:
       - develop
 
-  workflow_dispatch:
+  workflow_call:
     inputs:
       src_branch:
         description: "Internal source branch to sync"
