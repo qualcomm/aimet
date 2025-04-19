@@ -10,7 +10,7 @@ aimet_onnx.quantsim
 .. note::
     It is recommended to use onnx-simplifier before creating quantsim model.
 
-.. autoclass:: aimet_torch.QuantizationSimModel
+.. autoclass:: aimet_onnx.QuantizationSimModel
    :members: compute_encodings, export
 
 **Quant Scheme Enum**
