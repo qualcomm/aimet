@@ -1,0 +1,166 @@
+name: Release AIMET
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "AIMET version to release"
+        required: true
+        type: string
+      push_to_pypi:
+        description: "Push to pypi if true"
+        required: true
+        type: boolean
+        default: false
+      push_to_github:
+        description: "Push to github (code & release)"
+        required: true
+        type: boolean
+        default: false
+      push_docs:
+        description: "Puts up a PR on aimet-pages"
+        required: true
+        type: boolean
+        default: false
+
+env:
+  PUBLIC_REPO: "quic/aimet"
+  REPO_DIR: "aimet-repo"
+  DOCS_REPO: "quic/aimet-pages"
+  DOCS_REPO_DIR: "aimet-pages-repo"
+
+jobs:
+  checklist:
+    name: Validate release version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test name
+        run: |
+          echo Target release branch: ${{ inputs.version }}
+          input_version=`echo ${{ inputs.version }} | grep -o '\.' | wc -l`
+          if [[ ${input_version} != 2 ]]; then
+              echo "Unsupported version format. Got ${{ inputs.version }}, expecting semantic versioning i.e. <major>.<minor>.<patch>"
+              echo "Refer to https://semver.org/"
+              exit 1
+          fi
+      - name: Checkout internal repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          path: ${{ env.REPO_DIR }}
+          fetch-depth: 0
+      - name: Validate if release branch has same version as input version
+        run: |
+          repo_version=`cat ${{ env.REPO_DIR }}/packaging/version.txt`
+          if [[ ${{ inputs.version }} != ${repo_version} ]]; then
+            echo "input release version does not match ${{ github.ref_name }} package version."
+            exit 1
+          fi
+
+  build_wheels_and_test:
+    needs: [ checklist ]
+    name: Run nightly to build wheels and test basic tests
+    uses: ./.github/workflows/nightly-pipeline.yml
+    secrets: inherit
+
+  push_aimet_onnx_wheels_to_pypi:
+    name: Push AIMET ONNX wheels to PyPI
+    needs: [ build_wheels_and_test ]
+    if: ${{ inputs.push_to_pypi }} == true
+    uses: ./.github/workflows/pypi-release-pipeline.yml
+    with:
+      variant-id: onnx-cpu
+      deploy: true
+
+  push_aimet_torch_wheels_to_pypi:
+    name: Push AIMET torch wheels to PyPI
+    needs: [ build_wheels_and_test ]
+    if: ${{ inputs.push_to_pypi }} == true
+    uses: ./.github/workflows/pypi-release-pipeline.yml
+    with:
+      variant-id: torch-gpu
+      deploy: true
+
+  push_release_branch_to_public:
+    name: Create public release branch
+    needs: [ build_wheels_and_test ]
+    if: ${{ inputs.push_to_github }} == true
+    uses: ./.github/workflows/repo-sync.yml
+    with:
+      src_branch: ${{ github.ref_name }}
+      dst_branch: ${{ github.ref_name }}
+
+  push_wheels_to_github:
+    name: Push wheels to Github
+    runs-on: ubuntu-latest
+    if: ${{ inputs.push_to_github == true || inputs.push_docs == true }}
+    needs: [ build_wheels_and_test ]
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts-downloaded
+      - name: Setup GitHub CLI
+        run: |
+          # Ref: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+          (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+            && sudo mkdir -p -m 755 /etc/apt/keyrings \
+                  && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                  && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && sudo apt update \
+            && sudo apt install gh -y
+      - name: Release on Github
+        if: ${{ inputs.push_to_github }} == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.AIMET_CI }}
+          tag: ${{ inputs.version }}
+        run: |
+          mkdir assets_to_upload
+          # Copy all wheels to upload on release
+          find artifacts-downloaded -name "aimet*.whl" -exec cp {} assets_to_upload \;
+
+          # Create release on public repo
+          title="Version ${tag}"
+          gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${{ github.ref_name }} --title "${title}" --generate-notes assets_to_upload/*
+      - name: Checkout aimet-pages
+        uses: actions/checkout@v4
+        if: ${{ inputs.push_docs }} == true
+        with:
+          ref: master
+          path: ${{ DOCS_REPO_DIR }}
+          repository: ${{ env.DOCS_REPO }}
+          github-server-url: https://github.com
+          token: ${{ secrets.AIMET_CI }}
+          fetch-depth: 0
+      - name: Put up a PR for new docs
+        if: ${{ inputs.push_docs }} == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.AIMET_CI }}
+          tag: ${{ inputs.version }}
+        run: |
+          # Copy Docs to aimet-pages
+          mkdir -p ${{ DOCS_REPO_DIR }}/releases/${tag}
+          cp -r artifacts-downloaded/Docs/. ${{ DOCS_REPO_DIR }}/releases/${tag}
+
+          # Create PR on aimet-pages
+          cd ${{ DOCS_REPO_DIR }}
+          git checkout -b ${{ github.ref_name }}
+
+          # Update latest symlink
+          unlink releases/latest || true
+          ln -s ${tag} releases/latest
+
+          # Commit doc changes
+          git add releases/
+          git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/${{ env.DOCS_REPO }}.git
+          git config user.email "aimetci@quicinc.com"
+          git config user.name "AIMET CI"
+          git commit -m 'Release docs ${tag}' -s
+
+          # TODO: for point-releases, consider adding -f
+          git push public-origin ${{ github.ref_name }}
+
+          # Create PR on quic/aimet-pages
+          gh pr create --repo ${{ env.DOCS_REPO }} --base master --head ${{ github.ref_name }} --title "Release ${tag}" --body "Release docs for ${tag}"

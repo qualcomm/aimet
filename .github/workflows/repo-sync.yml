@@ -5,24 +5,52 @@ on:
     branches:
       - develop
 
+  workflow_call:
+    inputs:
+      src_branch:
+        description: "Internal source branch to sync"
+        required: false
+        default: "develop"
+        type: string
+      dst_branch:
+        description: "External destination branch to sync"
+        required: false
+        default: "develop"
+        type: string
+
+env:
+  DEFAULT_SRC_BRANCH: develop
+  DEFAULT_DST_BRABCH: develop
+
 jobs:
+
+  set_variables:
+    if: github.server_url != 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Set environment variables"
+        run: |
+          if [[ ${{ github.event_name }} == "push" ]]; then
+            echo "SRC_BRANCH=${{ env.DEFAULT_SRC_BRANCH }}" >> $GITHUB_ENV
+            echo "DST_BRANCH=${{ env.DEFAULT_DST_BRANCH }}" >> $GITHUB_ENV
+          else
+            echo "SRC_BRANCH=${{ inputs.src_branch }}" >> $GITHUB_ENV
+            echo "DST_BRANCH=${{ inputs.dst_branch }}" >> $GITHUB_ENV
+          fi
   repo-sync:
     if: github.server_url != 'https://github.com'
     runs-on: ubuntu-latest
     env:
       INTERNAL_REPO_DIR: "aimet-repo"
-      INTERNAL_SRC_BRANCH: "develop"
-      PUBLIC_DST_BRANCH: "develop"
     steps:
       - name: Checkout internal repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.INTERNAL_SRC_BRANCH }}
+          ref: ${{ env.SRC_BRANCH }}
           path: ${{ env.INTERNAL_REPO_DIR }}
           fetch-depth: 0
       - name: Push to public repository
         run: |
           cd ${INTERNAL_REPO_DIR}
           git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/quic/aimet.git
-          git push public-origin ${{ env.INTERNAL_SRC_BRANCH }}:${{ env.PUBLIC_DST_BRANCH }}
-
+          git push public-origin ${{ env.SRC_BRANCH }}:${{ env.DST_BRANCH }}
