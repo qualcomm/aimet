@@ -13,6 +13,18 @@ on:
         type: boolean
         default: false
 
+  workflow_call:
+    inputs:
+      variant-id:
+        description: "Variant id"
+        required: true
+        type: string
+      deploy:
+        description: "Deploy to official pypi if true"
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   variants:
     name: Populate supported AIMET variants
