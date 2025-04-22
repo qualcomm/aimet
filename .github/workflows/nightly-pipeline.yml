@@ -7,6 +7,9 @@ on:
   # Run the workflow manually from the Actions tab
   workflow_dispatch:
 
+  # Call workflow from other workflows
+  workflow_call:
+
 jobs:
   docker-tag:
     name: Check if 'latest' tag could be used (no build docker images)
