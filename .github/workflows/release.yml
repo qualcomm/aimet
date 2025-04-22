@@ -129,7 +129,7 @@ jobs:
         if: ${{ inputs.push_docs }} == true
         with:
           ref: master
-          path: ${{ DOCS_REPO_DIR }}
+          path: ${{ env.DOCS_REPO_DIR }}
           repository: ${{ env.DOCS_REPO }}
           github-server-url: https://github.com
           token: ${{ secrets.AIMET_CI }}
@@ -141,11 +141,11 @@ jobs:
           tag: ${{ inputs.version }}
         run: |
           # Copy Docs to aimet-pages
-          mkdir -p ${{ DOCS_REPO_DIR }}/releases/${tag}
-          cp -r artifacts-downloaded/Docs/. ${{ DOCS_REPO_DIR }}/releases/${tag}
+          mkdir -p ${{ env.DOCS_REPO_DIR }}/releases/${tag}
+          cp -r artifacts-downloaded/Docs/. ${{ env.DOCS_REPO_DIR }}/releases/${tag}
 
           # Create PR on aimet-pages
-          cd ${{ DOCS_REPO_DIR }}
+          cd ${{ env.DOCS_REPO_DIR }}
           git checkout -b ${{ github.ref_name }}
 
           # Update latest symlink
