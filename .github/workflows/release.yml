@@ -71,6 +71,7 @@ jobs:
     with:
       variant-id: onnx-cpu
       deploy: true
+    secrets: inherit
 
   push_aimet_torch_wheels_to_pypi:
     name: Push AIMET torch wheels to PyPI
@@ -80,6 +81,7 @@ jobs:
     with:
       variant-id: torch-gpu
       deploy: true
+    secrets: inherit
 
   push_release_branch_to_public:
     name: Create public release branch
@@ -89,6 +91,7 @@ jobs:
     with:
       src_branch: ${{ github.ref_name }}
       dst_branch: ${{ github.ref_name }}
+    secrets: inherit
 
   push_wheels_to_github:
     name: Push wheels to Github
