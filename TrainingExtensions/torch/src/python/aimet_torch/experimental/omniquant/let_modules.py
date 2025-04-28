@@ -93,8 +93,8 @@ class LETModule():
 
     def _cache_train_scale(self):
         """ Cache trained scale to numpy tensor. """
-        self._cached_prev_scale = self.prev_scale.data.numpy() if self.prev_scale is not None else None
-        self._cached_foll_scale = self.foll_scale.data.numpy() if self.foll_scale is not None else None
+        self._cached_prev_scale = self.prev_scale.data.cpu().numpy() if self.prev_scale is not None else None
+        self._cached_foll_scale = self.foll_scale.data.cpu().numpy() if self.foll_scale is not None else None
 
     def fold_let_params(self):
         """ Call (usually at the end) to fold the scales into the model params, cache trained scale, reset let param to None. """
