@@ -12,6 +12,16 @@ on:
         required: false
         type: boolean
         default: false
+      run_unit_tests:
+        description: "Run unit tests before pushing wheels to pypi"
+        required: false
+        type: boolean
+        default: true
+      run_acceptance_tests:
+        description: "Run acceptance tests before pushing wheels to pypi"
+        required: false
+        type: boolean
+        default: true
 
   workflow_call:
     inputs:
@@ -24,6 +34,16 @@ on:
         required: false
         type: boolean
         default: false
+      run_unit_tests:
+        description: "Run unit tests before pushing wheels to pypi"
+        required: false
+        type: boolean
+        default: true
+      run_acceptance_tests:
+        description: "Run acceptance tests before pushing wheels to pypi"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   variants:
@@ -105,6 +125,7 @@ jobs:
 
   call-run-unit-tests:
     name: Run unit tests
+    if: ${{ inputs.run_unit_tests }}
     needs: [ variants, call-build-wheels ]
     uses: ./.github/workflows/run-unit-tests.yml
     with:
@@ -113,6 +134,7 @@ jobs:
 
   call-run-acceptance-tests:
     name: Run acceptance tests
+    if: ${{ inputs.run_acceptance_tests }}
     needs: [ variants, call-build-wheels, call-run-unit-tests ]
     uses: ./.github/workflows/run-acceptance-tests.yml
     with:

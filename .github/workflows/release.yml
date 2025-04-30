@@ -71,6 +71,8 @@ jobs:
     with:
       variant-id: onnx-cpu
       deploy: true
+      run_unit_tests: true
+      run_acceptance_tests: false
     secrets: inherit
 
   push_aimet_torch_wheels_to_pypi:
@@ -81,6 +83,8 @@ jobs:
     with:
       variant-id: torch-gpu
       deploy: true
+      run_unit_tests: true
+      run_acceptance_tests: false
     secrets: inherit
 
   push_release_branch_to_public:
