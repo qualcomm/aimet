@@ -43,6 +43,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from transformers.models.llama.modeling_llama import LlamaModel, LlamaDecoderLayer
+from transformers.models.qwen2.modeling_qwen2 import Qwen2Model, Qwen2DecoderLayer
 
 from aimet_common.utils import AimetLogger
 from aimet_torch import QuantizationSimModel
@@ -59,6 +60,7 @@ loss_fn = torch.nn.MSELoss()
 # mapping of model and the corresponding adascale blocks type
 model_to_block_mapping = {
     LlamaModel: LlamaDecoderLayer,
+    Qwen2Model: Qwen2DecoderLayer,
 }
 
 supported_modules: List = [QuantizedLinear]
@@ -118,7 +120,7 @@ class AdaScale:
 
         Warning: This feature is currently considered experimental pending API changes
         """
-        # pylint: disable=unused-variable, too-many-locals
+        # pylint: disable=too-many-locals
         if not forward_fn:
             forward_fn = default_forward_fn
 
@@ -160,7 +162,7 @@ class AdaScale:
                         fp_out.append(fp_block_results)
                         del fp_args, fp_kwargs
 
-                for epoch in range(num_epochs):
+                for _ in range(num_epochs):
                     for batch_idx in range(len(data_loader)):
                         with torch.set_grad_enabled(True):
                             with patch_attr(torch.Tensor, '__deepcopy__', lambda self, memo: self.detach().clone()):
