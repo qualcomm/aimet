@@ -14,7 +14,6 @@ Release notes
         * Added a new set_quantizers() API to QuantizationSimModel
     * PyTorch
         * Added new api to fold param quantizers
-        * Experimental: Omniquant - a new post-training quantization technique
         * Experimental: AdaScale - a new post-training quantization technique
 
 * Bug Fixes
