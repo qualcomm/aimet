@@ -124,7 +124,7 @@ def optional_dependencies() -> dict[str, list[str]]:
     optional_dependencies = {
         "dev": [
             # duplicate build-system.requires for editable mode (non-isolated)
-            "scikit-build-core[wheels]>=0.10",
+            "scikit-build-core[wheels]==0.11.1",
             # and the rest
         ],
         "test": [

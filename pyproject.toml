@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "scikit-build-core[wheels]>=0.10",
+  "scikit-build-core[wheels]==0.11.1",
 ]
 build-backend = "scikit_build_core.build"
 
