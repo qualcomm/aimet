@@ -61,21 +61,20 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     needs: read_aimet_version
     uses: ./.github/workflows/release-workflow.yml
-    secrets: inherit
     with:
       version: ${{ needs.read_aimet_version.outputs.aimet_version }}
       push_to_pypi: true
       push_to_github: true
       push_docs: true
-
+    secrets: inherit
 
   release_via_manual_workflow:
-    if: ${{ github.event_name == 'workflow_call' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     name: Release AIMET to public (Manual)
     uses: ./.github/workflows/release-workflow.yml
-    secrets: inherit
     with:
       version: ${{ inputs.version }}
       push_to_pypi: ${{ inputs.push_to_pypi }}
       push_to_github: ${{ inputs.push_to_github }}
       push_docs: ${{ inputs.push_docs }}
+    secrets: inherit

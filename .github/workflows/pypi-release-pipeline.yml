@@ -145,6 +145,8 @@ jobs:
     name: Publish the wheel packages
     runs-on: k8s-gpu
     needs: [ variants, call-build-wheels, call-run-unit-tests, call-run-acceptance-tests ]
+    # Requires approval to publish wheels to PyPI from aimet-deployers
+    environment: prod
     env:
       DEPLOY: ${{ inputs.deploy }}
     strategy:

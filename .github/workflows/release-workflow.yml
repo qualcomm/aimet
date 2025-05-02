@@ -1,4 +1,4 @@
-name: Release AIMET to public
+name: Release to AIMET public (callable workflow)
 
 on:
 
@@ -12,17 +12,17 @@ on:
         description: "Push to pypi if true"
         required: false
         type: boolean
-        default: true
+        default: false
       push_to_github:
         description: "Push to github (code & release)"
         required: false
         type: boolean
-        default: true
+        default: false
       push_docs:
         description: "Puts up a PR on aimet-pages"
         required: false
         type: boolean
-        default: true
+        default: false
 
 env:
   PUBLIC_REPO: "quic/aimet"
@@ -35,7 +35,7 @@ jobs:
     name: Validate release version
     runs-on: ubuntu-latest
     steps:
-      - name: Test name
+      - name: Validate if input version follows semantic versioning
         run: |
           echo Target release branch: ${{ inputs.version }}
           input_version=`echo ${{ inputs.version }} | grep -o '\.' | wc -l`
@@ -52,59 +52,62 @@ jobs:
           fetch-depth: 0
       - name: Validate if release branch has same version as input version
         run: |
-          echo "VAR: REPO_DIR: ${{ env.REPO_DIR }}"
-          ls ${{ env.REPO_DIR }}
           repo_version=`cat ${{ env.REPO_DIR }}/packaging/version.txt`
           if [[ ${{ inputs.version }} != ${repo_version} ]]; then
-            echo "input release version does not match ${{ github.ref_name }} package version."
+            echo "input release version(${{ inputs.version }}) does not match ${{ github.ref_name }} package version(${repo_version})."
             echo "Please update release version in <aimet_repo>/packaging/version.txt"
             exit 1
           fi
 
   build_wheels_and_test:
-    needs: [ checklist ]
+    needs: checklist
     name: Run nightly to build wheels and test basic tests
     secrets: inherit
     uses: ./.github/workflows/nightly-pipeline.yml
 
   release_aimet_onnx_to_pypi:
-    name: "Push AIMET ONNX wheels to PyPI"
-    needs: [ build_wheels_and_test ]
-    environment: prod
-    secrets: inherit
     if: ${{ inputs.push_to_pypi }} == true
+    name: "Push AIMET ONNX wheels to PyPI"
+    needs: build_wheels_and_test
     uses: ./.github/workflows/pypi-release-pipeline.yml
     with:
       variant-id: onnx-cpu
       deploy: true
       run_unit_tests: true
       run_acceptance_tests: false
+    secrets: inherit
 
   release_aimet_torch_to_pypi:
-    name: "Push AIMET torch wheels to PyPI"
-    needs: [ build_wheels_and_test ]
-    environment: prod
-    secrets: inherit
     if: ${{ inputs.push_to_pypi }} == true
+    name: "Push AIMET torch wheels to PyPI"
+    needs: build_wheels_and_test
     uses: ./.github/workflows/pypi-release-pipeline.yml
     with:
       variant-id: torch-gpu
       deploy: true
       run_unit_tests: true
       run_acceptance_tests: false
+    secrets: inherit
 
   release_to_github:
     name: "Release AIMET on Github"
     runs-on: ubuntu-latest
-    needs: [ build_wheels_and_test ]
+    needs: build_wheels_and_test
+    # Requires approval to publish wheels to PyPI from aimet-deployers
     environment: prod
     steps:
-      - name: Create public release branch
-        if: ${{ inputs.push_to_github }} == true
-        uses: ./.github/workflows/repo-sync.yml
+      - name: Checkout internal repo
+        uses: actions/checkout@v4
         with:
-          src_branch: ${{ github.ref_name }}
-          dst_branch: ${{ github.ref_name }}
+          ref: ${{ github.ref_name }}
+          path: ${{ env.REPO_DIR }}
+          fetch-depth: 0
+
+      - name: Public release branch to public
+        run: |
+          cd ${{ env.REPO_DIR }}
+          git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/quic/aimet.git
+          git push public-origin ${{ github.ref_name }}:${{ github.ref_name }}
 
       - name: Download artifacts
         uses: actions/download-artifact@v3
@@ -123,7 +126,7 @@ jobs:
             && sudo apt update \
             && sudo apt install gh -y
 
-      - name: Release on Github
+      - name: Release wheels on Github
         if: ${{ inputs.push_to_github }} == true
         env:
           GITHUB_TOKEN: ${{ secrets.AIMET_CI }}
@@ -138,8 +141,8 @@ jobs:
           gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${{ github.ref_name }} --title "${title}" --generate-notes assets_to_upload/*
 
       - name: Checkout aimet-pages
-        uses: actions/checkout@v4
         if: ${{ inputs.push_docs }} == true
+        uses: actions/checkout@v4
         with:
           ref: master
           path: ${{ env.DOCS_REPO_DIR }}
