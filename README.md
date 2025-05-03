@@ -1,17 +1,17 @@
 
-![Qualcomm Innovation Center, Inc.](Docs/images/logo-quic-on@h68.png)
+![Qualcomm Innovation Center, Inc.](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/logo-quic-on@h68.png)
 
-[![AIMET on GitHub Pages](Docs/images/button-overview.png)](https://quic.github.io/aimet-pages/index.html)
-[![Documentation](Docs/images/button-docs.png)](https://quic.github.io/aimet-pages/releases/latest/index.html)
-[![Install instructions](Docs/images/button-install.png)](#quick-installation)
-[![Discussion Forums](Docs/images/button-forums.png)](https://github.com/quic/aimet/discussions)
-[![What's New](Docs/images/button-whats-new.png)](#whats-new)
+[![AIMET on GitHub Pages](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/button-overview.png)](https://quic.github.io/aimet-pages/index.html)
+[![Documentation](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/button-docs.png)](https://quic.github.io/aimet-pages/releases/latest/index.html)
+[![Install instructions](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/button-install.png)](#quick-installation)
+[![Discussion Forums](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/button-forums.png)](https://github.com/quic/aimet/discussions)
+[![What's New](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/button-whats-new.png)](#whats-new)
 
 # AI Model Efficiency Toolkit (AIMET)
 
 <a href="https://quic.github.io/aimet-pages/index.html">AIMET</a> is a library that provides advanced model quantization and compression techniques for trained neural network models. It provides features that have been proven to improve run-time performance of deep learning neural network models with lower compute and memory requirements and minimal impact to task accuracy.
 
-![How AIMET works](Docs/images/how-it-works.png)
+![How AIMET works](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/how-it-works.png)
 
 AIMET is designed to work with [PyTorch](https://pytorch.org), [TensorFlow](https://tensorflow.org) and [ONNX](https://onnx.ai) models.
 
@@ -39,7 +39,7 @@ To build the latest AIMET code from the source, see [Build, install and run AIME
 
 ## Why AIMET?
 
-![Benefits of AIMET](Docs/images/AImodelEfficency.png)
+![Benefits of AIMET](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/AImodelEfficency.png)
 
 * **Supports advanced quantization techniques**: Inference using integer runtimes is significantly faster than using floating-point runtimes. For example, models run 5x-15x faster on the Qualcomm Hexagon DSP than on the Qualcomm Kyro CPU. In addition, 8-bit precision models have a 4x smaller footprint than 32-bit precision models. However, maintaining model accuracy when quantizing ML models is often challenging. AIMET solves this using novel techniques like Data-Free Quantization that provide state-of-the-art INT8 results on several popular models.
 * **Supports advanced model compression techniques** that enable models to run faster at inference-time and require less memory
