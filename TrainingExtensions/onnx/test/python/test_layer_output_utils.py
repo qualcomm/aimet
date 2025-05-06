@@ -200,10 +200,8 @@ class TestLayerOutputUtil:
 
         # Ensure the saved outputs are with axis-transform
         for idx, layer_out_dict in enumerate(layer_out_dict_list):
-            # Convert the layer output from NCHW to NHWC
-            layer_out = layer_out_dict['conv_output_3'].transpose(0, 2, 3, 1)
+            layer_out = layer_out_dict['conv_output_3']
 
-            # Saved output should already be in NHWC format
             saved_conv_output = np.fromfile(os.path.join(temp_dir_path, 'outputs', f'layer_outputs_{idx}',
                                                          'conv_output_3.raw'), dtype=np.float32).reshape(layer_out.shape)
             np.testing.assert_array_equal(layer_out, saved_conv_output)

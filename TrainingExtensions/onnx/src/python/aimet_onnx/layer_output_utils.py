@@ -82,7 +82,7 @@ class LayerOutputUtil:
         self.layer_output = LayerOutput(model=model, providers=providers, dir_path=dir_path)
 
         # Utility to save model inputs and their corresponding layer-outputs
-        self.save_input_output = SaveInputOutput(dir_path, 'NCHW')
+        self.save_input_output = SaveInputOutput(dir_path)
 
     def generate_layer_outputs(self, input_instance: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]):
         """

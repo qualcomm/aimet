@@ -74,11 +74,8 @@ class LayerOutputUtil:
         with open(os.path.join(save_dir, "LayerOutputNameMapper.json"), 'w', encoding='utf-8') as fp:
             json.dump(self.original_name_to_modified_name_mapper, fp=fp, indent=4)
 
-        # Identify the axis-layout used for representing an image tensor
-        axis_layout = 'NHWC' if tf.keras.backend.image_data_format() == 'channels_last' else 'NCHW'
-
         # Utility to save model inputs and their corresponding layer-outputs
-        self.save_inp_out_obj = SaveInputOutput(save_dir, axis_layout=axis_layout)
+        self.save_inp_out_obj = SaveInputOutput(save_dir)
 
     @classmethod
     def _get_layer_output_name(cls, layer: Union[QcQuantizeWrapper, QcQuantizableMultiHeadAttention, tf.keras.layers.Layer]):

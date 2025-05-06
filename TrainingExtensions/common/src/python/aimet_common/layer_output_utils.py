@@ -46,43 +46,25 @@ import numpy as np
 class SaveInputOutput:
     """ This class saves the input instance and corresponding layer-outputs to the disk. """
 
-    def __init__(self, dir_path: str, axis_layout: str):
+    def __init__(self, dir_path: str):
         """
         Constructor
         :param dir_path: Directory to save input and output.
-        :param axis_layout: Axis-layout of the tensor in source framework. Eg: NCHW or NHWC
         """
         self.dir_path = dir_path
         self.input_cntr = 0
-        self.axis_layout = axis_layout
+
 
     @staticmethod
-    def transform_axis(tensor: np.ndarray, old_layout: str, new_layout: str) -> np.ndarray:
+    def save_raw_tensor(numpy_tensor: np.ndarray, file_name: str, dir_path: str):
         """
-        This function transforms the axis-layout of given tensor from old format to new format.
-        :param tensor: Four dimensional numpy array.
-        :param old_layout: Axis-layout (eg: 'NCHW')
-        :param new_layout: Axis-layout (eg: 'NHWC')
-        :return: Transformed tensor
-        """
-        new_layout_idx = [old_layout.index(ax) for ax in new_layout]
-        return np.transpose(tensor, new_layout_idx)
-
-    @staticmethod
-    def save_raw_tensor(numpy_tensor: np.ndarray, axis_layout: str, file_name: str, dir_path: str):
-        """
-        This function saves the tensor into a raw file. The axis-layout of the saved tensor is NHWC.
+        This function saves the tensor into a raw file.
         :param numpy_tensor: Tensor to save.
-        :param axis_layout: Axis-layout of the tensor.
         :param file_name: Name to be given to the raw tensor file.
         :param dir_path: Directory wherein the file has to be stored.
         :return:
         """
         file_path = os.path.join(dir_path, file_name + '.raw')
-
-        # Convert axis-layout of the tensor to NHWC if not already
-        if numpy_tensor.ndim == 4 and axis_layout == 'NCHW':
-            numpy_tensor = SaveInputOutput.transform_axis(tensor=numpy_tensor, old_layout='NCHW', new_layout='NHWC')
 
         with open(file_path, 'wb') as fptr:
             numpy_tensor.tofile(fptr)
@@ -105,15 +87,15 @@ class SaveInputOutput:
             multi_input_dir = os.path.join(input_dir, 'input_' + str(self.input_cntr))
             os.makedirs(multi_input_dir, exist_ok=True)
             for i, ith_input in enumerate(input_instance):
-                SaveInputOutput.save_raw_tensor(ith_input, self.axis_layout, str(i), multi_input_dir)
+                SaveInputOutput.save_raw_tensor(ith_input, str(i), multi_input_dir)
         else:
             input_file_name = 'input_' + str(self.input_cntr)
-            SaveInputOutput.save_raw_tensor(input_instance, self.axis_layout, input_file_name, input_dir)
+            SaveInputOutput.save_raw_tensor(input_instance, input_file_name, input_dir)
 
         layer_output_dir = os.path.join(output_dir, 'layer_outputs_' + str(self.input_cntr))
         os.makedirs(layer_output_dir, exist_ok=True)
         for layer_output_name in layer_output:
-            SaveInputOutput.save_raw_tensor(layer_output[layer_output_name], self.axis_layout, layer_output_name, layer_output_dir)
+            SaveInputOutput.save_raw_tensor(layer_output[layer_output_name], layer_output_name, layer_output_dir)
 
         self.input_cntr += 1
 
