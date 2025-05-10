@@ -6,6 +6,34 @@
 Release notes
 #############
 
+2.6.0
+=====
+
+* New Features
+    * ONNX
+        * Support for passing onnxruntime EPs directly to :func:`QuantizationSimModel.__init__`
+    * PyTorch
+        * Support for simulating float8 quantization
+        * Experimental: Omniquant - a new post-training quantization technique
+        * Experimental: Added :func:`aimet_torch.onnx.export` API for exporting :mod:`QuantizationSimModel` to onnx QDQ graph
+
+* Bug Fixes and Improvements
+    * ONNX
+        * Reduced CPU and GPU memory usage during sequential MSE
+        * Fixed AMP generating incompatible quantizer configurations
+        * Fixed AMP errors with dynamic Conv ops
+        * Aligned computation of symmetric encodings with :mod:`aimet_torch`
+    * PyTorch
+        * Fixed AttributeError when catching :func:`torch.onnx.export` failures during QuantSim export
+        * Fixed errors being thrown when deepspeed import fails
+        * Aligned input and output encodings for Resize layers
+        * Added supergroup fusion handling for LeakyRelu layers
+        * Docs: Updated LoRA user guide
+
+* Deprecations:
+    * ONNX
+        * Deprecated `use_cuda`, `device`, `rounding_mode`, and `use_symmetric_encodings` args to :func:`QuantizationSimModel.__init__`
+
 2.5.0
 =====
 
