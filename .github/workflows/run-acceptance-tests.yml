@@ -44,13 +44,29 @@ jobs:
       - name: Create python virtual environment
         if: ${{ matrix.id  != 'tf-torch-cpu' && steps.cache.outputs.cache-hit != 'true' }}
         run: |
+          if [ "${{ matrix.PIP_INDEX }}" = "pypi" ] ; then
+            # PyPI release does NOT have +cpu or +cu suffix
+            export whl_file=$( \
+                find downloads \
+                -regextype posix-extended \
+                -regex ".*aimet_(torch|onnx|tf)-[0-9]+\.[0-9]+\.[0-9]+-.+.whl" \
+            )
+          else
+            # Github release has +cpu or +cu suffix
+            export whl_file=$( \
+                find downloads \
+                -regextype posix-extended \
+                -regex ".*aimet_(torch|onnx|tf)-[0-9]+\.[0-9]+\.[0-9]+\+(cpu|cu).+.whl" \
+            )
+          fi
+
           export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/$(echo "${{ matrix.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')"
 
           curl -o ./conda.sh -L 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh'
           bash ./conda.sh -u -b -p ./.conda
           sudo apt update -qq && sudo apt install -y g++ # deepspeed compiles cuda kernels
           ./.conda/bin/conda create --name "${{ matrix.id }}" python="${{ matrix.VER_PYTHON }}" $([ "${{ matrix.VER_CUDA }}" != "" ] && echo "cuda-runtime cuda-libraries-dev cuda-compiler --channel nvidia/label/cuda-${{ matrix.VER_CUDA }}")
-          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "$(find downloads -name '*.whl')[test, v1-deps]"
+          ./.conda/bin/conda run --live-stream --name "${{ matrix.id }}" python3 -m pip install "${whl_file}[test, v1-deps]"
       - name: Run acceptance tests
         if: matrix.ENABLE_TESTS == 'ON'
         run: |

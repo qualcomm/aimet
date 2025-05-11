@@ -172,10 +172,17 @@ jobs:
           ls -al downloads/wheelhouse
       - name: Push to testpypi
         run: |
+          # PyPI release does NOT have +cpu or +cu suffix
+          export whl_file=$(\
+              find downloads \
+              -regextype posix-extended \
+              -regex ".*aimet_(torch|onnx|tf)-[0-9]+\.[0-9]+\.[0-9]+-.+.whl" \
+          )
+
           case $DEPLOY in
           (true)
           echo "Deploy variable set to true, deploying. . . "
-          twine upload --verbose --repository testpypi --config-file ~/.pypirc downloads/wheelhouse/*
+          twine upload --verbose --repository testpypi --config-file ~/.pypirc $whl_file
           ;;
           (false)
           echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."
@@ -183,10 +190,17 @@ jobs:
           esac
       - name: Push to pypi
         run: |          
+          # PyPI release does NOT have +cpu or +cu suffix
+          export whl_file=$(\
+              find downloads \
+              -regextype posix-extended \
+              -regex ".*aimet_(torch|onnx|tf)-[0-9]+\.[0-9]+\.[0-9]+-.+.whl" \
+          )
+
           case $DEPLOY in
           (true)
           echo "Deploy variable set to true, deploying. . . "
-          twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/*
+          twine upload --verbose --repository pypi --config-file ~/.pypirc $whl_file
           ;;
           (false)
           echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."

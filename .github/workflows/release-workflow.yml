@@ -137,9 +137,14 @@ jobs:
           # Copy all wheels to upload on release
           find artifacts-downloaded -name "aimet*.whl" -exec cp {} assets_to_upload \;
 
+          export whl_file=$(\
+              find assets_to_upload \
+              -regextype posix-extended \
+              -regex ".*aimet_(torch|onnx|tf)-[0-9]+\.[0-9]+\.[0-9]+\+(cpu|cu).+.whl" \
+          )
           # Create release on public repo
           title="Version ${tag}"
-          gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${{ github.ref_name }} --title "${title}" --generate-notes assets_to_upload/*
+          gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${{ github.ref_name }} --title "${title}" --generate-notes $whl_file
 
       - name: Checkout aimet-pages
         if: ${{ inputs.push_docs }} == true
