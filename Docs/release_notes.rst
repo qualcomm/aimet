@@ -14,7 +14,6 @@ Release notes
         * Support for passing onnxruntime EPs directly to :func:`QuantizationSimModel.__init__`
     * PyTorch
         * Support for simulating float8 quantization
-        * Experimental: Omniquant - a new post-training quantization technique
         * Experimental: Added :func:`aimet_torch.onnx.export` API for exporting :mod:`QuantizationSimModel` to onnx QDQ graph
 
 * Bug Fixes and Improvements
