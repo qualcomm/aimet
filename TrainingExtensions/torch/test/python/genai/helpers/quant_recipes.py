@@ -221,7 +221,7 @@ class OmniQuant(QuantizationTechnique):
         quantsim: QuantizationSimModel,
         dataloader: DataLoader,
         num_batches: int = 40,
-        num_epochs: int = 20,
+        num_iterations: int = 800,
     ):
         class LimitedBatchDataLoader:
             """Internal helper class to reduce number of accessible batches in Dataloader"""
@@ -250,7 +250,7 @@ class OmniQuant(QuantizationTechnique):
             quant_sim=quantsim,
             dataloader=LimitedBatchDataLoader(dataloader, num_batches=num_batches),
             forward_fn=lambda model, input: model.forward(**input),
-            num_epoch=num_epochs,
+            num_iterations=num_iterations,
         )
 
         _compute_encodings(quantsim, dataloader, num_iterations=40)

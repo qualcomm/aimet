@@ -68,8 +68,6 @@ from ._utils import (
     OMQ_QUANTIZERS,
 )
 
-from tqdm import tqdm
-
 OMNIQUANT_ARTIFACT_DIR = "./aimet_omniquant_artifact/"
 OMNIQUANT_METADATA_SAFETENSOR_NAME = "aimet_omniquant_metadata.safetensor"
 OMNIQUANT_COMPUTE_SQNR = True
@@ -91,7 +89,7 @@ class Omniquant:
         quant_sim: QuantizationSimModel,
         dataloader,
         forward_fn: Callable,
-        num_epoch: int,
+        num_iterations: int = 800,
         output_path: str = OMNIQUANT_ARTIFACT_DIR,
     ):
         """
@@ -102,7 +100,7 @@ class Omniquant:
         :param dataloader: Dataloader used to train model.
         :param forward_fn: Model forward function used to cache intermediate data.
                            Expect to have model and inputs as function argument. e.g. lambda model, inputs: model(*inputs)
-        :param num_epoch: Epochs to train each block with omniquant.
+        :param num_iterations: Number of iterations to train each block with omniquant.
         :param output_path: Path to save {layer_name: scale} metadata safetensor.
         :return: Model with Omniquant weights.
         """
@@ -124,7 +122,12 @@ class Omniquant:
         start_omq_optmztn_time = time.perf_counter()
         with disable_dynamic_cache():
             cls._apply_omniquant(
-                quant_sim, dataloader, forward_fn, num_epoch, num_batch, output_path
+                quant_sim,
+                dataloader,
+                forward_fn,
+                num_iterations,
+                num_batch,
+                output_path,
             )
         total_omq_optmztn_time = time.perf_counter() - start_omq_optmztn_time
         _logger.info("Took %.4f seconds for omq optimization ", total_omq_optmztn_time)
@@ -140,7 +143,7 @@ class Omniquant:
         quant_sim: QuantizationSimModel,
         dataloader,
         forward_fn,
-        num_epoch: int,
+        num_iterations: int,
         num_batch: int,
         output_path: str,
     ) -> torch.nn.Module:
@@ -151,7 +154,7 @@ class Omniquant:
         :param dataloader: Dataloader used to train model.
         :param forward_fn: Model forward function used to cache intermediate data.
                            Expect to have model and inputs as function argument. e.g. lambda model, inputs: model(*inputs)
-        :param num_epoch: Epochs to train each block with omniquant.
+        :param num_iterations: Number of iterations to train each block with omniquant.
         :param num_batch: Number of batches in dataloader.
         :param output_path: Path where to store artifacts.
         """
@@ -216,10 +219,14 @@ class Omniquant:
 
                 optimizer = torch.optim.AdamW(grouped_params)
                 loss_fn = torch.nn.MSELoss(reduction="sum")
+                curr_iteration = 0
 
-                for epoch in tqdm(range(num_epoch)):
+                while curr_iteration < num_iterations:
                     sqnr_list, loss_list = [], []
                     for batch_num in range(num_batch):
+                        curr_iteration += 1
+                        if curr_iteration > num_iterations:
+                            break
                         # Do block-wise training.
                         with torch.set_grad_enabled(True):
                             with fp_block_inputs[batch_num].load():
@@ -239,7 +246,7 @@ class Omniquant:
 
                     # Get message for sqnr and loss mean
                     loss_mean = torch.stack(loss_list).mean()
-                    log_msg = f"layer {block_num} epoch {epoch} | loss: {loss_mean:.3f}"
+                    log_msg = f"layer {block_num} | loss: {loss_mean:.3f}"
                     if OMNIQUANT_COMPUTE_SQNR:
                         sqnr_mean = torch.stack(sqnr_list).mean()
                         log_msg = f"{log_msg} | sqnr: {sqnr_mean:.3f}"
