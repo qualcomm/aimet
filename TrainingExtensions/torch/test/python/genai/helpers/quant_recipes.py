@@ -54,7 +54,7 @@ from aimet_torch.v2.utils import remove_all_quantizers
 from aimet_torch import QuantizationSimModel
 from aimet_torch.utils import place_model
 from aimet_torch.v2.seq_mse import apply_seq_mse, SeqMseParams
-from aimet_torch.experimental.omniquant import Omniquant
+from aimet_torch.experimental.omniquant import apply_omniquant
 
 
 def _compute_encodings(
@@ -246,7 +246,7 @@ class OmniQuant(QuantizationTechnique):
             def __len__(self):
                 return min(len(self.dataloader), self.num_batches)
 
-        Omniquant.apply_omniquant(
+        apply_omniquant(
             quant_sim=quantsim,
             dataloader=LimitedBatchDataLoader(dataloader, num_batches=num_batches),
             forward_fn=lambda model, input: model.forward(**input),

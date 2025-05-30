@@ -78,3 +78,7 @@ AIMET supports various compression techniques like Weight SVD, Spatial SVD and C
 
 Workflows to perform LoRa (Low-Rank Adaptation) on quantized large models.
 
+:ref:`OmniQuant <featureguide-omniquant>`
+==================================================
+OmniQuant is a PTQ technique to improve accuracy of the quantized model by introducing learnable parameter (scale) in the weight quantizers and by performing BKD(Blockwise Knowledge Distillation) with respect to the corresponding FP output.
+

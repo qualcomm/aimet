@@ -490,3 +490,6 @@ def update_base_model_with_omniquant_metadata(
                 else:
                     new_weight = let_module.weight / prev
                 let_module.weight.copy_(new_weight)
+
+
+apply_omniquant = Omniquant.apply_omniquant

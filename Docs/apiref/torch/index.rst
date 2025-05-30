@@ -29,6 +29,7 @@ aimet_torch API
     aimet_torch.layer_output_utils <layer_output_generation>
     aimet_torch.peft <peft_lora>
     aimet_torch.compress <compress>
+    aimet_torch.omniquant <omniquant>
 
 aimet_torch
 ===========
@@ -60,6 +61,8 @@ aimet_torch
 - :ref:`aimet_torch.layer_output_utils <apiref-torch-layer-output-generation>`
 - :ref:`aimet_torch.peft <apiref-torch-peft-lora>`
 - :ref:`aimet_torch.compress <apiref-torch-compress>`
+- :ref:`aimet_torch.omniquant <apiref-torch-omniquant>`
+
 
 aimet_torch.v1
 ==============

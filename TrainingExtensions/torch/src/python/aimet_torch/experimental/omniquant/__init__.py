@@ -36,4 +36,4 @@
 # =============================================================================
 
 # pylint: disable=missing-docstring
-from .omniquant_optimizer import Omniquant
+from .omniquant_optimizer import apply_omniquant
