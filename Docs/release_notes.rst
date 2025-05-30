@@ -9,8 +9,6 @@ Release notes
 =====
 
 * New Features
-    * ONNX
-        * Support aimet-onnx for Windows/ARM64
     * PyTorch
         * OmniQuant (experimental) - implement OmniQuant PTQ technique (https://arxiv.org/pdf/2308.13137) for Llama and Qwen2 model families
 
@@ -24,8 +22,6 @@ Release notes
         * Export encodings for data movement operations in ONNX QDQ export
         * AdaScale (experimental) - support for updating Conv2D layers in blocks
         * AdaScale (experimental) - update API to take num_iterations instead of num_epochs
-
-* Deprecations
 
 2.6.0
 =====
