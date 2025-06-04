@@ -15,7 +15,7 @@ jobs:
           fetch-depth: 0
       - name: Get changed builds
         id: changed-build
-        uses: tj-actions/changed-files@v28.0.0
+        uses: tj-actions/changed-files@v45.0.8
         with:
           files: |
             Jenkins/Dockerfile*
