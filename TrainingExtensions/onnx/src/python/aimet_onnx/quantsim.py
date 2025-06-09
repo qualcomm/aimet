@@ -1724,6 +1724,8 @@ class QuantizationSimModel:
         }
 
         partial_model = onnx.helper.make_model(
+            ir_version=self.model.model.ir_version,
+            opset_imports=self.model.model.opset_import,
             graph=onnx.helper.make_graph(
                 name="partial",
                 inputs=[],
@@ -1747,7 +1749,7 @@ class QuantizationSimModel:
                         and any(out in param_names for out in node.output)
                     )
                 ],
-            )
+            ),
         )
 
         if not partial_model.graph.output:

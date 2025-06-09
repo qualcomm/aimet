@@ -61,14 +61,14 @@ def _add_onnx_qdq_node(
     Add onnx::QuantizeLinear and/or onnx::DequantizeLinear as below
 
      -------> onnx::QuantizeLinear -------------> onnx::DequantizeLinear ----->
-    (input)                        (input_int)                           (output)
+    (input)                        (input_q)                             (output)
 
 
     except for int32 bias encoding, for which we take alternative representation as below
     since onnx::QuantizeLinear doesn't allow int32 outputs.
 
     -------------> onnx::DequantizeLinear ----->
-    (bias_int)                           (bias_qdq)
+    (bias_q)                             (bias_qdq)
 
     """
     _add_onnx_qdq_nodes(
@@ -88,14 +88,14 @@ def _add_onnx_qdq_nodes(
     Add onnx::QuantizeLinear and/or onnx::DequantizeLinear as below
 
      -------> onnx::QuantizeLinear -------------> onnx::DequantizeLinear ----->
-    (input)                        (input_int)                           (output)
+    (input)                        (input_q)                             (output)
 
 
     except for int32 bias encodings, for which we take alternative representation as below
     since onnx::QuantizeLinear doesn't allow int32 outputs.
 
     -------------> onnx::DequantizeLinear ----->
-    (bias_int)                           (bias_qdq)
+    (bias_q)                             (bias_qdq)
 
     """
     if onnx_opset < 10:
@@ -235,7 +235,7 @@ def _add_onnx_qdq_nodes(
                 opset.DequantizeLinear.make_node(
                     name=f"{node_name_prefix}_dq",
                     inputs=[
-                        f"{input_name}_int",
+                        f"{input_name}_q",
                         f"{input_name}_scale",
                         f"{input_name}_zero_point",
                     ],
@@ -265,7 +265,7 @@ def _add_onnx_qdq_nodes(
                             f"{input_name}_scale",
                             f"{input_name}_zero_point",
                         ],
-                        output=f"{input_name}_int",
+                        output=f"{input_name}_q",
                         dtype=output_dtype,
                         axis=axis,
                         block_size=block_size,
@@ -273,7 +273,7 @@ def _add_onnx_qdq_nodes(
                     opset.DequantizeLinear.make_node(
                         name=f"{node_name_prefix}_dq",
                         inputs=[
-                            f"{input_name}_int",
+                            f"{input_name}_q",
                             f"{input_name}_scale",
                             f"{input_name}_zero_point",
                         ],
@@ -308,7 +308,7 @@ def _replace_bias_with_quantized_bias(
         bias_int32 = bias_int32.clip(0, 2**32 - 1)
 
     tensors_to_add.append(
-        from_array(bias_int32.astype(output_dtype), name=f"{bias_name}_int")
+        from_array(bias_int32.astype(output_dtype), name=f"{bias_name}_q")
     )
 
 
