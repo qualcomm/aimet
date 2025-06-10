@@ -63,7 +63,8 @@ RUN echo "\
 torch$([ -n "${VER_TORCH}" ] && echo "==${VER_TORCH}")\n\
 tensorflow-cpu$([ -n "${VER_TENSORFLOW}" ] && echo "==${VER_TENSORFLOW}")\n\
 tensorflow-gpu$([ -n "${VER_TENSORFLOW}" ] && echo "==${VER_TENSORFLOW}")\n\
-onnxruntime$([ -n "${VER_ONNXRUNTIME}" ] && echo "==${VER_ONNXRUNTIME}") \
+onnxruntime$([ -n "${VER_ONNXRUNTIME}" ] && echo "==${VER_ONNXRUNTIME}") \n\
+onnxruntime-gpu$([ -n "${VER_ONNXRUNTIME}" ] && echo "==${VER_ONNXRUNTIME}") \
 " > /tmp/constraints.txt
 
 RUN --mount=type=bind,target=/workspace \

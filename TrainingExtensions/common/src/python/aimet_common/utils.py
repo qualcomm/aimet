@@ -54,6 +54,7 @@ import warnings
 from enum import Enum
 from typing import Callable, Dict, List, Optional, TextIO, Union, Any
 import multiprocessing
+from multiprocessing.managers import DictProxy
 from tqdm import tqdm
 from bokeh.server.server import Server
 from bokeh.application import Application
@@ -287,6 +288,24 @@ def kill_process_with_name_and_port_number(name: str, port_number: int):
             break
 
 
+def _start_bokeh_server(
+    d: DictProxy, server_started: threading.Event, port: int = None
+):
+    os.setsid()
+
+    # If port is 0, server automatically finds and listens on an arbitrary free port.
+    port = port or 0
+    try:
+        server = Server({"/": Application()}, port=port)
+        server.start()
+        d["port"] = server.port
+        server_started.set()
+        server.run_until_shutdown()
+    except Exception as e:
+        d["exception"] = e
+        raise
+
+
 def start_bokeh_server_session(port: int = None):
     """
     start a bokeh server programmatically. Used for testing purposes.
@@ -297,22 +316,14 @@ def start_bokeh_server_session(port: int = None):
     d = manager.dict()
     server_started = manager.Event()
 
-    def start_bokeh_server(port: int = None):
-        os.setsid()
-
-        # If port is 0, server automatically finds and listens on an arbitrary free port.
-        port = port or 0
-        try:
-            server = Server({"/": Application()}, port=port)
-            server.start()
-            d["port"] = server.port
-            server_started.set()
-            server.run_until_shutdown()
-        except Exception as e:
-            d["exception"] = e
-            raise
-
-    proc = multiprocessing.Process(target=start_bokeh_server, args=(port,))
+    proc = multiprocessing.Process(
+        target=_start_bokeh_server,
+        args=(
+            d,
+            server_started,
+            port,
+        ),
+    )
 
     proc.start()
     server_started.wait(timeout=10)
