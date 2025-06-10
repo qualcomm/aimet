@@ -36,7 +36,6 @@
 # =============================================================================
 # pylint: skip-file
 # imports start
-import math
 import os
 import numpy as np
 import onnx
@@ -69,48 +68,17 @@ model = onnx.load_model(file_path)
 
 # Prepare model with onnx-simplifier
 import onnxsim
-try:
-    model, _ = onnxsim.simplify(model)
-except:
-    print('ONNX Simplifier failed. Proceeding with unsimplified model')
+model, _ = onnxsim.simplify(model)
 # End of prepare model
 
 # Set up dataloader
-from datasets import load_dataset
-from aimet_onnx.defs import DataLoader
+import torchvision
 from torchvision import transforms
 
-dataset = load_dataset('ILSVRC/imagenet-1k', split='validation').shuffle()
-
-class CustomDataLoader(DataLoader):
-    def __init__(
-        self,
-        data: np.ndarray,
-        batch_size: int,
-        iterations: int,
-        unlabeled: bool = True,
-    ):
-        super().__init__(data, batch_size, iterations)
-        self._current_iteration = 0
-        self._unlabeled = unlabeled
-
-    def __iter__(self):
-        self._current_iteration = 0
-        return self
-
-    def __next__(self):
-        if self._current_iteration < self.iterations:
-            start = self._current_iteration * self.batch_size
-            end = start + self.batch_size
-            self._current_iteration += 1
-
-            batch_data = self._data[start:end]
-            if self._unlabeled:
-                return np.stack(batch_data['image'])
-            else:
-                return np.stack(batch_data['image']), np.stack(batch_data['label'])
-        else:
-            raise StopIteration
+DATASET_ROOT = ... # Set your path to imagenet dataset root directory
+BATCH_SIZE = 32
+NUM_CALIBRATION_SAMPLES = 1024
+NUM_EVAL_SAMPLES = 50000
 
 preprocess = transforms.Compose(
     [
@@ -121,68 +89,61 @@ preprocess = transforms.Compose(
     ]
 )
 
-def transforms(examples):
-    examples['image'] = [
-        preprocess(image.convert('RGB')) for image in examples['image']
-    ]
-    return examples
+imagenet_data = torchvision.datasets.ImageNet(DATASET_ROOT,
+                                              split="val",
+                                              transform=preprocess)
 
-dataset.set_transform(transforms)
-
-BATCH_SIZE = 32
-NUM_CALIBRATION_SAMPLES = 1024
-NUM_EVAL_SAMPLES = 50000
-calibration_data_loader = CustomDataLoader(dataset, BATCH_SIZE, math.ceil(NUM_CALIBRATION_SAMPLES / BATCH_SIZE))
-eval_data_loader = CustomDataLoader(dataset, BATCH_SIZE, math.ceil(NUM_EVAL_SAMPLES / BATCH_SIZE), unlabeled=False)
+dataloader = torch.utils.data.DataLoader(imagenet_data,
+                                         batch_size=BATCH_SIZE,
+                                         shuffle=True)
 # End of setting up dataloader
 
 # Create QuantSim object
 from aimet_common.defs import QuantScheme
-from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
-from aimet_onnx.quantsim import QuantizationSimModel
+import aimet_onnx
+from aimet_onnx import QuantizationSimModel
 
-PARAM_BITWIDTH = 8
-ACTIVATION_BITWIDTH = 16
+# Optionally use ["CUDAExecutionProvider", "CPUExecutionProvider"] for GPU enablement
+providers = ["CPUExecutionProvider"]
 sim = QuantizationSimModel(model,
-                           quant_scheme=QuantScheme.post_training_tf,
-                           default_param_bw=PARAM_BITWIDTH,
-                           default_activation_bw=ACTIVATION_BITWIDTH,
-                           config_file=get_path_for_per_channel_config())
+                           param_type=aimet_onnx.int8,
+                           activation_type=aimet_onnx.int16,
+                           quant_scheme=QuantScheme.min_max,
+                           config_file="default",
+                           providers=providers)
 # End of creating QuantSim object
 
 # Calibration callback
-import onnxruntime as ort
-
-def pass_calibration_data(session: ort.InferenceSession, _):
+input_name = model.graph.input[0].name
+def onnx_data_generator(num_batches):
     """
-    The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
+    Example conversion from torch dataloader to onnx model inputs
     """
-    input_name = session.get_inputs()[0].name
-    for inputs in tqdm(calibration_data_loader):
-        session.run(None, {input_name: inputs})
+    for i, (data, _) in enumerate(dataloader):
+        if i >= num_batches:
+            break
+        yield {input_name: data.numpy()}
 # End of calibration callback
 
 # Compute quantization encodings
-sim.compute_encodings(pass_calibration_data, forward_pass_callback_args=None)
+sim.compute_encodings(onnx_data_generator(NUM_CALIBRATION_SAMPLES // BATCH_SIZE))
 # End of computing quantization encodings
 
 # Evaluate quantized accuracy
 correct_predictions = 0
 total_samples = 0
-for inputs, labels in tqdm(eval_data_loader):
-    input_name = sim.session.get_inputs()[0].name
-    pred_probs, *_ = sim.session.run(None, {input_name: inputs})
+for i, (inputs, labels) in enumerate(tqdm(dataloader)):
+    pred_probs, *_ = sim.session.run(None, {input_name: inputs.numpy()})
     pred_labels = np.argmax(pred_probs, axis=1)
-    correct_predictions += np.sum(pred_labels == labels)
+    correct_predictions += np.sum(pred_labels == labels.numpy())
     total_samples += labels.shape[0]
 
 accuracy = correct_predictions / total_samples
-print(f'Quantized accuracy (W{PARAM_BITWIDTH}A{ACTIVATION_BITWIDTH}): {accuracy:.4f}')
-# Enc of quantized accuracy
+print(f'Quantized accuracy (W8A16): {accuracy:.4f}')
+# End of quantized accuracy
 
 # Export the model
-# Export the model for on-target inference.
-# Export the model which saves ONNX model without any simulation nodes and saves encodings file for both
-# activations and parameters in JSON format at provided path.
+# Export the model for on-target inference. Saves ONNX model without quantization nodes
+# and encodings file with all tensor encodings in JSON format at provided path.
 sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2')
 # End of exporting the model

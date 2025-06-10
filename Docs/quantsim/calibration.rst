@@ -16,7 +16,7 @@ Use the following procedure to calibrate your model.
 Prerequisites
 -------------
 
-Load your trained model.
+Load your trained model and dataset.
 
 .. note::
 
@@ -48,6 +48,11 @@ Load your trained model.
            :start-after: # Load the model
            :end-before:  # End of load the model
 
+        .. literalinclude:: ../snippets/torch/apply_quantsim.py
+           :language: python
+           :start-after: # Dataloaders
+           :end-before:  # End of dataloaders
+
     .. tab-item:: TensorFlow
         :sync: tf
 
@@ -64,6 +69,13 @@ Load your trained model.
             :language: python
             :start-after: # Load the model
             :end-before: # End of loading model
+    
+
+        .. literalinclude:: ../snippets/tensorflow/apply_quantsim.py
+            :language: python
+            :start-after: # Set up dataset
+            :end-before: # End of dataset
+
 
     .. tab-item:: ONNX
         :sync: onnx
@@ -78,9 +90,13 @@ Load your trained model.
             :start-after: # Load the model
             :end-before:  # End of loading the model
 
-        .. note::
+        .. literalinclude:: ../snippets/onnx/apply_quantsim.py
+            :language: python
+            :start-after: # Set up dataloader
+            :end-before:  # End of setting up dataloader
 
-            We recommend that you apply ONNX simplification before invoking AIMET API functions.
+        Optionally simplify the exported onnx graph before quantization. This is not strictly required but
+        may improve accuracy and runtime performance.
 
         .. literalinclude:: ../snippets/onnx/apply_quantsim.py
             :language: python
@@ -143,11 +159,6 @@ to the model.
 
         .. literalinclude:: ../snippets/torch/apply_quantsim.py
            :language: python
-           :start-after: # Dataloaders
-           :end-before:  # End of dataloaders
-
-        .. literalinclude:: ../snippets/torch/apply_quantsim.py
-           :language: python
            :start-after: # Calibration callback
            :end-before:  # End of calibration callback
 
@@ -156,21 +167,11 @@ to the model.
 
         .. literalinclude:: ../snippets/tensorflow/apply_quantsim.py
             :language: python
-            :start-after: # Set up dataset
-            :end-before: # End of dataset
-
-        .. literalinclude:: ../snippets/tensorflow/apply_quantsim.py
-            :language: python
             :start-after: # Calibration callback
             :end-before: # End of calibration callback
 
     .. tab-item:: ONNX
         :sync: onnx
-
-        .. literalinclude:: ../snippets/onnx/apply_quantsim.py
-            :language: python
-            :start-after: # Set up dataloader
-            :end-before:  # End of setting up dataloader
 
         .. literalinclude:: ../snippets/onnx/apply_quantsim.py
             :language: python
@@ -205,6 +206,9 @@ to initialize their quantization encodings. "Encodings" refers to the scale and 
 
     .. tab-item:: ONNX
         :sync: onnx
+
+        In onnx, calibration can be done through a callback function or by passing calibration
+        data directly as an iterable of model inputs (:class:`Iterable[Dict[str, np.ndarray]]`)
 
         .. literalinclude:: ../snippets/onnx/apply_quantsim.py
             :language: python
@@ -247,7 +251,7 @@ Next, evaluate the :class:`QuantizationSimModel` to compute quantized accuracy.
         .. literalinclude:: ../snippets/onnx/apply_quantsim.py
             :language: python
             :start-after: # Evaluate quantized accuracy
-            :end-before:  # Enc of quantized accuracy
+            :end-before:  # End of quantized accuracy
 
         .. rst-class:: script-output
 

@@ -326,20 +326,20 @@ class QuantizationSimModel:
     Class that simulates the quantized model execution on a target hardware backend.
 
     Args:
-        model: ONNX ModelProto to quantize
-        param_type: quantized type to use for parameter tensors.
+        model (onnx.ModelProto): ONNX ModelProto to quantize
+        param_type (qtype | str): quantized type to use for parameter tensors.
             Can be {{ {", ".join(QTYPE_ALIASES.keys())} }} or :class:`aimet_onnx.qtype`
-        activation_type: quantized type to use for activation tensors.
+        activation_type (qtype | str): quantized type to use for activation tensors.
             Can be {{ {", ".join(QTYPE_ALIASES.keys())} }} or :class:`aimet_onnx.qtype`
-        quant_scheme: Quantization scheme to use for calibration.
-            Can be {{ {", ".join(_quant_scheme_aliases.keys())} }} or :class:`QuantScheme`
-        config_file: File path or alias of the configuration file.
+        quant_scheme (QuantScheme | str): Quantization scheme to use for calibration.
+            Can be {{ {", ".join(_quant_scheme_aliases.keys() - {"tf", "percentile"})} }} or :class:`QuantScheme`
+        config_file (str, optional): File path or alias of the configuration file.
             Alias can be one of {{ {", ".join(_config_file_aliases.keys())} }} (Default: `"default"`)
-        dummy_input: Sample input to the model. Only needed for non shape-inferable models with parameterized shapes
-        user_onnx_libs: List of paths to all compiled ONNX custom ops libraries
-        providers: Onnxruntime execution providers to use when building InferenceSession.
+        dummy_input (Dict[str, np.ndarray], optional): Sample input to the model. Only needed for non shape-inferable models with parameterized shapes
+        user_onnx_libs (List[str], optional): List of paths to all compiled ONNX custom ops libraries
+        providers (List, optional): Onnxruntime execution providers to use when building InferenceSession.
             If `None`, default provider is "CPUExecutionProvider"
-        path: Directory to save temporary artifacts.
+        path (str, optional): Directory to save temporary artifacts.
     """
 
     @_allow_deprecated_args
