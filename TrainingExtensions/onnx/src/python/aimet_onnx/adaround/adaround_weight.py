@@ -231,6 +231,7 @@ class Adaround:
             param_type=qtype.int(default_param_bw),
             config_file=default_config_file,
             user_onnx_libs=user_onnx_libs,
+            use_cuda=use_cuda,
         )
 
         # For the params in the param_bw_override_list, override the default parameter bitwidths in the QuantSim
