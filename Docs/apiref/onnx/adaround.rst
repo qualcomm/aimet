@@ -1,8 +1,8 @@
 .. _apiref-onnx-adaround:
 
-###################
-aimet_onnx.adaround
-###################
+#########################
+aimet_onnx.apply_adaround
+#########################
 
 ..
   # start-after
@@ -12,10 +12,4 @@ aimet_onnx.adaround
 
 **Top-level API**
 
-.. autofunction:: aimet_onnx.adaround.adaround_weight.Adaround.apply_adaround
-
-**Adaround Parameters**
-
-.. autoclass:: aimet_onnx.adaround.adaround_weight.AdaroundParameters
-    :members:
-
+.. autofunction:: aimet_onnx.apply_adaround

@@ -73,7 +73,7 @@ AdaroundSupportedModules = ["Conv", "ConvTranspose", "MatMul", "Gemm"]
 
 def apply_adaround(
     sim: QuantizationSimModel,
-    inputs: Collection[Dict[str, np.array]],
+    inputs: Collection[Dict[str, np.ndarray]],
     iterations: int = 10000,
 ):
     """
@@ -83,9 +83,9 @@ def apply_adaround(
     for optimized weights and the sim model will contain updated weight tensors.
 
     Args:
-        sim: QuantizationSimModel instance to optimize
-        inputs: The set of input samples to use during optimization.
-        num_iterations: Number of optimization steps to take for each layer. Recommended value is
+        sim (QuantizationSimModel): Calibrated QuantizationSimModel instance to optimize
+        inputs (Collection[Dict[str, np.ndarray]]): The set of input samples to use during optimization.
+        num_iterations (int): Number of optimization steps to take for each layer. Recommended value is
             10K for weight bitwidths >= 8-bits, 15K for weight bitwidths < 8 bits.
     """
 

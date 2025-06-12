@@ -36,18 +36,16 @@
 # =============================================================================
 # pylint: disable=missing-docstring
 # Set up model
-import math
 import os
-
+from tqdm import tqdm
+import onnxruntime as ort
 import numpy as np
 import onnx
 import onnxsim
 import torch
 from aimet_common.defs import QuantScheme
-from aimet_onnx.adaround.adaround_weight import Adaround, AdaroundParameters
-from aimet_onnx.defs import DataLoader
+import aimet_onnx
 from aimet_onnx.quantsim import QuantizationSimModel
-from datasets import load_dataset
 from torchvision import transforms
 from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
 
@@ -70,49 +68,25 @@ torch.onnx.export(
 )
 # Load exported ONNX model
 model = onnx.load_model(file_path)
-try:
-    model, _ = onnxsim.simplify(model)
-except:
-    print('ONNX Simplifier failed. Proceeding with unsimplified model')
+model, _ = onnxsim.simplify(model)
+
+# Choose providers
+if "CUDAExecutionProvider" in ort.get_available_providers():
+    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+else:
+    providers = ["CPUExecutionProvider"]
+
 # End of model
 
 # Set up dataloader
-dataset = load_dataset(
-    'ILSVRC/imagenet-1k',
-    split='validation',
-)
+import torchvision
+from torchvision import transforms
+import itertools
 
-
-class CustomDataLoader(DataLoader):
-    def __init__(
-        self,
-        data: np.ndarray,
-        batch_size: int,
-        iterations: int,
-        unlabeled: bool = True,
-    ):
-        super().__init__(data, batch_size, iterations)
-        self._current_iteration = 0
-        self._unlabeled = unlabeled
-
-    def __iter__(self):
-        self._current_iteration = 0
-        return self
-
-    def __next__(self):
-        if self._current_iteration < self.iterations:
-            start = self._current_iteration * self.batch_size
-            end = start + self.batch_size
-            self._current_iteration += 1
-
-            batch_data = self._data[start:end]
-            if self._unlabeled:
-                return np.stack(batch_data['image'])
-            else:
-                return np.stack(batch_data['image']), np.stack(batch_data['label'])
-        else:
-            raise StopIteration
-
+DATASET_ROOT = ... # Set your path to imagenet dataset root directory
+BATCH_SIZE = 32
+NUM_CALIBRATION_SAMPLES = 256
+NUM_EVAL_SAMPLES = 50000
 
 preprocess = transforms.Compose(
     [
@@ -123,71 +97,48 @@ preprocess = transforms.Compose(
     ]
 )
 
+imagenet_data = torchvision.datasets.ImageNet(DATASET_ROOT,
+                                              split="val",
+                                              transform=preprocess)
 
-def transforms(examples):
-    examples['image'] = [
-        preprocess(image.convert('RGB')) for image in examples['image']
-    ]
-    return examples
+dataloader = torch.utils.data.DataLoader(imagenet_data,
+                                         batch_size=BATCH_SIZE,
+                                         shuffle=True,
+                                         num_workers=4)
 
-
-dataset.set_transform(transforms)
-
-BATCH_SIZE = 32
-NUM_SAMPLES = 256
-unlabeled_data_loader = CustomDataLoader(
-    dataset, BATCH_SIZE, math.ceil(NUM_SAMPLES / BATCH_SIZE)
-)
+# Get unlabeled onnx data
+input_name = model.graph.input[0].name
+num_batches = NUM_CALIBRATION_SAMPLES // BATCH_SIZE
+onnx_data = [{input_name: data.numpy()} for data, _ in itertools.islice(dataloader, num_batches)]
 # End of dataloader
 
 
 # Step 1
-def pass_calibration_data(session, _):
-    input_name = session.get_inputs()[0].name
-    for inputs in unlabeled_data_loader:
-        session.run(None, {input_name: inputs})
-
-
-PARAM_BITWIDTH = 4
-ACTIVATION_BITWIDTH = 8
-params = AdaroundParameters(
-    data_loader=unlabeled_data_loader,
-    num_batches=math.ceil(NUM_SAMPLES / BATCH_SIZE),
-    default_num_iterations=5,
-    forward_fn=pass_calibration_data,
-    forward_pass_callback_args=None,
-)
-ada_rounded_model = Adaround.apply_adaround(
+# Create and calibrate quantsim
+sim = QuantizationSimModel(
     model,
-    params,
-    path='/tmp',
-    filename_prefix='mobilenet_v2',
-    default_param_bw=PARAM_BITWIDTH,
+    quant_scheme=QuantScheme.min_max,
+    param_type=aimet_onnx.int4,
+    activation_type=aimet_onnx.int8,
+    providers=providers
 )
+sim.compute_encodings(onnx_data)
+
+# Apply adaround on the calibrated sim
+aimet_onnx.apply_adaround(sim, onnx_data, iterations=15000)
 # End of step 1
 
 # Step 2
-sim = QuantizationSimModel(
-    ada_rounded_model,
-    quant_scheme=QuantScheme.post_training_tf,
-    default_param_bw=PARAM_BITWIDTH,
-    default_activation_bw=ACTIVATION_BITWIDTH,
-)
-
-# AdaRound optimizes the rounding of weight quantizers only. These values are preserved through set_and_freeze_param_encodings()
-sim.set_and_freeze_param_encodings(encoding_path='/tmp/mobilenet_v2.encodings')
-
-# The activation quantizers remain uninitialized and derived through compute_encodings()
-sim.compute_encodings(pass_calibration_data, None)
+# Recompute activation encodings (weight encodings are frozen)
+sim.compute_encodings(onnx_data)
 # End of step 2
 
 # Step 3
-eval_data_loader = CustomDataLoader(
-    dataset, BATCH_SIZE, math.ceil(NUM_SAMPLES / BATCH_SIZE), unlabeled=False
-)
+# Evaluate the adarounded model
 correct_predictions = 0
 total_samples = 0
-for inputs, labels in eval_data_loader:
+for inputs, labels in tqdm(dataloader):
+    inputs, labels = inputs.numpy(), labels.numpy()
     input_name = sim.session.get_inputs()[0].name
     pred_probs, *_ = sim.session.run(None, {input_name: inputs})
     pred_labels = np.argmax(pred_probs, axis=1)
@@ -195,6 +146,7 @@ for inputs, labels in eval_data_loader:
     total_samples += labels.shape[0]
 
 accuracy = correct_predictions / total_samples
+print(f"Quantized accuracy: {accuracy}")
 # End of step 3
 
 # Step 4
