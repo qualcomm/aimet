@@ -2137,7 +2137,9 @@ class TestQuantSim:
         assert sim.session.get_providers() == CPU_PROVIDERS
 
         available_providers = ort.get_available_providers()
+
         # Remove this check once onnxruntime-gpu becomes valid dependency for PyPI wheel.
+        # This test will only fail in pypi-release pipeline (aimet-onnx-gpu whl has onnxruntime dependency)
         if "CUDAExecutionProvider" in available_providers:
             sim = QuantizationSimModel(
                 single_residual_model(), providers=CUDA_PROVIDERS
@@ -2171,9 +2173,12 @@ class TestQuantSim:
                 single_residual_model(), default_param_bw=8, default_activation_bw=16
             )
 
-        with pytest.warns(DeprecationWarning):
-            sim = QuantizationSimModel(single_residual_model(), use_cuda=True)
-            assert "CUDAExecutionProvider" in sim.session.get_providers()
+        # Remove this check once onnxruntime-gpu becomes valid dependency for PyPI wheel.
+        # This test will only fail in pypi-release pipeline (aimet-onnx-gpu whl has onnxruntime dependency)
+        if "CUDAExecutionProvider" in available_providers:
+            with pytest.warns(DeprecationWarning):
+                sim = QuantizationSimModel(single_residual_model(), use_cuda=True)
+                assert "CUDAExecutionProvider" in sim.session.get_providers()
 
         with pytest.warns(DeprecationWarning):
             QuantizationSimModel(
