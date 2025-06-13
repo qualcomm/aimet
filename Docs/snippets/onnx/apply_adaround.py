@@ -125,7 +125,7 @@ sim = QuantizationSimModel(
 sim.compute_encodings(onnx_data)
 
 # Apply adaround on the calibrated sim
-aimet_onnx.apply_adaround(sim, onnx_data, iterations=15000)
+aimet_onnx.apply_adaround(sim, onnx_data, num_iterations=15000)
 # End of step 1
 
 # Step 2

@@ -147,7 +147,7 @@ class TestAdaround:
             for inp in inputs:
                 sim.session.run(None, inp)
 
-        apply_adaround(sim, inputs, iterations=5)
+        apply_adaround(sim, inputs, num_iterations=5)
 
         # Quantizer enabled state must be restored after adaround
         for name, q in sim.qc_quantize_op_dict.items():
