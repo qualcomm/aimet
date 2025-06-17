@@ -3,6 +3,6 @@ cvxpy
 networkx
 numpy==1.19.5
 pandas==1.4.3
-protobuf==3.20.1
+protobuf==4.25.8
 tensorflow-hub
 tensorflow-model-optimization
