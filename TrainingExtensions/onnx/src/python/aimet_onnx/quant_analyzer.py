@@ -70,6 +70,14 @@ from aimet_onnx.meta.operations import Op
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.QuantAnalyzer)
 
 
+# TODO: Remove redundant session build/teardown
+#       and and always use "EXHUASTIVE" (ORT default policy)
+if ort.__version__ < "1.20":
+    _cudnn_conv_algo_search = "DEFAULT"
+else:
+    _cudnn_conv_algo_search = "EXHAUSTIVE"
+
+
 class QuantAnalyzer:
     """
     QuantAnalyzer provides following utilities:
@@ -244,7 +252,10 @@ class QuantAnalyzer:
         """
         if "CUDAExecutionProvider" in ort.get_available_providers():
             providers = [
-                ("CUDAExecutionProvider", {"cudnn_conv_algo_search": "DEFAULT"}),
+                (
+                    "CUDAExecutionProvider",
+                    {"cudnn_conv_algo_search": _cudnn_conv_algo_search},
+                ),
                 "CPUExecutionProvider",
             ]
         else:
@@ -731,7 +742,10 @@ class QuantAnalyzer:
         providers = ["CPUExecutionProvider"]
         if "CUDAExecutionProvider" in ort.get_available_providers():
             providers = [
-                ("CUDAExecutionProvider", {"cudnn_conv_algo_search": "DEFAULT"}),
+                (
+                    "CUDAExecutionProvider",
+                    {"cudnn_conv_algo_search": _cudnn_conv_algo_search},
+                ),
                 "CPUExecutionProvider",
             ]
 

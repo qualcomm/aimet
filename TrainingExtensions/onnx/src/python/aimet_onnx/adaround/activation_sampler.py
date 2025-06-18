@@ -61,6 +61,14 @@ else:
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
 
+# TODO: Remove redundant session build/teardown
+#       and and always use "EXHUASTIVE" (ORT default policy)
+if ort.__version__ < "1.20":
+    _cudnn_conv_algo_search = "DEFAULT"
+else:
+    _cudnn_conv_algo_search = "EXHAUSTIVE"
+
+
 class ActivationSampler:
     """
     For a module in the original model and the corresponding module in the weight quantized QuantSim model,
@@ -96,7 +104,10 @@ class ActivationSampler:
             self.providers = [
                 (
                     "CUDAExecutionProvider",
-                    {"device_id": device, "cudnn_conv_algo_search": "DEFAULT"},
+                    {
+                        "device_id": device,
+                        "cudnn_conv_algo_search": _cudnn_conv_algo_search,
+                    },
                 ),
                 "CPUExecutionProvider",
             ]
