@@ -44,7 +44,7 @@
 namespace DlQuantization
 {
 template <typename DTYPE>
-__global__ void quantizeDequantizeKernel(const DTYPE* in, int cnt, DTYPE* out,
+__global__ void quantizeDequantizeKernel(const DTYPE* in, uint64_t cnt, DTYPE* out,
                                          DTYPE encoding_min, DTYPE encoding_max,
                                          DTYPE encoding_delta, DTYPE encoding_offset,
                                          RoundingMode rounding_mode)
@@ -60,7 +60,7 @@ __global__ void quantizeDequantizeKernel(const DTYPE* in, int cnt, DTYPE* out,
 }
 
 template <typename DTYPE>
-__global__ void quantizeToFxpKernel(const DTYPE* in, int cnt, DTYPE* out,
+__global__ void quantizeToFxpKernel(const DTYPE* in, uint64_t cnt, DTYPE* out,
                                     DTYPE encoding_min, DTYPE encoding_max,
                                     DTYPE encoding_delta, DTYPE encoding_offset,
                                     RoundingMode rounding_mode, unsigned int shift)
@@ -123,7 +123,7 @@ __global__ void quantizeDequantizeBroadcastKernel(const DTYPE* in, DTYPE* out, i
 
 
 template <typename DTYPE>
-void quantizeDequantizeGpu(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYPE* out, RoundingMode rounding_mode,
+void quantizeDequantizeGpu(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, DTYPE* out, RoundingMode rounding_mode,
                            void* stream)
 {
     quantizeDequantizeKernel<DTYPE>
@@ -132,7 +132,7 @@ void quantizeDequantizeGpu(const DTYPE* in, int cnt, const TfEncoding& encoding,
 }
 
 
-__global__ void quantizeDequantizeFp16Kernel(const float* in, int cnt, float* out)
+__global__ void quantizeDequantizeFp16Kernel(const float* in, uint64_t cnt, float* out)
 {
     CUDA_KERNEL_LOOP(i, cnt)
     {
@@ -141,7 +141,7 @@ __global__ void quantizeDequantizeFp16Kernel(const float* in, int cnt, float* ou
 }
 
 
-void quantizeDequantizeFp16ForGPU(const float* in, int cnt, float* out, void* stream)
+void quantizeDequantizeFp16ForGPU(const float* in, uint64_t cnt, float* out, void* stream)
 {
     quantizeDequantizeFp16Kernel<<<CUDA_NUM_BLOCKS(cnt), CUDA_NUM_THREADS, 0, reinterpret_cast<cudaStream_t>(stream)>>>(
         in, cnt, out);
@@ -149,7 +149,7 @@ void quantizeDequantizeFp16ForGPU(const float* in, int cnt, float* out, void* st
 
 
 template <typename DTYPE>
-void quantizeToFxpGpu(const DTYPE* in, int cnt, const TfEncoding& encoding,
+void quantizeToFxpGpu(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding,
                       DTYPE* out, RoundingMode rounding_mode, bool shiftToSigned)
 {
     unsigned int shift = 0;
@@ -226,17 +226,17 @@ void quantizeDequantizeBroadcastGpu(const DTYPE* in, DTYPE* out, const Encodings
 
 
 // Explicit instantiations
-template void quantizeDequantizeGpu(const double* in, int cnt, const TfEncoding& encoding, double* out,
+template void quantizeDequantizeGpu(const double* in, uint64_t cnt, const TfEncoding& encoding, double* out,
                                     RoundingMode rounding_mode, void* stream);
 
-template void quantizeDequantizeGpu(const float* in, int cnt, const TfEncoding& encoding, float* out,
+template void quantizeDequantizeGpu(const float* in, uint64_t cnt, const TfEncoding& encoding, float* out,
                                     RoundingMode rounding_mode, void* stream);
 
-template void quantizeToFxpGpu(const double* in, int cnt, const TfEncoding& encoding, double* out,
+template void quantizeToFxpGpu(const double* in, uint64_t cnt, const TfEncoding& encoding, double* out,
                                RoundingMode rounding_mode, bool shiftToSigned);
 
 
-template void quantizeToFxpGpu(const float* in, int cnt, const TfEncoding& encoding, float* out,
+template void quantizeToFxpGpu(const float* in, uint64_t cnt, const TfEncoding& encoding, float* out,
                                RoundingMode rounding_mode, bool shiftToSigned);
 
 template void quantizeDequantizePerChannelGpu(const float* in, int numChannel, int numElement, int numElementPerChannel,

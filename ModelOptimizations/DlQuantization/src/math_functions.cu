@@ -42,6 +42,7 @@
 #include <thrust/functional.h>
 #include <thrust/reduce.h>
 #include <cub/cub.cuh>
+#include <cstdint>
 
 #include "cuda_util.hpp"
 #include "math_functions.hpp"
@@ -50,14 +51,14 @@
 namespace DlQuantization
 {
 template <typename DTYPE>
-DTYPE GetMax_gpu(const DTYPE* data, int cnt)
+DTYPE GetMax_gpu(const DTYPE* data, uint64_t cnt)
 {
     const thrust::device_ptr<const DTYPE> ptr = thrust::device_pointer_cast(data);
     return thrust::reduce(ptr, ptr + cnt, std::numeric_limits<DTYPE>::lowest(), thrust::maximum<DTYPE>());
 }
 
 template <typename DTYPE>
-DTYPE GetMin_gpu(const DTYPE* data, int cnt)
+DTYPE GetMin_gpu(const DTYPE* data, uint64_t cnt)
 {
     const thrust::device_ptr<const DTYPE> ptr = thrust::device_pointer_cast(data);
     return thrust::reduce(ptr, ptr + cnt, std::numeric_limits<DTYPE>::max(), thrust::minimum<DTYPE>());
@@ -65,7 +66,7 @@ DTYPE GetMin_gpu(const DTYPE* data, int cnt)
 
 
 template <typename DTYPE>
-std::tuple<DTYPE, DTYPE> GetMinMax_gpu(const DTYPE* data, int cnt)
+std::tuple<DTYPE, DTYPE> GetMinMax_gpu(const DTYPE* data, uint64_t cnt)
 {
     DTYPE minMaxOut[2];
     DTYPE *dMinMaxOut;
@@ -132,17 +133,17 @@ bool MemoryFree_gpu(void* data)
 }
 
 // Explicit instantiations
-template double GetMax_gpu(const double* data, int cnt);
+template double GetMax_gpu(const double* data, uint64_t cnt);
 
-template float GetMax_gpu(const float* data, int cnt);
+template float GetMax_gpu(const float* data, uint64_t cnt);
 
-template double GetMin_gpu(const double* data, int cnt);
+template double GetMin_gpu(const double* data, uint64_t cnt);
 
-template float GetMin_gpu(const float* data, int cnt);
+template float GetMin_gpu(const float* data, uint64_t cnt);
 
-template std::tuple<float, float> GetMinMax_gpu(const float* data, int cnt);
+template std::tuple<float, float> GetMinMax_gpu(const float* data, uint64_t cnt);
 
-template std::tuple<double, double> GetMinMax_gpu(const double* data, int cnt);
+template std::tuple<double, double> GetMinMax_gpu(const double* data, uint64_t cnt);
 
 template <typename DTYPE>
 __global__ static void histogramCountKernel(const DTYPE* data,
@@ -195,7 +196,7 @@ static const int PDF_MAX_BUFF_BYTES = (1 << 25); // 32MB
 
 template <typename DTYPE>
 void GetHistogram_gpu(const DTYPE* data,
-                      int cnt,
+                      uint64_t cnt,
                       uint32_t histogram[PDF_SIZE],
                       const DTYPE bucket_size,
                       const DTYPE pdf_offset,
@@ -233,14 +234,14 @@ void GetHistogram_gpu(const DTYPE* data,
 }
 
 template void GetHistogram_gpu(const float* data,
-                               int cnt,
+                               uint64_t cnt,
                                uint32_t histogram[PDF_SIZE],
                                const float bucket_size,
                                const float pdf_offset,
                                const bool is_signed,
                                IAllocator* allocator);
 template void GetHistogram_gpu(const double* data,
-                               int cnt,
+                               uint64_t cnt,
                                uint32_t histogram[PDF_SIZE],
                                const double bucket_size,
                                const double pdf_offset,

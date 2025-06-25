@@ -39,11 +39,12 @@
 #include "DlQuantization/Fp16Quantization.hpp"
 #include "trim_functions.hpp"
 #include <stdexcept>
+#include <cstdint>
 
 namespace DlQuantization
 {
 
-void quantizeDequantizeFp16Gpu(const float* in, int cnt, float* out, void* stream)
+void quantizeDequantizeFp16Gpu(const float* in, uint64_t cnt, float* out, void* stream)
 {
 #ifdef GPU_QUANTIZATION_ENABLED
     quantizeDequantizeFp16ForGPU(in, cnt, out, stream);

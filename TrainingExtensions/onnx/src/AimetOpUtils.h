@@ -55,7 +55,7 @@
 template <typename T>
 void copyInputTensorsToOutputTensors(const T* inTensor, size_t count, T* outTensor, bool useCuda, void* stream);
 
-void quantizeDequantizeFp16Cpu(const float* in, int cnt, float* out);
+void quantizeDequantizeFp16Cpu(const float* in, uint64_t cnt, float* out);
 
 template <typename T>
 void modeSpecificActionBroadcastInt(const T* inTensor, T* outTensor, const std::vector<int64_t> inputShape,

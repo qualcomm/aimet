@@ -88,13 +88,13 @@ struct StatsLayerPdf
 };
 
 template <typename DTYPE>
-DTYPE GetMax(const DTYPE* data, int cnt, ComputationMode cpuGpuMode);
+DTYPE GetMax(const DTYPE* data, uint64_t cnt, ComputationMode cpuGpuMode);
 
 template <typename DTYPE>
-DTYPE GetMin(const DTYPE* data, int cnt, ComputationMode cpuGpuMode);
+DTYPE GetMin(const DTYPE* data, uint64_t cnt, ComputationMode cpuGpuMode);
 
 template <typename DTYPE>
-std::tuple<DTYPE, DTYPE> GetMinMax(const DTYPE* data, int cnt, ComputationMode cpuGpuMode);
+std::tuple<DTYPE, DTYPE> GetMinMax(const DTYPE* data, uint64_t cnt, ComputationMode cpuGpuMode);
 
 // Android compiler doesn't have std::log2, so define it here
 double logBase2(double d);
@@ -114,7 +114,7 @@ double logBase2(double d);
  * memory allocator available.
  */
 template <typename DTYPE>
-void UpdatePdf(const DTYPE* data, int cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
+void UpdatePdf(const DTYPE* data, uint64_t cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
                IAllocator* allocator);
 
 /**
@@ -130,7 +130,7 @@ void UpdatePdf(const DTYPE* data, int cnt, ComputationMode mode_cpu_gpu, bool si
  * memory allocator available.
  */
 template <typename DTYPE>
-void GetHistogram(const DTYPE* data, const int cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
+void GetHistogram(const DTYPE* data, const uint64_t cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
                   const DTYPE pdf_offset, const ComputationMode mode_cpu_gpu, const bool is_signed,
                   IAllocator* allocator);
 
@@ -160,10 +160,10 @@ void ElementwiseMult(ComputationMode modeCpuGpu, const float* in, size_t cnt, fl
 
 // CPU implementations...
 template <typename DTYPE>
-DTYPE GetMax_cpu(const DTYPE* data, int cnt);
+DTYPE GetMax_cpu(const DTYPE* data, uint64_t cnt);
 
 template <typename DTYPE>
-DTYPE GetMin_cpu(const DTYPE* data, int cnt);
+DTYPE GetMin_cpu(const DTYPE* data, uint64_t cnt);
 
 void ElementwiseMult_cpu(const float* in, size_t cnt, float factor, float* out);
 
@@ -172,7 +172,7 @@ void* MemoryAllocation_cpu(size_t bytes);
 void MemoryFree_cpu(void* data);
 
 template <typename DTYPE>
-void GetHistogram_cpu(const DTYPE* data, int cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
+void GetHistogram_cpu(const DTYPE* data, uint64_t cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
                       const DTYPE pdf_offset, const bool is_signed);
 
 /**
@@ -192,10 +192,10 @@ std::tuple<DTYPE, DTYPE> findOriginalRange(const PDF& pdf);
  * @param tpp histogram of float numbers seen so far.
  */
 template <typename DTYPE>
-void updateTensorHistogram(const DTYPE* data, int tensorSize, ComputationMode mode_cpu_gpu, TensorProfilingParams& tpp);
+void updateTensorHistogram(const DTYPE* data, uint64_t tensorSize, ComputationMode mode_cpu_gpu, TensorProfilingParams& tpp);
 
 template <typename DTYPE>
-void updateTensorHistogram_cpu(const DTYPE* data, int tensorSize, TensorProfilingParams& tpp);
+void updateTensorHistogram_cpu(const DTYPE* data, uint64_t tensorSize, TensorProfilingParams& tpp);
 
 /**
  * @brief Function to rescale the input histogram srcHist initially computed in the
@@ -211,13 +211,13 @@ std::vector<double> rescaleHistogram(const std::vector<double>& srcHist, const d
 #ifdef GPU_QUANTIZATION_ENABLED
 
 template <typename DTYPE>
-DTYPE GetMax_gpu(const DTYPE* data, int cnt);
+DTYPE GetMax_gpu(const DTYPE* data, uint64_t cnt);
 
 template <typename DTYPE>
-DTYPE GetMin_gpu(const DTYPE* data, int cnt);
+DTYPE GetMin_gpu(const DTYPE* data, uint64_t cnt);
 
 template <typename DTYPE>
-std::tuple<DTYPE, DTYPE> GetMinMax_gpu(const DTYPE* data, int cnt);
+std::tuple<DTYPE, DTYPE> GetMinMax_gpu(const DTYPE* data, uint64_t cnt);
 
 void ElementwiseMult_gpu(const float* in, size_t cnt, float factor, float* out);
 
@@ -226,7 +226,7 @@ void* MemoryAllocation_gpu(size_t bytes);
 bool MemoryFree_gpu(void* data);
 
 template <typename DTYPE>
-void GetHistogram_gpu(const DTYPE* data, int cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
+void GetHistogram_gpu(const DTYPE* data, uint64_t cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
                       const DTYPE pdf_offset, const bool is_signed, IAllocator* allocator);
 
 #endif   // GPU_QUANTIZATION_ENABLED

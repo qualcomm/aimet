@@ -59,7 +59,7 @@ namespace DlQuantization
 using namespace std;
 
 template <typename DTYPE>
-DTYPE GetMax(const DTYPE* data, int cnt, ComputationMode cpuGpuMode)
+DTYPE GetMax(const DTYPE* data, uint64_t cnt, ComputationMode cpuGpuMode)
 {
     switch (cpuGpuMode)
     {
@@ -81,7 +81,7 @@ DTYPE GetMax(const DTYPE* data, int cnt, ComputationMode cpuGpuMode)
 }
 
 template <typename DTYPE>
-DTYPE GetMin(const DTYPE* data, int cnt, ComputationMode cpuGpuMode)
+DTYPE GetMin(const DTYPE* data, uint64_t cnt, ComputationMode cpuGpuMode)
 {
     switch (cpuGpuMode)
     {
@@ -100,7 +100,7 @@ DTYPE GetMin(const DTYPE* data, int cnt, ComputationMode cpuGpuMode)
 }
 
 template <typename DTYPE>
-std::tuple<DTYPE, DTYPE> GetMinMax(const DTYPE* data, int cnt, ComputationMode cpuGpuMode)
+std::tuple<DTYPE, DTYPE> GetMinMax(const DTYPE* data, uint64_t cnt, ComputationMode cpuGpuMode)
 {
     switch (cpuGpuMode)
     {
@@ -235,7 +235,7 @@ void InitializePdf(PDF& pdf, DTYPE min_val, DTYPE max_val, bool signed_vals)
 }
 
 template <typename DTYPE>
-void UpdatePdf(const DTYPE* data, int cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
+void UpdatePdf(const DTYPE* data, uint64_t cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
                IAllocator* allocator)
 {
     // Check if we need to initialize the PDF.
@@ -282,7 +282,7 @@ void UpdatePdf(const DTYPE* data, int cnt, ComputationMode mode_cpu_gpu, bool si
 }
 
 template <typename DTYPE>
-void GetHistogram(const DTYPE* data, int cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
+void GetHistogram(const DTYPE* data, uint64_t cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
                   const DTYPE pdf_offset, const ComputationMode mode_cpu_gpu, const bool is_signed,
                   IAllocator* allocator)
 {
@@ -319,10 +319,10 @@ void GetHistogram(const DTYPE* data, int cnt, uint32_t histogram[PDF_SIZE], cons
 // CPU mode implementations
 
 template <typename DTYPE>
-DTYPE GetMax_cpu(const DTYPE* data, int cnt)
+DTYPE GetMax_cpu(const DTYPE* data, uint64_t cnt)
 {
     DTYPE val = -numeric_limits<double>::max();
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         val = max(val, data[i]);
     }
@@ -330,10 +330,10 @@ DTYPE GetMax_cpu(const DTYPE* data, int cnt)
 }
 
 template <typename DTYPE>
-DTYPE GetMin_cpu(const DTYPE* data, int cnt)
+DTYPE GetMin_cpu(const DTYPE* data, uint64_t cnt)
 {
     DTYPE val = numeric_limits<double>::max();
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         val = min(val, data[i]);
     }
@@ -359,11 +359,11 @@ void MemoryFree_cpu(void* data)
 }
 
 template <typename DTYPE>
-void GetHistogram_cpu(const DTYPE* data, int cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
+void GetHistogram_cpu(const DTYPE* data, uint64_t cnt, uint32_t histogram[PDF_SIZE], const DTYPE bucket_size,
                       const DTYPE pdf_offset, const bool is_signed)
 {
     // Go through all data points and add them to the histogram.
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // Map a floating point number to the appropriate bucket.
         int index =
@@ -433,7 +433,7 @@ std::tuple<DTYPE, DTYPE> findOriginalRange(const PDF& pdf)
 }
 
 template <typename DTYPE>
-void updateTensorHistogram(const DTYPE* data, int tensorSize, ComputationMode mode_cpu_gpu, TensorProfilingParams& tpp)
+void updateTensorHistogram(const DTYPE* data, uint64_t tensorSize, ComputationMode mode_cpu_gpu, TensorProfilingParams& tpp)
 {
     switch (mode_cpu_gpu)
     {
@@ -468,7 +468,7 @@ static size_t getBin(size_t nBins, float binWidth, float minValue, float value)
 }
 
 template <typename DTYPE>
-void updateTensorHistogram_cpu(const DTYPE* data, int tensorSize, TensorProfilingParams& tpp)
+void updateTensorHistogram_cpu(const DTYPE* data, uint64_t tensorSize, TensorProfilingParams& tpp)
 {
     double minInput = GetMin(data, tensorSize, COMP_MODE_CPU);
     double maxInput = GetMax(data, tensorSize, COMP_MODE_CPU);
@@ -637,32 +637,32 @@ std::vector<double> rescaleHistogram(const std::vector<double>& srcHist, const d
 }
 
 // Explicit instantiations
-template double GetMax(const double* data, int cnt, ComputationMode mode_cpu_gpu);
+template double GetMax(const double* data, uint64_t cnt, ComputationMode mode_cpu_gpu);
 
-template float GetMax(const float* data, int cnt, ComputationMode mode_cpu_gpu);
+template float GetMax(const float* data, uint64_t cnt, ComputationMode mode_cpu_gpu);
 
-template double GetMin(const double* data, int cnt, ComputationMode mode_cpu_gpu);
+template double GetMin(const double* data, uint64_t cnt, ComputationMode mode_cpu_gpu);
 
-template float GetMin(const float* data, int cnt, ComputationMode mode_cpu_gpu);
+template float GetMin(const float* data, uint64_t cnt, ComputationMode mode_cpu_gpu);
 
-template std::tuple<float, float> GetMinMax(const float* data, int cnt, ComputationMode cpuGpuMode);
+template std::tuple<float, float> GetMinMax(const float* data, uint64_t cnt, ComputationMode cpuGpuMode);
 
-template std::tuple<double, double> GetMinMax(const double* data, int cnt, ComputationMode cpuGpuMode);
+template std::tuple<double, double> GetMinMax(const double* data, uint64_t cnt, ComputationMode cpuGpuMode);
 
-template void UpdatePdf(const double* data, int cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
+template void UpdatePdf(const double* data, uint64_t cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
                         IAllocator* allocator);
 
-template void UpdatePdf(const float* data, int cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
+template void UpdatePdf(const float* data, uint64_t cnt, ComputationMode mode_cpu_gpu, bool signed_vals, PDF& pdf,
                         IAllocator* allocator);
 
 template std::tuple<double, double> findOriginalRange(const PDF& pdf);
 
 template std::tuple<float, float> findOriginalRange(const PDF& pdf);
 
-template void updateTensorHistogram(const double* data, int tensorSize, ComputationMode mode_cpu_gpu,
+template void updateTensorHistogram(const double* data, uint64_t tensorSize, ComputationMode mode_cpu_gpu,
                                     TensorProfilingParams& tpp);
 
-template void updateTensorHistogram(const float* data, int tensorSize, ComputationMode mode_cpu_gpu,
+template void updateTensorHistogram(const float* data, uint64_t tensorSize, ComputationMode mode_cpu_gpu,
                                     TensorProfilingParams& tpp);
 
 }   // End of namespace DlQuantization

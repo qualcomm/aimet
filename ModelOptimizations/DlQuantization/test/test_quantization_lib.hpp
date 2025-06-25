@@ -112,7 +112,7 @@ class Blob
 
 public:
     // Blob is initialized with data from CPU
-    Blob(DataType* cpuDataPtr, int cnt)
+    Blob(DataType* cpuDataPtr, uint64_t cnt)
     {
         _cpuDataPtr = (DataType*) malloc(cnt * sizeof(DataType));
         memcpy(_cpuDataPtr, cpuDataPtr, cnt * sizeof(DataType));

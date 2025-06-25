@@ -92,7 +92,7 @@ Lambda parallelize(const uint32_t number_of_threads, Lambda lambda)
 
 // encoding: TF: rounded
 template <typename DTYPE>
-void quantizeDequantize(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYPE* out, ComputationMode mode_cpu_gpu,
+void quantizeDequantize(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, DTYPE* out, ComputationMode mode_cpu_gpu,
                         RoundingMode rounding_mode, void* stream)
 {
     switch (mode_cpu_gpu)
@@ -115,7 +115,7 @@ void quantizeDequantize(const DTYPE* in, int cnt, const TfEncoding& encoding, DT
 
 // encoding: TF: rounded
 template <typename DTYPE>
-void quantizeToFxp(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYPE* out, ComputationMode mode_cpu_gpu,
+void quantizeToFxp(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, DTYPE* out, ComputationMode mode_cpu_gpu,
                    RoundingMode rounding_mode, bool shiftToSigned)
 {
     switch (mode_cpu_gpu)
@@ -172,9 +172,9 @@ inline void dequantizeValueCpu(DTYPE* out, DTYPE encoding_delta, DTYPE encoding_
 }
 
 template <typename DTYPE>
-void quantizeDequantizeCpu(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYPE* out, RoundingMode rounding_mode)
+void quantizeDequantizeCpu(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, DTYPE* out, RoundingMode rounding_mode)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         quantizeValueCpu<DTYPE>(&in[i], &out[i], encoding.min, encoding.max, encoding.delta, encoding.offset,
                                 rounding_mode);
@@ -184,7 +184,7 @@ void quantizeDequantizeCpu(const DTYPE* in, int cnt, const TfEncoding& encoding,
 
 
 template <typename DTYPE>
-void quantizeToFxpPacked(const DTYPE* in, int cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
+void quantizeToFxpPacked(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
                          ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, bool shiftToSigned)
 {
     switch (mode_cpu_gpu)
@@ -201,7 +201,7 @@ void quantizeToFxpPacked(const DTYPE* in, int cnt, const TfEncoding& encoding, u
     }
 }
 template <typename DTYPE>
-void quantizeToFxpCpu(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYPE* out, RoundingMode rounding_mode,
+void quantizeToFxpCpu(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, DTYPE* out, RoundingMode rounding_mode,
                       bool shiftToSigned)
 {
     // Using unsigned int to account for case of signed symmetric 32 bit, when shift will be 2^31
@@ -210,7 +210,7 @@ void quantizeToFxpCpu(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYP
     {
         shift = pow(2, encoding.bw - 1);
     }
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         quantizeValueCpu<DTYPE>(&in[i], &out[i], encoding.min, encoding.max, encoding.delta, encoding.offset,
                                 rounding_mode);
@@ -219,7 +219,7 @@ void quantizeToFxpCpu(const DTYPE* in, int cnt, const TfEncoding& encoding, DTYP
 }
 
 template <typename DTYPE>
-void quantizeToFxpPackedCpu(const DTYPE* in, int cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
+void quantizeToFxpPackedCpu(const DTYPE* in, uint64_t cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
                             RoundingMode rounding_mode, bool shiftToSigned)
 {
     size_t min_out_size = ceil(max(encoding.bw, 8) * cnt / 8.0);
@@ -236,14 +236,14 @@ void quantizeToFxpPackedCpu(const DTYPE* in, int cnt, const TfEncoding& encoding
     number_of_threads = 1;
   }
 #endif
-    int iteration_per_threads = (int) ceil((double) cnt / (double) number_of_threads);
+    uint64_t iteration_per_threads = (uint64_t) ceil((double) cnt / (double) number_of_threads);
     auto quantize_job         = [&](int thread_id)
     {
-        int start = thread_id * iteration_per_threads;
-        int end   = std::min(start + iteration_per_threads, cnt);
+        uint64_t start = thread_id * iteration_per_threads;
+        uint64_t end   = std::min(start + iteration_per_threads, cnt);
 
         double data_quantized;
-        for (int i = start; i < end; ++i)
+        for (uint64_t i = start; i < end; ++i)
         {
             // Saturate
             data_quantized = max(min((double) in[i], encoding.max), encoding.min);
@@ -387,7 +387,7 @@ void quantizeToFxpPackedCpu(const DTYPE* in, int cnt, const TfEncoding& encoding
 
 
 template <typename DTYPE>
-void dequantizeFromPackedFxp(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output,
+void dequantizeFromPackedFxp(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output,
                              ComputationMode mode_cpu_gpu, bool shiftToSigned)
 {
     switch (mode_cpu_gpu)
@@ -405,11 +405,11 @@ void dequantizeFromPackedFxp(const uint8_t* input, int cnt, const TfEncoding& en
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpCpuMt(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output,
+void dequantizeFromPackedFxpCpuMt(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output,
                                   bool shiftToSigned)
 {
-    int32_t num_threads = std::max(1, std::min(cnt / 120000, 4));
-    int32_t chunkSize   = cnt / num_threads;
+    int32_t num_threads = std::max(1, std::min((int32_t)(cnt / 120000), 4));
+    uint64_t chunkSize   = cnt / num_threads;
     int32_t bw_adj      = encoding.bw / 8;
 
     if (cnt % num_threads)
@@ -420,8 +420,8 @@ void dequantizeFromPackedFxpCpuMt(const uint8_t* input, int cnt, const TfEncodin
     std::vector<std::thread> threads;
     for (int i = 0; i < num_threads; ++i)
     {
-        int chunkStart = chunkSize * i;
-        int chunkEnd   = std::min(chunkStart + chunkSize, cnt);
+        uint64_t chunkStart = chunkSize * i;
+        uint64_t chunkEnd   = std::min(chunkStart + chunkSize, cnt);
         threads.push_back(std::thread(dequantizeFromPackedFxpCpu<DTYPE>, input + (chunkStart * bw_adj),
                                       chunkEnd - chunkStart, encoding, output + chunkStart, shiftToSigned));
     }
@@ -430,14 +430,14 @@ void dequantizeFromPackedFxpCpuMt(const uint8_t* input, int cnt, const TfEncodin
 
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpTfBitsCpu(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpTfBitsCpu(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
     double data_quantized;
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // Extract next value from packed data stream
         // The packed data is unsigned in TF-style quantization
-        int bit_offset = encoding.bw * i;
+        uint64_t bit_offset = encoding.bw * i;
         uint32_t tmp   = input[bit_offset / 8] >> (bit_offset % 8);
         data_quantized = (double) (tmp & (uint32_t) ((1 << encoding.bw) - 1));
 
@@ -447,9 +447,9 @@ void dequantizeFromPackedFxpTfBitsCpu(const uint8_t* input, int cnt, const TfEnc
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpTf8Cpu(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpTf8Cpu(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // De-quantize the data and write it to output vector.
         output[i] = (encoding.delta * ((double) input[i] + encoding.offset));
@@ -457,9 +457,9 @@ void dequantizeFromPackedFxpTf8Cpu(const uint8_t* input, int cnt, const TfEncodi
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpTf16Cpu(const uint16_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpTf16Cpu(const uint16_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // De-quantize the data and write it to output vector.
         output[i] = (encoding.delta * ((double) input[i] + encoding.offset));
@@ -467,9 +467,9 @@ void dequantizeFromPackedFxpTf16Cpu(const uint16_t* input, int cnt, const TfEnco
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpTf32Cpu(const uint32_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpTf32Cpu(const uint32_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // De-quantize the data and write it to output vector.
         output[i] = (encoding.delta * ((double) input[i] + encoding.offset));
@@ -477,10 +477,10 @@ void dequantizeFromPackedFxpTf32Cpu(const uint32_t* input, int cnt, const TfEnco
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpSymmetricBitsCpu(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpSymmetricBitsCpu(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
     double data_quantized;
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
 // Removed packed support, no current use case
 #if 0
@@ -515,9 +515,9 @@ void dequantizeFromPackedFxpSymmetricBitsCpu(const uint8_t* input, int cnt, cons
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpSymmetric8Cpu(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpSymmetric8Cpu(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         int8_t* ptr = (int8_t*) input;
         // De-quantize the data and write it to output vector.
@@ -526,9 +526,9 @@ void dequantizeFromPackedFxpSymmetric8Cpu(const uint8_t* input, int cnt, const T
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpSymmetric16Cpu(const int16_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpSymmetric16Cpu(const int16_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // De-quantize the data and write it to output vector.
         output[i] = (encoding.delta * ((double) input[i] + encoding.offset));
@@ -536,9 +536,9 @@ void dequantizeFromPackedFxpSymmetric16Cpu(const int16_t* input, int cnt, const 
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpSymmetric32Cpu(const int32_t* input, int cnt, const TfEncoding& encoding, DTYPE* output)
+void dequantizeFromPackedFxpSymmetric32Cpu(const int32_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output)
 {
-    for (int i = 0; i < cnt; ++i)
+    for (uint64_t i = 0; i < cnt; ++i)
     {
         // De-quantize the data and write it to output vector.
         output[i] = (encoding.delta * ((double) input[i] + encoding.offset));
@@ -546,7 +546,7 @@ void dequantizeFromPackedFxpSymmetric32Cpu(const int32_t* input, int cnt, const 
 }
 
 template <typename DTYPE>
-void dequantizeFromPackedFxpCpu(const uint8_t* input, int cnt, const TfEncoding& encoding, DTYPE* output,
+void dequantizeFromPackedFxpCpu(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, DTYPE* output,
                                 bool shiftToSigned)
 {
     if (!shiftToSigned)
@@ -665,7 +665,7 @@ void quantizeDequantizePerChannelCpu(const DTYPE* in, int numChannel, int numEle
                                      DTYPE* out, DTYPE* encodingMin, DTYPE* encodingMax, DTYPE* encodingDelta,
                                      DTYPE* encodingOffset, RoundingMode roundingMode)
 {
-    for (int i = 0; i < numElement; ++i)
+    for (uint64_t i = 0; i < numElement; ++i)
     {
         int channelIdx = (i / numElementPerChannel) % numChannel;
         quantizeValueCpu<DTYPE>(&in[i], &out[i], encodingMin[channelIdx], encodingMax[channelIdx],
@@ -716,25 +716,25 @@ void quantizeDequantizeBroadcast(const T* inTensor, T* outTensor, const Encoding
 
 
 // Explicit instantiations
-template void quantizeDequantize(const double* in, int cnt, const TfEncoding& encoding, double* out,
+template void quantizeDequantize(const double* in, uint64_t cnt, const TfEncoding& encoding, double* out,
                                  ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, void* stream);
 
-template void quantizeDequantize(const float* in, int cnt, const TfEncoding& encoding, float* out,
+template void quantizeDequantize(const float* in, uint64_t cnt, const TfEncoding& encoding, float* out,
                                  ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, void* stream);
 
-template void quantizeToFxp(const double* in, int cnt, const TfEncoding& encoding, double* out,
+template void quantizeToFxp(const double* in, uint64_t cnt, const TfEncoding& encoding, double* out,
                             ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, bool shiftToSigned);
 
-template void quantizeToFxp(const float* in, int cnt, const TfEncoding& encoding, float* out,
+template void quantizeToFxp(const float* in, uint64_t cnt, const TfEncoding& encoding, float* out,
                             ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, bool shiftToSigned);
 
-template void quantizeToFxpPacked(const float* in, int cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
+template void quantizeToFxpPacked(const float* in, uint64_t cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
                                   ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, bool shiftToSigned);
-template void quantizeToFxpPacked(const double* in, int cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
+template void quantizeToFxpPacked(const double* in, uint64_t cnt, const TfEncoding& encoding, uint8_t* out, size_t out_size,
                                   ComputationMode mode_cpu_gpu, RoundingMode rounding_mode, bool shiftToSigned);
-template void dequantizeFromPackedFxp(const uint8_t* input, int cnt, const TfEncoding& encoding, double* output,
+template void dequantizeFromPackedFxp(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, double* output,
                                       ComputationMode mode_cpu_gpu, bool shiftToSigned);
-template void dequantizeFromPackedFxp(const uint8_t* input, int cnt, const TfEncoding& encoding, float* output,
+template void dequantizeFromPackedFxp(const uint8_t* input, uint64_t cnt, const TfEncoding& encoding, float* output,
                                       ComputationMode mode_cpu_gpu, bool shiftToSigned);
 
 template void quantizeDequantizePerChannel(const float* in, int numChannel, int numElement, int numElementPerChannel,
