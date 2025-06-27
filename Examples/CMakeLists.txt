@@ -35,7 +35,7 @@
 #==============================================================================
 
 add_custom_target(copy_examples
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE/examples)
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/Docs_SOURCE/tutorials/notebooks)
 
 if(SKBUILD)
 else()

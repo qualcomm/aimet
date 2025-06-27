@@ -31,37 +31,37 @@ and compression features. Instructions after the tables describe how to run the 
      - PyTorch
      - TensorFlow
    * - Quantization simulation (QuantSim)
-     - `Link <onnx/quantization/quantsim.ipynb>`_
-     - `Link <torch/quantization/qat.ipynb>`_
-     - `Link <tensorflow/quantization/keras/qat.ipynb>`_
+     - `Link <notebooks/onnx/quantization/quantsim.ipynb>`_
+     - `Link <notebooks/torch/quantization/qat.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/qat.ipynb>`_
    * - Quantization-aware training (QAT)
      - Not implemented.
-     - `Link <torch/quantization/qat_range_learning.ipynb>`_
-     - `Link <tensorflow/quantization/keras/qat_range_learning.ipynb>`_
+     - `Link <notebooks/torch/quantization/qat_range_learning.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/qat_range_learning.ipynb>`_
    * - Cross-layer equalization (CLE)
-     - `Link <onnx/quantization/cle.ipynb>`_
-     - `Link <torch/quantization/cle_bc.ipynb>`_
-     - `Link <tensorflow/quantization/keras/quantsim_cle.ipynb>`_
+     - `Link <notebooks/onnx/quantization/cle.ipynb>`_
+     - `Link <notebooks/torch/quantization/cle_bc.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/quantsim_cle.ipynb>`_
    * - Adaptive rounding (AdaRound)
-     - `Link <onnx/quantization/adaround.ipynb>`_
-     - `Link <torch/quantization/adaround.ipynb>`_
-     - `Link <tensorflow/quantization/keras/adaround.ipynb>`_
+     - `Link <notebooks/onnx/quantization/adaround.ipynb>`_
+     - `Link <notebooks/torch/quantization/adaround.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/adaround.ipynb>`_
    * - Automatic quantization (AutoQuant)
      - Not implemented.
-     - `Link <torch/quantization/autoquant.ipynb>`_
-     - `Link <tensorflow/quantization/keras/autoquant.ipynb>`_
+     - `Link <notebooks/torch/quantization/autoquant.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/autoquant.ipynb>`_
    * - Automatic mixed precision (AMP)
-     - `Link <onnx/quantization/AMP.ipynb>`_
-     - `Link <torch/quantization/AMP.ipynb>`_
-     - `Link <tensorflow/quantization/keras/KerasAMP.ipynb>`_
+     - `Link <notebooks/onnx/quantization/AMP.ipynb>`_
+     - `Link <notebooks/torch/quantization/AMP.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/KerasAMP.ipynb>`_
    * - BatchNorm re-estimation
      - Not implemented.
-     - `Link <torch/quantization/bn_reestimation.ipynb>`_
-     - `Link <tensorflow/quantization/keras/bn_reestimation.ipynb>`_
+     - `Link <notebooks/torch/quantization/bn_reestimation.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/bn_reestimation.ipynb>`_
    * - Quant analyzer
      - Not implemented.
-     - `Link <torch/quantization/quant_analyzer.ipynb>`_
-     - `Link <tensorflow/quantization/keras/quant_analyzer.ipynb>`_
+     - `Link <notebooks/torch/quantization/quant_analyzer.ipynb>`_
+     - `Link <notebooks/tensorflow/quantization/keras/quant_analyzer.ipynb>`_
 
 **Model Compression Examples**
 
@@ -72,11 +72,11 @@ and compression features. Instructions after the tables describe how to run the 
    * - Features
      - PyTorch
    * - Channel Pruning
-     - `Link <torch/compression/channel_pruning.ipynb>`_
+     - `Link <notebooks/torch/compression/channel_pruning.ipynb>`_
    * - Spatial SVD
-     - `Link <torch/compression/spatial_svd.ipynb>`_
+     - `Link <notebooks/torch/compression/spatial_svd.ipynb>`_
    * - Spatial SVD + Channel Pruning
-     - `Link <torch/compression/spatial_svd_channel_pruning.ipynb>`_
+     - `Link <notebooks/torch/compression/spatial_svd_channel_pruning.ipynb>`_
 
 Running the notebooks
 =====================
