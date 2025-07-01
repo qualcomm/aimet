@@ -38,6 +38,8 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from aimet_torch.experimental.adascale import adascale_optimizer
+from aimet_torch.experimental.adascale.adascale_optimizer import AdaScaleModelConfig
+
 
 class ModelWithLinears(torch.nn.Module):
     def __init__(self):
@@ -53,6 +55,7 @@ class ModelWithLinears(torch.nn.Module):
         x = self.dropout(x)
         return self.fc2(x)
 
+
 class ModelWithConsecutiveLinearBlocks(torch.nn.Module):
     def __init__(self):
         super(ModelWithConsecutiveLinearBlocks, self).__init__()
@@ -65,6 +68,7 @@ class ModelWithConsecutiveLinearBlocks(torch.nn.Module):
         x = self.softmax(x)
         return x
 
+
 class CustomDataset(Dataset):
     def __init__(self, data):
         self.data = data
@@ -75,6 +79,7 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         return self.data[idx]
 
+
 # [setup]
 # Load the model
 # General setup that can be changed as needed
@@ -82,7 +87,9 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model = ModelWithConsecutiveLinearBlocks().eval().to(device)
 
 # Register ModelWithLinears as the block type to AdaScale
-adascale_optimizer.model_to_block_mapping[ModelWithConsecutiveLinearBlocks] = ModelWithLinears
+adascale_optimizer.adascale_model_config_dict[ModelWithConsecutiveLinearBlocks] = (
+    AdaScaleModelConfig(ModelWithLinears)
+)
 # End of [setup]
 
 # [prepare-dataloader]
@@ -90,18 +97,22 @@ num_batches = 32
 num_samples = 96
 dummy_input = torch.rand(num_samples, 3, 32, 64).to(device)
 data_set = CustomDataset(dummy_input)
-data_loader = DataLoader(data_set, batch_size=int(num_samples / num_batches), shuffle=True)
+data_loader = DataLoader(
+    data_set, batch_size=int(num_samples / num_batches), shuffle=True
+)
 # End of [prepare-dataloader]
 
 # [create-sim]
 from aimet_common.defs import QuantScheme
 from aimet_torch.quantsim import QuantizationSimModel
 
-sim = QuantizationSimModel(model,
-                           dummy_input=dummy_input,
-                           quant_scheme=QuantScheme.training_range_learning_with_tf_init,
-                           default_param_bw=4,
-                           default_output_bw=16)
+sim = QuantizationSimModel(
+    model,
+    dummy_input=dummy_input,
+    quant_scheme=QuantScheme.training_range_learning_with_tf_init,
+    default_param_bw=4,
+    default_output_bw=16,
+)
 # End of [create-sim]
 
 # [apply-adascale]
@@ -109,12 +120,15 @@ sim = QuantizationSimModel(model,
 from aimet_torch.experimental.adascale import apply_adascale
 from aimet_torch.v2.utils import default_forward_fn
 
-apply_adascale(qsim=sim,
-               data_loader=data_loader,
-               forward_fn=default_forward_fn,
-               num_iterations=1500)
+apply_adascale(
+    qsim=sim,
+    data_loader=data_loader,
+    forward_fn=default_forward_fn,
+    num_iterations=1500,
+)
 
 # End of [apply-adascale]
+
 
 # [compute_encodings]
 def forward_pass(model: torch.nn.Module, _):
@@ -135,7 +149,9 @@ sim.compute_encodings(forward_pass, None)
 
 # [export]
 # Export the model for on-target inference
-path = './'
-filename = 'dummy_model'
-sim.export(path=path, filename_prefix="quantized_" + filename, dummy_input=dummy_input.cpu())
+path = "./"
+filename = "dummy_model"
+sim.export(
+    path=path, filename_prefix="quantized_" + filename, dummy_input=dummy_input.cpu()
+)
 # End of [export]

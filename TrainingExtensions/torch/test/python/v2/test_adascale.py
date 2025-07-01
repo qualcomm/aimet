@@ -46,7 +46,8 @@ from torch.utils.data import Dataset, DataLoader
 from aimet_torch import QuantizationSimModel
 from aimet_torch.experimental.adascale.adascale_optimizer import (
     AdaScale,
-    model_to_block_mapping,
+    AdaScaleModelConfig,
+    adascale_model_config_dict,
     apply_adascale,
 )
 from aimet_torch.experimental.adascale.adascale_quantizer import (
@@ -164,10 +165,14 @@ class TestAdascale:
         sim = QuantizationSimModel(model, dummy_input)
 
         with patch.dict(
-            model_to_block_mapping,
+            adascale_model_config_dict,
             {
-                test_models.ModelWithConsecutiveLinearBlocks: test_models.ModelWithLinears,
-                test_models.ModelWithConsecutiveConv2dBlocks: test_models.ModelWithConvs,
+                test_models.ModelWithConsecutiveLinearBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithLinears
+                ),
+                test_models.ModelWithConsecutiveConv2dBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithConvs
+                ),
             },
         ):
             apply_adascale(sim, data_loader, None, num_iterations)
@@ -193,10 +198,14 @@ class TestAdascale:
         sim = QuantizationSimModel(model, dummy_input)
         sim.model.requires_grad_(False)
         with patch.dict(
-            model_to_block_mapping,
+            adascale_model_config_dict,
             {
-                test_models.ModelWithConsecutiveLinearBlocks: test_models.ModelWithLinears,
-                test_models.ModelWithConsecutiveConv2dBlocks: test_models.ModelWithConvs,
+                test_models.ModelWithConsecutiveLinearBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithLinears
+                ),
+                test_models.ModelWithConsecutiveConv2dBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithConvs
+                ),
             },
         ):
             blocks = AdaScale._get_blocks(sim)
@@ -253,10 +262,14 @@ class TestAdascale:
         sim = QuantizationSimModel(model, dummy_input)
         sim.model.requires_grad_(False)
         with patch.dict(
-            model_to_block_mapping,
+            adascale_model_config_dict,
             {
-                test_models.ModelWithConsecutiveLinearBlocks: test_models.ModelWithLinears,
-                test_models.ModelWithConsecutiveConv2dBlocks: test_models.ModelWithConvs,
+                test_models.ModelWithConsecutiveLinearBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithLinears
+                ),
+                test_models.ModelWithConsecutiveConv2dBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithConvs
+                ),
             },
         ):
             blocks = AdaScale._get_blocks(sim)
@@ -320,10 +333,14 @@ class TestAdascale:
         loss_before_opt = torch.nn.functional.mse_loss(fp_output, quantized_output)
 
         with patch.dict(
-            model_to_block_mapping,
+            adascale_model_config_dict,
             {
-                test_models.ModelWithConsecutiveLinearBlocks: test_models.ModelWithLinears,
-                test_models.ModelWithConsecutiveConv2dBlocks: test_models.ModelWithConvs,
+                test_models.ModelWithConsecutiveLinearBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithLinears
+                ),
+                test_models.ModelWithConsecutiveConv2dBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithConvs
+                ),
             },
         ):
             apply_adascale(sim, data_loader, None, num_iterations)
@@ -340,10 +357,14 @@ class TestAdascale:
         assert not lwc_params + scale_params
 
         with patch.dict(
-            model_to_block_mapping,
+            adascale_model_config_dict,
             {
-                test_models.ModelWithConsecutiveLinearBlocks: test_models.ModelWithLinears,
-                test_models.ModelWithConsecutiveConv2dBlocks: test_models.ModelWithConvs,
+                test_models.ModelWithConsecutiveLinearBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithLinears
+                ),
+                test_models.ModelWithConsecutiveConv2dBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithConvs
+                ),
             },
         ):
             adascale_blocks = AdaScale._get_blocks(sim)

@@ -38,7 +38,9 @@
 """AdaScale implementation"""
 
 from copy import deepcopy
-from typing import Callable, List, Any, Tuple
+from dataclasses import dataclass
+from types import NoneType
+from typing import Callable, List, Any, Tuple, Type
 
 import torch
 from torch.utils.data import DataLoader
@@ -66,16 +68,29 @@ from aimet_torch.blockwise_sampler import (
 )
 from aimet_torch.utils import get_device
 
+
+@dataclass
+class AdaScaleModelConfig:
+    block_type: Type = None  # block types to use in a given model
+    beta_gamma_lr: float = 1e-3  # lr for beta and gamma
+    scales_lr: float = 5e-4  # lr for s2, s3, [s4]
+
+
+# mapping of model type and the corresponding adascale config
+adascale_model_config_dict = {
+    LlamaModel: AdaScaleModelConfig(
+        block_type=LlamaDecoderLayer, beta_gamma_lr=1e-3, scales_lr=5e-4
+    ),
+    Qwen2Model: AdaScaleModelConfig(
+        block_type=Qwen2DecoderLayer, beta_gamma_lr=1e-3, scales_lr=5e-4
+    ),
+}
+
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AdaScale)
 
-loss_fn = torch.nn.MSELoss()
-_QT_SAMPLING_PROB = 0.5
 
-# mapping of model and the corresponding adascale blocks type
-model_to_block_mapping = {
-    LlamaModel: LlamaDecoderLayer,
-    Qwen2Model: Qwen2DecoderLayer,
-}
+_QT_SAMPLING_PROB = 0.5
+_LOSS_FN = torch.nn.MSELoss()
 
 supported_modules: List = [QuantizedLinear, QuantizedConv2d]
 
@@ -160,24 +175,27 @@ class AdaScale:
         )
 
         qsim.model.requires_grad_(False)
+        beta_gamma_lr, scales_lr = AdaScale._model_specific_lr(qsim)
 
         with remove_activation_quantizers(adascale_blocks):
             for block, fp_block_inputs, qt_block_inputs in sampler.sample(
                 device=device, desc="AdaScale blocks processed"
             ):
                 # only set adascale params to train mode
-                all_lwc_parameters, all_scale_parameters = (
+                all_beta_gamma_parameters, all_scale_parameters = (
                     cls._get_adascale_trainable_params(block)
                 )
                 trainable_params = [
-                    {"params": all_lwc_parameters, "lr": 1e-3},
-                    {"params": all_scale_parameters, "lr": 5e-4},
+                    {"params": all_beta_gamma_parameters, "lr": beta_gamma_lr},
+                    {"params": all_scale_parameters, "lr": scales_lr},
                 ]
                 optimizer = torch.optim.Adam(trainable_params)
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                     optimizer, T_max=num_iterations, eta_min=0.0
                 )
-                cls._set_requires_grad(all_lwc_parameters + all_scale_parameters, True)
+                cls._set_requires_grad(
+                    all_beta_gamma_parameters + all_scale_parameters, True
+                )
 
                 fp_out = []  # save fp batchwise block outputs to use across epochs
                 for batch_idx in range(len(data_loader)):
@@ -223,6 +241,7 @@ class AdaScale:
                                             device,
                                         )
                                     )
+
                                 with fp_block_inputs[batch_idx].load():
                                     fp_args = change_tensor_and_cache_device_placement(
                                         deepcopy(fp_block_inputs[batch_idx].args),
@@ -245,12 +264,17 @@ class AdaScale:
                                     )
 
                             quant_out = block(*combined_args, **qt_kwargs)
+                            if isinstance(quant_out, tuple):
+                                quant_out = torch.cat(quant_out)
                             del qt_args, fp_args, combined_args, qt_kwargs
 
                             batch_fp_out = change_tensor_and_cache_device_placement(
-                                deepcopy(fp_out[batch_idx][0]), device
+                                deepcopy(fp_out[batch_idx]), device
                             )
-                            loss = loss_fn(quant_out[0], batch_fp_out)
+                            if isinstance(batch_fp_out, tuple):
+                                batch_fp_out = torch.cat(batch_fp_out)
+
+                            loss = _LOSS_FN(quant_out, batch_fp_out)
 
                             loss.backward()
                             optimizer.step()
@@ -265,25 +289,43 @@ class AdaScale:
         qsim.model.to(device)
 
     @staticmethod
+    def _screen_for_target_type(model: torch.nn.Module) -> Type:
+        """
+        Helper to get the model type to optimize
+        This is needed because the target module might not be at the top level in which case we go deeper and fetch it
+        """
+        for module in model.modules():
+            for target in adascale_model_config_dict:
+                if isinstance(module, target):
+                    return target
+        # No targets found in provided model
+        return NoneType
+
+    @staticmethod
     def _get_blocks(qsim: QuantizationSimModel):
-        """helper to get all the blocks in the model represented by model_to_block_mapping"""
+        """helper to get all the blocks in the model represented by adascale_model_config_dict"""
 
-        def screen_for_target_type(model):
-            for module in model.modules():
-                for target in model_to_block_mapping:
-                    if isinstance(module, target):
-                        return target
-            # No targets found in provided model
-            return None
-
-        target_type = screen_for_target_type(qsim.model)
-        target_type = model_to_block_mapping.get(target_type)
+        target_type = AdaScale._screen_for_target_type(qsim.model)
+        block_type = adascale_model_config_dict.get(
+            target_type, AdaScaleModelConfig()
+        ).block_type
         target_modules = []
-        if target_type is not None:
+        if block_type is not None:
             target_modules = [
-                m for m in qsim.model.modules() if isinstance(m, target_type)
+                m for m in qsim.model.modules() if isinstance(m, block_type)
             ]
         return target_modules
+
+    @staticmethod
+    def _model_specific_lr(qsim: QuantizationSimModel) -> tuple[float, float]:
+        """
+        Given the sim object, query the model type and return the custom lr to be used
+        """
+        target_type = AdaScale._screen_for_target_type(qsim.model)
+        model_config = adascale_model_config_dict.get(
+            target_type, AdaScaleModelConfig()
+        )
+        return model_config.beta_gamma_lr, model_config.scales_lr
 
     @classmethod
     def _replace_with_adascale_weight_quantizers(cls, adascale_blocks: List):
@@ -319,17 +361,17 @@ class AdaScale:
     ) -> Tuple[List, List]:
         """Get all the adascale scale params present in the non-leaf module"""
         all_scale_parameters = []
-        all_lwc_parameters = []
+        all_beta_gamma_parameters = []
         for module in non_leaf_module.modules():
             if isinstance(module, tuple(supported_modules)) and isinstance(
                 module.param_quantizers["weight"], AdaScaleQuantizeDequantize
             ):
-                lwc_params, scale_parameters = module.param_quantizers[
+                beta_gamma_params, scale_parameters = module.param_quantizers[
                     "weight"
                 ].get_adascale_trainable_parameters()
-                all_lwc_parameters.extend(lwc_params)
+                all_beta_gamma_parameters.extend(beta_gamma_params)
                 all_scale_parameters.extend(scale_parameters)
-        return all_lwc_parameters, all_scale_parameters
+        return all_beta_gamma_parameters, all_scale_parameters
 
     @staticmethod
     def _set_requires_grad(adascale_params: list, val: bool):

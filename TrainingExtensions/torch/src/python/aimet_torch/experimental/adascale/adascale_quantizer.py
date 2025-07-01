@@ -73,7 +73,7 @@ class AdaScaleQuantizeDequantize(QuantizeDequantize):
 
     def get_adascale_trainable_parameters(self):
         """Method to query all the trainable parameters of AdaScale QDQ"""
-        return self._get_lwc_parameters(), self._get_learnable_scales()
+        return self._get_beta_gamma(), self._get_learnable_scales()
 
     def get_qdq(self) -> QuantizeDequantize:
         """
@@ -111,7 +111,7 @@ class AdaScaleQuantizeDequantize(QuantizeDequantize):
             weight = weight / torch.exp(scale)
         return weight
 
-    def _get_lwc_parameters(self) -> list[torch.Tensor]:
+    def _get_beta_gamma(self) -> list[torch.Tensor]:
         """lwc trainable parameters introduced in omniquant"""
         return [self.beta, self.gamma]
 
