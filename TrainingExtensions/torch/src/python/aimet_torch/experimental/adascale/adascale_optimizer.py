@@ -69,6 +69,7 @@ from aimet_torch.utils import get_device
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AdaScale)
 
 loss_fn = torch.nn.MSELoss()
+_QT_SAMPLING_PROB = 0.5
 
 # mapping of model and the corresponding adascale blocks type
 model_to_block_mapping = {
@@ -173,6 +174,9 @@ class AdaScale:
                     {"params": all_scale_parameters, "lr": 5e-4},
                 ]
                 optimizer = torch.optim.Adam(trainable_params)
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer, T_max=num_iterations, eta_min=0.0
+                )
                 cls._set_requires_grad(all_lwc_parameters + all_scale_parameters, True)
 
                 fp_out = []  # save fp batchwise block outputs to use across epochs
@@ -219,8 +223,29 @@ class AdaScale:
                                             device,
                                         )
                                     )
-                            quant_out = block(*qt_args, **qt_kwargs)
-                            del qt_args, qt_kwargs
+                                with fp_block_inputs[batch_idx].load():
+                                    fp_args = change_tensor_and_cache_device_placement(
+                                        deepcopy(fp_block_inputs[batch_idx].args),
+                                        device,
+                                    )
+
+                                if _QT_SAMPLING_PROB == 1.0:
+                                    combined_args = qt_args
+                                elif _QT_SAMPLING_PROB == 0.0:
+                                    combined_args = fp_args
+                                else:
+                                    combined_args = tuple(
+                                        torch.where(
+                                            torch.rand_like(qt_arg, dtype=qt_arg.dtype)
+                                            < _QT_SAMPLING_PROB,
+                                            qt_arg,
+                                            fp_arg,
+                                        )
+                                        for qt_arg, fp_arg in zip(qt_args, fp_args)
+                                    )
+
+                            quant_out = block(*combined_args, **qt_kwargs)
+                            del qt_args, fp_args, combined_args, qt_kwargs
 
                             batch_fp_out = change_tensor_and_cache_device_placement(
                                 deepcopy(fp_out[batch_idx][0]), device
@@ -229,6 +254,7 @@ class AdaScale:
 
                             loss.backward()
                             optimizer.step()
+                            scheduler.step()
                             optimizer.zero_grad()
 
                             del quant_out, batch_fp_out, loss
