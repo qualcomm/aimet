@@ -42,6 +42,7 @@
 # PyTorch imports
 import torch
 import torch.cuda
+from torchvision.datasets import ImageNet
 from tqdm import tqdm
 # End of PyTorch imports
 
@@ -49,7 +50,13 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
-def get_calibration_and_eval_data_loaders(path: str):
+BATCH_SIZE = 32
+NUM_CALIBRATION_SAMPLES = 1024
+
+def get_calibration_and_eval_data_loaders(dataset_path: str, batch_size: int):
+    """
+    Returns calibration and evaluation data-loader for ImageNet dataset from provided path
+    """
     transform = transforms.Compose(
         [
             transforms.Resize(256),
@@ -58,40 +65,35 @@ def get_calibration_and_eval_data_loaders(path: str):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    dataset = datasets.ImageFolder(path, transform=transform)
 
-    batch_size = 64
-    calibration_data_size = batch_size * 16
-    eval_data_size = len(dataset) - calibration_data_size
-
+    dataset = ImageNet(dataset_path, split='val', transform=transform)
     calibration_dataset, eval_dataset = random_split(
-        dataset, [calibration_data_size, eval_data_size]
+        dataset, [.9, 0.1]
     )
 
-    calibration_data_loader = DataLoader(calibration_dataset, batch_size=batch_size)
-    eval_data_loader = DataLoader(eval_dataset, batch_size=batch_size)
+    calibration_data_loader = torch.utils.data.DataLoader(calibration_dataset, shuffle=True, batch_size=batch_size)
+    eval_data_loader = torch.utils.data.DataLoader(eval_dataset, shuffle=True, batch_size=batch_size)
     return calibration_data_loader, eval_data_loader
 
-PATH_TO_IMAGENET = '<your_imagenet_validation_data_path>'
-calibration_data_loader, eval_data_loader = get_calibration_and_eval_data_loaders(PATH_TO_IMAGENET)
+PATH_TO_IMAGENET = './imagenet_dataset'
+calibration_data_loader, eval_data_loader = get_calibration_and_eval_data_loaders(PATH_TO_IMAGENET, BATCH_SIZE)
 # End of dataloaders
 
 # Calibration callback
 from typing import Any, Optional
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 def pass_calibration_data(model: torch.nn.Module, forward_pass_args: Optional[Any]=None):
     """
     The User of the QuantizationSimModel API is expected to write this callback based on their dataset.
     """
     data_loader = forward_pass_args
-
-    # batch_size (64) * num_batches (16) should be 1024
-    num_batches = 16
+    num_batches = NUM_CALIBRATION_SAMPLES // BATCH_SIZE
 
     model.eval()
     with torch.no_grad():
         for batch, (input_data, _) in enumerate(data_loader):
-            inputs_batch = input_data.to("cuda")  # labels are ignored
+            inputs_batch = input_data.to(device)  # labels are ignored
             model(inputs_batch)
             if batch >= num_batches:
                 break
@@ -99,7 +101,7 @@ def pass_calibration_data(model: torch.nn.Module, forward_pass_args: Optional[An
 
 # Load the model
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
-model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT).cuda()
+model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT).to(device)
 # End of load the model
 
 # Create Quantization Simulation Model
@@ -108,7 +110,7 @@ from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
 from aimet_torch.quantsim import QuantizationSimModel
 
 input_shape = (1, 3, 224, 224)
-dummy_input = torch.randn(input_shape).cuda()
+dummy_input = torch.randn(input_shape).to(device)
 sim = QuantizationSimModel(model,
                            dummy_input=dummy_input,
                            quant_scheme=QuantScheme.training_range_learning_with_tf_init,
@@ -128,7 +130,7 @@ correct = 0
 total = 0
 with torch.no_grad():
     for inputs, labels in tqdm(eval_data_loader):
-        inputs, labels = inputs.to('cuda'), labels.to('cuda')
+        inputs, labels = inputs.to(device), labels.to(device)
         outputs = sim.model(inputs)
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
@@ -141,29 +143,5 @@ with torch.no_grad():
 # Export the model for on-target inference.
 # Export the model which saves pytorch model without any simulation nodes and saves encodings file for both
 # activations and parameters in JSON format at provided path.
-sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
+sim.export(path='./', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
 # End of export
-
-# Finetune the model
-# User action required
-# The following line of code illustrates that the model is getting fine-tuned.
-# Replace the following lines to fit your pipeline.
-sim.model.train()
-num_epochs = 1
-loss_fn = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(sim.model.parameters(), lr=1e-5)
-
-for _ in range(num_epochs):
-    for inputs, labels in tqdm(calibration_data_loader):
-        inputs, labels = inputs.to('cuda'), labels.to('cuda')
-        logits = sim.model(inputs)
-        loss = loss_fn(logits, labels)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-
-# Export the model which saves pytorch model without any simulation nodes and saves encodings file for both
-# activations and parameters in JSON format
-sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2', dummy_input=dummy_input.cpu())
-# End of export
-# End of example

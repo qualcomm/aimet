@@ -51,8 +51,6 @@ from aimet_torch.quantsim import QuantizationSimModel
 
 sim = QuantizationSimModel(model, 
                            dummy_input,
-                           quant_scheme=QuantScheme.training_range_learning_with_tf_init,
-                           config_file=get_path_for_per_channel_config(),
                            default_param_bw=8,
                            default_output_bw=16)
 print(sim)

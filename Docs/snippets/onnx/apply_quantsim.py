@@ -49,8 +49,8 @@ pt_model = mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
 input_shape = (1, 3, 224, 224)
 dummy_input = torch.randn(input_shape)
 
-# Modify file_path as you wish, we are using temporary directory for now
-file_path = os.path.join('/tmp', f'mobilenet_v2.onnx')
+# Modify file_path to save model at a different location
+file_path = os.path.join('./', 'mobilenet_v2.onnx')
 torch.onnx.export(pt_model,
                   (dummy_input,),
                   file_path,
@@ -72,30 +72,37 @@ model, _ = onnxsim.simplify(model)
 # End of prepare model
 
 # Set up dataloader
-import torchvision
-from torchvision import transforms
+from torchvision import transforms, datasets
+from torch.utils.data import DataLoader, random_split
 
-DATASET_ROOT = ... # Set your path to imagenet dataset root directory
 BATCH_SIZE = 32
 NUM_CALIBRATION_SAMPLES = 1024
-NUM_EVAL_SAMPLES = 50000
 
-preprocess = transforms.Compose(
-    [
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+def get_calibration_and_eval_data_loaders(path: str, batch_size: int):
+    """
+    Returns calibration and evaluation data-loader for ImageNet dataset from provided path
+    """
+    transform = transforms.Compose(
+        [
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
-imagenet_data = torchvision.datasets.ImageNet(DATASET_ROOT,
-                                              split="val",
-                                              transform=preprocess)
+    dataset = datasets.ImageNet(path, split='val', transform=transform)
+    calibration_dataset, eval_dataset = random_split(
+        dataset, [.9, 0.1]
+    )
 
-dataloader = torch.utils.data.DataLoader(imagenet_data,
-                                         batch_size=BATCH_SIZE,
-                                         shuffle=True)
+    calibration_data_loader = DataLoader(calibration_dataset, shuffle=True, batch_size=batch_size)
+    eval_data_loader = DataLoader(eval_dataset, shuffle=True, batch_size=batch_size)
+    return calibration_data_loader, eval_data_loader
+
+# Change path here to point to different dataset
+PATH_TO_IMAGENET = './imagenet_dataset'
+calibration_data_loader, eval_data_loader = get_calibration_and_eval_data_loaders(PATH_TO_IMAGENET, BATCH_SIZE)
 # End of setting up dataloader
 
 # Create QuantSim object
@@ -103,7 +110,7 @@ from aimet_common.defs import QuantScheme
 import aimet_onnx
 from aimet_onnx import QuantizationSimModel
 
-# Optionally use ["CUDAExecutionProvider", "CPUExecutionProvider"] for GPU enablement
+# Optionally use ["CUDAExecutionProvider", "CPUExecutionProvider"] to accelerate quantization with Nvidia GPU
 providers = ["CPUExecutionProvider"]
 sim = QuantizationSimModel(model,
                            param_type=aimet_onnx.int8,
@@ -119,7 +126,7 @@ def onnx_data_generator(num_batches):
     """
     Example conversion from torch dataloader to onnx model inputs
     """
-    for i, (data, _) in enumerate(dataloader):
+    for i, (data, _) in enumerate(calibration_data_loader):
         if i >= num_batches:
             break
         yield {input_name: data.numpy()}
@@ -132,7 +139,7 @@ sim.compute_encodings(onnx_data_generator(NUM_CALIBRATION_SAMPLES // BATCH_SIZE)
 # Evaluate quantized accuracy
 correct_predictions = 0
 total_samples = 0
-for i, (inputs, labels) in enumerate(tqdm(dataloader)):
+for i, (inputs, labels) in enumerate(tqdm(eval_data_loader)):
     pred_probs, *_ = sim.session.run(None, {input_name: inputs.numpy()})
     pred_labels = np.argmax(pred_probs, axis=1)
     correct_predictions += np.sum(pred_labels == labels.numpy())
@@ -145,5 +152,5 @@ print(f'Quantized accuracy (W8A16): {accuracy:.4f}')
 # Export the model
 # Export the model for on-target inference. Saves ONNX model without quantization nodes
 # and encodings file with all tensor encodings in JSON format at provided path.
-sim.export(path='/tmp', filename_prefix='quantized_mobilenet_v2')
+sim.export(path='./', filename_prefix='quantized_mobilenet_v2')
 # End of exporting the model

@@ -1,26 +1,37 @@
 .. _techniques-ptq:
 
-###########
-Calibration
-###########
+##########################
+Post Training Quantization
+##########################
 
-Calibration is the process of determining the appropriate scale and offset parameters for the quantizers added
-to your model graph. Quantization parameters for weights can be precomputed. Computing quantization parameters for activation
-require passing small, representative data samples through the model to gather range statistics.
+Post-Training Quantization (PTQ) is the process of determining the appropriate scale and offset parameters for the quantizers inserted into a model’s computation graph.
+While quantization parameters for weights can typically be precomputed,
+determining parameters for activations requires running a small, representative dataset through the model to collect range statistics.
+
+This process of computing scale and offset values is commonly referred to as calibration.
 
 Workflow
 ========
 
-Use the following procedure to calibrate your model.
+Let’s take an example for calibrating a MobileNetV2 model.
 
 Prerequisites
 -------------
 
-Load your trained model and dataset.
+1. Download ImageNet dataset
+
+.. code-block:: bash
+
+    wget -P ./imagenet_dataset https://image-net.org/data/ILSVRC/2012/ILSVRC2012_devkit_t12.tar.gz
+    wget -P ./imagetnet_dataset https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
+
+If you already have imagenet dataset locally that you would like to use, simply replace dataset path from `imagenet_dataset` later.
+
+2. Load PyTorch model and dataset
 
 .. note::
 
-    The examples below use a pretrained MobileNetV2 model. Substitute your model.
+    The examples below use a pre-trained MobileNetV2 model. You can also load your model instead.
 
 .. tab-set::
     :sync-group: platform
@@ -102,7 +113,6 @@ Load your trained model and dataset.
             :language: python
             :start-after: # Prepare model with onnx-simplifier
             :end-before:  # End of prepare model
-
 
 
 Step 1: Creating a QuantSim model
@@ -218,7 +228,7 @@ to initialize their quantization encodings. "Encodings" refers to the scale and 
 Step 4: Evaluation
 ------------------
 
-Next, evaluate the :class:`QuantizationSimModel` to compute quantized accuracy.
+Next, evaluate the :class:`QuantizationSimModel` to measure the model’s accuracy after quantization.
 
 .. tab-set::
     :sync-group: platform
@@ -262,8 +272,8 @@ Next, evaluate the :class:`QuantizationSimModel` to compute quantized accuracy.
 Step 5: Exporting the model
 ---------------------------
 
-Lastly, export a version of the model with quantization operations removed and an encodings JSON
-file containing quantization scale and offset parameters.
+If the off-target accuracy of the quantized model is within acceptable limits (Step 4), we can proceed with deployment and export the model to ONNX format.
+During export, all intermediate quantization operations are removed, and the quantization parameters—scale and offset—are serialized into a JSON file.
 
 .. tab-set::
     :sync-group: platform

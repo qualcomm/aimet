@@ -4,21 +4,21 @@
 Example Notebooks
 ########
 
-AIMET end-to-end examples are **Jupyter Notebooks** that are intended to:
+AIMET’s end-to-end examples are provided as **Jupyter Notebooks** designed to help you:
 
-- Familiarize you with the AIMET APIs,
-- Demonstrate how to apply AIMET to a pre-trained model from PyTorch, ONNX and TensorFlow frameworks,
-- Teach you how to use AIMET quantization and compression techniques.
+- Get familiar with the AIMET APIs
+- Learn how to apply AIMET to pre-trained models from PyTorch, ONNX, and TensorFlow frameworks
+- Understand and implement AIMET’s quantization and compression techniques
 
-For a discussion of quantization and compression techniques, see :doc:`Optimization User Guide <../opt-guide/index>`.
-
-For the API reference, see :doc:`API reference<../apiref/index>`
+For a deeper dive into these techniques, refer to the Optimization User Guide.
+For detailed API documentation, see the API Reference, see :doc:`API reference<../apiref/index>`
 
 Browse the notebooks
 ====================
 
-The following tables provide links to viewable HTML versions of the jupyter notebooks for AIMET quantization
-and compression features. Instructions after the tables describe how to run the notebooks.
+The tables below provide links to viewable HTML versions of Jupyter Notebooks that showcase AIMET’s quantization and compression features.
+
+Following the tables, you’ll find step-by-step instructions on how to run these notebooks locally or in your preferred environment.
 
 **Model Quantization Examples**
 

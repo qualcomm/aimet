@@ -26,8 +26,7 @@ Alternative packages
 ====================
 
 Install the latest version of AIMET for supported framework variants and compute platforms including
-TensorFlow, ONNX and PyTorch (legacy `aimet_torch.v1` interface) from the .whl files hosted at
-https://github.com/quic/aimet/releases.
+TensorFlow, ONNX and PyTorch from the .whl files hosted at https://github.com/quic/aimet/releases.
 
 Prerequisites
 -------------
@@ -197,9 +196,10 @@ Follow the documentation corresponding to that release to select and install the
 Building from source
 ====================
 
-For most users, installing the pre-built AIMET package via the pip package manager offers the best
-experience. However, if you want to use the latest code or contribute to AIMET, you need to build it
-from source. To build the latest AIMET code from the source, see :ref:`Build AIMET from source <build-from-source>`.
+For most users, the recommended way to install AIMET is by using the pre-built package available through the pip package manager, as it provides the most straightforward and reliable experience.
+
+However, if you prefer to work with the latest source code or plan to contribute to AIMET development, you’ll need to build it from source.
+To do so, follow the steps outlined for building the latest AIMET codebase manually, see :ref:`Build AIMET from source <build-from-source>`.
 
 .. |torch_whl_suffix| replace:: \-py38-none-any.whl
 .. |whl_suffix| replace:: \-cp310-cp310-manylinux_2_34_x86_64.whl
