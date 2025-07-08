@@ -936,7 +936,7 @@ class QuantizationSimModel:
                         )
                     else:
                         target_quantizer_for_second_input.use_symmetric_encodings = True
-                        target_quantizer_for_second_input.bitwidth = 8
+                        target_quantizer_for_second_input.set_bitwidth(8)
                 else:
                     if (
                         target_quantizer_for_first_input is None
@@ -948,7 +948,7 @@ class QuantizationSimModel:
                         )
                     elif target_quantizer_for_second_input.bitwidth == 16:
                         target_quantizer_for_second_input.use_symmetric_encodings = True
-                        target_quantizer_for_first_input.bitwidth = 16
+                        target_quantizer_for_first_input.set_bitwidth(16)
 
             else:
                 bias_idx = _get_matmul_add_bias_idx(op, self.model.model)

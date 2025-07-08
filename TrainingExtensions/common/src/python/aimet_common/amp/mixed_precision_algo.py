@@ -1075,9 +1075,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC):  # pylint: disable=too-many-instance-at
             module_bitwidth_dict = {}
             bit_ops = starting_bit_ops
             for quantizer_group, candidate, _, _ in accuracy_list[: i + 1]:
-                quantizer_group.set_quantizers_to_candidate(
-                    self._module_name_dict, candidate
-                )
+                self._set_quantizer_group_to_candidate(quantizer_group, candidate)
                 bit_ops = self.calculate_running_bit_ops(
                     quantizer_group,
                     module_bitwidth_dict,
@@ -1124,8 +1122,8 @@ class GreedyMixedPrecisionAlgo(abc.ABC):  # pylint: disable=too-many-instance-at
             )
 
             for quantizer_group, candidate, _, _ in accuracy_list[: i + 1]:
-                quantizer_group.set_quantizers_to_candidate(
-                    self._module_name_dict, starting_candidate
+                self._set_quantizer_group_to_candidate(
+                    quantizer_group, starting_candidate
                 )
 
             return eval_score
@@ -1150,9 +1148,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC):  # pylint: disable=too-many-instance-at
             self._set_all_quantizer_groups_to_candidate(baseline_candidate)
         else:
             for quantizer_group, candidate, _, _ in accuracy_list[: i + 1]:
-                quantizer_group.set_quantizers_to_candidate(
-                    self._module_name_dict, candidate
-                )
+                self._set_quantizer_group_to_candidate(quantizer_group, candidate)
 
         logger.info("Completed Pareto list computation")
 
@@ -1161,6 +1157,11 @@ class GreedyMixedPrecisionAlgo(abc.ABC):  # pylint: disable=too-many-instance-at
         logger.info("AMP phase-2 final accuracy:%f", self._final_eval_score)
 
         return [x for x in pareto_front if x is not None]
+
+    def _set_quantizer_group_to_candidate(
+        self, quantizer_group: QuantizerGroupBase, candidate: CANDIDATE_WITH_DTYPE
+    ):
+        quantizer_group.set_quantizers_to_candidate(self._module_name_dict, candidate)
 
     @staticmethod
     def _validate_inputs(candidates: List[CANDIDATE_WITH_DTYPE]):

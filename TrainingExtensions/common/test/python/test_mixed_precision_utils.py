@@ -44,6 +44,7 @@ from aimet_common.amp.utils import (
     visualize_pareto_curve,
     create_sensitivity_plot,
     _candidate_to_str,
+    candidate_cost,
 )
 from aimet_common.defs import QuantizationDataType
 
@@ -144,3 +145,23 @@ class TestCommonAMPUtils:
             for quantizer_group, bw, acc, _ in accuracy_list
         ]
         assert sorted(plotted_data) == sorted(real_data)
+
+    def test_candidate_cost_factor(self):
+        w16a16 = ((16, QuantizationDataType.int), (16, QuantizationDataType.int))
+        fp16 = ((16, QuantizationDataType.float), (16, QuantizationDataType.float))
+        w8a16 = ((16, QuantizationDataType.int), (8, QuantizationDataType.int))
+        w4a16 = ((16, QuantizationDataType.int), (4, QuantizationDataType.int))
+        w8a8 = ((8, QuantizationDataType.int), (8, QuantizationDataType.int))
+        w4a8 = ((8, QuantizationDataType.int), (4, QuantizationDataType.int))
+        w4afp16 = ((16, QuantizationDataType.float), (4, QuantizationDataType.int))
+        a16 = ((16, QuantizationDataType.int), (None, None))
+        a8 = ((8, QuantizationDataType.int), (None, None))
+
+        assert candidate_cost(*w16a16) < candidate_cost(*fp16)
+        assert candidate_cost(*w8a16) < candidate_cost(*w16a16)
+        assert candidate_cost(*w8a8) < candidate_cost(*w8a16)
+        assert candidate_cost(*w4a8) < candidate_cost(*w8a8)
+        assert candidate_cost(*w4a16) < candidate_cost(*w8a16)
+        assert candidate_cost(*w8a8) == candidate_cost(*w4a16)
+        assert candidate_cost(*w4a16) < candidate_cost(*w4afp16)
+        assert candidate_cost(*a8) < candidate_cost(*a16)

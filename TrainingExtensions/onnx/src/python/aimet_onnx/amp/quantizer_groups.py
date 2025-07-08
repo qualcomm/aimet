@@ -210,7 +210,9 @@ def find_quantizer_group(sim: QuantizationSimModel):
         }
         activations = related_tensors - parameters
 
-        quantizer_group = QuantizerGroup(tuple(parameters), tuple(activations))
+        quantizer_group = QuantizerGroup(
+            tuple(sorted(parameters)), tuple(sorted(activations))
+        )
         logger.debug("Quantizer Group added: %s", quantizer_group)
         quantizer_groups.append(quantizer_group)
 

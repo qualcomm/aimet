@@ -41,13 +41,14 @@ import os
 from collections import defaultdict, OrderedDict
 import pickle
 import functools
+import itertools
 from typing import Any, Callable, Tuple, List, Dict
 import json
 import numpy as np
 import onnxruntime as ort
 
 from aimet_common.utils import AimetLogger, save_json_yaml
-from aimet_common.defs import CallbackFunc
+from aimet_common.defs import CallbackFunc, qtype
 from aimet_common.amp.mixed_precision_algo import (
     GreedyMixedPrecisionAlgo as MixedPrecisionAlgo,
 )
@@ -58,6 +59,7 @@ from aimet_common.amp.utils import (
     ACCURACY_LIST,
     disable_quantizers,
     enable_quantizers,
+    candidate_cost,
 )
 
 from aimet_onnx.amp import utils as mixed_precision_utils
@@ -642,3 +644,169 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
         """
         Reduce mixed precision convert ops if enabled and supported
         """
+
+
+class _GreedyMixedPrecisionFromDict(GreedyMixedPrecisionAlgo):
+    def __init__(
+        self,
+        sim: QuantizationSimModel,
+        mp_accuracy_results: Dict[
+            Tuple[str, str], Tuple[Dict[str, Any], Dict[str, float]]
+        ],
+        eval_fn: Callable[[ort.InferenceSession], float],
+        results_dir,
+    ):
+        self._encoding_dicts = {}
+        self._score_dicts = {}
+        for precision, (score_dict, enc_dict) in mp_accuracy_results.items():
+            candidate = _precision_to_candidate(precision)
+            self._encoding_dicts[candidate] = enc_dict
+            self._score_dicts[candidate] = score_dict
+
+        super().__init__(
+            sim,
+            [
+                _precision_to_candidate(precision)
+                for precision in mp_accuracy_results.keys()
+            ],
+            eval_callback_for_phase1=CallbackFunc(lambda _: RuntimeError()),
+            eval_callback_for_phase2=CallbackFunc(
+                lambda session, _: float(eval_fn(session))
+            ),
+            results_dir=results_dir,
+            clean_start=True,
+            forward_pass_callback=CallbackFunc(lambda *_: RuntimeError()),
+        )
+
+    def _create_and_save_accuracy_list(
+        self, baseline_candidate: CANDIDATE_WITH_DTYPE
+    ) -> ACCURACY_LIST:
+        """
+        Creates accuracy list from sensitivity dict info. Does not actually save the list.
+        """
+        # Skips phase 1 of AMP algorithm
+        # pylint: disable=too-many-locals, too-many-branches, too-many-statements
+        index_of_quantizer_group = {}
+        for index, quantizer_group in enumerate(self.quantizer_groups):
+            index_of_quantizer_group[quantizer_group] = index
+
+        # Tuple["QuantizerGroup", CANDIDATE_WITH_DTYPE, float, int]
+        accuracy_list: ACCURACY_LIST = []
+
+        for candidate, score_dict in self._score_dicts.items():
+            if candidate == baseline_candidate:
+                continue
+
+            for quantizer_group in self.quantizer_groups:
+                quantizer_group: QuantizerGroup = quantizer_group
+                # All scores should be the same for a group since the same logic is used to
+                # Create quantizer groups in phase one. Use min reduction in case this changes
+                score = min(
+                    score_dict[name]
+                    for name in itertools.chain(
+                        quantizer_group.activation_quantizers,
+                        quantizer_group.parameter_quantizers,
+                    )
+                )
+                bit_ops_reduction = self._find_bit_ops_reduction_for_acc_list(
+                    quantizer_group, baseline_candidate, candidate
+                )
+                accuracy_list.append(
+                    (quantizer_group, candidate, score, bit_ops_reduction)
+                )
+
+                accuracy_list = sort_accuracy_list(
+                    accuracy_list, index_of_quantizer_group
+                )
+
+        return accuracy_list
+
+    def _optimize_mp_profile_and_evaluate_model(self):
+        # Apply exception rules
+        self._sim._apply_exception_rules()  # pylint:disable = protected-access
+
+        # Note: We do not have samples to re-calibrate the sim after applying exception rules
+        #   Instead, must find a valid encoding for the layer with matching bitwidth
+        for name, quantizer in self._sim.qc_quantize_op_dict.items():
+            if quantizer.is_initialized() or not quantizer.enabled:
+                continue
+            self._load_valid_encoding(name)
+
+        return self.evaluate_model(self.algo_params.eval_callback_for_phase2)
+
+    def _get_best_candidate(self) -> Tuple[float, CANDIDATE_WITH_DTYPE]:
+        """Gets best candidate from list of provided candidates"""
+
+        # TODO: Remove this. Extra state that gets changed silently in super()._get_best_candidate
+        for candidate in self.baseline_candidate_options:
+            self._candidate_mapping_dict[candidate] = {
+                qg: candidate for qg in self.quantizer_groups
+            }
+
+        highest_prec = sorted(
+            self.baseline_candidate_options,
+            key=lambda candidate: candidate_cost(*candidate),
+        )[-1]
+        self._set_all_quantizer_groups_to_candidate(highest_prec)
+        eval_score = self.evaluate_model(self.algo_params.eval_callback_for_phase2)
+        return eval_score, highest_prec
+
+    def _choose_lowest_from_candidates(self) -> Tuple[float, CANDIDATE_WITH_DTYPE]:
+        """
+        Choose the lowest bitwidth candidate among all the candidates.
+
+        :return: Lowest bitwidth candidate and corresponding accuracy.
+        """
+        lowest_prec = sorted(
+            self.baseline_candidate_options,
+            key=lambda candidate: candidate_cost(*candidate),
+        )[0]
+        self._set_all_quantizer_groups_to_candidate(lowest_prec)
+        eval_score = self.evaluate_model(self.algo_params.eval_callback_for_phase2)
+        return eval_score, lowest_prec
+
+    def _set_quantizer_group_to_candidate(
+        self, quantizer_group: QuantizerGroup, candidate: CANDIDATE_WITH_DTYPE
+    ):
+        # pylint: disable = protected-access
+        # Load cached encoding for the candidate
+        for quantizer_name in (
+            quantizer_group.activation_quantizers + quantizer_group.parameter_quantizers
+        ):
+            encoding = self._encoding_dicts[candidate][quantizer_name]
+            self._sim.qc_quantize_op_dict[quantizer_name]._load_encodings_dict(encoding)
+
+    def _load_valid_encoding(self, quantizer_name: str):
+        # pylint: disable = protected-access
+        if quantizer_name in self._sim.param_names:
+            self._sim._compute_param_encodings(overwrite=False)
+            return
+
+        quantizer: QcQuantizeOp = self._sim.qc_quantize_op_dict[quantizer_name]
+
+        for encoding_dict in self._encoding_dicts.values():
+            enc = encoding_dict[quantizer_name]
+            if (
+                enc["bw"] == quantizer.bitwidth
+                and enc["dtype"] == quantizer.data_type.name.upper()
+            ):
+                quantizer._load_encodings_dict(enc)
+                return
+
+        raise RuntimeError(f"No valid encoding found for quantizer: {enc}")
+
+    def _set_all_quantizer_groups_to_candidate(self, candidate):
+        """
+        Sets all quantizer groups to bitwidth/dtype of candidate
+
+        :param candidate: Bitwidth and dtype to set the quantizer groups to
+        """
+        for quantizer_group in self.quantizer_groups:
+            self._set_quantizer_group_to_candidate(quantizer_group, candidate)
+
+
+def _precision_to_candidate(precision: set[Tuple[str, str]]) -> CANDIDATE_WITH_DTYPE:
+    return tuple(
+        tuple(reversed(qtype.from_string(prec).to_legacy_repr()))
+        for prec in reversed(precision.split(","))
+    )

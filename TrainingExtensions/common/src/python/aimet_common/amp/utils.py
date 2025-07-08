@@ -684,3 +684,21 @@ def brute_force_search(
 
     # target is smaller than the last element
     return len(values) - 1
+
+
+def candidate_cost(
+    activation_candidate: Tuple[int, QuantizationDataType],
+    param_candidate: Tuple[int, QuantizationDataType],
+) -> float:
+    """
+    Approximates the computational cost factor of a given mixed precision candidate. The raw value itself is meaningless
+    and is only to be used for comparison between candidates.
+    """
+    factor = 1
+    if activation_candidate[0]:
+        factor *= get_effective_bitwidth(
+            activation_candidate[1], activation_candidate[0]
+        )
+    if param_candidate[0]:
+        factor *= get_effective_bitwidth(param_candidate[1], param_candidate[0])
+    return factor

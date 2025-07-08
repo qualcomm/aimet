@@ -543,7 +543,7 @@ class QcQuantizeOp:
         """
         Set bitwidth for quantization
         """
-        if not self._is_encoding_frozen:
+        if not self._is_encoding_frozen and bitwidth != self.bitwidth:
             self.bitwidth = bitwidth
             self._reset_encodings()
 

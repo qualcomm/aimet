@@ -36,10 +36,13 @@
 # =============================================================================
 """Mixed precision inference"""
 
-from typing import Any, Callable, Union, Tuple, List
+from typing import Any, Callable, Union, Tuple, List, Dict, Iterable
+import tempfile
+from tqdm import tqdm
 
 import onnxruntime as ort
 
+from aimet_common.defs import qtype, int8, int16
 from aimet_common.utils import AimetLogger
 from aimet_common.amp.utils import (
     visualize_quantizer_group_sensitivity,
@@ -47,11 +50,153 @@ from aimet_common.amp.utils import (
     CANDIDATE_WITH_DTYPE,
     AMPSearchAlgo,
 )
+from aimet_onnx.utils import disable_quantizers
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
-from aimet_onnx.amp.quantizer_groups import QuantizerGroup
+from aimet_onnx.amp.mixed_precision_algo import (
+    GreedyMixedPrecisionAlgo,
+    _GreedyMixedPrecisionFromDict,
+)
+from aimet_onnx.amp.quantizer_groups import QuantizerGroup, find_quantizer_group
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
+
+
+# (param_type, activation_type)
+Precision = Tuple[qtype, qtype]
+
+w8a8 = (int8, int8)
+w8a16 = (int8, int16)
+w16a16 = (int16, int16)
+
+# Dictionary of Precision: (Encoding dict, Sensitivity dict)
+_MPSensitivityResults = Dict[Precision, Tuple[Dict[str, Dict], Dict[str, float]]]
+
+
+def analyze_mixed_precision_sensitivity(
+    sim: QuantizationSimModel,
+    precisions: List[Precision],
+    eval_fn: Callable[[ort.InferenceSession], float],
+    calibration_input: Union[Callable, Iterable],
+) -> _MPSensitivityResults:
+    """
+    Runs per-layer sensitivity analysis on sim for each of the specified precisions. The result should be passed
+    to :func:`apply_amp` to optimize model precisions.
+
+    .. warning::
+        The contents of the output dictionary is subject to change between versions and should only be used as
+        input to :func:`apply_amp`.
+
+    Args:
+        sim: QuantizationSimModel to analyze
+        precisions: List of (param_type, activation_type) tuples to analyze
+        eval_fn: Function which takes in an InferenceSession and returns an evaluation score (higher being better)
+        calibration_input: Callable or iterable to be passed to sim.compute_encodings() for calibration
+
+    Returns:
+        Dictionary containing mixed precision sensitivity results
+    """
+    # TODO: Restore sim state after running this
+    # pylint: disable=protected-access
+    _, quantizer_groups = find_quantizer_group(sim)
+
+    results = {}
+    for precision in precisions:
+        logger.info("Analyzing sensitivity for precision: %s", precision)
+        _set_precision(sim, *precision)
+
+        # Note: For consistency with legacy API, compute activation encodings w/out param quantization
+        with disable_quantizers(sim, sim.param_names):
+            sim.compute_encodings(calibration_input)
+        sim._compute_param_encodings()
+
+        sens_dict = _analyze_group_sensitivities(sim, quantizer_groups, eval_fn)
+
+        encoding_list = sim._get_encodings(sim.qc_quantize_op_dict.keys(), "1.0.0")
+        encoding_dict = {enc.pop("name"): enc for enc in encoding_list}
+
+        results[",".join(str(qt) for qt in precision)] = (sens_dict, encoding_dict)
+
+    return results
+
+
+def apply_amp(
+    sim: QuantizationSimModel,
+    sensitivity_dict: _MPSensitivityResults,
+    acceptance_fn: Callable[[ort.InferenceSession], bool],
+):
+    """
+    Applies automatic mixed precision algorithm to optimize QuantizationSimModel bitwidth configuration.
+
+    Args:
+        sim: QuantizationSimModel to optimize
+        sensitivity_dict: The set of mixed precision sensitivity results returned by :func:`analyze_mixed_precision_sensitivity`
+        acceptance_fn: Callable which returns True if the input session meets the target task performance
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        mixed_precision_algo = _GreedyMixedPrecisionFromDict(
+            sim, sensitivity_dict, acceptance_fn, tmp
+        )
+        mixed_precision_algo.run(0.5)
+
+
+def _analyze_group_sensitivities(
+    sim: QuantizationSimModel,
+    quantizer_groups: List[QuantizerGroup],
+    eval_fn: Callable[[ort.InferenceSession], float],
+) -> Dict[str, float]:
+    """
+    Performs group-wise sensitivity analysis for all quantizer groups, returning sensitivity as a flattened dict of
+    tensor names to group score.
+    """
+    quantizer_sensitivities = {}
+    with disable_quantizers(sim, sim.qc_quantize_op_dict.keys()):
+        for group in tqdm(quantizer_groups):
+            quantizer_names = group.activation_quantizers + group.parameter_quantizers
+
+            # Enable group quantizers
+            for name in quantizer_names:
+                sim.qc_quantize_op_dict[name].enabled = True
+
+            group_sens = eval_fn(sim.session)
+
+            for name in quantizer_names:
+                # Add to sensitivity dictionary
+                quantizer_sensitivities[name] = group_sens
+                # Disable the quantizer
+                sim.qc_quantize_op_dict[name].enabled = False
+
+    return quantizer_sensitivities
+
+
+def _set_precision(
+    sim: QuantizationSimModel, param_type: qtype, activation_type: qtype
+):
+    """
+    Sets all quantizers to the specified param_type, activation_type
+    """
+    param_type = (
+        qtype.from_string(param_type) if isinstance(param_type, str) else param_type
+    )
+    activation_type = (
+        qtype.from_string(activation_type)
+        if isinstance(activation_type, str)
+        else activation_type
+    )
+    param_dtype, param_bw = param_type.to_legacy_repr()
+    for name in sim.param_names:
+        quantizer = sim.qc_quantize_op_dict.get(name)
+        if quantizer and quantizer.enabled:
+            quantizer.set_bitwidth(param_bw)
+            quantizer.data_type = param_dtype
+
+    act_dtype, act_bw = activation_type.to_legacy_repr()
+    for name in sim.activation_names:
+        quantizer = sim.qc_quantize_op_dict.get(name)
+        if quantizer and quantizer.enabled:
+            quantizer.set_bitwidth(act_bw)
+            quantizer.data_type = act_dtype
+
+    sim._apply_exception_rules()  # pylint: disable=protected-access
 
 
 # pylint: disable=too-many-arguments
