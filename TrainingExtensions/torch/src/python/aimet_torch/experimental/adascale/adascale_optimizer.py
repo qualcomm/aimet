@@ -162,8 +162,9 @@ class AdaScale:
 
         # replace with adascale weight quantizer which introduces trainable params - beta, gamma, s2, s3
         device = get_device(qsim.model)
+        dtype = next(qsim.model.parameters()).dtype
         cls._replace_with_adascale_weight_quantizers(adascale_blocks)
-        qsim.model.to("cpu")
+        qsim.model.to(device=torch.device("cpu"), dtype=dtype)
 
         sampler = BlockwiseSampler(
             qsim,
@@ -286,7 +287,7 @@ class AdaScale:
         del sampler
 
         cls._fold_weights_and_replace_with_qdq(adascale_blocks)
-        qsim.model.to(device)
+        qsim.model.to(device=device, dtype=dtype)
 
     @staticmethod
     def _screen_for_target_type(model: torch.nn.Module) -> Type:

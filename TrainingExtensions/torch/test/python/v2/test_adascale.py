@@ -306,6 +306,7 @@ class TestAdascale:
                             assert param.requires_grad == True
             AdaScale._fold_weights_and_replace_with_qdq(blocks)
 
+    @pytest.mark.cuda()
     @pytest.mark.parametrize(
         "model_and_shape",
         [
@@ -313,15 +314,17 @@ class TestAdascale:
             (test_models.ModelWithConsecutiveConv2dBlocks(), (200, 64, 4, 4)),
         ],
     )
-    def test_adascale_4(self, model_and_shape):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_adascale_4(self, model_and_shape, dtype):
         """test training of adascale weights"""
         model, shape = model_and_shape
+        model = model.to(dtype=dtype, device=torch.device("cuda"))
 
         batch_size = 16
         num_iterations = 130
 
         torch.manual_seed(0)
-        dummy_input = torch.rand(shape)
+        dummy_input = torch.rand(shape, dtype=dtype, device=torch.device("cuda"))
         data_set = CustomDataset(dummy_input)
         data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=True)
 
