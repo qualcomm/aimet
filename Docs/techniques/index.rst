@@ -13,8 +13,8 @@ This section gives brief overview of quantization techniques and how to apply th
   Post Training Quantization <ptq>
   Quantization Aware Training <qat>
   Blockwise Quantization <blockwise>
-  Mixed precision <mixed precision/index>
-  Analysis tools <analysis tools/index>
+  Mixed precision <mixed_precision/index>
+  Analysis tools <analysis_tools/index>
   Compression <compression/index>
 
 
@@ -32,6 +32,11 @@ Train model with quantization awareness to minimize quantization noise.
 ==============================================
 
 Quantize individual tensor with block size to balance accuracy and speed.
+
+:ref:`Mixed Precision <featureguide-mp-index>`
+==============================================
+
+Configure per-layer bit-widths to optimize accuracy and performance.
 
 :ref:`Analysis tools <techniques-analysis-tools>`
 =========================================================
