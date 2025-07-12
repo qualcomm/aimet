@@ -40,6 +40,10 @@
 
 from collections import deque
 from typing import Iterable, Optional, Sequence, Dict, List
+
+import os
+import tempfile
+
 import numpy as np
 import onnx
 from onnx import ModelProto, NodeProto, TensorProto
@@ -47,6 +51,9 @@ from onnx.helper import make_node
 from onnx.numpy_helper import from_array, to_array
 
 from aimet_common.onnx import opset10, opset13, opset21
+from aimet_common.utils import AimetLogger
+
+logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 
 
 def _add_onnx_qdq_node(
@@ -537,3 +544,32 @@ def _is_htp_interpolation_op(op_type: str) -> bool:
         "ScatterElements",
         "Upsample",
     )
+
+
+def _convert_version(
+    model: onnx.ModelProto, target_opset_version: int
+) -> onnx.ModelProto:
+    try:
+        model = onnx.version_converter.convert_version(model, target_opset_version)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # convert_version throws an exception on model > 2GB the observed exception was a
+        # RuntimeError exception about ir_version, but possible other exceptions could be
+        # triggerd. leaving this very generic for now.
+        logger.warning(
+            "onnx.version_converter.convert_version failed with exception: %s. Retrying with external data",
+            str(e),
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            onnx_file = os.path.join(tmp_dir, "model.onnx")
+            onnx.save_model(
+                model,
+                onnx_file,
+                save_as_external_data=True,
+                location="model.data",
+            )
+            model = onnx.load_model(onnx_file, load_external_data=False)
+            model = onnx.version_converter.convert_version(model, target_opset_version)
+            onnx.external_data_helper.load_external_data_for_model(model, tmp_dir)
+
+    logger.info("The opset of the onnx model is updated to %s.", target_opset_version)
+    return model

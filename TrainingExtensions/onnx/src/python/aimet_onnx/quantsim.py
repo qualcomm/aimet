@@ -91,6 +91,7 @@ from aimet_common.utils import save_json_yaml, AimetLogger, _red
 from aimet_common.quant_utils import _convert_encoding_format_0_6_1_to_1_0_0
 from aimet_common.quantsim_config.quantsim_config import _config_file_aliases
 from aimet_common.connected_graph.product import Product
+from aimet_common.onnx._utils import _convert_version
 from aimet_onnx import utils
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.meta.utils import (
@@ -1755,9 +1756,7 @@ class QuantizationSimModel:
         self.remove_quantizers(model_copy)
 
         if onnx_opset_version < desired_onnx_opset_version:
-            model_copy = onnx.version_converter.convert_version(
-                model_copy, desired_onnx_opset_version
-            )
+            model_copy = _convert_version(model_copy, desired_onnx_opset_version)
 
         _add_onnx_qdq_nodes(
             model_copy, **qdq_node_info, onnx_opset=desired_onnx_opset_version

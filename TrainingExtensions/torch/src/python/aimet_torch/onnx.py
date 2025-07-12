@@ -49,7 +49,11 @@ import onnx
 import torch
 from torch.onnx import _constants
 
-from aimet_common.onnx._utils import _add_onnx_qdq_nodes, _is_grid_preserving_op
+from aimet_common.onnx._utils import (
+    _add_onnx_qdq_nodes,
+    _is_grid_preserving_op,
+    _convert_version,
+)
 
 from .nn import QuantizationMixin
 from .quantization import DequantizedTensor
@@ -158,9 +162,7 @@ def export(
 
     if _TORCH_MAX_OPSET < target_version:
         try:
-            onnx_model = onnx.version_converter.convert_version(
-                onnx_model, target_version
-            )
+            onnx_model = _convert_version(onnx_model, target_version)
         except Exception as e:  # pylint: disable=broad-exception-caught
             f = io.StringIO()
             traceback.print_exc(file=f)
