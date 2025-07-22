@@ -51,7 +51,7 @@ import numpy as np
 # Import AIMET specific modules
 from aimet_common import quantsim
 from aimet_common.utils import AimetLogger, deprecated
-from aimet_common.defs import QuantScheme, qtype
+from aimet_common.defs import QuantScheme, qtype, QuantizationDataType
 
 from aimet_onnx.adaround.adaround_tensor_quantizer import AdaroundTensorQuantizer
 from aimet_onnx.quantsim import QuantizationSimModel
@@ -257,6 +257,25 @@ class Adaround:
 
         # Compute only param encodings
         cls._compute_param_encodings(quant_sim, params)
+
+        num_iterations = params.num_iterations
+
+        if num_iterations is None:
+            lowest_weight_bw = 32
+            for param_name in quant_sim.param_names:
+                quantizer = quant_sim.qc_quantize_op_dict[param_name]
+                if (
+                    quantizer.enabled
+                    and quantizer.data_type == QuantizationDataType.int
+                ):
+                    lowest_weight_bw = min(lowest_weight_bw, quantizer.bitwidth)
+            # If the lowest weight bitwidth is < 8, then set num_iterations to 15K by default
+            if lowest_weight_bw < 8:
+                num_iterations = 15000
+            else:
+                num_iterations = 10000
+
+        params.num_iterations = num_iterations
 
         return cls._apply_adaround(
             quant_sim,
