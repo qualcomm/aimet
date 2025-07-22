@@ -136,12 +136,6 @@ template <typename DTYPE>
 std::tuple<std::vector<DTYPE>, std::vector<DTYPE>>
 GetMinMax(const DTYPE* data, uint64_t cnt, uint64_t blockSize, ComputationMode cpuGpuMode, IAllocator* allocator, void* stream)
 {
-    // Faster for per-tensor mode
-    if (cnt == blockSize)
-    {
-        auto minMax = GetMinMax(data, cnt, cpuGpuMode);
-        return std::make_tuple<std::vector<DTYPE>, std::vector<DTYPE> >({std::get<0>(minMax)}, {std::get<1>(minMax)});
-    }
     switch (cpuGpuMode)
     {
     case COMP_MODE_CPU:

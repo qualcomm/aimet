@@ -87,6 +87,16 @@ std::tuple<std::vector<DTYPE>, std::vector<DTYPE>> GetMinMax_gpu(const DTYPE* da
                                                                  IAllocator* allocator, void* stream)
 {
     auto computeStream         = static_cast<cudaStream_t>(stream);
+
+    // Faster for per-tensor mode
+    if (cnt == blockSize)
+    {
+        // Per-tensor reduce requires stream to be synchronized first
+        cudaStreamSynchronize(computeStream);
+        auto minMax = GetMinMax_gpu(data, cnt);
+        return std::make_tuple<std::vector<DTYPE>, std::vector<DTYPE> >({std::get<0>(minMax)}, {std::get<1>(minMax)});
+    }
+
     size_t numBlocks           = cnt / blockSize;
     void* dTempStorage         = nullptr;
     size_t tempStorageBytesMin = 0;
