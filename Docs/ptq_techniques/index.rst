@@ -16,6 +16,7 @@ Post Training Quantization Techniques
     Quantized LoRa <quantized LoRa/index>
     OmniQuant <omniquant>
     Automatic quantization <autoquant>
+    SpinQuant <spinquant>
 
 :ref:`Adaptive rounding <ptq-adaround>`
 ================================================
@@ -63,3 +64,8 @@ OmniQuant is a PTQ technique to improve accuracy of the quantized model by intro
 ======================================================
 
 Analyzes the model, determines the best sequence of AIMET post-training quantization (PTQ) techniques, and applies these techniques.
+
+:ref:`SpinQuant <ptq-spinquant>`
+======================================================
+
+SpinQuant is a PTQ technique which improves the accuracy of the quantized model by inserting rotations at specific points in the model to help with outliers in activation quantization.

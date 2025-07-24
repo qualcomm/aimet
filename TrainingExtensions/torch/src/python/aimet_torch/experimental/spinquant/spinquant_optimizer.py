@@ -89,6 +89,7 @@ def apply_spinquant(model: torch.nn.Module):
     """
     Apply SpinQuant to the model, modifying weights in place. https://arxiv.org/pdf/2405.16406
     Currently only R1 rotations without optimization are supported.
+    The model is updated in place.
 
     :param model: The model to apply SpinQuant to.
     """
