@@ -1,7 +1,7 @@
 {
   "defaults":
   {
-    "hw_version": "V75",
+    "hw_version": "V73",
     "ops":
     {
       "is_output_quantized": "True"
@@ -46,15 +46,11 @@
     {
       "is_output_quantized": "False"
     },
-    "Dropout":
-    {
-      "is_output_quantized": "False"
-    },
     "Expand":
     {
       "is_output_quantized": "False"
     },
-    "Reshape":
+    "Dropout":
     {
       "is_output_quantized": "False"
     },
@@ -86,10 +82,6 @@
     "GatherND":
     {
       "is_output_quantized": "False"
-    },
-    "Gemm":
-    {
-      "per_channel_quantization": "False"
     },
     "GroupNormalization":
     {
@@ -126,10 +118,6 @@
     {
       "per_channel_quantization": "False"
     },
-    "MatMul":
-    {
-      "per_channel_quantization": "False"
-    },
     "MaxPool":
     {
       "is_output_quantized": "False"
@@ -155,6 +143,10 @@
       "is_output_quantized": "False"
     },
     "ReduceMin":
+    {
+      "is_output_quantized": "False"
+    },
+    "Reshape":
     {
       "is_output_quantized": "False"
     },
@@ -218,6 +210,22 @@
     "Transpose":
     {
       "is_output_quantized": "False"
+    },
+    "Flatten":
+    {
+      "is_output_quantized" : "False"
+    },
+    "Unsqueeze":
+    {
+      "is_output_quantized" : "False"
+    },
+    "Compress":
+    {
+      "is_output_quantized" : "False"
+    },
+    "Identity":
+    {
+      "is_output_quantized" : "False"
     },
     "Shape":
     {

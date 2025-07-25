@@ -1,7 +1,7 @@
 {
   "defaults":
   {
-    "hw_version": "V81",
+    "hw_version": "V69",
     "ops":
     {
       "is_output_quantized": "True"
@@ -54,7 +54,19 @@
     {
       "is_output_quantized": "False"
     },
+    "GatherND":
+    {
+      "is_output_quantized": "False"
+    },
+    "ReduceMax":
+    {
+      "is_output_quantized": "False"
+    },
     "Reshape":
+    {
+      "is_output_quantized": "False"
+    },
+    "MaxPool":
     {
       "is_output_quantized": "False"
     },
@@ -63,6 +75,22 @@
       "is_output_quantized": "False"
     },
     "SpaceToDepth":
+    {
+      "is_output_quantized": "False"
+    },
+    "Split":
+    {
+      "is_output_quantized": "False"
+    },
+    "Slice":
+    {
+      "is_output_quantized": "False"
+    },
+    "TopK":
+    {
+      "is_output_quantized": "False"
+    },
+    "Transpose":
     {
       "is_output_quantized": "False"
     },
@@ -78,30 +106,39 @@
     {
       "is_output_quantized": "False"
     },
-    "Gather":
-    {
-      "is_output_quantized": "False",
-      "per_channel_quantization": "False"
-    },
-    "GatherND":
+    "NonZero":
     {
       "is_output_quantized": "False"
     },
-    "Gemm":
+    "Tanh":
     {
-      "per_channel_quantization": "False"
-    },
-    "GroupNormalization":
-    {
-      "per_channel_quantization": "False",
-      "params": {
-        "bias":
-        {
-          "is_quantized": "True"
-        }
+      "encoding_constraints":
+      {
+        "min": -1.0,
+        "max": 1.0
       }
     },
-    "LayerNormalization":
+    "Tile":
+    {
+      "is_output_quantized": "False"
+    },
+    "Squeeze":
+    {
+      "is_output_quantized": "False"
+    },
+    "Pad":
+    {
+      "is_output_quantized": "False"
+    },
+    "Mean":
+    {
+      "is_output_quantized": "False"
+    },
+    "ReduceMin":
+    {
+      "is_output_quantized": "False"
+    },
+    "RMSNormalization":
     {
       "per_channel_quantization": "False",
       "params": {
@@ -109,6 +146,10 @@
           "is_symmetric": "False"
         }
       }
+    },
+    "LayerNormalization":
+    {
+      "per_channel_quantization": "False"
     },
     "BatchNormalization":
     {
@@ -126,98 +167,10 @@
     {
       "per_channel_quantization": "False"
     },
-    "MatMul":
+    "Gather":
     {
+      "is_output_quantized": "False",
       "per_channel_quantization": "False"
-    },
-    "MaxPool":
-    {
-      "is_output_quantized": "False"
-    },
-    "MaxRoiPool":
-    {
-      "is_output_quantized": "False"
-    },
-    "Mean":
-    {
-      "is_output_quantized": "False"
-    },
-    "NonZero":
-    {
-      "is_output_quantized": "False"
-    },
-    "Pad":
-    {
-      "is_output_quantized": "False"
-    },
-    "ReduceMax":
-    {
-      "is_output_quantized": "False"
-    },
-    "ReduceMin":
-    {
-      "is_output_quantized": "False"
-    },
-    "RMSNormalization":
-    {
-      "per_channel_quantization": "False",
-      "params": {
-        "weight": {
-          "is_symmetric": "False"
-        }
-      }
-    },
-    "ScatterElements":
-    {
-      "is_output_quantized": "False"
-    },
-    "Sigmoid":
-    {
-      "encoding_constraints":
-      {
-        "min": 0.0,
-        "max": 1.0
-      }
-    },
-    "Softmax":
-    {
-      "encoding_constraints":
-      {
-        "min": 0.0,
-        "max": 1.0
-      }
-    },
-    "Slice":
-    {
-      "is_output_quantized": "False"
-    },
-    "Split":
-    {
-      "is_output_quantized": "False"
-    },
-    "Squeeze":
-    {
-      "is_output_quantized": "False"
-    },
-    "Tanh":
-    {
-      "encoding_constraints":
-      {
-        "min": -1.0,
-        "max": 1.0
-      }
-    },
-    "Tile":
-    {
-      "is_output_quantized": "False"
-    },
-    "TopK":
-    {
-      "is_output_quantized": "False"
-    },
-    "Transpose":
-    {
-      "is_output_quantized": "False"
     },
     "Flatten":
     {
@@ -253,17 +206,11 @@
   "supergroups":
   [
     {
-      "op_list": ["Add", "Relu"]
+      "op_list": ["Conv", "Relu"]
     },
-    {
-      "op_list": ["Conv", "BatchNormalization","HardSwish"]
-    },
-    {
-      "op_list": ["Conv", "BatchNormalization","PRelu"]
-    },
-    {
-      "op_list": ["Conv", "BatchNormalization", "LeakyRelu"]
-    },
+	{
+      "op_list": ["Conv", "Clip"]
+	},
     {
       "op_list": ["Conv", "BatchNormalization", "Relu"]
     },
@@ -271,28 +218,10 @@
       "op_list": ["Conv", "Transpose", "Relu"]
     },
     {
-      "op_list": ["Conv", "Transpose", "PRelu"]
-    },
-    {
-      "op_list": ["Conv", "Transpose", "LeakyRelu"]
-    },
-	{
-      "op_list": ["Conv", "Clip"]
-	},
-    {
-      "op_list": ["Conv", "HardSwish"]
-    },
-    {
-      "op_list": ["Conv", "PRelu"]
-    },
-    {
-      "op_list": ["Conv", "LeakyRelu"]
-    },
-    {
-      "op_list": ["Conv", "Relu"]
-    },
-    {
       "op_list": ["ConvTranspose", "Relu"]
+    },
+    {
+      "op_list": ["Add", "Relu"]
     },
     {
       "op_list": ["Gemm", "Relu"]

@@ -58,6 +58,10 @@
     {
       "is_output_quantized": "False"
     },
+    "Gemm":
+    {
+      "per_channel_quantization": "False"
+    },
     "ReduceMax":
     {
       "is_output_quantized": "False"
@@ -65,6 +69,10 @@
     "Reshape":
     {
       "is_output_quantized": "False"
+    },
+    "MatMul":
+    {
+      "per_channel_quantization": "False"
     },
     "MaxPool":
     {

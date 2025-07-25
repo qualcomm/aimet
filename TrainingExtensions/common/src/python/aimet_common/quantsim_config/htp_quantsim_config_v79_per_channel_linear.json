@@ -1,7 +1,7 @@
 {
   "defaults":
   {
-    "hw_version": "V75",
+    "hw_version": "V79",
     "ops":
     {
       "is_output_quantized": "True"
@@ -87,10 +87,6 @@
     {
       "is_output_quantized": "False"
     },
-    "Gemm":
-    {
-      "per_channel_quantization": "False"
-    },
     "GroupNormalization":
     {
       "per_channel_quantization": "False",
@@ -123,10 +119,6 @@
       }
     },
     "InstanceNormalization":
-    {
-      "per_channel_quantization": "False"
-    },
-    "MatMul":
     {
       "per_channel_quantization": "False"
     },
@@ -218,6 +210,22 @@
     "Transpose":
     {
       "is_output_quantized": "False"
+    },
+    "Flatten":
+    {
+      "is_output_quantized" : "False"
+    },
+    "Unsqueeze":
+    {
+      "is_output_quantized" : "False"
+    },
+    "Compress":
+    {
+      "is_output_quantized" : "False"
+    },
+    "Identity":
+    {
+      "is_output_quantized" : "False"
     },
     "Shape":
     {
