@@ -82,6 +82,7 @@ class ActivationSampler:
         fp_act_name: str,
         quant_act_name: str,
         quant_sim: QuantizationSimModel,
+        fp32_model: ModelProto,
         use_cuda: bool,
         device: int = 0,
     ):
@@ -89,11 +90,13 @@ class ActivationSampler:
         :param fp_act_name: FP output tensor name of the module to retrieve
         :param quant_act_name: Quant input tensor name of the module to retrieve
         :param quant_sim: QuantizationSimModel object
+        :param fp32_model: Unquantized FP32 model
         :param use_cuda: If we should use cuda
         :param device: CUDA device ID
         :return: Input data to quant op, Output data from original op
         """
         self._quant_sim = quant_sim
+        self._fp32_model = fp32_model
         self._fp_act_name = fp_act_name
         self._quant_act_name = quant_act_name
 
@@ -116,40 +119,44 @@ class ActivationSampler:
         else:
             self.providers = ["CPUExecutionProvider"]
 
-        self.handles, self.sess = self.create_session([fp_act_name, quant_act_name])
+        self.fp32_sess, self.fp32_handle = self.create_session(
+            self._fp32_model, self._fp_act_name
+        )
+        self.qsim_sess, self.qsim_handle = self.create_session(
+            self._quant_sim.model.model, self._quant_act_name
+        )
 
-    def create_session(self, activation_names: List[str]):
+    def create_session(self, model: onnx.ModelProto, activation: str):
         """
         Helper to create a session using both module's input and output tensor names
 
-        :param activation_names: List of activation names to add hook to
+        :param model: ONNX ModelProto to create a session
+        :param activation: activation to add a hook to
         """
-        handles = []
-        for activation_name in activation_names:
-            handles.append(
-                add_hook_to_get_activation(self._quant_sim.model.model, activation_name)
-            )
+        handle = add_hook_to_get_activation(model, activation)
         sess = build_session(
-            self._quant_sim.model.model,
+            model,
             self.providers,
             self._quant_sim._user_onnx_libs,
         )
-        return handles, sess
+        return sess, handle
 
     def restore_graph(self):
         """
         Remove all the additional model outputs added to the graph and restore its original state
         """
-        for handle in self.handles:
-            remove_activation_hooks(self._quant_sim.model.model, handle)
+        remove_activation_hooks(self._fp32_model, self.fp32_handle)
+        remove_activation_hooks(self._quant_sim.model.model, self.qsim_handle)
 
+    @staticmethod
     def run_session(
-        self, model_inputs: Dict[str, List[np.ndarray]], activation_name: str
+        session, model_inputs: Dict[str, List[np.ndarray]], activation_name: str
     ) -> np.ndarray:
         """
         Return quantized module input and fp module outputs using the given model_inputs
         :param model_inputs: inputs to the model
         :param activation_name: list of activation names to retrieve the output
+        :param session: session to run
         :return: outputs corresponding to the activation_names of the session given model inputs
         """
 
@@ -158,7 +165,7 @@ class ActivationSampler:
             # https://github.com/microsoft/onnxruntime/issues/21922
             act_output = model_inputs[activation_name]
         else:
-            act_output = self.sess.run([activation_name], model_inputs)[0]
+            act_output = session.run([activation_name], model_inputs)[0]
         return act_output
 
     def sample_and_place_all_acts_on_cpu(self, dataset) -> Tuple:
@@ -189,11 +196,11 @@ class ActivationSampler:
         :return: Tuple of module's quantized input activation and its fp activation output
         """
 
-        module_input_act = self.run_session(model_inputs, self._quant_act_name)
-
-        with disable_quantizers(
-            self._quant_sim, self._quant_sim.qc_quantize_op_dict.keys()
-        ):
-            module_output_act = self.run_session(model_inputs, self._fp_act_name)
+        module_input_act = self.run_session(
+            self.qsim_sess, model_inputs, self._quant_act_name
+        )
+        module_output_act = self.run_session(
+            self.fp32_sess, model_inputs, self._fp_act_name
+        )
 
         return module_input_act, module_output_act

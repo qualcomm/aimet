@@ -41,6 +41,8 @@ import tempfile
 import torch
 import numpy as np
 from onnx import numpy_helper
+from onnxruntime.quantization.onnx_model import ONNXModel
+
 from aimet_common import libpymo
 from aimet_onnx.adaround.adaround_tensor_quantizer import AdaroundTensorQuantizer
 from aimet_onnx.adaround.adaround_optimizer import AdaroundOptimizer
@@ -83,6 +85,7 @@ class TestAdaroundOptimizer:
                 quant_module,
                 "input_updated",
                 sim,
+                model.model,
                 "Relu",
                 cached_dataset,
                 num_iterations,

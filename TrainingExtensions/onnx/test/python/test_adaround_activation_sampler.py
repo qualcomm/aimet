@@ -53,7 +53,9 @@ class TestAdaroundActivationSampler:
     def test_activation_sampler_conv(self, tmp_path):
         model = simple_relu_model()
         sim = QuantizationSimModel(model)
-        activation_sampler = ActivationSampler("output", "input", sim, True)
+        activation_sampler = ActivationSampler(
+            "output", "input", sim, model.model, True
+        )
         data_loader = [np.random.rand(1, 3, 32, 32).astype(np.float32)]
         cached_dataset = CachedDataset(data_loader, 1, tmp_path)
         all_inp_data, all_out_data = (

@@ -88,6 +88,7 @@ class AdaroundOptimizer:
         module: ModuleInfo,
         quantized_input_name: str,
         quant_model: QuantizationSimModel,
+        fp32_model: ModelProto,
         act_func: Union[str, None],
         cached_dataset: Dataset,
         num_iterations: int,
@@ -101,6 +102,7 @@ class AdaroundOptimizer:
         :param module: Original module's information
         :param quantized_input_name: Name of input to the quantized layer/ layer to be adarounded
         :param quant_model: QuantSim model
+        :param fp32_model: FP32 model
         :param act_func: Activation function
         :param cached_dataset: Cached dataset
          yielded from the data loader
@@ -137,6 +139,7 @@ class AdaroundOptimizer:
             module.outputs[0],
             quantized_input_name,
             quant_model,
+            fp32_model,
             use_cuda,
             device,
         )

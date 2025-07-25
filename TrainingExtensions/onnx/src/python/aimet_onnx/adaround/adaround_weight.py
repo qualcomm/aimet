@@ -352,6 +352,10 @@ class Adaround:
         # pylint: disable=too-many-locals, protected-access
 
         module_act_func_pair = get_module_act_func_pair(quant_sim.connected_graph)
+
+        fp32_model = copy.deepcopy(quant_sim.model.model)
+        fp32_model = QuantizationSimModel.remove_quantizers(fp32_model)
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Cache model input data to temporary directory
             cached_dataset = utils.CachedDataset(
@@ -389,6 +393,7 @@ class Adaround:
                         module_info,
                         quantized_input_name,
                         quant_sim,
+                        fp32_model,
                         act_func,
                         cached_dataset,
                         params.num_iterations,
