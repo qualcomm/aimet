@@ -40,6 +40,10 @@ Release notes
     * Update Quick Start example and PTQ section (`6c9f584`_)
     * Add missing workflow images (`f961ed4`_)
 
+* Known Issues
+    * Keras
+        * Accuracy drop observed with AIMET Keras for certain models. Fix is planned for the next release.
+
 .. _6c92a97: https://github.com/quic/aimet/commit/6c92a9760fdb0fd1f095acd58935564eab18e69f
 .. _6c9f584: https://github.com/quic/aimet/commit/6c9f5848edbbe8bc1a3d87bed2ed0072abda0e9b
 .. _f961ed4: https://github.com/quic/aimet/commit/f961ed40f3f0f1c05315b901add3275751aa3afe
