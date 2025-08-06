@@ -2,81 +2,48 @@
 
 .. _techniques-lpbq:
 
-################################
-Low-Power Blockwise Quantization
-################################
+#######################################
+Low-Power Blockwise Quantization (LPBQ)
+#######################################
 
 |qnn| supports an alternative to blockwise quantization called *Low-Power Blockwise Quantization* (*LPBQ*).
 
 .. note::
    To read about generic blockwise quantization, see :ref:`Blockwise Quantization <techniques-blockwise>`
 
-In LPBQ, blockwise encodings at a lower bit width are adjusted such that they lie on a common higher-bit-width per-channel grid. This enables models to run on existing per channel kernels and still benefit from blockwise quantization. 
+In LPBQ, blockwise encodings at a lower bit width are adjusted such that they lie on a common higher-bit-width per-channel grid.
 
-LPBQ encodings require less storage than blockwise quantization encodings because only the low bit-width integer scale expansion factors need to be stored blockwise (the floating point encoding scales are stored per-channel).
+Following are the benefits of LPBQ over Blockwise Quantization (BQ):
 
-LPBQ quantization is part of the :class:`aimet_torch.quantization.affine.GroupedBlockQuantizeDequantize` class.
+* Enables models to run on existing per-channel kernels
+* Generated encodings are storage-efficient than BQ
 
-Besides the  `block_size` argument described in the  blockwise Quantization section, LPBQ requires two additional arguments:
+|qnn| has the following restrictions on LPBQ:
 
-`decompressed_bw`
-  The higher bit-width value for the per channel grid that the lower bit-width blockwise encodings are expanded to. The `decompressed_bw` value must be greater than or equal to the  bit width of the quantizer.
+* Blockwise quantization runs on weight (not activation) quantizers only
+* Block size must be set to one for the output channel dimension
+* Input channel dimension must be divisible by Block size
 
-`block_grouping`
-  The number of blocks for each dimension that are grouped when expanding the lower bit-width blockwise encodings. The block grouping for a particular dimension must be divisible by the number of blocks in that dimension.
+Apply LPBQ
+==========
 
-  As with block size, a block grouping value of -1 is automatically interpreted as the number of blocks in that dimension.
+This section walks through how to enable LPBQ in :ref:`Post-Training Quantization <techniques-ptq>` workflow.
 
-To allow for experimentation, the `GroupedBlockQuantizeDequantize` object supports arbitrary block sizes. However, the Qualcomm runtime imposes the following restrictions on LPBQ:
+.. image:: ../images/techniques/lpbq.png
 
-* Blockwise quantization runs on weight (not activation) quantizers only.
-* Block size must be set to one for the output channel dimension.
-* Block size may take an arbitrary value for the input channel dimension (it must still divide evenly into the input channel tensor shape).
-*  Block size must be equal to the tensor size for all other dimensions.
-* Block groupings must be set to one for all dimensions, except for the input channels dimension which should be
-  set to the number of blocks in that dimension.
+LPBQ workflow looks like the following:
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. code-block:: Python
-
-            from aimet_torch.quantization.affine import GroupedBlockQuantizeDequantize
-
-            # Assume sim.model.conv_1 refers to a QuantizedConv2d layer with weight param shape of (16, 64, 2, 2)
-            # Below settings equate to a block size of 16 in the input channels dimension.
-            sim.model.conv_1.param_quantizers['weight'] = GroupedBlockQuantizeDequantize(shape=(16, 4, 1, 1),
-                                                                                         bitwidth=4,
-                                                                                         symmetric=True,
-                                                                                         block_size=(1, 16, 2, 2),
-                                                                                         decompressed_bw=8,
-                                                                                         block_grouping=(1, 4, 1, 1))   # (1, -1, 1, 1) works too
-
-    .. tab-item:: TensorFlow
-        :sync: tf
-
-        Not supported.
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+1. Create QuantizationSimModel
+2. Enable LPBQ for select operations (additional step on top of :ref:`Post-Training Quantization <techniques-ptq>` workflow
+3. Create a calibration callback to be used for computing quantization parameters
+4. Compute encodings
+5. Evaluation
+6. Export the model
 
 
-Exporting blockwise-quantized models
-====================================
+Apply LPBQ on select set of modules in PyTorch or operations in ONNX with :func:`set_grouped_blockwise_quantization_for_weights`.
 
-Blockwise quantization generates a larger number of encodings than per tensor or per channel quantization. To reduce the size of the exported encodings JSON file and the time needed to write the file, blockwise quantization uses an improved file format, designated 1.0.0, for the export.
-
-The 1.0.0 encoding format is supported by the Qualcomm runtime and can be used to export per tensor, per channel, blockwise, and LPBQ quantizer encodings.
-
-.. important::
-    If  blockwise and/or LPBQ quantizers are present in the model, the 1.0.0 format *must* be used when exporting encodings for the Qualcomm runtime.
-
-The following code snippet shows how to export encodings in the 1.0.0 format:
+This function can be called multiple times to set different LPBQ configuration for target set of modules or operations.
 
 .. tab-set::
     :sync-group: platform
@@ -86,34 +53,67 @@ The following code snippet shows how to export encodings in the 1.0.0 format:
 
         .. code-block:: Python
 
-            from aimet_common import quantsim
+            # 1. Create QuantizationSimModel
+            # ...
 
-            # Assume 'sim' is a QuantizationSimModel object imported from aimet_torch.quantsim
+            from aimet_torch.quantsim.config_utils import set_grouped_blockwise_quantization_for_weights
 
-            # Set encoding_version to 1.0.0
-            quantsim.encoding_version = '1.0.0'
-            sim.export('./data', 'exported_model', dummy_input)
 
-    .. tab-item:: TensorFlow
-        :sync: tf
+            # 2. Apply LPBQ
+            set_grouped_blockwise_quantization_for_weights(
+                sim=quantsim,
+                arg=[torch.nn.Linear],
+                bitwidth=4,
+                symmetric=True,
+                decompressed_bw=8,
+                block_size=64,
+                block_grouping=-1,
+            )
 
-        Not supported.
+            # Continue with calibration
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        Not supported.
+        .. code-block:: Python
 
-See the :ref:`Encoding specifications <quantsim-encoding-spec>` page, which describes encodings specifications in detail.
+            # 1. Create QuantizationSimModel
+            # ...
+
+            from aimet_onnx.quantsim import set_blockwise_quantization_for_weights
+
+            # 2. Apply LPBQ
+            set_grouped_blockwise_quantization_for_weights(
+                sim=quantsim,
+                op_types=("Gemm", "MatMul", "Conv"),
+                bitwidth=4,
+                decompressed_bw=8,
+                block_size=64,
+                excluded_nodes = ['conv1', 'linear10']
+            )
+
+            # Continue with calibration
 
 API
 ===
 
 **Top-level API to configure LPBQ quantization**
 
-.. autofunction:: aimet_torch.v2.quantsim.config_utils.set_grouped_blockwise_quantization_for_weights
-    :noindex:
+.. tab-set::
+    :sync-group: platform
 
-This utility enables you to configure quantized layers to use grouped blockwise quantization by supplying a `decompressed_bw`,  `block_size`, and `block_grouping`. Similar to :func:`set_blockwise_quantization_for_weights`, `block_grouping` can be a single value. In this case the input_channel's dimension is assigned the value, and all other dimensions are assigned a value of one.
+    .. tab-item:: PyTorch
+        :sync: torch
 
-Different layers can have different numbers of blocks for the input channels dimension for the same block size. If you assign -1 as the single `block_grouping` value, the input channels dimension automatically uses a `block_grouping` value equal to the number of blocks in any affected layer. This enbles you to configure all affected layers to LPBQ quantization with a single API call.
+        .. autofunction:: aimet_torch.v2.quantsim.config_utils.set_grouped_blockwise_quantization_for_weights
+            :noindex:
+
+        This utility enables you to configure quantized layers to use grouped blockwise quantization by supplying a `decompressed_bw`,  `block_size`, and `block_grouping`. Similar to :func:`set_blockwise_quantization_for_weights`, `block_grouping` can be a single value. In this case the input_channel's dimension is assigned the value, and all other dimensions are assigned a value of one.
+
+        Different layers can have different numbers of blocks for the input channels dimension for the same block size. If you assign -1 as the single `block_grouping` value, the input channels dimension automatically uses a `block_grouping` value equal to the number of blocks in any affected layer. This enbles you to configure all affected layers to LPBQ quantization with a single API call.
+
+    .. tab-item:: ONNX
+        :sync: onnx
+
+        .. autofunction:: aimet_onnx.quantsim.set_grouped_blockwise_quantization_for_weights
+            :noindex:

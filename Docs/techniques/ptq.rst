@@ -10,8 +10,22 @@ determining parameters for activations requires running a small, representative 
 
 This process of computing scale and offset values is commonly referred to as calibration.
 
+Both `aimet-onnx <https://pypi.org/project/aimet-onnx/>`_ or `aimet-torch <https://pypi.org/project/aimet-torch/>`_ supports PTQ.
+
+.. image:: ../images/techniques/ptq_overview.png
+
+We recommend using `aimet-onnx <https://pypi.org/project/aimet-onnx/>`_ for PTQ for the following reasons:
+
+1. Captured graph
+    * Optimize model before quantization
+2. Better alignment downstream
+    * PyTorch may export certain operation to multiple operations in ONNX leading to missing quantizer information.
+    * This missing quantizer information could lead to accuracy difference between on-target and off-target(simulation).
+
 Workflow
 ========
+
+.. image:: ../images/techniques/ptq.png
 
 Let’s take an example for calibrating a MobileNetV2 model.
 

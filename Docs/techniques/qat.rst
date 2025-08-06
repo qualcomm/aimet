@@ -9,6 +9,8 @@ by fine-tuning the model parameters in the presence of quantization noise. This 
 the usual costs of neural network training, including longer training times and the need for labeled data
 and hyperparameter search.
 
+.. image:: ../images/techniques/qat.png
+
 Variants of QAT
 ===============
 
