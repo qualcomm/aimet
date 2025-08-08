@@ -66,3 +66,27 @@ function(set_onnxruntime_variables)
     message(STATUS "** ONNXRUNTIME_LIBRARIES = ${ONNXRUNTIME_LIBRARIES_}")
     set(ONNXRUNTIME_LIBRARIES ${ONNXRUNTIME_LIBRARIES_} PARENT_SCOPE)
 endfunction()
+
+macro(update_onnx_cuda_arch_list)
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES 52 60 61 70 72)
+    endif()
+    message(STATUS "** Initial CMAKE_CUDA_ARCHITECTURES = ${CMAKE_CUDA_ARCHITECTURES} **")
+
+    execute_process(COMMAND nvcc --list-gpu-arch
+                    RESULT_VARIABLE NVCC_NOT_FOUND
+                    OUTPUT_VARIABLE CMAKE_CUDA_ARCHITECTURES_RAW
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    )
+
+    if(NVCC_NOT_FOUND)
+        message(WARNING "nvcc not found or failed to execute. Please ensure CUDA is installed and nvcc is in your PATH.")
+        set(CMAKE_CUDA_ARCHITECTURES "")
+    else()
+        string(REPLACE "compute_" "" CMAKE_CUDA_ARCHITECTURES_RAW "${CMAKE_CUDA_ARCHITECTURES_RAW}")
+        # Replace newline with semicolon to form proper list
+        string(REPLACE "\n" ";" CMAKE_CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES_RAW}")
+    endif()
+
+    message(STATUS "** Updated CMAKE_CUDA_ARCHITECTURES to ${CMAKE_CUDA_ARCHITECTURES} **")
+endmacro()

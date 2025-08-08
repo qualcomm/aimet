@@ -221,7 +221,7 @@ if (ENABLE_ONNX)
     set_onnx_version()
     set_onnxruntime_variables()
     set_torch_cmake_prefix_path()
-    update_torch_cuda_arch_list()
+    update_onnx_cuda_arch_list()
 endif()
 
 if (ENABLE_TENSORFLOW)

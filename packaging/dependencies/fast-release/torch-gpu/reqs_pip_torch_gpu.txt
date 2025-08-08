@@ -14,7 +14,8 @@ pandas
 psutil
 pybind11
 PyYAML
-safetensors
+# pinned because versions > 0.5.3 require torch >= 2.3.0
+safetensors==0.5.3
 scikit-learn
 scipy
 tensorboard

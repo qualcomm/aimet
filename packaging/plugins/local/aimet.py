@@ -91,14 +91,18 @@ def get_aimet_variant() -> str:
     enable_tensorflow = is_cmake_option_enabled("ENABLE_TENSORFLOW")
     enable_onnx = is_cmake_option_enabled("ENABLE_ONNX")
 
-    if enable_torch and enable_tensorflow and enable_onnx:
+    enabled_variants = [enable_torch, enable_tensorflow, enable_onnx]
+    enabled_count = sum(enabled_variants)
+
+    if enabled_count == 3:
         variant = "tf-torch-"
-    elif enable_tensorflow:
-        variant = "tf-"
-    elif enable_torch:
-        variant = "torch-"
-    elif enable_onnx:
-        variant = "onnx-"
+    elif enabled_count == 1:
+        if enable_tensorflow:
+            variant = "tf-"
+        elif enable_torch:
+            variant = "torch-"
+        elif enable_onnx:
+            variant = "onnx-"
     else:
         raise RuntimeError(
             "\n".join(
@@ -107,7 +111,7 @@ def get_aimet_variant() -> str:
                     "Your passed:"
                     f"  * ENABLE_TORCH:      {'ON' if enable_torch else 'OFF'}",
                     f"  * ENABLE_ONNX:       {'ON' if enable_onnx else 'OFF'}",
-                    f"  * ENABLE_TENSORFLOW: {'ON' if enable_onnx else 'OFF'}",
+                    f"  * ENABLE_TENSORFLOW: {'ON' if enable_tensorflow else 'OFF'}",
                 ]
             )
         )
@@ -222,6 +226,7 @@ def optional_dependencies() -> dict[str, list[str]]:
             "safetensors",
             "torchvision",
             "transformers<4.52.2",
+            "accelerate<1.10.0",
             "datasets",
         ],
         "docs": [

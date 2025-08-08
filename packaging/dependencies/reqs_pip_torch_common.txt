@@ -9,5 +9,6 @@ onnxscript>=0.2.0
 onnxsim
 pandas==1.5.3
 psutil
-safetensors
+# pinned because versions > 0.5.3 require torch >= 2.3.0
+safetensors==0.5.3
 tensorboard
