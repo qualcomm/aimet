@@ -42,6 +42,10 @@
     {
       "is_output_quantized": "False"
     },
+    "Gather":
+    {
+      "per_channel_quantization": "False"
+    },
     "Gemm":
     {
       "per_channel_quantization": "False"
@@ -53,10 +57,6 @@
     "NonMaxSuppression":
     {
       "is_output_quantized": "False"
-    },
-    "Gemm":
-    {
-      "per_channel_quantization": "False"
     },
     "Tanh":
     {

@@ -42,6 +42,10 @@
     {
       "is_output_quantized": "False"
     },
+    "Gather":
+    {
+      "per_channel_quantization": "False"
+    },
     "Upsample":
     {
       "is_output_quantized": "False"
