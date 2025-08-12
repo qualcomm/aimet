@@ -55,15 +55,13 @@ import pytest
 from onnxsim import simplify
 
 from aimet_common import quantsim
-from aimet_common import libquant_info
 from aimet_common import libpymo
 from aimet_common.defs import QuantScheme, QuantizationDataType, EncodingType, qtype
-from aimet_common.defs import QuantScheme, QuantizationDataType, EncodingType
-from aimet_common.onnx.opset10 import unpack_int4x2_to_int8
 from aimet_common.quantsim_config.utils import (
     get_path_for_per_channel_config,
     get_path_for_per_tensor_config,
 )
+from aimet_common.quantsim import _is_bias_out_of_int32_range
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.quantsim import (
     QuantizationSimModel,
@@ -3441,6 +3439,149 @@ class TestEncodingPropagation:
 
             assert np.allclose(pre_load_out, pre_load_out_2)
             assert np.allclose(post_load_out, post_load_out_2)
+
+    @pytest.mark.parametrize(
+        "model_factory,             input_shape, block_size, lpbq",
+        [
+            (single_residual_model, (1, 3, 32, 32), None, False),
+            (single_residual_model, (1, 3, 32, 32), 4, False),
+            (single_residual_model, (1, 3, 32, 32), 4, True),
+            (transposed_conv_model, (10, 10, 4, 4), None, False),
+            (transposed_conv_model, (10, 10, 4, 4), 5, False),
+            (transposed_conv_model, (10, 10, 4, 4), 5, True),
+            (instance_norm_model, (2, 10, 24, 24), None, False),
+            (layernorm_model, (1, 4, 64, 64), None, False),
+        ],
+    )
+    def test_detect_bias_overflow(
+        self, model_factory, input_shape, block_size, lpbq, tmp_path
+    ):
+        torch.manual_seed(0)
+        np.random.seed(0)
+        model = model_factory()
+        input = np.random.randn(*input_shape).astype(np.float32)
+
+        def _update_bias(initializer):
+            bias_tensor = onnx.numpy_helper.to_array(
+                initializer
+            ).copy()  # Make it writable
+            bias_tensor[:] = (
+                100  # Ensures that we exceed int32 range for all bias values.
+            )
+            updated_tensor = onnx.numpy_helper.from_array(
+                bias_tensor, name=initializer.name
+            )
+            initializer.CopyFrom(updated_tensor)
+
+        dummy_tensor = {"input": input}
+
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            param_type=aimet_onnx.int16,
+            activation_type=aimet_onnx.int16,
+        )
+        if block_size:
+            op_types = ("Conv", "ConvTranspose", "Gemm")
+            if lpbq:
+                set_grouped_blockwise_quantization_for_weights(
+                    sim,
+                    op_types,
+                    bitwidth=4,
+                    decompressed_bw=16,
+                    block_size=block_size,
+                    strict=False,
+                )
+            else:
+                set_blockwise_quantization_for_weights(
+                    sim,
+                    op_types,
+                    bitwidth=16,
+                    symmetric=True,
+                    block_size=block_size,
+                    strict=False,
+                )
+        """
+        When: Update bias values to very large value
+        """
+        linear_ops_with_bias = {
+            op: sim._get_weight_and_bias(op)
+            for op in sim.connected_graph.get_all_ops().values()
+            if op.type in ("Conv", "ConvTranspose", "Gemm")
+        }
+        for _, (__, bias) in linear_ops_with_bias.items():
+            if bias is None:
+                continue
+            for ini in sim.model.model.graph.initializer:
+                if ini.name == bias.name:
+                    print(f"Updated bias: {bias.name}")
+                    _update_bias(ini)
+
+        sim.compute_encodings([dummy_tensor])
+        sim.export(tmp_path, "before_weight_adj")
+        with open(tmp_path / "before_weight_adj.encodings") as f:
+            encodings = json.load(f)
+            before_weight_adj = {
+                enc["name"]: enc
+                for enc in itertools.chain(
+                    encodings["activation_encodings"], encodings["param_encodings"]
+                )
+            }
+
+        """
+        When: Call _adjust_weight_scales_for_int32_bias() and _concretize_int32_bias_quantizers() before export
+        """
+        sim._adjust_weight_scales_for_int32_bias()
+        sim._concretize_int32_bias_quantizers()
+        sim.export(tmp_path, "after_weight_adj")
+
+        with open(tmp_path / "after_weight_adj.encodings") as f:
+            encodings = json.load(f)
+            after_weight_adj = {
+                enc["name"]: enc
+                for enc in itertools.chain(
+                    encodings["activation_encodings"], encodings["param_encodings"]
+                )
+            }
+        for op, (weight, bias) in linear_ops_with_bias.items():
+            if bias is None:
+                continue
+
+            input, *_ = op.inputs
+            bias_scale = np.array(after_weight_adj[bias.name]["scale"])
+            weight_scale = np.array(after_weight_adj[weight.name]["scale"])
+            weight_qtzr = sim.qc_quantize_op_dict[weight.name]
+            input_qtzr = sim._get_enabled_quantizer(input.name)
+            input_scale = input_qtzr._get_scale()
+
+            bias_proto = sim.model.get_initializer(bias.name) or next(
+                iter(
+                    node.attribute[0].t
+                    for node in sim.model.graph().node
+                    if node.output == [bias.name]
+                )
+            )
+            bias_value = onnx.numpy_helper.to_array(bias_proto)
+
+            """
+            Then: If the Bias is in exported encodings, then the bias_quantized value should be clipped to 2.14748365e+09
+                  For BQ/LPBQ quantizers, bias_quantized values can be greater than 2.14748365e+09, since weight adjustment is not applied.
+            """
+            bias_quantized = bias_value / bias_scale
+            overflow_mask = np.any(bias_quantized >= 2**31)
+            assert np.all(overflow_mask)
+
+            if np.any(overflow_mask):
+                """
+                Then: If the Bias is in exported encodings, then the adjusted weight scale must match (bias_float/(2**31 * input_scale))
+                      For BQ/LPBQ scales, not weight scales adjustment applied, so it should match before the weight adjustment scale.
+                """
+                if weight_qtzr.quant_info.blockSize:
+                    expected_weight_scale = np.array(
+                        before_weight_adj[weight.name]["scale"]
+                    )  # Before and after scales should be same for BQ/LPBQ
+                else:
+                    expected_weight_scale = bias_value / (2**31 * input_scale)
+                assert np.allclose(weight_scale, expected_weight_scale)
 
 
 @pytest.mark.parametrize(

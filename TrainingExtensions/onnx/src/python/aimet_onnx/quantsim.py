@@ -89,6 +89,8 @@ from aimet_common.quantsim import (
     extract_global_quantizer_args,
     VALID_ENCODING_VERSIONS,
     _INT32_MINIMUM_SCALE,
+    _is_bias_out_of_int32_range,
+    _get_adjusted_weight_scale,
 )
 from aimet_common.utils import save_json_yaml, AimetLogger, _red, deprecated
 from aimet_common.quant_utils import _convert_encoding_format_0_6_1_to_1_0_0
@@ -1350,121 +1352,223 @@ class QuantizationSimModel:
 
         return model
 
-    def _concretize_int32_bias_quantizers(self):
-        # pylint: disable=redefined-builtin, protected-access, too-many-statements
+    def _adjust_weight_scales_for_int32_bias(self):
+        """
+        Given, bias_scale = weight_scale * input_scale and If max(input) * max(weight) << bias,
+        bias_scale becomes very small and dividing a large bias_float by a very small bias_scale
+        results in very large bias_int32, potentially exceeding the int32 range (-2147483648 to 2147483647)
+        during W16A16 quantization.
 
-        def get_statistical_bias_scale(_, __, bias: Product) -> np.ndarray:
-            r"""
-            Compute int32 bias scale statistically, such that
+        Adjusting weight_scale and bias_scale when the bias_float value exceeds the int32 range,
+        reduce the risk of saturation in activations (input @ weight + bias).
 
-            :math:`scale = abs(max(bias)) / 2**31`
+        NOTE: Increasing the input_scale can reduce precision for all activations, while increasing
+              weight_scale only reduce the precision for the affected weights.
+        """
+        # pylint: disable=redefined-builtin, protected-access
 
-            Note that using statistical bias scale isn't ideal for runtime performance
-            on integer accelerators.
-            For better runtime performance, bias encodings should be derived analytically
-            whenever possible. (See ``get_analytic_bias_scale``)
-            """
-            bias_proto = utils.ParamUtils.get_param_by_name(self.model.model, bias.name)
+        ops_with_analytic_bias_scale = {
+            "Conv",
+            "Gemm",
+            "MatMul",
+            "ConvTranspose",
+        }
 
-            if bias_proto is None:
-                raise RuntimeError(
-                    "Failed to calibrate encoding of bias. "
-                    f'Couldn\'t find the value of "{bias.name}" statically from the graph.'
-                )
+        ops_with_bias = {
+            op: self._get_weight_and_bias(op)
+            for op in self.connected_graph.get_all_ops().values()
+            if op.type in ops_with_analytic_bias_scale
+        }
 
-            bias = to_array(bias_proto)
+        for op, (weight, bias) in ops_with_bias.items():
+            if bias is None:
+                continue
 
-            bias_scale = np.maximum(abs(bias) / 2**31, _INT32_MINIMUM_SCALE)
-
-            if not bias_qtzr.quant_info.usePerChannelMode:
-                bias_scale = bias_scale.max()
-
-            return bias_scale
-
-        def get_analytic_bias_scale(
-            input: Product, weight: Product, bias: Product
-        ) -> np.ndarray:
-            """
-            Derive int32 bias scale analytically from input and weight encodings, such that
-
-            :math:`bias_scale = weight_scale * input_scale`
-
-            This analytic formula is friendly for integer hardware/runtime
-            since bias-add operation ``(input @ weight) + bias`` becomes trivial when
-            both terms share the same quantization scale
-            """
-            weight_qtzr = self.qc_quantize_op_dict.get(weight.name)
+            input, *_ = op.inputs
             input_qtzr = self._get_enabled_quantizer(input.name)
 
             if not (input_qtzr and input_qtzr.enabled and input_qtzr.is_initialized()):
-                return get_statistical_bias_scale(input, weight, bias)
+                continue
 
-            channel_axis = None
-            num_channels = None
-            block_axis = None
-            block_size = None
-            if weight_qtzr.quant_info.usePerChannelMode:
-                channel_axis = weight_qtzr.quant_info.channelAxis
-                num_channels = weight_qtzr.tensor_quantizer_params.tensor_shape[
-                    channel_axis
-                ]
-                block_size = weight_qtzr.quant_info.blockSize or None
-                block_axis = weight_qtzr.quant_info.blockAxis if block_size else None
+            weight_qtzr = self.qc_quantize_op_dict.get(weight.name, None)
+            if not (
+                weight
+                and weight_qtzr
+                and weight_qtzr.enabled
+                and weight_qtzr.data_type == QuantizationDataType.int
+                and weight_qtzr.is_initialized()
+            ):
+                # Weight quantizer wasn't created, enabled, or initialized.
+                # Since weight_scale isn't available, exclude bias from quantization.
+                continue
 
-                expected_channel_axis, expected_block_axis = (
-                    self._get_quantization_axes(op)
-                )
-                ndim = len(weight_qtzr.tensor_quantizer_params.tensor_shape)
+            if weight_qtzr.quant_info.blockSize > 0:
+                # Handle weight adjustment for BQ and LPBQ quantizers
+                continue
 
-                if channel_axis < 0:
-                    channel_axis = ndim + channel_axis
-                if block_axis is not None and block_axis < 0:
-                    block_axis = ndim + block_axis
-                if expected_channel_axis is not None and expected_channel_axis < 0:
-                    expected_channel_axis = ndim + expected_channel_axis
-                if expected_block_axis is not None and expected_block_axis < 0:
-                    expected_block_axis = ndim + expected_block_axis
+            bias_proto = self.model.get_initializer(bias.name)
+            if not bias_proto:
+                try:
+                    bias_proto = next(
+                        attr.t
+                        for node in self.model.graph().node
+                        if bias.name in node.output
+                        for attr in node.attribute
+                        if attr.type == onnx.AttributeProto.TENSOR
+                    )
+                except StopIteration:
+                    logger.info(
+                        "Bias tensor %s not found for op: %s", bias.name, op.name
+                    )
+                    continue
 
-                if channel_axis != expected_channel_axis or block_axis not in (
-                    expected_block_axis,
-                    None,
-                ):
-                    # For example:
-                    #   * Conv with channel_axis=1
-                    #   * ConvTranspose with channel_axis=0
-                    #   * Gemm with channel_axis=1
-                    return get_statistical_bias_scale(input, weight, bias)
+            bias_float = onnx.numpy_helper.to_array(bias_proto)
 
-            if isinstance(weight_qtzr, GroupedBlockQuantizeDequantize):
-                # NOTE: In LPBQ, bias encodings should be derived from per-channel weight scale
-                weight_scale = weight_qtzr._get_per_channel_scale()
-            else:
-                weight_scale = weight_qtzr._get_scale()
-
+            weight_scale = weight_qtzr._get_scale()
             input_scale = input_qtzr._get_scale()
 
             if weight_scale is None or input_scale is None:
-                return get_statistical_bias_scale(input, weight, bias)
+                continue
 
-            bias_scale = input_scale * weight_scale
+            bias_scale = self._get_analytic_bias_scale(op)
 
-            if block_size is not None:
-                bias_scale = bias_scale.max(axis=block_axis)
+            if not np.any(_is_bias_out_of_int32_range(bias_float, bias_scale)):
+                continue
 
-            if channel_axis is not None:
-                bias_scale = bias_scale.reshape([num_channels])
+            encodings = weight_qtzr.get_encodings()
+            if encodings is None:
+                continue
 
-            return bias_scale
+            adjusted_weight_scale = _get_adjusted_weight_scale(
+                bias_float, input_scale, weight_scale
+            )
+            assert len(adjusted_weight_scale) == len(encodings), (
+                "Weight scale adjustment only supported for per-tensor and per-channel scales."
+            )
+            for new_scale, enc in zip(adjusted_weight_scale, encodings):
+                enc.delta = new_scale
+            weight_qtzr.load_encodings(encodings)
+            logger.info(
+                "Adjusted weight scale for %s to prevent bias overflow.", op.name
+            )
 
+    def _get_statistical_bias_scale(self, op: Op) -> np.ndarray:
+        r"""
+        Compute int32 bias scale statistically, such that
+
+        :math:`scale = abs(max(bias)) / 2**31`
+
+        Note that using statistical bias scale isn't ideal for runtime performance
+        on integer accelerators.
+        For better runtime performance, bias encodings should be derived analytically
+        whenever possible. (See ``get_analytic_bias_scale``)
+        """
+        _, bias = self._get_weight_and_bias(op)
+        bias_proto = utils.ParamUtils.get_param_by_name(self.model.model, bias.name)
+
+        if bias_proto is None:
+            raise RuntimeError(
+                "Failed to calibrate encoding of bias. "
+                f'Couldn\'t find the value of "{bias.name}" statically from the graph.'
+            )
+
+        bias_float = to_array(bias_proto)
+
+        bias_scale = np.maximum(abs(bias_float) / 2**31, _INT32_MINIMUM_SCALE)
+
+        bias_qtzr = self.qc_quantize_op_dict[bias.name]
+        if not bias_qtzr.quant_info.usePerChannelMode:
+            bias_scale = bias_scale.max()
+
+        return bias_scale
+
+    def _get_analytic_bias_scale(self, op: Op) -> np.ndarray:
+        """
+        Derive int32 bias scale analytically from input and weight encodings, such that
+
+        :math:`bias_scale = weight_scale * input_scale`
+
+        This analytic formula is friendly for integer hardware/runtime
+        since bias-add operation ``(input @ weight) + bias`` becomes trivial when
+        both terms share the same quantization scale
+        """
+        # pylint: disable=redefined-builtin, protected-access, too-many-statements
+        input, *_ = op.inputs
+        weight, bias = self._get_weight_and_bias(op)
+        assert bias is not None
+
+        weight_qtzr = self.qc_quantize_op_dict.get(weight.name)
+        input_qtzr = self._get_enabled_quantizer(input.name)
+
+        if not (input_qtzr and input_qtzr.enabled and input_qtzr.is_initialized()):
+            return self._get_statistical_bias_scale(op)
+
+        channel_axis = None
+        num_channels = None
+        block_axis = None
+        block_size = None
+        if weight_qtzr.quant_info.usePerChannelMode:
+            channel_axis = weight_qtzr.quant_info.channelAxis
+            num_channels = weight_qtzr.tensor_quantizer_params.tensor_shape[
+                channel_axis
+            ]
+            block_size = weight_qtzr.quant_info.blockSize or None
+            block_axis = weight_qtzr.quant_info.blockAxis if block_size else None
+
+            expected_channel_axis, expected_block_axis = self._get_quantization_axes(op)
+            ndim = len(weight_qtzr.tensor_quantizer_params.tensor_shape)
+
+            if channel_axis < 0:
+                channel_axis = ndim + channel_axis
+            if block_axis is not None and block_axis < 0:
+                block_axis = ndim + block_axis
+            if expected_channel_axis is not None and expected_channel_axis < 0:
+                expected_channel_axis = ndim + expected_channel_axis
+            if expected_block_axis is not None and expected_block_axis < 0:
+                expected_block_axis = ndim + expected_block_axis
+
+            if channel_axis != expected_channel_axis or block_axis not in (
+                expected_block_axis,
+                None,
+            ):
+                # For example:
+                #   * Conv with channel_axis=1
+                #   * ConvTranspose with channel_axis=0
+                #   * Gemm with channel_axis=1
+                return self._get_statistical_bias_scale(op)
+
+        if isinstance(weight_qtzr, GroupedBlockQuantizeDequantize):
+            # NOTE: In LPBQ, bias encodings should be derived from per-channel weight scale
+            weight_scale = weight_qtzr._get_per_channel_scale()
+        else:
+            weight_scale = weight_qtzr._get_scale()
+
+        input_scale = input_qtzr._get_scale()
+
+        if weight_scale is None or input_scale is None:
+            return self._get_statistical_bias_scale(op)
+
+        bias_scale = input_scale * weight_scale
+
+        if block_size is not None:
+            bias_scale = bias_scale.max(axis=block_axis)
+
+        if channel_axis is not None:
+            bias_scale = bias_scale.reshape([num_channels])
+
+        return bias_scale
+
+    def _concretize_int32_bias_quantizers(self):
+        # pylint: disable=protected-access
         switcher = {
-            "Conv": get_analytic_bias_scale,
-            "Gemm": get_analytic_bias_scale,
-            "MatMul": get_analytic_bias_scale,
-            "ConvTranspose": get_analytic_bias_scale,
-            "BatchNormalization": get_statistical_bias_scale,
-            "InstanceNormalization": get_statistical_bias_scale,
-            "LayerNormalization": get_statistical_bias_scale,
-            "GroupNormalization": get_statistical_bias_scale,
+            "Conv": self._get_analytic_bias_scale,
+            "Gemm": self._get_analytic_bias_scale,
+            "MatMul": self._get_analytic_bias_scale,
+            "ConvTranspose": self._get_analytic_bias_scale,
+            "BatchNormalization": self._get_statistical_bias_scale,
+            "InstanceNormalization": self._get_statistical_bias_scale,
+            "LayerNormalization": self._get_statistical_bias_scale,
+            "GroupNormalization": self._get_statistical_bias_scale,
         }
 
         ops_with_bias = {
@@ -1477,7 +1581,6 @@ class QuantizationSimModel:
             if bias is None:
                 continue
 
-            input, *_ = op.inputs
             bias_qtzr = self.qc_quantize_op_dict.get(bias.name)
 
             weight_qtzr = self.qc_quantize_op_dict.get(weight.name)
@@ -1517,11 +1620,11 @@ class QuantizationSimModel:
 
             if weight is None:
                 # Edge case: Op has no weight. Fall back to statistical bias scale
-                get_bias_scale = get_statistical_bias_scale
+                get_bias_scale = self._get_statistical_bias_scale
             else:
-                get_bias_scale = switcher.get(op.type, get_statistical_bias_scale)
+                get_bias_scale = switcher.get(op.type, self._get_statistical_bias_scale)
 
-            bias_scale = get_bias_scale(input, weight, bias)
+            bias_scale = get_bias_scale(op)
 
             encodings = [libpymo.TfEncoding() for _ in range(bias_scale.size)]
 

@@ -34,12 +34,15 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+
 import pytest
 import numpy as np
 
 from aimet_common.quantsim import (
     calculate_delta_offset,
     compute_min_max_given_delta_offset,
+    _is_bias_out_of_int32_range,
+    _get_adjusted_weight_scale,
 )
 from aimet_common import libpymo
 
@@ -99,3 +102,85 @@ class TestCommonQuantSim:
         )
         assert np.allclose(out_tensor[0], new_enc_min, atol=1e-5)
         assert np.allclose(out_tensor[1], new_enc_max, atol=1e-5)
+
+    def test_is_bias_out_of_int32_range(self):
+        bias = np.array([1.0])
+        scale = np.array([1e-9])
+        result = _is_bias_out_of_int32_range(bias, scale, num_steps=2**31)
+        assert not result[0]  # within signed int32 range
+
+        bias = np.array([10])
+        scale = np.array([1e-9])
+        result = _is_bias_out_of_int32_range(bias, scale, num_steps=2**31)
+        assert result[0]  # not within signed int32 range
+
+        bias = np.array([10.0, -10.0, 1.0])
+        scale = np.array([1e-9, 1e-9, 1e-9])
+        result = _is_bias_out_of_int32_range(bias, scale, num_steps=2**31)
+        expected = np.array([True, True, False])
+        assert np.all(result == expected)  # mix
+
+        bias = np.array([1.0, -1.0, 1.0])
+        scale = np.array([1e-9, 1e-9, 1e-9])
+        result = _is_bias_out_of_int32_range(bias, scale, num_steps=2**31)
+        assert np.all(result == False)  # all-within int32 range
+
+        bias = np.array([10.0, -10.0, 10.0])
+        scale = np.array([1e-9, 1e-9, 1e-9])
+        result = _is_bias_out_of_int32_range(bias, scale, num_steps=2**31)
+        assert np.all(result == True)  # all-exceeding int32 range
+
+    def test_adjust_weight_scale_for_bias_overflow(self):
+        # Weight adjustment not adjustment needed
+        bias = np.array([1.0], dtype=np.float32)
+        input_scale = np.array([0.1], dtype=np.float32)
+        weight_scale = np.array([0.1])
+        result = _get_adjusted_weight_scale(bias, input_scale, weight_scale)
+        assert result == np.asarray(weight_scale, dtype=np.float32)
+
+        # Weight adjustment needed
+        bias = np.array([1e10])
+        input_scale = np.array([0.1])
+        weight_scale = np.array([0.1])
+        expected = np.array(
+            [np.abs(bias[0]) / (2**31 * input_scale[0])], dtype=np.float32
+        )
+        result = _get_adjusted_weight_scale(
+            bias, input_scale, weight_scale, num_steps=2**31
+        )
+        assert np.allclose(result, expected)
+
+        # Mix case (per-channel)
+        bias = np.array([1.0, 1e10])
+        input_scale = np.array([0.1])
+        weight_scale = np.array([0.1, 0.1])
+        expected = np.array(
+            [weight_scale[0], np.abs(bias[1]) / (2**31 * input_scale[0])],
+            dtype=np.float32,
+        )
+        result = _get_adjusted_weight_scale(
+            bias, input_scale, weight_scale, num_steps=2**31
+        )
+        assert np.allclose(result, expected)  # mix
+
+        # vector bias, 1D weight_scale (per-tensor)
+        bias = np.array([1.0, 1e10, -1.0])
+        input_scale = np.array([0.1])
+        weight_scale = np.array([0.1])
+        expected = np.array(
+            [np.abs(bias[1]) / (2**31 * input_scale[0])], dtype=np.float32
+        )
+        result = _get_adjusted_weight_scale(
+            bias, input_scale, weight_scale, num_steps=2**31
+        )
+        assert np.allclose(result, expected)
+
+        # vector bias, float weight_scale (per-tensor)
+        bias = np.array([1.0, 1e10, -1.0])
+        input_scale = 0.1
+        weight_scale = 0.1
+        expected = np.array([np.abs(bias[1]) / (2**31 * input_scale)], dtype=np.float32)
+        result = _get_adjusted_weight_scale(
+            bias, input_scale, weight_scale, num_steps=2**31
+        )
+        assert np.allclose(result, expected)

@@ -425,6 +425,77 @@ def _get_minimum_scale(num_steps: int) -> float:
     return min(fp32_eps, (_max - _min) / num_steps)
 
 
+def _is_bias_out_of_int32_range(
+    bias_float: Union[np.ndarray, float],
+    bias_scale: np.ndarray,
+    num_steps: int = 2**31,
+) -> np.ndarray:
+    """
+    Checks if the quantized bias value is outside the signed int32 range (-2147483648 to 2147483647)
+
+    NOTE: Directly computes the valid range for bias values in float-space to avoid division which can be sensitive.
+    and allows to account for signed int32 range
+
+    :param bias_float: Bias float values
+    :param bias_scale: Bias scale
+    :param num_steps: Maximum allowed quantized bias value (default is 2**31)
+    :return: Boolean array indicating whether each bias value is out of range
+    """
+    # Ensures precision in calculations.
+    bias_scale = bias_scale.astype(np.float64)
+    bias_float = bias_float.astype(np.float64)
+    min_value = bias_scale * -(num_steps + 1)
+    max_value = bias_scale * num_steps
+    return (bias_float > max_value) | (bias_float < min_value)
+
+
+def _get_adjusted_weight_scale(
+    bias_float: Union[np.ndarray, float],
+    input_scale: Union[np.ndarray, float],
+    weight_scale: Union[np.ndarray, float],
+    num_steps: int = 2**31,
+) -> np.ndarray:
+    """
+    Adjusts weight scales to prevent bias overflow during INT16 quantization.
+
+    Given, bias_scale = input_scale * weight_scale,
+    If bias_float / bias_scale >= threshold, then:
+        adjusted_weight_scale = bias_float / (threshold * input_scale)
+
+    :param bias_float: Bias float values per output channel
+    :param input_scale: Input scale applied to all input values
+    :param weight_scale: np.ndarray or float, weight scale applied to weights
+    :param num_steps: Maximum allowed quantized bias value (default threshold is 2**31)
+    :return: adjusted weight scales
+    """
+    # Check float or 1D array with 1 value.
+    is_scalar = np.isscalar(weight_scale) or np.size(weight_scale) == 1
+
+    if np.any(input_scale == 0):
+        raise ValueError("input_scale must be non-zero.")
+
+    weight_scale = np.asarray(weight_scale, dtype=np.float64)
+    input_scale = np.asarray(input_scale, dtype=np.float64)
+    bias_float = np.asarray(bias_float, dtype=np.float64)
+
+    bias_scale = weight_scale * input_scale
+
+    adjusted_weight_scale = weight_scale.copy()
+
+    if is_scalar:  # Handle scalar weight_scale case
+        max_abs_bias = np.max(np.abs(bias_float))
+        bias_quantized = max_abs_bias / bias_scale
+        if bias_quantized > num_steps:
+            adjusted_weight_scale = np.array([max_abs_bias / (num_steps * input_scale)])
+    else:  # Handle vector case
+        overflow_mask = _is_bias_out_of_int32_range(bias_float, bias_scale, num_steps)
+        adjusted_weight_scale[overflow_mask] = np.abs(bias_float[overflow_mask]) / (
+            num_steps * input_scale
+        )
+
+    return adjusted_weight_scale.astype(np.float32)
+
+
 _INT4_MINIMUM_SCALE = _get_minimum_scale(2**4 - 1)
 _INT8_MINIMUM_SCALE = _get_minimum_scale(2**8 - 1)
 _INT16_MINIMUM_SCALE = _get_minimum_scale(2**16 - 1)
