@@ -172,6 +172,19 @@ class FPTQuant:
             )
 
     @staticmethod
+    def insert_nonmergeable_down_project_transform(
+        model: torch.nn.Module, config: PretrainedConfig
+    ):
+        for block_interface in tqdm(
+            FPTQuant._get_blocks(model), desc="Block transforms inserted"
+        ):
+            block_interface.down_proj = TransformationMixin.from_module(
+                block_interface.down_proj
+            )
+            transform = GroupedHadamardTransformOp(config.intermediate_size)
+            block_interface.down_proj.add_left_hand_transform(transform)
+
+    @staticmethod
     def _merge_transforms_and_recover_original_layer(layer: torch.nn.Module):
         if not isinstance(layer, TransformationMixin):
             return layer  # Do nothing if it is not a transformed layer

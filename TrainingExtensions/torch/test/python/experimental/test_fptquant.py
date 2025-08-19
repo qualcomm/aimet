@@ -8,6 +8,8 @@ from aimet_torch.experimental.transforms.transformed_layers import Transformatio
 from aimet_torch.experimental.fptquant.fptquant_transforms import (
     GroupedHadamardTransformOp,
 )
+from aimet_torch.experimental.fptquant import fptquant_config
+from aimet_torch.experimental.fptquant.fptquant_optimizer import FPTQuant
 from aimet_torch.quantsim import QuantizationSimModel
 
 
@@ -79,3 +81,57 @@ def test_quantized_grouped_hadamard_transform(size):
 
     after_merge_out = qsim.model(dummy_input)
     assert torch.allclose(before_merge_out, after_merge_out, atol=1e-6)
+
+
+def test_insert_nonmergeable_down_project():
+    class Block(torch.nn.Module):
+        def __init__(self):
+            super(Block, self).__init__()
+            self.d_proj = torch.nn.Linear(24, 24, bias=False)
+
+        def forward(self, x):
+            return self.d_proj(x)
+
+    class ModelWithBlocks(torch.nn.Module):
+        def __init__(self):
+            super(ModelWithBlocks, self).__init__()
+            self.blocks = torch.nn.ModuleList()
+            for _ in range(4):
+                self.blocks.append(Block())
+
+        def forward(self, x):
+            for block in self.blocks:
+                x = block(x)
+            return x
+
+    class MyBlockInterface(fptquant_config.BlockInterface):
+        def __init__(self, block):
+            self.block = block
+
+        @property
+        def down_proj(self):
+            return self.block.d_proj
+
+        @down_proj.setter
+        def down_proj(self, value):
+            self.block.d_proj = value
+
+    class DummyConfig:
+        def __init__(self):
+            self.intermediate_size = 24
+
+    model = ModelWithBlocks()
+    fptquant_config.fptquant_model_config_dict[ModelWithBlocks] = (
+        fptquant_config.FPTQuantConfig(Block, MyBlockInterface)
+    )
+    FPTQuant.insert_nonmergeable_down_project_transform(model, DummyConfig())
+
+    num_transformed_linears = 0
+    for module in model.modules():
+        if isinstance(module, TransformationMixin):
+            num_transformed_linears += 1
+            assert isinstance(
+                module.left_hand_transforms[0], GroupedHadamardTransformOp
+            )
+            assert not module.left_hand_transforms[0].mergeable
+    assert num_transformed_linears == 4
