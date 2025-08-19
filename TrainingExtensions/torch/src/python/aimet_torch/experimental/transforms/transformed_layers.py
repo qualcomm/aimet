@@ -4,12 +4,15 @@
 # pylint: disable=missing-docstring
 
 import functools
-from contextlib import contextmanager
+import contextlib
 
 import torch
 from torch import nn
 
 from .transform_ops import TransformOp
+
+from aimet_torch.v2.utils import patch_attr
+from aimet_torch.v2.nn import compute_param_encodings
 from aimet_torch.v2.nn.true_quant import QuantizationMixin
 
 
@@ -42,6 +45,9 @@ class TransformationMixin(torch.nn.Module):
                 "Cannot add mergeable transform to RHS after non-mergeable transform."
             )
 
+        if isinstance(self, QuantizationMixin) and not transform.mergeable:
+            transform = QuantizationMixin.from_module(transform)
+
         self.right_hand_transforms.append(transform)
 
     def add_left_hand_transform(self, transform: TransformOp):
@@ -56,6 +62,10 @@ class TransformationMixin(torch.nn.Module):
             raise RuntimeError(
                 "Cannot add mergeable transform to LHS before non-mergeable transform."
             )
+
+        if isinstance(self, QuantizationMixin) and not transform.mergeable:
+            transform = QuantizationMixin.from_module(transform)
+
         self.left_hand_transforms.insert(0, transform)
 
     def _compute_merged_params(self):
@@ -72,7 +82,7 @@ class TransformationMixin(torch.nn.Module):
             functools.reduce(
                 lambda weight, transform: transform.left_hand_merge(weight),
                 mergeable_left_hand_transforms[::-1],
-                self.weight,
+                self.weight.data,
             ),
         )
 
@@ -83,7 +93,7 @@ class TransformationMixin(torch.nn.Module):
                 functools.reduce(
                     lambda bias, transform: transform.left_hand_merge(bias),
                     mergeable_left_hand_transforms[::-1],
-                    self.bias,
+                    self.bias.data,
                 ),
             )
         else:
@@ -113,22 +123,19 @@ class TransformationMixin(torch.nn.Module):
             ]
         )
 
-    @contextmanager
     def _patch_transformed_parameters(self):
         transformed_weight, transformed_bias = self._compute_merged_params()
-
-        orig_weight = getattr(self, "weight", None)
-        orig_bias = getattr(self, "bias", None)
-
-        setattr(self, "weight", nn.Parameter(transformed_weight))
+        stack = contextlib.ExitStack()
+        stack.enter_context(
+            patch_attr(self, "weight", nn.Parameter(transformed_weight))
+        )
+        stack.enter_context(patch_attr(self, "left_hand_transforms", nn.ModuleList()))
+        stack.enter_context(patch_attr(self, "right_hand_transforms", nn.ModuleList()))
         if transformed_bias is not None:
-            setattr(self, "bias", nn.Parameter(transformed_bias))
-
-        yield
-
-        setattr(self, "weight", orig_weight)
-        if transformed_bias is not None:
-            setattr(self, "bias", orig_bias)
+            stack.enter_context(
+                patch_attr(self, "bias", nn.Parameter(transformed_bias))
+            )
+        return stack
 
     def get_original_module(self):
         if len(self.right_hand_transforms) > 0 or len(self.left_hand_transforms) > 0:
@@ -136,7 +143,10 @@ class TransformationMixin(torch.nn.Module):
                 "Cannot obtain original module with unmerged transforms."
             )
 
-        original_cls = self.tcls_to_cls[type(self)]
+        original_cls = type(self)
+        if isinstance(self, QuantizationMixin):
+            original_cls = QuantizationMixin.qcls_to_cls[original_cls]
+        original_cls = self.tcls_to_cls[original_cls]
         if isinstance(self, QuantizationMixin):
             original_cls = QuantizationMixin.cls_to_qcls[original_cls]
 
@@ -175,48 +185,74 @@ class TransformationMixin(torch.nn.Module):
         return transformed_cls(module)
 
 
-@TransformationMixin.implements(nn.Linear)
-class TransformedLinear(TransformationMixin, nn.Linear):
+class _NullaryOrUnaryTransformedLayer(TransformationMixin, nn.Module):
     # pylint: disable=redefined-builtin
     # pylint: disable=arguments-differ
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        transformed_input = functools.reduce(
-            lambda x, transform: transform(x), self.left_hand_transforms, input
+        transformed_input = (
+            functools.reduce(
+                lambda x, transform: transform(x), self.left_hand_transforms, input
+            )
+            if len(self.left_hand_transforms) > 0
+            else input
         )
         output = super().forward(transformed_input)
-        transformed_output = functools.reduce(
-            lambda x, transform: transform(x), self.right_hand_transforms, output
+        transformed_output = (
+            functools.reduce(
+                lambda x, transform: transform(x), self.right_hand_transforms, output
+            )
+            if len(self.right_hand_transforms) > 0
+            else output
         )
         return transformed_output
 
 
-@QuantizationMixin.implements(TransformedLinear)
-class QuantizedTransformedLinear(QuantizationMixin, TransformedLinear):
+class _NullaryOrUnaryQuantizedTransformedLayer(
+    QuantizationMixin, _NullaryOrUnaryTransformedLayer
+):
+    def __quant_init__(self):
+        pass
+
     # pylint: disable=redefined-builtin
     # pylint: disable=arguments-differ
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        # 1) apply non mergeable transforms (they will have their own quantizers present)
+        # 1) apply non mergeable left hand transforms (they will have their own quantizers present)
         non_mergeable_left_hand_transforms = [
             transform
             for transform in self.left_hand_transforms
             if not transform.mergeable
         ]
-        transformed_input = functools.reduce(
-            lambda x, transform: transform.forward(x),
-            non_mergeable_left_hand_transforms,
-            input,
+        transformed_input = (
+            functools.reduce(
+                lambda x, transform: transform.forward(x),
+                non_mergeable_left_hand_transforms,
+                input,
+            )
+            if len(non_mergeable_left_hand_transforms) > 0
+            else input
         )
 
         # 2) quantize inputs
-        if self.input_quantizers[0]:
+        if len(self.input_quantizers) > 0 and self.input_quantizers[0]:
             transformed_input = self.input_quantizers[0](transformed_input)
 
         # 3) Forward
-        with self._patch_transformed_parameters():
-            with self._patch_quantized_parameters():
-                transformed_output = nn.Linear.forward(self, transformed_input)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(self._patch_transformed_parameters())
+            stack.enter_context(self._patch_quantized_parameters())
+            stack.enter_context(
+                patch_attr(self, "input_quantizers", torch.nn.ModuleList())
+            )
+            stack.enter_context(
+                patch_attr(self, "output_quantizers", torch.nn.ModuleList())
+            )
+            stack.enter_context(
+                patch_attr(self, "param_quantizers", torch.nn.ModuleDict())
+            )
 
-        # 4) Apply mergeable right hand transforms
+            transformed_output = super().forward(transformed_input)
+
+        # 4) Determine non-mergeable right hand transforms
         non_mergeable_right_hand_transforms = [
             transform
             for transform in self.right_hand_transforms
@@ -227,10 +263,90 @@ class QuantizedTransformedLinear(QuantizationMixin, TransformedLinear):
         if self.output_quantizers[0]:
             transformed_output = self.output_quantizers[0](transformed_output)
 
-        # 6) Apply non-mergeable left hand transforms
-        transformed_output = functools.reduce(
-            lambda x, transform: transform.forward(x),
-            non_mergeable_right_hand_transforms,
-            transformed_output,
+        # 6) Apply non-mergeable right hand transforms
+        transformed_output = (
+            functools.reduce(
+                lambda x, transform: transform.forward(x),
+                non_mergeable_right_hand_transforms,
+                transformed_output,
+            )
+            if len(non_mergeable_right_hand_transforms) > 0
+            else transformed_output
         )
         return transformed_output
+
+
+@TransformationMixin.implements(nn.Linear)
+class TransformedLinear(_NullaryOrUnaryTransformedLayer, nn.Linear):
+    pass
+
+
+@QuantizationMixin.implements(TransformedLinear)
+class QuantizedTransformedLinear(
+    _NullaryOrUnaryQuantizedTransformedLayer, TransformedLinear
+):
+    pass
+
+
+@TransformationMixin.implements(nn.Embedding)
+class TransformedEmbedding(_NullaryOrUnaryTransformedLayer, nn.Embedding):
+    def _compute_merged_params(self):
+        weight = self.weight.data
+
+        if len(self.left_hand_transforms) > 0:
+            transformed_input = functools.reduce(
+                lambda x, transform: transform(x),
+                self.left_hand_transforms,
+                torch.eye(self.weight.data.shape[0], device=self.weight.data.device),
+            )
+            weight = transformed_input @ weight
+
+        if len(self.right_hand_transforms) > 0:
+            weight = functools.reduce(
+                lambda x, transform: transform(x), self.right_hand_transforms, weight
+            )
+
+        return weight, None
+
+
+@QuantizationMixin.implements(TransformedEmbedding)
+class QuantizedTransformedEmbedding(
+    _NullaryOrUnaryQuantizedTransformedLayer, TransformedEmbedding
+):
+    pass
+
+
+def remove_all_transforms(model: torch.nn.Module):
+    with contextlib.ExitStack() as stack:
+        for _, module in model.named_modules():
+            if isinstance(module, TransformationMixin):
+                stack.enter_context(
+                    patch_attr(module, "left_hand_transforms", nn.ModuleList())
+                )
+                stack.enter_context(
+                    patch_attr(module, "right_hand_transforms", nn.ModuleList())
+                )
+    return stack
+
+
+# pylint: disable=protected-access
+def merge_transforms(model: torch.nn.Module):
+    with contextlib.ExitStack() as stack:
+        for _, module in model.named_modules():
+            if isinstance(module, TransformationMixin):
+                stack.enter_context(module._patch_transformed_parameters())
+    return stack
+
+
+def recompute_param_encodings_for_transformed_layers(model: torch.nn.Module):
+    # Temporarily merge weights and recompute param encodings
+    with merge_transforms(model):
+        compute_param_encodings(model)
+
+
+def get_trainable_transform_params(model: torch.nn.Module):
+    state_dict = {}
+    for name, module in model.named_modules():
+        if isinstance(module, TransformationMixin):
+            state_dict.update(module.state_dict(prefix=f"{name}."))
+    return state_dict

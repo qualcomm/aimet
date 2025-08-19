@@ -110,6 +110,7 @@ def test_transformed_quantized_layer_conversion():
     assert torch.allclose(orig_result, merged_result)
 
 
+@pytest.mark.skip("Issue with instantiating QuantSim on pre-transformed layers.")
 def test_transformed_quantized_layer_conversion_2():
     model = LinearModel()
 

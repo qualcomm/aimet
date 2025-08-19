@@ -45,6 +45,7 @@ class InvertibleTransformOp(TransformOp):
 
         return type(f"Inverse{cls.__name__}", (cls,), attr_dict)
 
+    @functools.lru_cache(maxsize=1)
     def get_inverted_op(self) -> TransformOp:
         inverted_op = super().__new__(self._get_inverse_op_type())  # pylint: disable=no-value-for-parameter
         inverted_op.__dict__.update(self.__dict__)
@@ -74,7 +75,7 @@ class IdentityTransformOp(InvertibleTransformOp):
 class MatrixTransformOp(InvertibleTransformOp):
     def __init__(self, matrix):
         super().__init__(mergeable=True)
-        self.matrix = matrix
+        self.matrix = torch.nn.Parameter(matrix, requires_grad=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x @ self.matrix
@@ -83,7 +84,12 @@ class MatrixTransformOp(InvertibleTransformOp):
         return x @ torch.linalg.inv(self.matrix)
 
     def left_hand_merge(self, weight: torch.Tensor) -> torch.Tensor:
-        return self.forward(torch.eye(self.matrix.shape[-1])) @ weight
+        return (
+            self.forward(
+                torch.eye(self.matrix.data.shape[-1], device=weight.data.device)
+            )
+            @ weight.T
+        ).T
 
     def right_hand_merge(self, weight: torch.Tensor) -> torch.Tensor:
         return self.forward(weight.T).T

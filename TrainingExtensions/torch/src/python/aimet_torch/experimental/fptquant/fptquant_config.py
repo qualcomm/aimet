@@ -69,6 +69,26 @@ class BlockInterface:
     def gate_proj(self, value):
         self.block.mlp.gate_proj = value
 
+    @property
+    def input_norm(self):
+        return self.block.input_layernorm
+
+    @input_norm.setter
+    def input_norm(self, value):
+        self.block.input_layernorm = value
+
+    @property
+    def post_attention_norm(self):
+        return self.block.post_attention_layernorm
+
+    @post_attention_norm.setter
+    def post_attention_norm(self, value):
+        self.block.post_attention_layernorm = value
+
+
+def _get_block_dtype(block: BlockInterface):
+    return block.q_proj.weight.data.dtype
+
 
 # Same as default, so don't need to do anything
 class LlamaBlockInterface(BlockInterface):

@@ -126,6 +126,9 @@ def _convert_to_qmodel(model: torch.nn.Module):
     """
 
     def _convert_to_qmodule(module: torch.nn.Module):
+        if is_mergeable_transform(module):
+            return module
+
         if not isinstance(
             module, (*quantized_modules, *unquantizable_modules, *containers)
         ) and not is_mergeable_transform(module):
