@@ -251,7 +251,7 @@ def optional_dependencies() -> dict[str, list[str]]:
 
     optional_dependencies["test"].extend(
         [
-            "deepspeed",
+            "deepspeed<0.17.5",
             "onnxruntime",
         ]
     )
