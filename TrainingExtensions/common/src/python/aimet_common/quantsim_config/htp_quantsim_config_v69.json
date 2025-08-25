@@ -44,6 +44,7 @@
     },
     "Gather":
     {
+      "is_output_quantized": "False",
       "per_channel_quantization": "False"
     },
     "Gemm":
