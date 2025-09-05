@@ -24,8 +24,12 @@ jobs:
         run: |
           apt update -qq
           apt install --no-install-recommends -y git curl g++ ca-certificates cmake make
-          curl -sSL 'https://pki.qualcomm.com/{qc_root_g2_cert.crt,ssl_v3_cert.crt,ssl_v4_cert.crt}' > qualcomm.crt
+          # ref: https://qwiki.qualcomm.com/it-sec-public/QC_SSL#Machines
+          curl -L 'https://pki.qualcomm.com/{qc_root_g2_cert.crt,ssl_v3_cert.crt,ssl_v4_cert.crt}' -o '/usr/local/share/ca-certificates/#1'
           update-ca-certificates
+          # Update certificate env variables
+          echo "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt" >> $GITHUB_ENV
+          echo "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" >> $GITHUB_ENV
           rm -rf download
       - if: matrix.ENABLE_TESTS == 'ON'
         uses: actions/checkout@v4

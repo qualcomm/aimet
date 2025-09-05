@@ -6,3 +6,4 @@ pandas==1.4.3
 protobuf==3.19.2
 tensorflow-hub
 tensorflow-model-optimization
+tensorflow-datasets
