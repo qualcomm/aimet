@@ -124,7 +124,7 @@ jobs:
 
   call-run-unit-acceptance-tests:
     name: Run unit tests
-    if: ${{ inputs.run_unit_tests == 'true' || inputs.run_acceptance_tests == 'true' }}
+    if: ${{ inputs.run_unit_tests || inputs.run_acceptance_tests }}
     needs: [ variants, call-build-wheels ]
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
     with:
@@ -139,7 +139,7 @@ jobs:
     needs: [ variants, call-run-unit-acceptance-tests ]
     # Unit tests must pass before publishing wheels to PyPI
     # Acceptance tests are optional when running via release workflow
-    if: ${{ always() && needs.call-run-unit-acceptance-tests.result == 'success' }}
+    if: ${{ needs.call-run-unit-acceptance-tests.result == 'success' }}
     # Requires approval to publish wheels to PyPI from aimet-deployers
     environment: prod
     env:
