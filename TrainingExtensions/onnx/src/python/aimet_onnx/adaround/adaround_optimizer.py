@@ -56,9 +56,8 @@ from aimet_onnx.adaround.utils import (
     ModuleInfo,
     read_attributes_for_op,
     apply_activation_fn,
-    get_torch_device,
 )
-from aimet_onnx.utils import create_input_dict
+from aimet_onnx.utils import create_input_dict, get_torch_device
 from aimet_onnx.adaround.adaround_loss import AdaroundLoss
 from aimet_onnx.adaround.adaround_tensor_quantizer import AdaroundTensorQuantizer
 

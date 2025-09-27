@@ -739,3 +739,20 @@ def make_psnr_eval_fn(
         return compute_psnr(fp_first_output, sim_first_output)
 
     return psnr_eval_fn
+
+
+def get_torch_device(session: InferenceSession) -> torch.device:
+    """
+    Given the onnx session object, return corresponding torch device to use for optimization
+
+    :param session: Onnx inference session
+    :return: torch device
+    """
+    if "CUDAExecutionProvider" in session.get_providers():
+        device_id = int(
+            session.get_provider_options()
+            .get("CUDAExecutionProvider", {})
+            .get("device_id", "0")
+        )
+        return torch.device("cuda:" + str(device_id))
+    return torch.device("cpu")

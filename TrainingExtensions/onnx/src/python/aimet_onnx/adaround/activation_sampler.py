@@ -37,8 +37,7 @@
 
 """Sample output from original module for Adaround feature"""
 
-import copy
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict
 
 import numpy as np
 import onnxruntime as ort
@@ -51,7 +50,6 @@ from aimet_onnx.utils import (
     add_hook_to_get_activation,
     remove_activation_hooks,
     create_input_dict,
-    disable_quantizers,
     build_session,
 )
 
@@ -133,6 +131,7 @@ class ActivationSampler:
         :param model: ONNX ModelProto to create a session
         :param activation: activation to add a hook to
         """
+        # TODO: optional: Clean all the outputs except the one we want?
         handle = add_hook_to_get_activation(model, activation)
         sess = build_session(
             model,

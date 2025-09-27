@@ -1,0 +1,13 @@
+model:
+  name: Qwen_25
+  sequence_length: 2048
+  context_length: 4096
+  model_id: Qwen/Qwen2.5-0.5B
+dataset:
+  name: Wikitext
+  split: train
+recipe:
+  name: AdaScale
+metrics:
+  - name: TinyMMLU
+  - name: PPL

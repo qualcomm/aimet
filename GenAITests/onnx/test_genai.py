@@ -18,6 +18,9 @@ from GenAITests.onnx import models
 from GenAITests.onnx.helpers import quant_recipes
 
 from GenAITests.onnx.models.utils.torch_onnx_interface import TorchONNXInterface
+from GenAITests.onnx.models.utils.torch_onnx_export_utils import (
+    get_model_checkpoint_path,
+)
 
 
 def test_llm_quantization(test_parameters):
@@ -50,7 +53,11 @@ def test_llm_quantization(test_parameters):
         model_id, context_length, sequence_length, **model_kwargs
     )
     tokenizer = model_cls.instantiate_tokenizer(model_id)
-    config = AutoConfig.from_pretrained(model_cls.DEFAULT_MODEL_ID)
+    config = AutoConfig.from_pretrained(
+        get_model_checkpoint_path(
+            model_id if model_id is not None else model_cls.DEFAULT_MODEL_ID
+        )
+    )
 
     quantsim_with_torch_interface = TorchONNXInterface(quantsim, config)
     generator = Generator(

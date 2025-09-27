@@ -13,7 +13,10 @@ from GenAITests.shared.models.llama import Llama_32
 from GenAITests.shared.models.generator import Generator
 from GenAITests.shared.models.utils.model_utils import ONNXExportableModuleWithCache
 
-from GenAITests.onnx.models.utils.torch_onnx_export_utils import get_onnx_model
+from GenAITests.onnx.models.utils.torch_onnx_export_utils import (
+    get_onnx_model,
+    get_model_checkpoint_path,
+)
 from GenAITests.onnx.models.utils.quantsim_utils import (
     _set_tensors_to_output_8b_sym,
     _tie_quantizers_for_kv_cache,
@@ -37,7 +40,7 @@ class Llama_32_ONNX(Llama_32):
             model_id = cls.DEFAULT_MODEL_ID
 
         model = cls.instantiate_model(model_id, small_model)
-
+        config = model.config
         exportable_model = ONNXExportableModuleWithCache(model)
 
         dummy_input_ids = torch.zeros((1, sequence_length), dtype=torch.int)
@@ -53,7 +56,7 @@ class Llama_32_ONNX(Llama_32):
         )
 
         onnx_model = get_onnx_model(
-            f"onnx_checkpoints/{model_id}",
+            get_model_checkpoint_path(model_id),
             exportable_model,
             context_length,
             assembled_dummy_inputs,
@@ -90,4 +93,4 @@ class Llama_32_ONNX(Llama_32):
         # Tie kv_cache
         _tie_quantizers_for_kv_cache(quant_sim)
 
-        return quant_sim
+        return (quant_sim, config)

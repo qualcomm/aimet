@@ -6,6 +6,17 @@
 Release notes
 #############
 
+2.15.1
+======
+
+* New Features
+
+    * ONNX
+        * Experimental: AdaScale post-training quantization (`27b3824`_)
+
+.. _27b3824: https://github.com/quic/aimet/commit/27b3824cbf54a20bb51489d5c7e5e8d4484f4cc9
+
+
 2.15.0
 ======
 

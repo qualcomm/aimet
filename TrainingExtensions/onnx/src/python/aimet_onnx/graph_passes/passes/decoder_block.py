@@ -47,8 +47,6 @@ class DecoderBlock(GraphPass):
             return False
 
         # Check if weights are present
-        self.pattern_last_op = all_ops[-1]
-        if len(all_ops[-1].output_ops) == 1 and all_ops[-1].output_ops[0].type == "Mul":
-            self.pattern_last_op = all_ops[-1].output_ops[0]
+        self.pattern_last_op = all_ops[0]
 
         return True
