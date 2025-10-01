@@ -1872,21 +1872,35 @@ class QuantizationSimModel:
 
                 src_qtzrs[src_name] = src_qtzr
 
-            # If all inputs are quantized and have the same fixed quantization range,
-            # output quantizer will inherit the fixed range.
-            # In practice, this will be most relevant when
-            # Concat takes all its inputs from Softmax/Sigmoid.
-            #            [0, 1]          [0, 1]
-            #   Softmax -------> Concat ------>
-            #   Softmax -----------^
-            #            [0, 1]
-            if all(qtzr is not None for qtzr in src_qtzrs.values()):
-                src_min_max_ranges = set(
-                    src_qtzr._encoding_min_max_fixed_vals  # pylint: disable=protected-access
-                    for src_qtzr in src_qtzrs.values()
-                )
-                if len(src_min_max_ranges) == 1:
-                    output_qtzr.set_fixed_encoding_range(src_min_max_ranges.pop())
+            src_min_max_ranges = set(
+                src_qtzr._encoding_min_max_fixed_vals  # pylint: disable=protected-access
+                if src_qtzr
+                else None
+                for src_qtzr in src_qtzrs.values()
+            )
+            if len(src_min_max_ranges) == 1:
+                # If all inputs are quantized and have the same fixed quantization range,
+                # output quantizer will inherit the fixed range.
+                # In practice, this will be most relevant when
+                # Concat takes all its inputs from Softmax/Sigmoid.
+                #            [0, 1]         [0, 1]
+                #   Sigmoid ---Q1--> Concat --Q1-->
+                #   Softmax ---Q1------^
+                #            [0, 1]
+                output_qtzr.set_fixed_encoding_range(src_min_max_ranges.pop())
+            else:
+                # If inputs have conflicting encoding constraints,
+                # only tie the input quantizers without encoding constraints,
+                # leaving the constrained ones untouched.
+                #            [0, 1]         [X, Y]
+                #   Sigmoid ---Q1--> Concat --Q2-->
+                #      Conv ---Q2------^
+                #            [X, Y]
+                src_qtzrs = {
+                    src_name: src_qtzr
+                    for src_name, src_qtzr in src_qtzrs.items()
+                    if not src_qtzr or not src_qtzr._encoding_min_max_fixed_vals  # pylint: disable=protected-access
+                }
 
             for src_name, src_qtzr in src_qtzrs.items():
                 if src_qtzr:

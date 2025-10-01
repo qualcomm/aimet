@@ -3147,6 +3147,54 @@ class TestEncodingPropagation:
             output_encoding.delta, expected_scale, atol=np.finfo(np.float32).eps
         )
 
+        """
+        Given: model as below
+
+        [input] -+-> Sigmoid -> Concat -> [output]
+                 +-> MatMul -----^
+        """
+
+        class Model(torch.nn.Module):
+            def forward(self, x: torch.Tensor):
+                return torch.cat(
+                    (
+                        torch.sigmoid(x),
+                        x @ x,
+                    )
+                )
+
+        """
+        When: _apply_constraints(True)
+        Then: Only MatMul output quantizer must be tied with Concat output quantizer
+        """
+        pt_model = Model().eval()
+        dummy_input = torch.randn(100, 100)
+        model = _convert_to_onnx(pt_model, dummy_input)
+        dummy_input = make_dummy_input(model.model)
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model, config_file="htp_v81")
+            sim.compute_encodings([dummy_input])
+
+        assert (
+            sim.qc_quantize_op_dict["/Sigmoid_output_0"]
+            is not sim.qc_quantize_op_dict["output"]
+        )
+        assert (
+            sim.qc_quantize_op_dict["/MatMul_output_0"]
+            is sim.qc_quantize_op_dict["output"]
+        )
+
+        (sigmoid_output_encoding,) = sim.qc_quantize_op_dict[
+            "/Sigmoid_output_0"
+        ].get_encodings()
+        expected_scale = 1 / 255
+        assert sigmoid_output_encoding.min == 0
+        assert sigmoid_output_encoding.max == 1
+        assert sigmoid_output_encoding.offset == 0
+        assert np.allclose(
+            sigmoid_output_encoding.delta, expected_scale, atol=np.finfo(np.float32).eps
+        )
+
     def test_partial_encoding_constraints(self):
         """
         Given: model as below
