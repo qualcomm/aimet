@@ -23,7 +23,7 @@ Following the tables, you’ll find step-by-step instructions on how to run thes
 **Model Quantization Examples**
 
 .. list-table::
-   :widths: 50 20 20 20
+   :widths: 50 20 20
    :header-rows: 1
 
    * - Features
@@ -33,7 +33,7 @@ Following the tables, you’ll find step-by-step instructions on how to run thes
      - `Link <notebooks/onnx/quantization/quantsim.ipynb>`_
      - `Link <notebooks/torch/quantization/qat.ipynb>`_
    * - Quantization-aware training (QAT)
-     - Not implemented.
+     - Not supported.
      - `Link <notebooks/torch/quantization/qat_range_learning.ipynb>`_
    * - Cross-layer equalization (CLE)
      - `Link <notebooks/onnx/quantization/cle.ipynb>`_
