@@ -331,7 +331,7 @@ class GraphSearchUtils:
         """
 
         for op in connected_graph.get_all_ops().values():
-            if op.model_module and op.model_module.get_module() is module:
+            if op.model_module and op.model_module.get_module() is module and op.output_ops[0].model_module is not None:
                 assert len(op.output_ops) == 1
                 is_relu_activation = isinstance(
                     op.output_ops[0].model_module.get_module(),
