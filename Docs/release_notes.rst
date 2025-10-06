@@ -6,6 +6,39 @@
 Release notes
 #############
 
+2.16.0
+======
+
+* New Features
+    * ONNX
+        * Experimental - Added Adascale, a post-training quantization technique (`5e23ceb`_)
+
+* Bug fixes and Improvements
+    * ONNX
+        * Skip tying Concat input/output quantizers with conflicting encoding constraints (`b924107`_)
+        * Small updates to FPT Quant for improved accuracy (`ba10947`_)
+        * Implement partial encoding freezing mechanism in aimet-onnx (`658ec3c`_)
+        * Add Relu partial encoding constraints to HTP config files (`dc8d978`_)
+        * Clear encoding analyzer stats after computing param encodings (`3d4725f`_)
+        * Remove wasted computation/memory in FPTQuant local optimizer (`59350af`_)
+
+    * Torch
+        * Allow boolean type casting of QuantizedTensors (`7d63e66`_)
+        * Implement partial encoding freezing mechanism in aimet-torch (`1b99a39`_)
+        * Improve scale post-processing to prevent scale freezing during QAT (`6fe56b0`_)
+
+.. _5e23ceb: https://github.com/quic/aimet/commit/5e23cebea551c074f7a380ef2f385fd95433bb53
+.. _b924107: https://github.com/quic/aimet/commit/b9241073256c4a455426451efbc1f3d0672e37b2
+.. _ba10947: https://github.com/quic/aimet/commit/ba10947bdbdecdf2980f076560453991c3888e77
+.. _658ec3c: https://github.com/quic/aimet/commit/658ec3c20be379b582321171e28f92e8fab1102b
+.. _1b99a39: https://github.com/quic/aimet/commit/1b99a39b6c19f6b7fc77c871b5dc232981e6eac9
+.. _dc8d978: https://github.com/quic/aimet/commit/dc8d978f672e5a93ecb5c8de64017ccaf949d2bf
+.. _3d4725f: https://github.com/quic/aimet/commit/3d4725fc172bffeadd87ee993b7a30e5d51691b2
+.. _59350af: https://github.com/quic/aimet/commit/59350afb881678dc0313a7445bb2e61d5b14328b
+.. _7d63e66: https://github.com/quic/aimet/commit/7d63e6660050399479c804b474b9cb87c7991fce
+.. _6fe56b0: https://github.com/quic/aimet/commit/6fe56b0d94b1de7f659f4e1d08be5847e4313a09
+
+
 2.15.0
 ======
 
