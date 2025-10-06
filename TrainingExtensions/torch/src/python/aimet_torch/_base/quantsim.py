@@ -167,10 +167,6 @@ class _QuantizedModuleProtocol(Protocol):
     Defines the minimum interface requirements for exporting encodings from a module.
     """
 
-    input_quantizers: List[_QuantizerProtocol]
-    output_quantizers: List[_QuantizerProtocol]
-    param_quantizers: Dict[str, _QuantizerProtocol]
-
     def export_input_encodings(self, encoding_version: str) -> List[List[Dict]]:
         """
         Returns a list of input encodings, each represented as a List of Dicts

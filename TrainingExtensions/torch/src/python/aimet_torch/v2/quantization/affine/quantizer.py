@@ -38,7 +38,16 @@
 """Affine quantizers"""
 
 from itertools import chain, repeat
-from typing import Dict, List, Optional, overload, Protocol, runtime_checkable, Tuple
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    overload,
+    Protocol,
+    runtime_checkable,
+    Tuple,
+)
 import contextlib
 import functools
 
@@ -263,6 +272,11 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):  # pylint: disable=too-man
             if is_initialized:
                 self.set_range(min, max)
 
+        # Dummy attribute for runtime-checkable protocols in python >=3.12
+        if hasattr(self, "_is_min_max"):
+            delattr(self, "_is_min_max")
+        setattr(self, "_is_scale_offset", True)
+
     def _reparametrize_to_min_max(self):
         # pylint: disable=attribute-defined-outside-init
         if self._is_min_max_quantizer():
@@ -288,6 +302,11 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):  # pylint: disable=too-man
             if is_initialized:
                 min, max = _get_min_max(scale, offset, self.qmin, self.qmax)
                 self.set_range(min, max)
+
+        # Dummy attribute for runtime-checkable protocols in python >=3.12
+        if hasattr(self, "_is_scale_offset"):
+            delattr(self, "_is_scale_offset")
+        setattr(self, "_is_min_max", True)
 
     def get_min(self, dtype=None) -> Optional[torch.Tensor]:
         """
@@ -745,8 +764,7 @@ class MinMaxQuantizer(Protocol):
     Affine quantizer protocol parametrized with min and max
     """
 
-    min: torch.nn.Parameter
-    max: torch.nn.Parameter
+    _is_min_max: Any
 
     shape: Tuple[int, ...]
     qmin: int
@@ -760,8 +778,7 @@ class ScaleOffsetQuantizer(Protocol):
     Affine quantizer protocol parametrized with scale and offset
     """
 
-    scale: torch.nn.Parameter
-    offset: Optional[torch.nn.Parameter]
+    _is_scale_offset: Any
 
     shape: Tuple[int, ...]
     qmin: int
