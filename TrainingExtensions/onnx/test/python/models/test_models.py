@@ -366,7 +366,7 @@ def rmsnorm_model(
     dim: int = 32,
     elementwise_affine: bool = True,
     mul_for_pow: bool = False,
-    separate_mul_div: bool = False,
+    mul_rsqrt_pattern: str = "mul_rsqrt",
 ):
     class RMSNorm(nn.Module):
         def __init__(
@@ -374,13 +374,13 @@ def rmsnorm_model(
             dim,
             elementwise_affine=True,
             mul_for_pow=False,
-            separate_mul_div=False,
+            mul_rsqrt_pattern="mul_rsqrt",
         ):
             super().__init__()
             self.weight = torch.randn(dim) if elementwise_affine else None
             self.variance_epsilon = 0.003
             self.mul_for_pow = mul_for_pow
-            self.separate_mul_div = separate_mul_div
+            self.mul_rsqrt_pattern = mul_rsqrt_pattern
 
         def forward(self, x):
             if self.mul_for_pow:
@@ -388,10 +388,15 @@ def rmsnorm_model(
             else:
                 variance = x.pow(2).mean(-1, keepdim=True)
 
-            if self.separate_mul_div:
+            if self.mul_rsqrt_pattern == "mul_rsqrt":
                 x = x * torch.rsqrt(variance + self.variance_epsilon)
-            else:
+            elif self.mul_rsqrt_pattern == "div_sqrt":
                 x = x / torch.sqrt(variance + self.variance_epsilon)
+            elif self.mul_rsqrt_pattern == "mul_reciprocal_sqrt":
+                sqrt = 1 / torch.sqrt(variance + self.variance_epsilon)
+                x = x * sqrt
+            else:
+                raise RuntimeError("Mul RSqrt pattern not specified.")
 
             if self.weight is not None:
                 return x * self.weight
@@ -402,7 +407,7 @@ def rmsnorm_model(
         dim=dim,
         elementwise_affine=elementwise_affine,
         mul_for_pow=mul_for_pow,
-        separate_mul_div=separate_mul_div,
+        mul_rsqrt_pattern=mul_rsqrt_pattern,
     )
     with tempfile.NamedTemporaryFile(
         prefix="rmsnorm_", suffix=".onnx"
