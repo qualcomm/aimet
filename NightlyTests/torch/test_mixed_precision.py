@@ -107,7 +107,7 @@ class TestMixedPrecision:
 
         torch.manual_seed(0)
 
-        model = torch.load("data/mnist_trained_on_GPU.pth")
+        model = torch.load("data/mnist_trained_on_GPU.pth", weights_only=False)
         input_shape = (1, 1, 28, 28)
         dummy_input = torch.randn(1, 1, 28, 28).cuda()
         default_bitwidth = 16
@@ -167,7 +167,7 @@ class TestMixedPrecision:
 
         torch.manual_seed(0)
 
-        model = torch.load("data/mnist_trained_on_GPU.pth")
+        model = torch.load("data/mnist_trained_on_GPU.pth", weights_only=False)
         input_shape = (1, 1, 28, 28)
         dummy_input = torch.randn(1, 1, 28, 28).cuda()
         default_bitwidth = 16
@@ -256,7 +256,7 @@ class TestMixedPrecision:
 
         torch.manual_seed(0)
 
-        model = torch.load("data/mnist_trained_on_GPU.pth")
+        model = torch.load("data/mnist_trained_on_GPU.pth", weights_only=False)
         input_shape = (1, 1, 28, 28)
         dummy_input = torch.randn(1, 1, 28, 28).cuda()
         default_bitwidth = 16
@@ -318,7 +318,7 @@ class TestMixedPrecision:
 
         torch.manual_seed(0)
 
-        model = torch.load("data/mnist_trained_on_GPU.pth")
+        model = torch.load("data/mnist_trained_on_GPU.pth", weights_only=False)
         input_shape = (1, 1, 28, 28)
         dummy_input = torch.randn(1, 1, 28, 28).cuda()
         default_bitwidth = 16

@@ -616,7 +616,9 @@ class SvdAcceptanceTests(unittest.TestCase):
             cuda=True, seed=1, shuffle=False, train_batch_size=64, test_batch_size=100
         )
         input_shape = (1, 1, 28, 28)
-        model = torch.load(os.path.join("./", "data", "mnist_trained_on_GPU.pth"))
+        model = torch.load(
+            os.path.join("./", "data", "mnist_trained_on_GPU.pth"), weights_only=False
+        )
         modules_to_ignore = [model.conv1]
         greedy_params = aimet_common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.8),
