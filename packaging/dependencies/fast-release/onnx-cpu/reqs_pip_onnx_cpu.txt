@@ -12,6 +12,6 @@ pybind11
 PyYAML
 scikit-learn
 scipy
-torch
+torch<2.9
 tqdm
 onnx2torch

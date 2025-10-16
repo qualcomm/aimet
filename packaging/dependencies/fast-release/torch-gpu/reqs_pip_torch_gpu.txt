@@ -19,6 +19,6 @@ safetensors==0.5.3
 scikit-learn
 scipy
 tensorboard
-torch
+torch<2.9
 torchvision
 tqdm
