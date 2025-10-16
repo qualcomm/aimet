@@ -38,6 +38,7 @@
 
 """Sequential MSE base"""
 
+import functools
 from abc import abstractmethod, ABC
 import json
 import os
@@ -91,7 +92,7 @@ class SeqMseParams:
      yielded from the data loader. The function expects model as first argument and inputs to model as second argument.
     """
 
-    num_batches: int
+    num_batches: Optional[int]
     num_candidates: int = 20
     inp_symmetry: str = "symqt"
     loss_fn: str = "mse"
@@ -166,6 +167,9 @@ class SequentialMseBase(ABC):
             # Initialize param encodings of modules of supported types.
             cls.compute_all_param_encodings(sim)
 
+            dummy_input = change_tensor_device_placement(
+                next(iter(data_loader)), get_device(model)
+            )
             cached_dataset = CachedDataset(
                 data_loader, params.num_batches, os.path.join(tempdir, "cached_dataset")
             )
@@ -180,9 +184,6 @@ class SequentialMseBase(ABC):
                     tempdir,
                 )
             else:
-                dummy_input = change_tensor_device_placement(
-                    next(iter(data_loader)), get_device(model)
-                )
                 fp32_modules = get_ordered_list_of_modules(
                     model,
                     dummy_input,
@@ -195,10 +196,26 @@ class SequentialMseBase(ABC):
                     if isinstance(module, SUPPORTED_MODULES)
                 ]
                 if modules_to_exclude:
+
+                    def map_from_qt_to_fp_model(inp_module):
+                        # helper function to map all modules_to_exclude from the QT object to the FP object
+                        # if necessary
+                        for name, module in sim.model.named_modules():
+                            if module == inp_module:
+                                fp_module = functools.reduce(
+                                    getattr, [model] + name.split(".")
+                                )
+                                return fp_module
+                        return inp_module
+
                     fp32_modules = [
                         (name, module)
                         for name, module in fp32_modules
-                        if not module in modules_to_exclude
+                        if not module
+                        in map(
+                            map_from_qt_to_fp_model,
+                            modules_to_exclude,
+                        )
                     ]
 
                 # Find and freeze optimal param encodings candidate
@@ -295,10 +312,26 @@ class SequentialMseBase(ABC):
                 if isinstance(module, SUPPORTED_MODULES)
             ]
             if modules_to_exclude:
+
+                def map_from_qt_to_fp_model(inp_module):
+                    # helper function to map all modules_to_exclude from the QT object to the FP object
+                    # if necessary
+                    for name, module in sim.model.named_modules():
+                        if module == inp_module:
+                            fp_module = functools.reduce(
+                                getattr, [model] + name.split(".")
+                            )
+                            return fp_module
+                    return inp_module
+
                 fp32_modules = [
                     (name, module)
                     for name, module in fp32_modules
-                    if not module in modules_to_exclude
+                    if not module
+                    in map(
+                        map_from_qt_to_fp_model,
+                        modules_to_exclude,
+                    )
                 ]
 
             cls.run_seq_mse(
@@ -373,20 +406,20 @@ class SequentialMseBase(ABC):
             )
             if params.inp_symmetry == "asym":
                 fp32_inp_acts = cls.get_module_inp_acts(
-                    fp32_module, model, params, forward_fn, cached_fp_dataset
+                    fp32_module, model, forward_fn, cached_fp_dataset
                 )
                 quant_inp_acts = cls.get_module_inp_acts(
-                    quant_module, quant_model, params, forward_fn, cached_quant_dataset
+                    quant_module, quant_model, forward_fn, cached_quant_dataset
                 )
                 cls.optimize_module(quant_module, fp32_inp_acts, quant_inp_acts, params)
             elif params.inp_symmetry == "symfp":
                 fp32_inp_acts = cls.get_module_inp_acts(
-                    fp32_module, model, params, forward_fn, cached_fp_dataset
+                    fp32_module, model, forward_fn, cached_fp_dataset
                 )
                 cls.optimize_module(quant_module, fp32_inp_acts, fp32_inp_acts, params)
             elif params.inp_symmetry == "symqt":
                 quant_inp_acts = cls.get_module_inp_acts(
-                    quant_module, quant_model, params, forward_fn, cached_quant_dataset
+                    quant_module, quant_model, forward_fn, cached_quant_dataset
                 )
                 cls.optimize_module(
                     quant_module, quant_inp_acts, quant_inp_acts, params
@@ -398,7 +431,6 @@ class SequentialMseBase(ABC):
     def get_module_inp_acts(
         module: torch.nn.Module,
         model: torch.nn.Module,
-        params: SeqMseParams,
         forward_fn: Callable,
         cached_dataset: CachedDataset,
     ) -> torch.Tensor:
@@ -423,10 +455,8 @@ class SequentialMseBase(ABC):
         handle = module.register_forward_hook(hook_fn)
 
         iterator = iter(cached_dataset)
-        for _ in range(params.num_batches):
-            args, kwargs = change_tensor_device_placement(
-                next(iterator), get_device(model)
-            )
+        for inp in iterator:
+            args, kwargs = change_tensor_device_placement(inp, get_device(model))
             try:
                 with in_eval_mode(model), torch.no_grad():
                     forward_fn(model, *args, **kwargs)

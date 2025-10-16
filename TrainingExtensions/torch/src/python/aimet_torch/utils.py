@@ -230,23 +230,28 @@ class CachedDataset(Dataset):
     """
 
     # pylint: disable=super-init-not-called
-    def __init__(self, data_loader: DataLoader, num_batches: int, path: str):
+    def __init__(self, data_loader: DataLoader, num_batches: Optional[int], path: str):
         """
         :param data_loader: Data loader
         :param num_batches: Number of batches to fetch from data loader
         :param path: Path to save model inputs
         """
         if data_loader:
-            if len(data_loader) < num_batches:
+            if num_batches is not None and len(data_loader) < num_batches:
                 raise ValueError(
                     f"Can not fetch {num_batches} batches from "
                     f"a data loader of length {len(data_loader)}."
                 )
 
-            self._num_batches = num_batches
+            self._num_batches = None
             self._path = path
 
-            self._cache_model_inputs(itertools.islice(data_loader, num_batches))
+            if num_batches is None:
+                self._cache_model_inputs(data_loader)
+            else:
+                self._cache_model_inputs(itertools.islice(data_loader, num_batches))
+
+            assert self._num_batches is not None
         else:
             assert len(os.listdir(path)) == num_batches
             self._num_batches = num_batches
@@ -285,6 +290,7 @@ class CachedDataset(Dataset):
             kwargs = {}
             with open(path, "wb") as file:
                 pickle.dump((args, kwargs), file)
+            self._num_batches = i + 1
 
         logger.info(
             "Caching %d batches from data loader at path location: %s",

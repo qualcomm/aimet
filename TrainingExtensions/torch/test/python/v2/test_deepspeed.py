@@ -68,7 +68,7 @@ from aimet_torch.v2.quantization import DequantizedTensor
 from aimet_torch.v2.deepspeed_utils import SafeGatheredParameters
 
 # SEQ-MSE
-from aimet_torch.v2.seq_mse import apply_seq_mse, SeqMseParams
+from aimet_torch.v2.seq_mse import SequentialMse, SeqMseParams
 
 
 class Net(nn.Module):
@@ -857,7 +857,9 @@ def test_seqmse_with_zero3_offload(
 
     sim_deepspeed.model.requires_grad_(True)
     params = SeqMseParams(num_batches=2, inp_symmetry=inp_symmetry, loss_fn=loss_fn)
-    apply_seq_mse(model_baseline, sim_deepspeed, unlabeled_data_loader, params)
+    SequentialMse.apply_seq_mse(
+        model_baseline, sim_deepspeed, unlabeled_data_loader, params
+    )
 
     with ds.runtime.zero.GatheredParameters(
         sim_deepspeed.model.fc1.param_quantizers["weight"].parameters()
@@ -879,7 +881,9 @@ def test_seqmse_with_zero3_offload(
         enc_before = sim_deepspeed.model.fc1.param_quantizers["weight"].get_encoding()
 
     # Apply seq-mse for baseline fp32 model
-    apply_seq_mse(model_baseline, sim_baseline, unlabeled_data_loader, params)
+    SequentialMse.apply_seq_mse(
+        model_baseline, sim_baseline, unlabeled_data_loader, params
+    )
 
     with (
         aimet.nn.compute_encodings(sim_deepspeed.model),

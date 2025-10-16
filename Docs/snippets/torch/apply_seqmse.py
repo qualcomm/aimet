@@ -98,7 +98,7 @@ params = SeqMseParams(num_batches=num_batches,
                       num_candidates=20)
 
 # Find and freeze optimal encodings candidate for parameters of supported layer(s)/operations(s).
-apply_seq_mse(model=model, sim=sim, data_loader=unlabeled_data, params=params)
+apply_seq_mse(sim=sim, data_loader=unlabeled_data, num_candidates=20)
 # End of Seq MSE
 
 # Calibration callback

@@ -37,18 +37,25 @@
 # =============================================================================
 """Sequential MSE implementation"""
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable, overload
 import contextlib
+import copy
+import warnings
 import torch
 from torch.utils.data import DataLoader
 
-from aimet_common.utils import AimetLogger
+from aimet_common.utils import AimetLogger, _red
 from aimet_torch._base.seq_mse import SequentialMseBase, SeqMseParams, SUPPORTED_MODULES
 from aimet_torch.v2.quantization.base import QuantizerBase
 from aimet_torch.v2.quantization.affine import (
     AffineQuantizerBase,
     QuantizeDequantize,
     GroupedBlockQuantizeDequantize,
+)
+from aimet_torch.utils import place_model, get_device
+from aimet_torch.v2.utils import (
+    default_forward_fn,
+    remove_all_quantizers,
 )
 from aimet_torch.v2.nn.base import BaseQuantizationMixin
 from aimet_torch.v2.quantsim import QuantizationSimModel
@@ -66,10 +73,108 @@ __all__ = [
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SeqMse)
 
 
+@overload
+def apply_seq_mse(
+    sim: QuantizationSimModel,
+    data_loader: DataLoader,
+    num_candidates: int = 20,
+    forward_fn: Callable = default_forward_fn,
+    modules_to_exclude: Optional[List[torch.nn.Module]] = None,
+    checkpoints_config: Optional[str] = None,
+): ...
+
+
+@overload
+def apply_seq_mse(
+    model: torch.nn.Module,
+    sim: QuantizationSimModel,
+    data_loader: DataLoader,
+    params: SeqMseParams,
+    modules_to_exclude: Optional[List[torch.nn.Module]] = None,
+    checkpoints_config: Optional[str] = None,
+):
+    # Deprecated
+    ...
+
+
+def apply_seq_mse(*args, **kwargs):
+    """
+    Sequentially minimizing activation MSE loss in layer-wise way to decide optimal param quantization encodings.
+
+        1 Disable all input/output quantizers, param quantizers of non-supported modules
+        2 Find and feeze optimal parameter encodings candidate for remaining supported modules
+        3 Re-enable disabled quantizers from step 1
+
+    Example userflow:
+    model = Model().eval()
+    sim = QuantizationSimModel(...)
+    apply_seq_mse(...)
+    sim.compute_encodings(...) [compute encodings for all activations and parameters of non-supported modules]
+    sim.export(...)
+
+    NOTE: modules in modules_to_exclude won't be quantized and skipped when applying sequential MSE.
+
+    :param sim: QuantizationSimModel object
+    :param data_loader: Data loader
+    :param num_candidates: Number of candidate encodings to evaluate for each layer
+    :param forward_fn: callback function to perform forward pass given accepts model, inputs
+    :param modules_to_exclude: List of supported type module(s) to exclude when applying Sequential MSE
+    :param checkpoints_config: Config files to split fp32/quant model by checkpoints to speedup activations sampling
+    """
+    if "model" in kwargs or (args and isinstance(args[0], torch.nn.Module)):
+        warnings.warn(
+            _red(
+                "apply_seq_mse was called using a deprecated function signature. This will raise an error in future releases."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return SequentialMse.apply_seq_mse(*args, **kwargs)
+
+    return _apply_seq_mse(*args, **kwargs)
+
+
+def _apply_seq_mse(
+    sim: QuantizationSimModel,
+    data_loader: DataLoader,
+    num_candidates: int = 20,
+    forward_fn: Callable = default_forward_fn,
+    modules_to_exclude: Optional[List[torch.nn.Module]] = None,
+    checkpoints_config: Optional[str] = None,
+):
+    params = SeqMseParams(
+        num_batches=None,
+        num_candidates=num_candidates,
+        forward_fn=forward_fn,
+        inp_symmetry=SequentialMse.inp_symmetry,
+        loss_fn=SequentialMse.loss_fn,
+    )
+
+    with (
+        place_model(sim.model, torch.device("cpu")),
+        remove_all_quantizers(sim.model),
+    ):
+        weight_shared_fp_model = _copy_as_fp_model_with_shared_weights(sim.model)
+
+    model_device = get_device(sim.model)
+    with place_model(weight_shared_fp_model, model_device):
+        return SequentialMse.apply_seq_mse(
+            model=weight_shared_fp_model,
+            sim=sim,
+            data_loader=data_loader,
+            params=params,
+            modules_to_exclude=modules_to_exclude,
+            checkpoints_config=checkpoints_config,
+        )
+
+
 class SequentialMse(SequentialMseBase):
     """
     Sequentially minimizing activation MSE loss in layer-wise way to decide optimal param quantization encodings.
     """
+
+    inp_symmetry: str = "symqt"
+    loss_fn: str = "mse"
 
     @classmethod
     def apply_seq_mse(
@@ -392,15 +497,13 @@ class SequentialMse(SequentialMseBase):
                 w = quant_module.weight
                 wq = cls._get_quantized_weight(quant_module)
                 with torch.no_grad():
-                    for batch_idx in range(params.num_batches):
-                        if batch_idx == 0:
-                            loss = cls._compute_loss(
-                                quant_module, x[batch_idx], xq[batch_idx], w, wq, params
-                            )
-                        else:
-                            loss += cls._compute_loss(
-                                quant_module, x[batch_idx], xq[batch_idx], w, wq, params
-                            )
+                    loss = 0
+                    for batch_idx, (batch_x, batch_xq) in enumerate(zip(x, xq)):
+                        if params.num_batches and batch_idx >= params.num_batches:
+                            break
+                        loss += cls._compute_loss(
+                            quant_module, batch_x, batch_xq, w, wq, params
+                        )
                     total_loss.append(loss)
 
             best_indices = torch.stack(total_loss).min(0)[1]
@@ -420,7 +523,20 @@ class SequentialMse(SequentialMseBase):
         cls._freeze_quantizer_encoding(quant_module.param_quantizers["weight"])
 
 
+def _copy_as_fp_model_with_shared_weights(model):
+    new_model = copy.copy(model)
+    # pylint: disable=protected-access
+    new_model._modules = copy.copy(new_model._modules)
+    new_model._parameters = copy.copy(new_model._parameters)
+    new_model._buffers = copy.copy(new_model._buffers)
+    for name, child in model.named_children():
+        if isinstance(child, BaseQuantizationMixin):
+            setattr(new_model, name, child.get_original_module())
+        else:
+            setattr(new_model, name, _copy_as_fp_model_with_shared_weights(child))
+    return new_model
+
+
 # Global variables for compatibility
-apply_seq_mse = SequentialMse.apply_seq_mse
 get_candidates = SequentialMse.get_candidates
 optimize_module = SequentialMse.optimize_module

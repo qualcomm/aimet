@@ -138,41 +138,14 @@ class SeqMSE(QuantizationTechnique):
     def apply(
         quantsim: QuantizationSimModel, generator: Generator, dataloader: DataLoader
     ):
-        def copy_model_with_shared_weights(source_model):
-            target_model = deepcopy(source_model)
-            for name, source_parameter in source_model.named_parameters():
-                pre, _, post = name.rpartition(".")
-                pre_obj = (
-                    functools.reduce(getattr, [target_model] + pre.split("."))
-                    if pre
-                    else target_model
-                )
-                setattr(pre_obj, post, source_parameter)
-            QuantizationSimModel._remove_quantization_wrappers(
-                target_model, list(target_model.modules())
-            )
-            return target_model
-
-        with (
-            place_model(quantsim.model, torch.device("cpu")),
-            remove_all_quantizers(quantsim.model),
-        ):
-            weight_shared_fp_model = copy_model_with_shared_weights(quantsim.model)
-
         def callback(model, inputs):
             with patch_attr(generator, "model", model):
                 generator(**inputs)
 
-        params = SeqMseParams(
-            num_batches=20,
-            inp_symmetry="symqt",
-            num_candidates=20,
-            loss_fn="mse",
-            forward_fn=callback,
+        sliced_dataloader = itertools.islice(dataloader, 20)
+        apply_seq_mse(
+            quantsim, sliced_dataloader, num_candidates=20, forward_fn=callback
         )
-        with place_model(weight_shared_fp_model, quantsim.model.device):
-            apply_seq_mse(weight_shared_fp_model, quantsim, dataloader, params)
-
         _compute_encodings(quantsim, generator, dataloader, num_iterations=20)
 
 

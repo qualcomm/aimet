@@ -36,6 +36,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 
+import itertools
 import copy
 import json
 import pytest
@@ -48,6 +49,7 @@ from torch.utils.data import Dataset, DataLoader
 from aimet_common.defs import QuantScheme
 from aimet_torch.utils import create_fake_data_loader
 
+from aimet_torch.v2.utils import patch_attr
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.v2.quantsim.config_utils import (
     set_grouped_blockwise_quantization_for_weights,
@@ -341,8 +343,13 @@ class TestSeqMse:
             model, dummy_input, default_param_bw=4, quant_scheme=qscheme
         )
         sim.model.requires_grad_(True)
-        params = SeqMseParams(num_batches=2, inp_symmetry=inp_symmetry, loss_fn=loss_fn)
-        apply_seq_mse(model, sim, unlabeled_data_loader, params)
+
+        sliced_dataloader = itertools.islice(unlabeled_data_loader, 2)
+        with (
+            patch_attr(SequentialMse, "loss_fn", loss_fn),
+            patch_attr(SequentialMse, "inp_symmetry", inp_symmetry),
+        ):
+            apply_seq_mse(sim, sliced_dataloader)
         assert not sim.model.fc1.param_quantizers["weight"].min.requires_grad
         assert not sim.model.fc1.param_quantizers["weight"].max.requires_grad
         assert not sim.model.fc1.param_quantizers["weight"]._allow_overwrite
@@ -382,12 +389,18 @@ class TestSeqMse:
             model, dummy_input, default_param_bw=4, quant_scheme=qscheme
         )
         sim_with.model.requires_grad_(True)
-        params = SeqMseParams(num_batches=2, inp_symmetry=inp_symmetry, loss_fn=loss_fn)
 
         # Apply Sequential MSE without checkpoints config
-        apply_seq_mse(
-            model, sim_without, data_loader, params, modules_to_exclude=[model.fc1]
-        )
+        sliced_dataloader = itertools.islice(data_loader, 2)
+        with (
+            patch_attr(SequentialMse, "loss_fn", loss_fn),
+            patch_attr(SequentialMse, "inp_symmetry", inp_symmetry),
+        ):
+            apply_seq_mse(
+                sim_without,
+                sliced_dataloader,
+                modules_to_exclude=[sim_without.model.fc1],
+            )
         assert sim_without.model.fc1.param_quantizers["weight"].min.requires_grad
         assert sim_without.model.fc1.param_quantizers["weight"].max.requires_grad
         assert sim_without.model.fc1.param_quantizers["weight"]._allow_overwrite
@@ -402,14 +415,16 @@ class TestSeqMse:
         with tempfile.TemporaryDirectory() as tmp_dir:
             checkpoints_config = save_config_file_for_checkpoints(Path(tmp_dir))
 
-            apply_seq_mse(
-                model,
-                sim_with,
-                data_loader,
-                params,
-                checkpoints_config=checkpoints_config,
-                modules_to_exclude=[model.fc1],
-            )
+            with (
+                patch_attr(SequentialMse, "loss_fn", loss_fn),
+                patch_attr(SequentialMse, "inp_symmetry", inp_symmetry),
+            ):
+                apply_seq_mse(
+                    sim_with,
+                    data_loader,
+                    checkpoints_config=checkpoints_config,
+                    modules_to_exclude=[sim_with.model.fc1],
+                )
             assert sim_with.model.fc1.param_quantizers["weight"].min.requires_grad
             assert sim_with.model.fc1.param_quantizers["weight"].max.requires_grad
             assert sim_with.model.fc1.param_quantizers["weight"]._allow_overwrite
@@ -443,10 +458,9 @@ class TestSeqMse:
             model, dummy_input, default_param_bw=4, quant_scheme=qscheme
         )
         sim.model.requires_grad_(True)
-        params = SeqMseParams(num_batches=2)
-        apply_seq_mse(
-            model, sim, unlabeled_data_loader, params, modules_to_exclude=[model.fc1]
-        )
+
+        sliced_dataloader = itertools.islice(unlabeled_data_loader, 2)
+        apply_seq_mse(sim, sliced_dataloader, modules_to_exclude=[sim.model.fc1])
         assert sim.model.fc1.param_quantizers["weight"].min.requires_grad
         assert sim.model.fc1.param_quantizers["weight"].max.requires_grad
         assert sim.model.fc1.param_quantizers["weight"]._allow_overwrite
@@ -525,9 +539,30 @@ class TestSeqMse:
             qconv.param_quantizers["weight"].max.copy_(1)
         sim.compute_encodings(lambda m: m(dummy_input))
 
-        params = SeqMseParams(num_batches=2, inp_symmetry="asym", loss_fn="mse")
-        apply_seq_mse(model, sim, data_loader, params)
+        SequentialMse.loss_fn = "mse"
+        SequentialMse.inp_symmetry = "asym"
+        sliced_dataloader = itertools.islice(data_loader, 2)
+
+        with (
+            patch_attr(SequentialMse, "loss_fn", "mse"),
+            patch_attr(SequentialMse, "inp_symmetry", "asym"),
+        ):
+            apply_seq_mse(sim, sliced_dataloader)
 
         # sanity check
         assert torch.all(qconv.param_quantizers["weight"].min != -1)
         assert torch.all(qconv.param_quantizers["weight"].max != 1)
+
+    def test_apply_seq_mse_old_signature(self, unlabeled_data_loader):
+        model = Net().eval()
+        dummy_input = torch.randn(1, 1, 28, 28)
+        sim = QuantizationSimModel(model, dummy_input, default_param_bw=4)
+        params = SeqMseParams(num_batches=2)
+        with pytest.warns(DeprecationWarning):
+            apply_seq_mse(
+                model,
+                sim,
+                unlabeled_data_loader,
+                params,
+                modules_to_exclude=[model.fc1],
+            )
