@@ -36,6 +36,7 @@
 # =============================================================================
 
 import copy
+import itertools
 import tempfile
 import unittest
 import unittest.mock
@@ -75,6 +76,7 @@ from aimet_torch.v2.nn import BaseQuantizationMixin
 from aimet_torch.nn.modules import custom
 from aimet_torch.v2.amp.utils import _mock_v1_quantizers
 from aimet_common.defs import CallbackFunc
+from ..models import test_models
 
 
 DEFAULT_BITWIDTH = 16
@@ -1850,3 +1852,111 @@ def test_pyfloat_input(results_dir):
             forward_pass_callback=forward_pass_callback,
         )
         algo.run(allowed_accuracy_drop=None)
+
+
+@pytest.mark.parametrize("config_file", ["htp_v81", "htp_v69"])
+@pytest.mark.parametrize(
+    "model, dummy_input",
+    [
+        (test_models.SingleResidual(), test_models.SingleResidual.dummy_input()),
+        (
+            test_models.ModelWithMultiInputOps(),
+            test_models.ModelWithMultiInputOps.dummy_input(),
+        ),
+        (
+            test_models.ModelWithReluAfterSplit(),
+            test_models.ModelWithReluAfterSplit.dummy_input(),
+        ),
+        (
+            test_models.ModelWithFunctionalReLU(),
+            test_models.ModelWithFunctionalReLU.dummy_input(),
+        ),
+        (
+            test_models.ModelWithSeveralDataMovementOps(),
+            test_models.ModelWithSeveralDataMovementOps.dummy_input(),
+        ),
+        (
+            test_models.ModelWithTwoInputs(),
+            test_models.ModelWithTwoInputs.dummy_input(),
+        ),
+        (test_models.TupleOutputModel(), test_models.TupleOutputModel.dummy_input()),
+        (
+            test_models.ModelWithTwoInputsTwoOutputs(),
+            test_models.ModelWithTwoInputsTwoOutputs.dummy_input(),
+        ),
+        (
+            test_models.NestedSequentialModel(),
+            test_models.NestedSequentialModel.dummy_input(),
+        ),
+        (
+            test_models.NestedModelWithOverlappingNames(),
+            test_models.NestedModelWithOverlappingNames.dummy_input(),
+        ),
+    ],
+)
+def test_choose_mixed_precision(tmp_path, model, dummy_input, config_file):
+    sim = QuantizationSimModel(
+        model,
+        dummy_input=dummy_input,
+        default_output_bw=16,
+        default_param_bw=16,
+        config_file=config_file,
+    )
+
+    def forward(model, _):
+        model(*dummy_input)
+
+    sim.compute_encodings(forward, None)
+    eval_phase_1 = lambda model, _: np.random.rand()
+
+    def get_all_quantizers(model):
+        quantizers = set()
+        for module in model.modules():
+            if isinstance(module, BaseQuantizationMixin):
+                for quantizer in itertools.chain(
+                    module.param_quantizers.values(),
+                    module.input_quantizers,
+                    module.output_quantizers,
+                ):
+                    if quantizer:
+                        quantizers.add(quantizer)
+        return quantizers
+
+    def get_total_bitwidths(model):
+        bitwidths = 0
+        for quantizer in get_all_quantizers(model):
+            if quantizer:
+                bitwidths += quantizer.bitwidth
+        return bitwidths
+
+    num_unique_quantizers = len(get_all_quantizers(sim.model))
+
+    baseline_bitwidths = get_total_bitwidths(sim.model)
+
+    eval_phase_2 = lambda model, _: get_total_bitwidths(model) / baseline_bitwidths
+
+    eval_callback_for_phase_1 = CallbackFunc(eval_phase_1)
+    eval_callback_for_phase_2 = CallbackFunc(eval_phase_2)
+    forward_pass_callback = CallbackFunc(forward)
+
+    candidates = [
+        ((8, QuantizationDataType.int), (8, QuantizationDataType.int)),
+        ((8, QuantizationDataType.int), (16, QuantizationDataType.int)),
+        ((16, QuantizationDataType.int), (16, QuantizationDataType.int)),
+    ]
+    choose_mixed_precision(
+        sim,
+        dummy_input,
+        candidates,
+        eval_callback_for_phase_1,
+        eval_callback_for_phase_2,
+        allowed_accuracy_drop=0.25,
+        results_dir=str(tmp_path),
+        clean_start=True,
+        forward_pass_callback=forward_pass_callback,
+    )
+
+    # Phase 2 eval metric should not drop beyond allowed_accuracy_drop
+    assert eval_phase_2(sim.model, None) >= 0.75
+    # Number of unique quantizers should not change (sharing should be preserved)
+    assert len(get_all_quantizers(sim.model)) == num_unique_quantizers

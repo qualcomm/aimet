@@ -157,19 +157,24 @@ class _V1QuantizerMixin:
         if isinstance(self, _V1DisabledQuantizer):
             return None
 
+        if hasattr(self, "_cached_v2_quantizer"):
+            return self._cached_v2_quantizer[0]
+
         if self.data_type == QuantizationDataType.float:
             if self.bitwidth == 32:
-                return None
+                v2_qtzr = None
+            elif self.bitwidth == 16:
+                v2_qtzr = FloatQuantizeDequantize(dtype=torch.float16)
+            else:
+                raise RuntimeError
+        else:
+            v2_qtzr = QuantizeDequantize.__new__(QuantizeDequantize)
+            v2_qtzr.__dict__ = {**self.__dict__}
+            delattr(v2_qtzr, "enabled")
+            delattr(v2_qtzr, "data_type")
 
-            if self.bitwidth == 16:
-                return FloatQuantizeDequantize(dtype=torch.float16)
-
-            raise RuntimeError
-
-        v2_qtzr = QuantizeDequantize.__new__(QuantizeDequantize)
-        v2_qtzr.__dict__ = self.__dict__
-        delattr(v2_qtzr, "enabled")
-        delattr(v2_qtzr, "data_type")
+        # Note: assign as tuple to prevent adding to self._modules, creating recursive reference
+        self._cached_v2_quantizer = (v2_qtzr,)
         return v2_qtzr
 
 

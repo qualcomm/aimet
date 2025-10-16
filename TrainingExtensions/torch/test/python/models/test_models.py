@@ -220,6 +220,10 @@ class SingleResidual(nn.Module):
         x = self.fc(x)
         return x
 
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 3, 32, 32),)
+
 
 class SingleResidualWithAvgPool(nn.Module):
     """A model with a single residual connection.
@@ -762,6 +766,10 @@ class TupleOutputModel(torch.nn.Module):
         c3 = self.conv3(inputs[0])
         return c1, c2, c3
 
+    @staticmethod
+    def dummy_input():
+        return (torch.rand(1, 3, 8, 8),)
+
 
 class MultiOutputModel(torch.nn.Module):
     """
@@ -952,6 +960,10 @@ class NestedSequentialModel(nn.Module):
         x = self.fc(x)
         return x
 
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 3, 8, 8),)
+
 
 class ModelWithFunctionalReLU(nn.Module):
     """Model that uses functional ReLU instead of nn.Modules. Expects input of shape (1, 3, 32, 32)"""
@@ -974,6 +986,10 @@ class ModelWithFunctionalReLU(nn.Module):
         x = self.fc2(x).relu()
         x = self.fc3(x)
         return x
+
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 3, 32, 32),)
 
 
 class ModelWithDuplicateReLU(nn.Module):
@@ -1038,6 +1054,10 @@ class ModelWithTwoInputs(nn.Module):
         x = self.dropout(x)
         x = self.fc2(x)
         return self.softmax(x)
+
+    @staticmethod
+    def dummy_input():
+        return (torch.rand(32, 1, 28, 28), torch.rand(32, 1, 28, 28))
 
 
 class ModelWithTransposeConv(nn.Module):
@@ -1329,6 +1349,10 @@ class NestedModelWithOverlappingNames(torch.nn.Module):
     def forward(self, x):
         return self.m(x)
 
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(4, 1, 4, 4),)
+
 
 class ModelWithModuleList(torch.nn.Module):
     def __init__(self):
@@ -1359,6 +1383,10 @@ class ModelWithReluAfterSplit(nn.Module):
     def forward(self, *inputs):
         chunks = self.split_module(inputs[0])
         return self.relu1(chunks[0]), self.relu2(chunks[1]), self.relu3(chunks[2])
+
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(6, 2),)
 
 
 class ModuleList(torch.nn.Module):
@@ -1511,6 +1539,10 @@ class ModelWithMultiInputOps(torch.nn.Module):
         x6 = self.dynamic_conv(x5, weight, self.conv_bias)
         return x3, x6 + 2, x4
 
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 3, 24, 24), torch.randn(3, 8, 2, 2))
+
 
 class SmallMnist(nn.Module):
     def __init__(self):
@@ -1603,6 +1635,10 @@ class ModelWithSeveralDataMovementOps(nn.Module):
         x = y + torch.transpose(x, 0, 1)
         return x
 
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 3, 32, 32),)
+
 
 class ModelWithTwoInputsTwoOutputs(nn.Module):
     def __init__(self):
@@ -1615,14 +1651,14 @@ class ModelWithTwoInputsTwoOutputs(nn.Module):
         self.maxpool1_b = nn.MaxPool2d(2)
         self.relu1_b = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.maxpool2 = nn.MaxPool2d(2)
-        self.relu2 = nn.ReLU()
-
     def forward(self, x1, x2):
         x1 = self.relu1_a(self.maxpool1_a(self.conv1_a(x1)))
         x2 = self.relu1_b(self.maxpool1_b(self.conv1_b(x2)))
         return x1, x2
+
+    @staticmethod
+    def dummy_input():
+        return (torch.rand(32, 1, 28, 28), torch.rand(32, 1, 28, 28))
 
 
 class RoPE(nn.Module):
