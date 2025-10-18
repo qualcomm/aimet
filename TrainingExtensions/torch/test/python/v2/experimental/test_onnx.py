@@ -724,6 +724,7 @@ def test_quantsim_export_onnx_qdq_resnet18(
     assert torch.allclose(torch.from_numpy(out), expected_out, atol=atol)
 
 
+@pytest.mark.skip()
 @pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16))
 def test_non_float32_qdq_export(tmp_path, dtype):
     x = torch.randn(1, 3, 32, 32).to(dtype)

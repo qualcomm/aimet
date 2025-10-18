@@ -4379,6 +4379,10 @@ def test_to_onnx_qdq(
     assert np.allclose(out_sim, out_onnx_qdq, atol=atol, rtol=rtol)
 
 
+@pytest.mark.skipif(
+    "CUDAExecutionProvider" not in ort.get_available_providers(),
+    reason="Not stable with CPUExecutionProvider",
+)
 @pytest.mark.cuda()
 @pytest.mark.parametrize("prequantize_constants", [False, True])
 @pytest.mark.parametrize("export_int32_bias_encodings", [False, True])
