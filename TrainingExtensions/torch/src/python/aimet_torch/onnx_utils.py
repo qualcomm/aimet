@@ -2039,11 +2039,13 @@ class OnnxSaver:
             model = torch.jit.script(model)
             kwargs.update({"example_outputs": dummy_output})
 
-        if version.parse(torch.__version__) >= version.parse("2.0.0"):
-            if kwargs.get("dynamo", None):
-                raise RuntimeError("Dynamo-based onnx export is not supporterd")
-            else:
-                kwargs["dynamo"] = False
+        if kwargs.get("dynamo", None):
+            raise RuntimeError("Dynamo-based onnx export is not supporterd")
+
+        # Set dynamo=False for torch 2.9.0 and above.
+        # The default value of dynamo is True from torch 2.9.0
+        if version.parse(torch.__version__) >= version.parse("2.9.0"):
+            kwargs["dynamo"] = False
 
         if version.parse(torch.__version__) < version.parse("1.11.0"):
             kwargs.update({"enable_onnx_checker": False})
