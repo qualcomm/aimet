@@ -370,12 +370,12 @@ class TestQuantizationBackends:
             backend_module.quantize(
                 random_tensor.to(float), scale.to(float), offset.to(float), qmin, qmax
             )
-        with pytest.raises(RuntimeError):
+        with pytest.raises((RuntimeError, ValueError)):
             # Intermediate ouput of [0, 2**64-1] cannot be represented by internal dtype float32
             backend_module.quantize_dequantize(
                 random_tensor.to(half), scale.to(half), offset.to(half), qmin, qmax
             )
-        with pytest.raises(RuntimeError):
+        with pytest.raises((RuntimeError, ValueError)):
             # Intermediate ouput of [0, 2**64-1] cannot be represented by internal dtype float32
             backend_module.quantize_dequantize(
                 random_tensor.to(float), scale.to(float), offset.to(float), qmin, qmax
