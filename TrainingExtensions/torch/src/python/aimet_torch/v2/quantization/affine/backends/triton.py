@@ -1,7 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# pylint: disable=redefined-builtin, import-error, abstract-method, arguments-differ
+# pylint: disable=redefined-builtin, import-error, abstract-method, arguments-differ, no-member
 import torch
 import triton
 import triton.language as tl

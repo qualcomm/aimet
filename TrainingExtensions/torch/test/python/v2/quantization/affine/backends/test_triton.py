@@ -1,10 +1,16 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+from packaging.version import parse
 import pytest
 import torch
 
-if torch.cuda.is_available():
+try:
+    import triton
+except ImportError:
+    triton = None
+
+if torch.cuda.is_available() and triton and parse(triton.__version__) >= parse("3.0.0"):
     from aimet_torch.v2.quantization.affine.backends.triton import (
         TritonQuantize,
         TritonDequantize,
