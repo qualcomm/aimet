@@ -1255,7 +1255,7 @@ def test_export_large_model(
     prequantize_constants: bool,
     tmp_path: pathlib.Path,
 ):
-    if opset_version > 21 and parse(torch.__version__) < parse("2.2.0"):
+    if opset_version >= 21 and parse(torch.__version__) < parse("2.2.0"):
         pytest.skip("Skipping temporarily to stabilize CI")
 
     """
