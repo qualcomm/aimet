@@ -34,3 +34,16 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
+
+from packaging.version import parse
+import torch
+
+if parse(torch.__version__) < parse("2.4.0"):
+    # Monkey-patch torch.onnx.export to soothe CI pipeline with torch < 2.4.0
+    _export = torch.onnx.export
+
+    def export(*args, **kwargs):
+        kwargs.pop("dynamo", None)
+        return _export(*args, **kwargs)
+
+    torch.onnx.export = export
