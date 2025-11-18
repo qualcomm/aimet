@@ -7,6 +7,12 @@ on:
 
   # Run the workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      build_docker_images:
+        description: "Build docker images if set to true"
+        required: false
+        type: boolean
+        default: true
 
   # Call workflow from other workflows
   workflow_call:
@@ -15,6 +21,11 @@ on:
         description: "Branch to run nightly tests on"
         required: true
         type: string
+      build_docker_images:
+        description: "Build docker images if set to true"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   pre-commit-check:
@@ -57,14 +68,12 @@ jobs:
         run: |
           set -x
 
-          # for the default branch (develop) we use "latest" tag and
-          # do not build the docker images
-          if [[ "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]] ; then
-            tag="latest"
-          else
+          # Build docker images if specified.
+          if [[ -n "${{ inputs.build_docker_images }}" ]]; then
             tag="$(git rev-parse --short HEAD)"
+          else
+            tag="latest"
           fi
-
           echo "value=$tag" >> $GITHUB_OUTPUT
 
   variants:

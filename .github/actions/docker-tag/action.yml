@@ -52,10 +52,8 @@ runs:
       run: |
         set -x
 
-        # check if any files are changed in docker context unless it is not a default branch.
-        # for the default branch we still rebuild images every time (yet)
-        if [[ "${{ steps.diff.outputs.changed_files }}" ||
-              "${{ github.ref_name }}" == "${{ github.event.repository.default_branch }}" ]] ; then
+        # Rebuild docker image if changes are detected in the docker build context
+        if [[ -n "${{ steps.diff.outputs.changed_files }}" ]] ; then
           tag="$(git rev-parse --short HEAD)"
         else
           tag="${{ inputs.defaulttag }}"

@@ -4,12 +4,11 @@
 """AdaScale implementation"""
 
 import contextlib
-from typing import Collection, Dict, List, Tuple
+from typing import Collection, Dict, List, Tuple, Type
 
 import os
 import copy
 from dataclasses import dataclass
-from typing import Type
 import numpy as np
 import torch
 import tqdm

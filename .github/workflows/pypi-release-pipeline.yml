@@ -128,10 +128,19 @@ jobs:
     if: ${{ inputs.run_unit_tests || inputs.run_acceptance_tests }}
     needs: [ variants, call-build-wheels ]
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
+    strategy:
+      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     with:
-      variants: ${{ needs.variants.outputs.matrix }}
-      force_run_unit_tests: ${{ inputs.run_unit_tests }}
-      force_run_acceptance_tests: ${{ inputs.run_acceptance_tests }}
+      env_name: ${{ matrix.id }}
+      ver_python: ${{ matrix.VER_PYTHON }}
+      ver_cuda: ${{ matrix.VER_CUDA }}
+      ver_torch: ${{ matrix.VER_TORCH }}
+      ver_onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
+      pip_index: ${{ matrix.PIP_INDEX }}
+      run_unit_tests: ${{ matrix.RUN_UNIT_TESTS == 'OFF' }}
+      run_acceptance_tests: ${{ matrix.RUN_ACCEPTANCE_TESTS == 'OFF' }}
+      runs_on: ${{ matrix.runs-on }}
+      include_windows_tests: false
     secrets: inherit
 
   publish:

@@ -141,11 +141,18 @@ jobs:
     if: inputs.include_windows_tests && inputs.env_name == 'onnx-cpu' && (inputs.run_unit_tests || inputs.run_acceptance_tests)
     steps:
       - uses: actions/checkout@v4
+
+      - name: Redirect temp directories to workspace for automated cleanup
+        run: |
+          $env:TEMP = "$env:GITHUB_WORKSPACE\temp"
+          $env:TMP = "$env:GITHUB_WORKSPACE\temp"
+
       - name: Download built wheels
         uses: actions/download-artifact@v3
         with:
           name: "onnx-cpu-win-wheel"
           path: "downloads"
+
       - uses: ./.github/actions/setup-uv-env
         with:
           ENV_NAME: "onnx-cpu"
@@ -175,3 +182,4 @@ jobs:
           # Run tests
           $pytest_args = "not cuda"
           Invoke-Expression "pytest -m `"$pytest_args`" .\\NightlyTests\\onnx -n 8"
+
