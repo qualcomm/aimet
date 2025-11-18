@@ -406,48 +406,91 @@ class SequentialMse(SequentialMseBase):
         block_size = cls._get_input_channel_block_size(quant_module)
 
         if isinstance(quant_module, torch.nn.Linear):
-            # General strategy (Linear):
-            # Compute blockwise reconstruction loss using batched matrix multiplication
-            out_channels = quant_module.weight.shape[0]
-            in_channels = quant_module.weight.shape[1]
-            num_blocks = in_channels // block_size
+            return cls._compute_linear_loss(x, xq, w, wq, block_size, params)
 
-            # Reshape and permute x and w
-            #                  reshape                     permute
-            #   * x: (N,    Cin) -> (N,    NUM_BLK, BLK_SIZE) -> (NUM_BLK, N, BLK_SIZE)
-            #   * w: (Cout, Cin) -> (Cout, NUM_BLK, BLK_SIZE) -> (NUM_BLK, BLK_SIZE, Cout)
-            x = x.reshape(-1, num_blocks, block_size).permute(1, 0, 2)
-            w = w.reshape(out_channels, num_blocks, block_size).permute(1, 2, 0)
-            xq = xq.reshape(-1, num_blocks, block_size).permute(1, 0, 2)
-            wq = wq.reshape(out_channels, num_blocks, block_size).permute(1, 2, 0)
+        elif isinstance(quant_module, torch.nn.Conv2d):
+            return cls._compute_conv_loss(
+                quant_module, x, xq, w, wq, block_size, params
+            )
 
-            # Blockwise batched matmul
-            #           xw        =           x            @           w
-            #  (NUM_BLK, N, Cout)   (NUM_BLK, N, BLK_SIZE)   (NUM_BLK, BLK_SIZE, Cout)
-            xw = torch.bmm(x, w)
-            xqwq = torch.bmm(xq, wq)
+        else:
+            raise TypeError(f"Unsupported module type: {type(quant_module)}")
 
-            # Permute to restore axis 0 back to batch dimension
-            #                          permute
-            #   * xw: (NUM_BLK, N, Cout) -> (N, Cout, NUM_BLK)
-            xw = xw.permute(1, 2, 0)
-            xqwq = xqwq.permute(1, 2, 0)
+    @classmethod
+    def _compute_linear_loss(
+        cls,
+        x: torch.Tensor,
+        xq: torch.Tensor,
+        w: torch.Tensor,
+        wq: torch.Tensor,
+        block_size: int,
+        params: SeqMseParams,
+    ) -> torch.Tensor:
+        """
+        Compute block-wise loss for Linear layers using batched matmul.
+        """
+        # General strategy (Linear):
+        # Compute block-wise reconstruction loss using batched matrix multiplication
+        out_channels, in_channels = w.shape
+        num_blocks = in_channels // block_size
 
-            loss = (
-                params.get_loss_fn()(xw, xqwq, reduction="none")
+        # Reshape and permute x and w
+        x = x.reshape(-1, num_blocks, block_size).permute(1, 0, 2)
+        w = w.reshape(out_channels, num_blocks, block_size).permute(1, 2, 0)
+        xq = xq.reshape(-1, num_blocks, block_size).permute(1, 0, 2)
+        wq = wq.reshape(out_channels, num_blocks, block_size).permute(1, 2, 0)
+
+        try:
+            # Block-wise batched matmul
+            xw = torch.bmm(x, w)  # (NUM_BLK, N, Cout)
+            xqwq = torch.bmm(xq, wq)  # (NUM_BLK, N, Cout)
+            # Restore batch dimension
+            xw = xw.permute(1, 2, 0)  # (N, Cout, NUM_BLK)
+            xqwq = xqwq.permute(1, 2, 0)  # (N, Cout, NUM_BLK)
+
+            loss_fn = params.get_loss_fn()
+            return (
+                loss_fn(xw, xqwq, reduction="none")
                 .sum(0)
                 .view(out_channels, num_blocks)
             )
-            return loss
 
+        except RuntimeError as e:
+            if x.device.type == "cuda" and "CUDA out of memory" in str(e):
+                torch.cuda.empty_cache()
+
+                # Sequential fallback: compute per-block loss directly
+                block_losses = []
+                for xb, wb, xqb, wqb in zip(x, w, xq, wq):
+                    xqwq = torch.matmul(xqb, wqb)  # (N, Cout)
+                    xw = torch.matmul(xb, wb)  # (N, Cout)
+                    block_losses.append(cls.compute_recon_loss(xqwq, xw, params))
+                return torch.stack(block_losses, dim=-1)  # (Cout, NUM_BLK)
+            else:
+                raise e  # Not CUDA related error
+
+    @classmethod
+    def _compute_conv_loss(
+        cls,
+        quant_module: BaseQuantizationMixin,
+        x: torch.Tensor,
+        xq: torch.Tensor,
+        w: torch.Tensor,
+        wq: torch.Tensor,
+        block_size: int,
+        params: SeqMseParams,
+    ) -> torch.Tensor:
+        """
+        Compute block-wise loss for Conv layer by splitting weights and inputs into blocks
+        along input channel dimension.
+        """
         # General strategy (Conv):
         # Split weights and input per block, and run a separate forward pass for each split.
         # In the case of per tensor and per channel, the entire input channel is treated as one block.
 
-        # NOTE: Similar to Linear, convolution can be also vectorized with depthwise grouped conv.
+        # NOTE: Similar to Linear, convolution can be also vectorized with depth-wise grouped conv.
         #       However, vectorizing convolution in this manner harms the performance
         #       because PyTorch grouped convolution kernels are much slower than regular convolution
-        assert isinstance(quant_module, torch.nn.Conv2d)
         w_blocks = torch.split(w, block_size, dim=1)
         wq_blocks = torch.split(wq, block_size, dim=1)
         groups = quant_module.groups

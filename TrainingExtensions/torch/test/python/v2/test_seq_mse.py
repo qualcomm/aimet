@@ -42,6 +42,7 @@ import json
 import pytest
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -566,3 +567,29 @@ class TestSeqMse:
                 params,
                 modules_to_exclude=[model.fc1],
             )
+
+    @pytest.mark.cuda
+    def test_linear_loss_fast_vs_fallback(self):
+        """test vectorized and sequential path for linear loss"""
+        batch_size = 2
+        in_channels = 16
+        out_channels = 12
+        block_size = 4
+
+        x = torch.randn(batch_size, in_channels).cuda()
+        xq = torch.randn_like(x).cuda()
+        w = torch.randn(out_channels, in_channels).cuda()
+        wq = torch.randn_like(w).cuda()
+
+        params = SeqMseParams(num_batches=1)
+
+        fast_loss = SequentialMse._compute_linear_loss(x, xq, w, wq, block_size, params)
+
+        # Force fallback by mocking torch.bmm to raise RuntimeError
+        with patch("torch.bmm", side_effect=RuntimeError("CUDA out of memory")):
+            fallback_loss = SequentialMse._compute_linear_loss(
+                x, xq, w, wq, block_size, params
+            )
+
+        # Assert both losses are close
+        assert torch.allclose(fast_loss, fallback_loss)
