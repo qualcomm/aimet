@@ -1447,6 +1447,26 @@ class TestQuantSim:
                     atol=sim.qc_quantize_op_dict[output_name].get_encodings()[0].delta,
                 )  # Bit flip is possible from recomputing min/max during load
 
+    def test_load_encodings_per_channel_matmul(self, tmp_dir):
+        model = models_for_tests.weight_matmul_model()
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            config_file="htp_v81",
+        )
+        dummy_input = make_dummy_input(model)
+        sim.compute_encodings([dummy_input])
+        out1 = sim.session.run(None, dummy_input)
+        sim.export(tmp_dir, "export")
+        sim_2 = QuantizationSimModel(
+            copy.deepcopy(model),
+            config_file="htp_v81",
+        )
+        load_encodings_to_sim(
+            sim_2, os.path.join(tmp_dir, "export.encodings"), strict=True
+        )
+        out2 = sim_2.session.run(None, dummy_input)
+        assert np.allclose(out1, out2)
+
     @pytest.mark.parametrize(
         "swap_quantizer_func, is_lpbq",
         [

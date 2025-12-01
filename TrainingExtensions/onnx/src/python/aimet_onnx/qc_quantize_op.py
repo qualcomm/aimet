@@ -481,8 +481,14 @@ class QcQuantizeOp:
         scales = encoding_dict["scale"]
         offsets = encoding_dict["offset"]
 
-        if _should_permute_to_1_0_0_blockwise_ordering(self.tensor_quantizer_params):
-            num_channels = self._encoding_shape()[self.quant_info.channelAxis]
+        if (
+            self.quant_info.blockSize > 0
+            and _should_permute_to_1_0_0_blockwise_ordering(
+                self.tensor_quantizer_params
+            )
+        ):
+            tensor_shape = self.tensor_quantizer_params.tensor_shape
+            num_channels = tensor_shape[self.quant_info.channelAxis]
             scales = (
                 np.array(scales)
                 .reshape(num_channels, -1)
