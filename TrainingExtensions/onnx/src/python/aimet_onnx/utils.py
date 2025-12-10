@@ -823,8 +823,8 @@ def make_psnr_eval_fn(
 
     :param fp_session: ORT inference session for floating-point model
     :param inputs: The model input samples
-    :param output_indices: Index or list of indices of output tensors to compare.
-     Currently only the first index from `output_indices` is used (default is 0)
+    :param output_indices: Index or list of indices of output tensors to compare (default is 0).
+     if None, uses all float32 outputs
     :return: PSNR callback
     """
     inputs = list(inputs)
@@ -833,7 +833,10 @@ def make_psnr_eval_fn(
     if isinstance(output_indices, int):
         output_indices = [output_indices]
 
-    primary_out_index = output_indices[0]  # Use only the first index for now
+    if output_indices is None:
+        output_indices = [
+            idx for idx, out in enumerate(fp_outputs[0]) if out.dtype == np.float32
+        ]
 
     def psnr_eval_fn(session: InferenceSession):
         """
@@ -843,12 +846,14 @@ def make_psnr_eval_fn(
         :return: PSNR value
         """
         sim_outputs = [session.run(None, inp) for inp in inputs]
+        psnrs = []
 
-        # Compute PSNR for the primary output
-        fp_first_output = np.array([out[primary_out_index] for out in fp_outputs])
-        sim_first_output = np.array([out[primary_out_index] for out in sim_outputs])
+        for idx in output_indices:
+            fp_output = np.array([out[idx] for out in fp_outputs])
+            sim_output = np.array([out[idx] for out in sim_outputs])
+            psnrs.append(compute_psnr(fp_output, sim_output))
 
-        return compute_psnr(fp_first_output, sim_first_output)
+        return min(psnrs)
 
     return psnr_eval_fn
 

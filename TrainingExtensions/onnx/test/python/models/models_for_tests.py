@@ -4420,3 +4420,62 @@ def model_with_constant(tensor_type: onnx.TensorProto.DataType):
     )
     onnx.checker.check_model(model, True)
     return model
+
+
+def integer_output_model():
+    model = make_model(
+        opset_imports=[helper.make_operatorsetid("", 21)],
+        graph=helper.make_graph(
+            name="IntegerOutputModel",
+            inputs=[
+                helper.make_tensor_value_info(
+                    "input", TensorProto.FLOAT, shape=[1, 3, 32, 32]
+                ),
+            ],
+            outputs=[
+                helper.make_tensor_value_info(
+                    "conv_output", TensorProto.FLOAT, shape=[1, 3, 30, 30]
+                ),
+                helper.make_tensor_value_info(
+                    "conv_output2", TensorProto.FLOAT, shape=[1, 8, 30, 30]
+                ),
+                helper.make_tensor_value_info(
+                    "max_conv_output", TensorProto.INT64, shape=[1, 3, 30, 1]
+                ),
+            ],
+            initializer=[
+                numpy_helper.from_array(
+                    np.random.randn(3, 3, 3, 3).astype("float32"), name="weight"
+                ),
+                numpy_helper.from_array(
+                    np.random.randn(8, 3, 3, 3).astype("float32"), name="weight2"
+                ),
+            ],
+            nodes=[
+                helper.make_node(
+                    "Conv",
+                    inputs=["input", "weight"],
+                    outputs=["conv_output"],
+                    name="conv",
+                ),
+                helper.make_node(
+                    "Conv",
+                    inputs=["input", "weight2"],
+                    outputs=["conv_output2"],
+                    name="conv2",
+                ),
+                helper.make_node(
+                    "ArgMax",
+                    inputs=[
+                        "conv_output",
+                    ],
+                    outputs=["max_conv_output"],
+                    name="max_",
+                    axis=3,
+                    keepdims=True,
+                ),
+            ],
+        ),
+    )
+    onnx.checker.check_model(model, True)
+    return model
