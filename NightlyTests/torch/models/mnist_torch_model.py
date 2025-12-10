@@ -43,13 +43,13 @@ import torch.nn.functional as functional
 import torch.optim as optim
 from torchvision import datasets, transforms
 
-from aimet_common.data_cache_utility import (
+from aimet_torch.common.data_cache_utility import (
     is_cache_env_set,
     is_mnist_cache_present,
     copy_mnist_to_cache,
     copy_cache_mnist_to_local_build,
 )
-from aimet_common.utils import AimetLogger
+from aimet_torch.common.utils import AimetLogger
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 

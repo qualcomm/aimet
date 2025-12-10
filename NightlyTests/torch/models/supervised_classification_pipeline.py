@@ -73,7 +73,7 @@ from ignite.metrics import Accuracy, Loss, TopKCategoricalAccuracy
 import torch
 import torch.nn as nn
 
-from aimet_common.utils import AimetLogger
+from aimet_torch.common.utils import AimetLogger
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Test)
 

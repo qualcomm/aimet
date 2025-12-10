@@ -40,7 +40,7 @@ import unittest
 import torch
 from torchvision import models
 from aimet_torch.winnow.winnow import winnow_model
-from aimet_common.winnow.winnow_utils import OpConnectivity, ConnectivityType
+from aimet_torch.common.winnow.winnow_utils import OpConnectivity, ConnectivityType
 
 
 class WinnowResNet18Test(unittest.TestCase):

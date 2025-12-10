@@ -46,7 +46,7 @@ import torch
 import torch.cuda
 from torchvision import models
 
-from aimet_common.defs import QuantScheme
+from aimet_torch.common.defs import QuantScheme
 from aimet_torch.utils import create_fake_data_loader, create_rand_tensors_given_shapes
 from aimet_torch.v1.quantsim import QuantizationSimModel
 from aimet_torch.v1.adaround.adaround_weight import Adaround, AdaroundParameters

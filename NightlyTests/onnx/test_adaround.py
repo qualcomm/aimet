@@ -46,7 +46,7 @@ from onnx import load_model
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from torchvision import models
 
-from aimet_common.defs import QuantScheme
+from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx import apply_adaround
 from aimet_onnx.adaround.utils import AdaroundSupportedModules

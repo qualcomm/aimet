@@ -47,8 +47,8 @@ import onnxruntime as ort
 from qai_hub_models.utils.evaluate import evaluate_session_on_dataset
 
 from aimet_onnx.mixed_precision import choose_mixed_precision
-from aimet_common.amp.utils import AMPSearchAlgo
-from aimet_common.defs import CallbackFunc, QuantizationDataType
+from aimet_onnx.common.amp.utils import AMPSearchAlgo
+from aimet_onnx.common.defs import CallbackFunc, QuantizationDataType
 
 from ONNXRegression.evaluation.metrics_utils import measure_inference_metrics
 from ONNXRegression.features._common import build_quantsim, export_aimet_bundle

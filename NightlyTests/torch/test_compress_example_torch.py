@@ -50,17 +50,17 @@ import torch
 from torchvision import datasets, transforms
 from torchvision import models
 
-import aimet_common.defs
+import aimet_torch.common.defs
 import aimet_torch.defs
-from aimet_common.defs import RankSelectScheme
-from aimet_common.utils import AimetLogger, start_bokeh_server_session
-from aimet_common.data_cache_utility import (
+from aimet_torch.common.defs import RankSelectScheme
+from aimet_torch.common.utils import AimetLogger, start_bokeh_server_session
+from aimet_torch.common.data_cache_utility import (
     is_cache_env_set,
     is_mnist_cache_present,
     copy_mnist_to_cache,
     copy_cache_mnist_to_local_build,
 )
-from aimet_common.compression_algo import CompressionAlgo
+from aimet_torch.common.compression_algo import CompressionAlgo
 
 import aimet_torch.utils
 from aimet_torch.compress import ModelCompressor
@@ -206,8 +206,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             eval_callback=mock_eval,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.spatial_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.spatial_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -257,7 +257,7 @@ class SvdAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
         ]
 
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65), num_comp_ratio_candidates=4
         )
 
@@ -292,8 +292,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             eval_callback=mock_eval,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.spatial_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.spatial_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -317,7 +317,7 @@ class SvdAcceptanceTests(unittest.TestCase):
 
         model = ModelWithTwoInputs()
 
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65), num_comp_ratio_candidates=4
         )
 
@@ -349,8 +349,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             eval_callback=mock_eval,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.spatial_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.spatial_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -392,7 +392,7 @@ class SvdAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
         ]
 
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65), num_comp_ratio_candidates=4
         )
 
@@ -429,8 +429,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             eval_callback=mock_eval,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.spatial_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.spatial_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -473,8 +473,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             evaluate,
             10,
             input_shape,
-            aimet_common.defs.CompressionScheme.weight_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            aimet_torch.common.defs.CompressionScheme.weight_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -517,7 +517,7 @@ class SvdAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
             model.fc,
         ]
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.7),
             num_comp_ratio_candidates=4,
             saved_eval_scores_dict="./data/resnet18_eval_scores.pkl",
@@ -537,8 +537,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             evaluate,
             10,
             input_shape,
-            aimet_common.defs.CompressionScheme.weight_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            aimet_torch.common.defs.CompressionScheme.weight_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -570,7 +570,7 @@ class SvdAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
             model.fc,
         ]
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.7),
             num_comp_ratio_candidates=4,
             saved_eval_scores_dict="./data/resnet18_eval_scores.pkl",
@@ -590,8 +590,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             evaluate,
             10,
             input_shape,
-            aimet_common.defs.CompressionScheme.weight_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            aimet_torch.common.defs.CompressionScheme.weight_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -620,7 +620,7 @@ class SvdAcceptanceTests(unittest.TestCase):
             os.path.join("./", "data", "mnist_trained_on_GPU.pth"), weights_only=False
         )
         modules_to_ignore = [model.conv1]
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.8),
             num_comp_ratio_candidates=10,
             use_monotonic_fit=True,
@@ -637,8 +637,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             mnist_torch_model.evaluate,
             10,
             input_shape,
-            aimet_common.defs.CompressionScheme.spatial_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            aimet_torch.common.defs.CompressionScheme.spatial_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             trainer=Trainer(),
             visualization_url=None,
@@ -671,7 +671,7 @@ class SvdAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv1,
             model.layer4[1].conv2,
         ]
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65), num_comp_ratio_candidates=10
         )
 
@@ -688,8 +688,8 @@ class SvdAcceptanceTests(unittest.TestCase):
             eval_callback=evaluate,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.spatial_svd,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.spatial_svd,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -740,8 +740,8 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             evaluate,
             10,
             input_shape,
-            aimet_common.defs.CompressionScheme.channel_pruning,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            aimet_torch.common.defs.CompressionScheme.channel_pruning,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -773,7 +773,7 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
         ]
 
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65),
             num_comp_ratio_candidates=10,
             use_monotonic_fit=True,
@@ -801,8 +801,8 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             eval_callback=evaluate,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.channel_pruning,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.channel_pruning,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -838,7 +838,7 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
         ]
 
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65),
             num_comp_ratio_candidates=10,
             saved_eval_scores_dict="./data/resnet18_eval_scores.pkl",
@@ -864,8 +864,8 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             eval_callback=evaluate,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.channel_pruning,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.channel_pruning,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )
@@ -899,7 +899,7 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             model.layer4[1].conv2,
         ]
 
-        greedy_params = aimet_common.defs.GreedySelectionParameters(
+        greedy_params = aimet_torch.common.defs.GreedySelectionParameters(
             target_comp_ratio=Decimal(0.65),
             num_comp_ratio_candidates=10,
             saved_eval_scores_dict="./data/resnet18_eval_scores.pkl",
@@ -926,8 +926,8 @@ class ChannelPruningAcceptanceTests(unittest.TestCase):
             eval_callback=evaluate,
             eval_iterations=5,
             input_shape=input_shape,
-            compress_scheme=aimet_common.defs.CompressionScheme.channel_pruning,
-            cost_metric=aimet_common.defs.CostMetric.mac,
+            compress_scheme=aimet_torch.common.defs.CompressionScheme.channel_pruning,
+            cost_metric=aimet_torch.common.defs.CostMetric.mac,
             parameters=params,
             visualization_url=None,
         )

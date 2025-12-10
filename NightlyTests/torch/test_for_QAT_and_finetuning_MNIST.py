@@ -41,8 +41,8 @@ import random
 import torch
 import numpy as np
 import copy
-from aimet_common.quantsim_config.utils import get_path_for_per_tensor_config
-from aimet_common.defs import QuantScheme, QuantizationDataType
+from aimet_torch.common.quantsim_config.utils import get_path_for_per_tensor_config
+from aimet_torch.common.defs import QuantScheme, QuantizationDataType
 from aimet_torch.v1.quantsim import (
     QuantizationSimModel,
     load_checkpoint,

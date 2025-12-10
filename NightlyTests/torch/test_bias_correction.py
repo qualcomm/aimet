@@ -41,7 +41,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from aimet_common.defs import QuantScheme
+from aimet_torch.common.defs import QuantScheme
 import aimet_torch.bias_correction
 import aimet_torch.layer_selector
 from aimet_torch import bias_correction

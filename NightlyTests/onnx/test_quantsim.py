@@ -45,9 +45,9 @@ from onnx import load_model
 from torchvision import models
 
 from aimet_onnx.utils import make_dummy_input
-from aimet_common.defs import QuantScheme
+from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_common.quantsim_config.utils import get_path_for_per_channel_config
+from aimet_onnx.common.quantsim_config.utils import get_path_for_per_channel_config
 
 try:
     from torch_utils import get_cifar10_data_loaders, train_cifar10

@@ -44,13 +44,13 @@ import unittest.mock
 import numpy as np
 from test_models import resnet18
 from aimet_onnx.mixed_precision import choose_mixed_precision
-from aimet_common.defs import QuantizationDataType, CallbackFunc
+from aimet_onnx.common.defs import QuantizationDataType, CallbackFunc
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.defs import DataLoader
 from aimet_onnx.amp import utils as mixed_precision_utils
 from aimet_onnx.amp.mixed_precision_algo import EvalCallbackFactory
 from aimet_onnx.amp.quantizer_groups import find_quantizer_group
-from aimet_common.amp.utils import AMPSearchAlgo, calculate_starting_bit_ops
+from aimet_onnx.common.amp.utils import AMPSearchAlgo, calculate_starting_bit_ops
 
 
 class TestMixedPrecision:
