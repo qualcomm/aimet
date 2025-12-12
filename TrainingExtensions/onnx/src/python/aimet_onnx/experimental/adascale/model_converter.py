@@ -14,6 +14,7 @@ from aimet_onnx.utils import add_value_info
 from aimet_onnx.quantsim import QuantizationSimModel
 from onnx2torch.onnx_graph import OnnxGraph
 from typing import Tuple, List, Dict, Collection
+from aimet_onnx.common.quantsim import calculate_delta_offset
 
 filter_op = ["MatMul", "Conv"]
 
@@ -146,31 +147,27 @@ def copy_pt_encodings_to_sim(
             onnx_param_name = pt_weights_to_onnx_initializers[name]
 
             # copy encodings over to onnx quantizers
-            new_scales = (
-                module.param_quantizers["weight"].get_scale().detach().cpu().numpy()
-            )
-            new_offsets = (
-                module.param_quantizers["weight"].get_offset().detach().cpu().numpy()
-            )
             new_min = module.param_quantizers["weight"].get_min().detach().cpu().numpy()
             new_max = module.param_quantizers["weight"].get_max().detach().cpu().numpy()
 
             enc = sim.qc_quantize_op_dict[onnx_param_name].get_encodings()
 
-            if (
-                len(new_scales) != len(enc)
-                or len(new_offsets) != len(enc)
-                or len(new_min) != len(enc)
-                or len(new_max) != len(enc)
-            ):
+            if len(new_min) != len(enc) or len(new_max) != len(enc):
                 raise RuntimeError(
                     "Encodings of the onnx quantizer and adascale quantizer have different lengths"
                 )
 
             for i, encoding in enumerate(enc):
-                encoding.delta = new_scales[i]
-                encoding.offset = new_offsets[i]
+                delta, offset = calculate_delta_offset(
+                    min_val=new_min[i],
+                    max_val=new_max[i],
+                    bitwidth=module.param_quantizers["weight"].bitwidth,
+                    use_symmetric_encodings=True,
+                    use_strict_symmetric=False,
+                )
+                encoding.delta = delta
+                encoding.offset = offset
                 encoding.min = new_min[i]
                 encoding.max = new_max[i]
-
             sim.qc_quantize_op_dict[onnx_param_name].load_encodings(enc)
+            sim.qc_quantize_op_dict[onnx_param_name].freeze_encodings()
