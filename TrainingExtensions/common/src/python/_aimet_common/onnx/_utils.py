@@ -623,6 +623,7 @@ def _is_grid_preserving_op(op_type: str) -> bool:
         "MaxPool",
         "MaxRoiPool",
         "NonZero",
+        "Pad",
         "ReduceMax",
         "ReduceMin",
         "Reshape",
@@ -649,7 +650,6 @@ def _is_htp_interpolation_op(op_type: str) -> bool:
     # TODO: Absorb this function into redesigned config file
     return op_type in (
         "CropAndResize",
-        "Pad",
         "Resize",
         "ScatterElements",
         "Upsample",

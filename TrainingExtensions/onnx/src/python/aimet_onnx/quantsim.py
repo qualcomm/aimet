@@ -177,7 +177,6 @@ op_types_to_tie_qtzrs = [
     "ReduceMax",
     "Relu",
     "Min",
-    "Pad",
     "ReduceMin",
     "ScatterElements",
     "Upsample",
