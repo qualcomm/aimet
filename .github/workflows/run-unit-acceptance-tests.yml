@@ -171,7 +171,8 @@ jobs:
           $pytest_args = "not cuda"
           Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\ModelOptimizations\\DlQuantization\\test"
           Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\TrainingExtensions\\common\\test\\python"
-          Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\TrainingExtensions\\onnx\\test\\python"
+          # TODO: #6211 Move torch to onnx tests out of unit tests
+          Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\TrainingExtensions\\onnx\\test\\python --ignore .\\TrainingExtensions\\onnx\\test\\python\\test_torch_to_onnx.py"
 
       - name: Run Acceptance tests
         if: inputs.run_acceptance_tests
