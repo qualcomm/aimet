@@ -1,7 +1,7 @@
 cvxpy
 matplotlib>=3
 networkx
-numpy<=1.24.4,>=1.16.6
+numpy<=2,>=1.16.6
 onnx
 onnxruntime-extensions
 onnxscript>=0.2.0

@@ -1,5 +1,4 @@
-bokeh==3.2.2
-dataclasses
+bokeh
 h5py
 holoviews==1.18.3
 hvplot==0.9.2
@@ -9,6 +8,6 @@ osqp
 pybind11
 PyYAML
 scikit-learn
-scipy==1.8.1
+scipy
 setuptools
 tqdm
