@@ -1,4 +1,4 @@
-bokeh==3.2.2
+bokeh==3.8.2
 dataclasses
 h5py
 holoviews==1.18.3
