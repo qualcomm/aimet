@@ -5763,6 +5763,7 @@ def test_to_onnx_qdq_1x1_conv_bq(tmp_dir, lpbq: bool):
         path,
         input_names=["input"],
         output_names=["output"],
+        dynamo=False,
     )
 
     sim = aimet_onnx.QuantizationSimModel(onnx.load(path))
