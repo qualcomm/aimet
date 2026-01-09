@@ -207,7 +207,8 @@ class AdaScale:
                         adascale_model_config.scales_lr,
                         num_iterations,
                     )
-                    del fp_input_list, qsim_input_list
+                    del fp_input_list, qsim_input_list, fp_inputs, qsim_inputs
+                sim._rebuild_session()  # pylint: disable=protected-access
 
     @staticmethod
     def get_block_start_end_name(blocks_end_points, block_idx):
@@ -357,8 +358,6 @@ class AdaScale:
 
         gc.collect()
         torch.cuda.empty_cache()
-
-        sim._rebuild_session()  # pylint: disable=protected-access
 
     @staticmethod
     @contextlib.contextmanager
