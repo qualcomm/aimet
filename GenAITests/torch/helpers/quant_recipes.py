@@ -35,7 +35,7 @@ def _prefill_inputs(
     if num_iterations is not None:
         dataloader = itertools.islice(dataloader, num_iterations)
 
-    with remove_all_quantizers(generator.model):
+    with remove_all_quantizers(generator.model), torch.no_grad():
         for sample in tqdm(
             dataloader,
             total=num_iterations if num_iterations else len(dataloader),
