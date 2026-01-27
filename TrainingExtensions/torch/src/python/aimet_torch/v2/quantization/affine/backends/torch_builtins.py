@@ -196,33 +196,6 @@ def quantize(
     )
 
 
-torch.library.define(
-    "aimet::quantize_dequantize",
-    "("
-    "  Tensor input,"
-    "  Tensor scale,"
-    "  Tensor offset,"
-    "  int qmin,"
-    "  int qmax,"
-    "  int[]? block_size,"
-    "  float zero_point_shift"
-    ") -> Tensor",
-)
-
-
-@torch.library.register_fake("aimet::quantize_dequantize")
-def quantize_dequantize_meta(  # pylint: disable=unused-argument
-    tensor: torch.Tensor,
-    scale: torch.Tensor,
-    offset: torch.Tensor,
-    qmin: int,
-    qmax: int,
-    block_size: Optional[List] = None,
-    zero_point_shift: float = 0.0,
-) -> torch.Tensor:
-    return torch.empty_like(tensor)
-
-
 _ALLOW_FAST_FORWARD = True  # temporary flag for debugging
 
 
@@ -310,8 +283,34 @@ def quantize_dequantize(
     return qdq_tensor.to(output_dtype).view(orig_tensor_shape)
 
 
-# Register quantize_dequantize as torch.ops.aimet.quantize_dequantize
-torch.library.impl("aimet::quantize_dequantize", "default")(quantize_dequantize)
+if _torch_version >= (2, 4, 0):
+    torch.library.define(
+        "aimet::quantize_dequantize",
+        "("
+        "  Tensor input,"
+        "  Tensor scale,"
+        "  Tensor offset,"
+        "  int qmin,"
+        "  int qmax,"
+        "  int[]? block_size,"
+        "  float zero_point_shift"
+        ") -> Tensor",
+    )
+
+    @torch.library.register_fake("aimet::quantize_dequantize")
+    def quantize_dequantize_meta(  # pylint: disable=unused-argument
+        tensor: torch.Tensor,
+        scale: torch.Tensor,
+        offset: torch.Tensor,
+        qmin: int,
+        qmax: int,
+        block_size: Optional[List] = None,
+        zero_point_shift: float = 0.0,
+    ) -> torch.Tensor:
+        return torch.empty_like(tensor)
+
+    # Register quantize_dequantize as torch.ops.aimet.quantize_dequantize
+    torch.library.impl("aimet::quantize_dequantize", "default")(quantize_dequantize)
 
 
 def _torch_fake_quantize(
