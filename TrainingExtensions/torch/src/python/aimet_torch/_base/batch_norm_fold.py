@@ -282,14 +282,10 @@ class BatchNormFoldBase(ABC):
             running_mean = bn.running_mean
             inv_sigma = torch.rsqrt(bn.running_var + bn.eps)
 
+            # Fold running_mean and running_var into weight and bias
             weight = gamma * inv_sigma
             bias = beta - running_mean * weight
 
-            # Update the values
-            bn.eps = 0
-            bn.track_running_stats = False
-            bn.weight.copy_(weight.clone().detach())
-            bn.bias.copy_(bias.clone().detach())
             bn.running_mean = torch.zeros(
                 bn.running_mean.shape,
                 device=bn.running_mean.device,
@@ -300,6 +296,21 @@ class BatchNormFoldBase(ABC):
                 device=bn.running_var.device,
                 dtype=bn.running_var.dtype,
             )
+
+            # Adjust for eps
+            # torch 2.10 doesn't support eps=0 in batchnorm, https://github.com/pytorch/pytorch/issues/173337
+            # y = BatchNorm(input)
+            # y = weight * (input - running_mean) / sqrt(running_var + eps) + bias
+            # since, running_mean = 0 and running_var = 1 after folding above,
+            # y = weight * (input - 0) / sqrt(1 + eps) + bias
+            # y = (weight / sqrt(1 + eps)) * input + bias
+            # Adjust weight to cancel out sqrt(1 + eps) in denominator
+            adjusted_weight = weight * torch.sqrt(
+                torch.tensor(1.0 + bn.eps, device=weight.device, dtype=weight.dtype)
+            )
+            bn.track_running_stats = False
+            bn.weight.copy_(adjusted_weight.clone().detach())
+            bn.bias.copy_(bias.clone().detach())
 
     @classmethod
     def find_all_conv_bn_with_activation(
