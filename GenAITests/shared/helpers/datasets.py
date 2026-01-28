@@ -54,7 +54,7 @@ class Wikitext(Dataset):
 
     @staticmethod
     def load_dataset(split: str):
-        return load_dataset("wikitext", "wikitext-2-raw-v1", split=split)
+        return load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split=split)
 
     @classmethod
     def load_encoded_dataset(
