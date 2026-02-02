@@ -98,6 +98,7 @@ class GenericMMLU(EvaluationMetric):
         """Get the dataloader associated with this MMLU evaluator."""
 
     @classmethod
+    @torch.no_grad()
     def evaluate(
         cls,
         model: Generator,
