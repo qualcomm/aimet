@@ -579,7 +579,7 @@ class OrtInferenceSession(InferenceSession):
 
     def __init__(
         self,
-        model: onnx.ModelProto,
+        model: Union[ModelProto, str],
         providers: List,
         session_options: SessionOptions = None,
         path: str = None,
@@ -587,22 +587,23 @@ class OrtInferenceSession(InferenceSession):
         """
         Build and return onnxruntime inference session
 
-        :param model: onnx model
+        :param model: onnx model or path to onnx model
         :param providers: providers to execute onnxruntime
         :param session_options: onnxruntime session options
         :param path: path where to store model external data
         """
 
         self.model_dir: Optional[str] = None
-
-        if path is None:
-            self.model_dir = tempfile.mkdtemp()
-            path = self.model_dir
-
-        model_path = os.path.join(path, "model.onnx")
-        save_model_with_external_weights(
-            model, model_path, location=Path(model_path).name + ".data"
-        )
+        if isinstance(model, ModelProto):
+            if path is None:
+                self.model_dir = tempfile.mkdtemp()
+                path = self.model_dir
+            model_path = os.path.join(path, "model.onnx")
+            save_model_with_external_weights(
+                model, model_path, location=Path(model_path).name + ".data"
+            )
+        else:
+            model_path = model
 
         if session_options is None:
             session_options = create_ort_session_options_with_aimet_custom_ops()

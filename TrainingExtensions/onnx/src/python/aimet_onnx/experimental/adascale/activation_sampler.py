@@ -8,6 +8,7 @@ from typing import List, Dict, Union, Optional, Sequence, Tuple, Any
 import numpy as np
 import onnx
 from packaging import version
+import os
 
 from aimet_onnx.utils import (
     add_hook_to_get_activation,
@@ -31,38 +32,59 @@ class ActivationSampler:
     def __init__(
         self,
         activation_name: str,
-        model: ModelProto,
+        model_or_path: Union[ModelProto, str],
         providers: Optional[Sequence[str | Tuple[str, Dict[Any, Any]]]] = None,
         path: str = None,
     ):
         """
         :param activation_name: tensor name of the module whose output we want to retrieve
-        :param model: ONNX model
+        :param model_or_path: ONNX ModelProto or path to an ONNX model file
         :param providers: List of providers to use
-        :path: path to store the onnx model
+        :path: path of stored fp model
         :return: Input data to quant op, Output data from original op
         """
-        self._model = model
         self._activation_name = activation_name
-        self._sess, self._handle = self.create_session(
-            self._model, activation_name, providers, path
-        )
+        (
+            self._sess,
+            self._handle,
+            self._model,
+        ) = self.create_session(model_or_path, activation_name, providers, path)
 
     @staticmethod
     def create_session(
-        model: onnx.ModelProto, activation: Union[str, List[str]], providers, path: str
+        model_or_path: Union[ModelProto, str],
+        activation: Union[str, List[str]],
+        providers,
+        path: str,
     ):
         """
         Helper to create a session using both module's input and output tensor names
 
-        :param model: ONNX ModelProto to create a session
+        :param model_or_path: ONNX ModelProto or path to an ONNX model file
         :param activation: activation to add a hook to
         :param providers: List of providers to use
         :path: path to store the onnx model
+
+        Note:
+        Aimet wrapper for OrtInferenceSession is saving and loading the onnx-model before creating a session.
+        Each time load_external_data_for_model is called, it is allocating new memory for the weights and not reusing the existing memory
+        Workaround:
+        1. QuantSim: Pass a copy of the model when creating ActivationSampler
+        2. FP : Save the fp model to disk with save_as_external_data = True. Load the model , add hooks and create session with model path,
+            (will load the saved weights from disk)
         """
-        handle = add_hook_to_get_activation(model, activation)
-        sess = OrtInferenceSession(model, providers, path=path)
-        return sess, handle
+        if isinstance(model_or_path, str):
+            model = onnx.load(model_or_path, load_external_data=False)
+            handle = add_hook_to_get_activation(model, activation)
+            model_path = os.path.join(path, "fp32_model.onnx")
+            onnx.save(model, model_path)
+            sess = OrtInferenceSession(model_path, providers)
+        else:
+            model = model_or_path
+            handle = add_hook_to_get_activation(model, activation)
+            sess = OrtInferenceSession(model, providers)
+
+        return sess, handle, model
 
     def restore_graph(self):
         """
