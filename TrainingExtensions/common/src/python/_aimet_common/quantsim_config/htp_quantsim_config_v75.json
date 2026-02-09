@@ -197,9 +197,6 @@
       "op_list": ["Conv", "Clip"]
 	},
     {
-      "op_list": ["Conv", "HardSwish"]
-    },
-    {
       "op_list": ["Conv", "PRelu"]
     },
     {
