@@ -46,7 +46,7 @@ def _for_each_module(
             assert isinstance(handle, Handle)
             handles.append(handle)
         return Handle(cleanup)
-    except:
+    except Exception:
         cleanup()
         raise
 
@@ -70,7 +70,7 @@ def _reset_bn_stats(module: _BatchNorm) -> Handle:
     try:
         module.reset_running_stats()
         return Handle(cleanup)
-    except:
+    except Exception:
         cleanup()
         raise
 
@@ -90,7 +90,7 @@ def _reset_momentum(module: _BatchNorm) -> Handle:
     try:
         module.momentum = 1.0
         return Handle(cleanup)
-    except:
+    except Exception:
         cleanup()
         raise
 
@@ -153,6 +153,6 @@ def reestimate_bn_stats(
                     bn.running_var.copy_(sum_var / min(len(dataloader), num_batches))
 
                 return handle
-            except:
+            except Exception:
                 handle.remove()
                 raise
