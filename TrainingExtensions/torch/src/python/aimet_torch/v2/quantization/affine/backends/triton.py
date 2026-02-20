@@ -751,7 +751,9 @@ class TritonQuantize(torch.autograd.Function):
     ):
         axis_0, axis_1, block_size = _get_axes(tensor, scale, offset, block_size)
 
-        output = torch.empty_like(tensor)
+        output = torch.empty_like(
+            tensor, memory_format=torch.contiguous_format, layout=torch.strided
+        )
         COMPUTE_BLOCK_SIZE = 1024
         NUM_COMPUTE_BLOCKS = tensor.numel() // COMPUTE_BLOCK_SIZE + 1
 
@@ -831,7 +833,9 @@ class TritonDequantize(torch.autograd.Function):
     ):
         axis_0, axis_1, block_size = _get_axes(tensor, scale, offset, block_size)
 
-        output = torch.empty_like(tensor)
+        output = torch.empty_like(
+            tensor, memory_format=torch.contiguous_format, layout=torch.strided
+        )
         COMPUTE_BLOCK_SIZE = 1024
         NUM_COMPUTE_BLOCKS = tensor.numel() // COMPUTE_BLOCK_SIZE + 1
 
@@ -909,11 +913,19 @@ class TritonQuantizeDequantize(torch.autograd.Function):
         axis_0, axis_1, block_size = _get_axes(tensor, scale, offset, block_size)
 
         if tensor.requires_grad or scale.requires_grad or offset.requires_grad:
-            mask = torch.empty_like(tensor, dtype=torch.bool)
+            mask = torch.empty_like(
+                tensor,
+                dtype=torch.bool,
+                memory_format=torch.contiguous_format,
+                layout=torch.strided,
+            )
         else:
             mask = None
 
-        output = torch.empty_like(tensor)
+        output = torch.empty_like(
+            tensor, memory_format=torch.contiguous_format, layout=torch.strided
+        )
+
         COMPUTE_BLOCK_SIZE = 1024
         NUM_COMPUTE_BLOCKS = tensor.numel() // COMPUTE_BLOCK_SIZE + 1
 
@@ -1033,7 +1045,13 @@ class TritonQuantizeDequantize(torch.autograd.Function):
         if mask is not None:
             mask = mask.contiguous()
 
-        input_grad = torch.empty_like(grad) if ctx.tensor_requires_grad else None
+        input_grad = (
+            torch.empty_like(
+                grad, memory_format=torch.contiguous_format, layout=torch.strided
+            )
+            if ctx.tensor_requires_grad
+            else None
+        )
 
         COMPUTE_BLOCK_SIZE = 1024
         NUM_COMPUTE_BLOCKS = grad.numel() // COMPUTE_BLOCK_SIZE + 1

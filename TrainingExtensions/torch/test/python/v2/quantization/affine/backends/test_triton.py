@@ -732,16 +732,16 @@ class TestTritonBackend:
 
         with set_backend("torch_builtins"):
             with torch.no_grad():
-                output_q_torch = quantize(input[::2, ::2], scale, offset, -128, 127)
-                output_dq_torch = dequantize(input_q[::2, ::2], scale, offset)
+                output_q_torch = quantize(input[::2, ::2].T, scale, offset, -128, 127)
+                output_dq_torch = dequantize(input_q[::2, ::2].T, scale, offset)
 
             output_qdq_torch = quantize_dequantize(
-                input[::2, ::2], scale, offset, -128, 127
+                input[::2, ::2].T, scale, offset, -128, 127
             )
 
             with torch.no_grad():
                 mse_grad = 2 * (
-                    quantize_dequantize(input, scale, offset, -128, 127) - input
+                    quantize_dequantize(input.T, scale, offset, -128, 127) - input.T
                 )
                 mse_grad = (mse_grad / input[::2, ::2].numel())[::2, ::2]
                 assert not mse_grad.is_contiguous()
@@ -754,16 +754,18 @@ class TestTritonBackend:
 
         with set_backend("triton"):
             with torch.no_grad():
-                output_q_triton = quantize(input_[::2, ::2], scale_, offset_, -128, 127)
-                output_dq_triton = dequantize(input_q[::2, ::2], scale_, offset_)
+                output_q_triton = quantize(
+                    input_[::2, ::2].T, scale_, offset_, -128, 127
+                )
+                output_dq_triton = dequantize(input_q[::2, ::2].T, scale_, offset_)
 
             output_qdq_triton = quantize_dequantize(
-                input_[::2, ::2], scale_, offset_, -128, 127
+                input_[::2, ::2].T, scale_, offset_, -128, 127
             )
 
             with torch.no_grad():
                 mse_grad = 2 * (
-                    quantize_dequantize(input_, scale_, offset_, -128, 127) - input_
+                    quantize_dequantize(input_.T, scale_, offset_, -128, 127) - input_.T
                 )
                 mse_grad = (mse_grad / input[::2, ::2].numel())[::2, ::2]
                 assert not mse_grad.is_contiguous()
@@ -779,6 +781,7 @@ class TestTritonBackend:
         assert torch.allclose(scale.grad, scale_.grad)
         assert torch.allclose(offset.grad, offset_.grad)
 
+        input.grad = scale.grad = offset.grad = None
         scale = (
             torch.arange(0.01, 5.13, step=0.01, dtype=torch.float32, device="cuda")
             .view(512, 1)
@@ -789,17 +792,19 @@ class TestTritonBackend:
         with set_backend("torch_builtins"):
             with torch.no_grad():
                 output_q_torch = quantize(
-                    input[::2, ::2], scale[::2], offset[::2], -128, 127
+                    input[::2, ::2].T, scale[::2], offset[::2], -128, 127
                 )
-                output_dq_torch = dequantize(input_q[::2, ::2], scale[::2], offset[::2])
+                output_dq_torch = dequantize(
+                    input_q[::2, ::2].T, scale[::2], offset[::2]
+                )
 
             output_qdq_torch = quantize_dequantize(
-                input[::2, ::2], scale[::2], offset[::2], -128, 127
+                input[::2, ::2].T, scale[::2], offset[::2], -128, 127
             )
 
             with torch.no_grad():
                 mse_grad = 2 * (
-                    quantize_dequantize(input, scale, offset, -128, 127) - input
+                    quantize_dequantize(input.T, scale, offset, -128, 127) - input.T
                 )
                 mse_grad = (mse_grad / input[::2, ::2].numel())[::2, ::2]
                 assert not mse_grad.is_contiguous()
@@ -813,19 +818,19 @@ class TestTritonBackend:
         with set_backend("triton"):
             with torch.no_grad():
                 output_q_triton = quantize(
-                    input_[::2, ::2], scale_[::2], offset_[::2], -128, 127
+                    input_[::2, ::2].T, scale_[::2], offset_[::2], -128, 127
                 )
                 output_dq_triton = dequantize(
-                    input_q[::2, ::2], scale_[::2], offset_[::2]
+                    input_q[::2, ::2].T, scale_[::2], offset_[::2]
                 )
 
             output_qdq_triton = quantize_dequantize(
-                input_[::2, ::2], scale_[::2], offset_[::2], -128, 127
+                input_[::2, ::2].T, scale_[::2], offset_[::2], -128, 127
             )
 
             with torch.no_grad():
                 mse_grad = 2 * (
-                    quantize_dequantize(input_, scale_, offset_, -128, 127) - input_
+                    quantize_dequantize(input_.T, scale_, offset_, -128, 127) - input_.T
                 )
                 mse_grad = (mse_grad / input[::2, ::2].numel())[::2, ::2]
                 assert not mse_grad.is_contiguous()
@@ -848,6 +853,7 @@ class TestTritonBackend:
         assert torch.allclose(scale.grad, scale_.grad)
         assert torch.allclose(offset.grad, offset_.grad)
 
+        input.grad = scale.grad = offset.grad = None
         block_size = 128
         block_axis = 1
         scale = (
@@ -862,7 +868,7 @@ class TestTritonBackend:
         with set_backend("torch_builtins"):
             with torch.no_grad():
                 output_q_torch = quantize(
-                    input[::2, ::2],
+                    input[::2, ::2].T,
                     scale[::2, ::2],
                     offset[::2, ::2],
                     -128,
@@ -870,14 +876,14 @@ class TestTritonBackend:
                     block_size=(1, block_size),
                 )
                 output_dq_torch = dequantize(
-                    input_q[::2, ::2],
+                    input_q[::2, ::2].T,
                     scale[::2, ::2],
                     offset[::2, ::2],
                     block_size=(1, block_size),
                 )
 
             output_qdq_torch = quantize_dequantize(
-                input[::2, ::2],
+                input[::2, ::2].T,
                 scale[::2, ::2],
                 offset[::2, ::2],
                 -128,
@@ -888,9 +894,9 @@ class TestTritonBackend:
             with torch.no_grad():
                 mse_grad = 2 * (
                     quantize_dequantize(
-                        input, scale, offset, -128, 127, block_size=(1, block_size)
+                        input.T, scale, offset, -128, 127, block_size=(1, block_size)
                     )
-                    - input
+                    - input.T
                 )
                 mse_grad = (mse_grad / input[::2, ::2].numel())[::2, ::2]
                 assert not mse_grad.is_contiguous()
@@ -904,7 +910,7 @@ class TestTritonBackend:
         with set_backend("triton"):
             with torch.no_grad():
                 output_q_triton = quantize(
-                    input_[::2, ::2],
+                    input_[::2, ::2].T,
                     scale_[::2, ::2],
                     offset_[::2, ::2],
                     -128,
@@ -912,14 +918,14 @@ class TestTritonBackend:
                     block_size=(1, block_size),
                 )
                 output_dq_triton = dequantize(
-                    input_q[::2, ::2],
+                    input_q[::2, ::2].T,
                     scale_[::2, ::2],
                     offset_[::2, ::2],
                     block_size=(1, block_size),
                 )
 
             output_qdq_triton = quantize_dequantize(
-                input_[::2, ::2],
+                input_[::2, ::2].T,
                 scale_[::2, ::2],
                 offset_[::2, ::2],
                 -128,
@@ -930,9 +936,9 @@ class TestTritonBackend:
             with torch.no_grad():
                 mse_grad = 2 * (
                     quantize_dequantize(
-                        input_, scale_, offset_, -128, 127, block_size=(1, block_size)
+                        input_.T, scale_, offset_, -128, 127, block_size=(1, block_size)
                     )
-                    - input_
+                    - input_.T
                 )
                 mse_grad = (mse_grad / input[::2, ::2].numel())[::2, ::2]
                 assert not mse_grad.is_contiguous()
