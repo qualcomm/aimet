@@ -3,6 +3,7 @@
 
 
 # pylint: disable=missing-docstring
+from __future__ import annotations
 from collections import namedtuple
 from typing import Optional, Mapping
 import torch
