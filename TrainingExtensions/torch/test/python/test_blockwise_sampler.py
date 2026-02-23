@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from aimet_torch.blockwise_sampler import BlockwiseSampler
 from aimet_torch.v2.quantsim import QuantizationSimModel
 from aimet_torch.utils import StopForwardException, disable_all_quantizers
+from .v2.models_ import test_models
 
 
 class Block(torch.nn.Module):
@@ -73,6 +74,14 @@ class StopForwardExceptionWithInput(StopForwardException):
 
 def hook_fn(module, args, kwargs):
     raise StopForwardExceptionWithInput(InputHolder(args, kwargs))
+
+
+def _get_device_type(module: torch.nn.Module):
+    for param in module.parameters():
+        return param.device.type
+    for buffer in module.buffers():
+        return buffer.device.type
+    return None
 
 
 @pytest.mark.parametrize("cache_activations_on_disk", [True, False])
@@ -142,3 +151,49 @@ def test_blockwise_sampler(cache_activations_on_disk, keep_unused_blocks_on_cpu)
                 qt_block_inputs_args, qt_block_inputs_without_caching
             ):
                 _verify_equal_tuples_of_tensors(uncached_tensors, cached_tensors)
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("num_blocks, disable_cache_until", [(6, 3), (5, 0)])
+def test_blockwise_sampler_with_disabled_caching(num_blocks, disable_cache_until):
+    device = torch.device("cuda")
+    model = test_models.ModelWithLinearBlocks(num_blocks, disable_cache_until)
+    sim = QuantizationSimModel(model, dummy_input=torch.randn(1, 32, 64))
+    sim.model.to(device)
+    dataset = RandomDataset((1, 32, 64), 10)
+
+    def forward_pass_callback(quantized_model):
+        for sample in DataLoader(dataset, batch_size=1, shuffle=False):
+            _ = quantized_model(sample.cuda())
+
+    sim.compute_encodings(forward_pass_callback)
+
+    sampler = BlockwiseSampler(
+        sim=sim,
+        blocks=sim.model.blocks,
+        dataloader=DataLoader(dataset, batch_size=1, shuffle=False),
+        cache_activations_on_disk=True,
+        keep_unused_blocks_on_cpu=True,
+        disable_caching_until_block=disable_cache_until,
+    )
+
+    for block_idx, (block, *_) in enumerate(sampler.sample()):
+        # Current block should always be on device
+        assert _get_device_type(block) == "cuda"
+
+        if block_idx >= disable_cache_until:
+            for parameter in sim.model.parameters():
+                if parameter in set(block.parameters()):
+                    assert parameter.device.type == "cuda"
+                else:
+                    assert parameter.device.type == "cpu"
+        else:
+            # All later blocks should be on CPU
+            for block in sim.model.blocks[block_idx + 1 :]:
+                assert _get_device_type(block) == "cpu"
+            # All earlier blocks should be on cuda
+            for block in sim.model.blocks[: block_idx + 1]:
+                assert _get_device_type(block) == "cuda"
+            # All non-block modules should be on cuda
+            for layer in sim.model.postprocessing:
+                assert _get_device_type(layer) == "cuda"

@@ -380,6 +380,37 @@ class TestAdascale:
                     len(lwc_params + scale_params) == 8
                 )  # two linear layers X [gamma, beta, s2, s3]
 
+    @pytest.mark.cuda()
+    @pytest.mark.parametrize(
+        "num_blocks,num_blocks_with_post_process", [(6, 3), (5, 0)]
+    )
+    def test_adascale_with_block_output_postprocessing(
+        self, num_blocks, num_blocks_with_post_process
+    ):
+        dummy_input = torch.rand(200, 3, 32, 64)
+        model = test_models.ModelWithLinearBlocks(
+            num_blocks, num_blocks_with_post_process
+        )
+        sim = QuantizationSimModel(model, dummy_input, default_param_bw=4)
+        sim.model.cuda()
+
+        batch_size = 16
+        num_iterations = 130
+
+        data_set = CustomDataset(dummy_input)
+        data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=True)
+
+        with patch.dict(
+            adascale_model_config_dict,
+            {
+                test_models.ModelWithLinearBlocks: AdaScaleModelConfig(
+                    test_models.ModelWithLinears,
+                    enable_caching_after_block=num_blocks_with_post_process,
+                )
+            },
+        ):
+            apply_adascale(sim, data_loader, None, num_iterations)
+
     def test_adascale_zero_point_shift(self):
         torch.manual_seed(0)
         dummy_input = torch.rand(200, 3, 32, 64)

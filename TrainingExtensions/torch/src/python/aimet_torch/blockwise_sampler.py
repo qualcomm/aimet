@@ -377,18 +377,15 @@ class BlockwiseSampler:
             qt_inferences.append(self.run_inference(sample))
 
         if self.keep_unused_blocks_on_cpu:
-            self.sim.model.to("cpu")
+            if self.disable_caching_until_block > 0:
+                # Send only blocks to CPU
+                self.sim.model.to(device)
+                for block in self.blocks:
+                    block.to("cpu")
+            else:
+                self.sim.model.to("cpu")
 
         for block_idx, block in enumerate(tqdm(self.blocks, desc=desc)):
-            # Move blocks to device for inference
-            if self.keep_unused_blocks_on_cpu:
-                if block_idx == 0:
-                    # Move all early blocks together for hook-based inference
-                    for b in self.blocks[: self.disable_caching_until_block + 1]:
-                        b.to(device)
-                elif block_idx > self.disable_caching_until_block:
-                    block.to(device)
-
             # Quantizers must be ENABLED when calculating quantized block inputs
             qt_block_inputs = [next(block_input) for block_input in qt_inferences]
 
@@ -396,15 +393,11 @@ class BlockwiseSampler:
             with utils.disable_all_quantizers(self.sim.model):
                 fp_block_inputs = [next(block_input) for block_input in fp_inferences]
 
-            yield block, fp_block_inputs, qt_block_inputs
-
-            # Move blocks to CPU after yielding
             if self.keep_unused_blocks_on_cpu:
-                if block_idx == self.disable_caching_until_block:
-                    # Last early block - move all early blocks except the last one to CPU
-                    for b in self.blocks[: self.disable_caching_until_block]:
-                        b.to("cpu")
-                elif block_idx > self.disable_caching_until_block:
-                    # Move block N-1 to CPU, since it is no longer needed
-                    # Note that block N is still needed for the next loop
-                    self.blocks[block_idx - 1].to("cpu")
+                # After caching, send everything to CPU except current block
+                if block_idx >= self.disable_caching_until_block:
+                    self.sim.model.to("cpu")
+
+                block.to(device)
+
+            yield block, fp_block_inputs, qt_block_inputs

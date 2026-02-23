@@ -1406,6 +1406,24 @@ class ModelWithConsecutiveLinearBlocks(torch.nn.Module):
         return x
 
 
+class ModelWithLinearBlocks(torch.nn.Module):
+    def __init__(self, num_blocks, num_blocks_with_postprocessing):
+        super(ModelWithLinearBlocks, self).__init__()
+        self.blocks = torch.nn.ModuleList(ModelWithLinears() for _ in range(num_blocks))
+        self.postprocessing = torch.nn.ModuleList(
+            torch.nn.LayerNorm(64) for _ in range(num_blocks_with_postprocessing)
+        )
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        for idx, linear_block in enumerate(self.blocks):
+            x = linear_block(x)
+            if idx < len(self.postprocessing):
+                x = self.postprocessing[idx](x)
+        x = self.softmax(x)
+        return x
+
+
 class ModelWithConvs(nn.Module):
     def __init__(self):
         super(ModelWithConvs, self).__init__()
