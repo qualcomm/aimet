@@ -59,6 +59,9 @@ class DecoderBlockQwen3(DecoderBlock):
     Finds end points of Decoder blocks
     """
 
+    # TODO[ananmukh] remove this constant
+    NUM_RMSNORM_PER_BLK = 3
+
     def __init__(self):
         super().__init__()
         self.decoder_blocks: List[Tuple[str, str]] = []
@@ -70,7 +73,7 @@ class DecoderBlockQwen3(DecoderBlock):
         if self.match_pattern(op, model):
             if not self.block_start_op:
                 self.block_start_op = self.pattern_last_op
-            elif len(self.intermediate_op) < 3:
+            elif len(self.intermediate_op) < DecoderBlockQwen3.NUM_RMSNORM_PER_BLK:
                 self.intermediate_op.append(self.pattern_last_op)
             else:
                 self.decoder_blocks.append((self.block_start_op, self.pattern_last_op))

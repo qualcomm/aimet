@@ -136,6 +136,20 @@ class AdaScale:
             )
 
             device = get_torch_device(sim.session)
+            graph_input_names = [inp.name for inp in sim.session.get_inputs()]
+            if graph_input_names != list(inputs[0].keys()):
+                raise ValueError(
+                    "Graph input names do not match the keys in the provided inputs."
+                )
+
+            # create a list of common input names to be used for graph slicing and populating input_list
+            common_input_names = []
+            for name in graph_input_names:
+                if "attention" in name:
+                    common_input_names.append(name)
+                if "position" in name:
+                    common_input_names.append(name)
+
             del sim.session
             gc.collect()
             torch.cuda.empty_cache()
@@ -160,6 +174,23 @@ class AdaScale:
                         break
 
                     _logger.info("Optimizing block: %d", idx)
+
+                    # Query only the past_key/past_val for a given block
+                    block_kv_tensor_names = []
+                    for name in graph_input_names:
+                        if (
+                            f"past_key_{idx}_in" in name
+                            or f"past_value_{idx}_in" in name
+                        ):
+                            block_kv_tensor_names.append(name)
+
+                    block_input_names = common_input_names
+                    if len(block_kv_tensor_names) > 0:
+                        if len(block_kv_tensor_names) != 2:
+                            raise RuntimeError(
+                                f"Unable to find both past_key and past_value for block {idx}."
+                            )
+                        block_input_names.extend(block_kv_tensor_names)
 
                     qsim_sess = ActivationSampler(
                         blocks_end_points[idx][0].inputs[0].name,
@@ -190,28 +221,17 @@ class AdaScale:
                     fp_input_list = []
                     qsim_input_list = []
                     for i in range(len(fp_inputs)):
-                        fp_input_list.append(
-                            [
-                                fp_inputs[i],
-                                inputs[i]["attention_mask"],
-                                inputs[i]["position_ids"],
-                                inputs[i][f"past_key_{idx}_in"],
-                                inputs[i][f"past_value_{idx}_in"],
-                            ]
-                        )
-
-                        qsim_input_list.append(
-                            [
-                                qsim_inputs[i],
-                                inputs[i]["attention_mask"],
-                                inputs[i]["position_ids"],
-                                inputs[i][f"past_key_{idx}_in"],
-                                inputs[i][f"past_value_{idx}_in"],
-                            ]
-                        )
+                        fp_list, qsim_list = [], []
+                        fp_list.append(fp_inputs[i])
+                        qsim_list.append(qsim_inputs[i])
+                        for name in block_input_names:
+                            fp_list.append(inputs[i][name])
+                            qsim_list.append(inputs[i][name])
+                        fp_input_list.append(fp_list)
+                        qsim_input_list.append(qsim_list)
 
                     block_input_output_names = AdaScale.get_block_start_end_name(
-                        blocks_end_points, idx
+                        blocks_end_points, idx, block_input_names
                     )
 
                     AdaScale.optimize_adascale_block(
@@ -230,14 +250,11 @@ class AdaScale:
                 sim._rebuild_session()  # pylint: disable=protected-access
 
     @staticmethod
-    def get_block_start_end_name(blocks_end_points, block_idx):
+    def get_block_start_end_name(
+        blocks_end_points: List[Tuple], block_idx: int, input_list_names: List[str]
+    ) -> Tuple[List[str], List[str]]:
         block_inputs = [blocks_end_points[block_idx][0].inputs[0].name]
-        common_inputs = ["attention_mask", "position_ids"]
-        block_input_names = (
-            block_inputs
-            + common_inputs
-            + [f"past_key_{block_idx}_in", f"past_value_{block_idx}_in"]
-        )
+        block_input_names = block_inputs + input_list_names
 
         block_output_names = [blocks_end_points[block_idx][1].inputs[0].name]
 
