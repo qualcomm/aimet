@@ -161,7 +161,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Fetch specified model and tokenizer from huggingface
-    hf_model = AutoModelForCausalLM.from_pretrained(args.model_id)
+    hf_model = AutoModelForCausalLM.from_pretrained(args.model_id, dtype=torch.float32)
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_id, use_fast=True, trust_remote_code=True
     )
@@ -268,10 +268,10 @@ if __name__ == "__main__":
     quantsim.onnx.export(
         f=os.path.join(args.export_path, f"model_cl{CONTEXT_LENGTH}.onnx"),
         args=assembled_dummy_inputs,
-        input_names=Generator.get_input_names(
+        input_names=LLM.get_backbone_input_names(
             quantsim.model.model.config.num_hidden_layers
         ),
-        output_names=Generator.get_output_names(
+        output_names=LLM.get_backbone_output_names(
             quantsim.model.model.config.num_hidden_layers
         ),
         dynamo=False,
