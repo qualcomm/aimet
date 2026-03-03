@@ -2003,6 +2003,7 @@ class QuantizationSimModel:
 
         :param op_types_to_tie: List of onnx ops for which to tie quantizers
         """
+        # pylint: disable = protected-access
         qtzr_to_name = {qtzr: name for name, qtzr in self.qc_quantize_op_dict.items()}
         visited = set()
 
@@ -2028,6 +2029,7 @@ class QuantizationSimModel:
                 raise RuntimeError(msg)
 
             src_qtzrs = {}
+            src_min_max_ranges = set()
             stack = [op]
 
             while stack:
@@ -2042,10 +2044,32 @@ class QuantizationSimModel:
                     src_qtzr = self._get_enabled_quantizer(inp.name)
                     if src_qtzr:
                         src_name = qtzr_to_name[src_qtzr]
+                        src_min_max_ranges.add(
+                            src_qtzr._encoding_min_max_fixed_vals if src_qtzr else None
+                        )
                     else:
                         src_name = inp.name
 
-                    if len(self.connected_graph.get_product(src_name).consumers) > 1:
+                    consumers = set(
+                        self.connected_graph.get_product(src_name).consumers
+                    )
+                    path_to_quantizer = self._get_path_to_effective_quantizer(inp.name)
+                    if path_to_quantizer:
+                        cg_path = [
+                            self.connected_graph._ops[node.name]
+                            for node in path_to_quantizer
+                            if node.op_type != "QcQuantizeOp"
+                        ]
+                        all_consumers = consumers | set(
+                            consumer for op in cg_path for consumer in op.output_ops
+                        )
+                        consumers = set(
+                            consumer
+                            for consumer in all_consumers
+                            if consumer not in cg_path
+                        )
+
+                    if len(consumers) > 1:
                         continue
 
                     src_qtzrs[src_name] = src_qtzr
@@ -2056,12 +2080,6 @@ class QuantizationSimModel:
                     ):
                         stack.append(inp.producer)
 
-            src_min_max_ranges = set(
-                src_qtzr._encoding_min_max_fixed_vals  # pylint: disable=protected-access
-                if src_qtzr
-                else None
-                for src_qtzr in src_qtzrs.values()
-            )
             if len(src_min_max_ranges) == 1:
                 # If all inputs are quantized and have the same fixed quantization range,
                 # output quantizer will inherit the fixed range.

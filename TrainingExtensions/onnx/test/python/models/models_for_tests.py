@@ -14,6 +14,8 @@ from pathlib import Path
 
 import io
 import onnx
+import onnx_ir
+import onnxscript
 import torch.nn.functional as F
 from torch import nn as nn
 from torchvision.ops import roi_align
@@ -4636,5 +4638,141 @@ def conv_matmul_model():
             ],
         )
     )
+    onnx.checker.check_model(model, True)
+    return model
+
+
+def unsafe_concat_tie_model():
+    """
+            -- Add -+-----------+
+    Input --+                   Concat ---
+            -- Mul -- MaxPool --+
+                                -- Add ---
+    """
+    graph = helper.make_graph(
+        nodes=[
+            helper.make_node(
+                "Mul",
+                inputs=["input", "input"],
+                outputs=["mul_output"],
+                name="mul",
+            ),
+            helper.make_node(
+                "MaxPool",
+                inputs=["mul_output"],
+                outputs=["maxpool_output"],
+                name="maxpool",
+                kernel_shape=[3, 1],
+                auto_pad="SAME_UPPER",
+            ),
+            helper.make_node(
+                "Add",
+                inputs=["input", "input"],
+                outputs=["add_output"],
+                name="add",
+            ),
+            helper.make_node(
+                "Concat",
+                inputs=["maxpool_output", "add_output"],
+                outputs=["concat_output"],
+                name="concat",
+                axis=2,
+            ),
+            helper.make_node(
+                "Add",
+                inputs=["add_output", "add_output"],
+                outputs=["add_2_output"],
+                name="add_2",
+            ),
+            helper.make_node(
+                "Add",
+                inputs=["maxpool_output", "maxpool_output"],
+                outputs=["add_3_output"],
+                name="add_3",
+            ),
+        ],
+        inputs=[
+            helper.make_tensor_value_info(
+                "input", TensorProto.FLOAT, shape=[1, 1, 32, 32]
+            )
+        ],
+        outputs=[
+            helper.make_tensor_value_info(
+                "add_2_output", TensorProto.FLOAT, shape=[1, 1, 32, 32]
+            ),
+            helper.make_tensor_value_info(
+                "concat_output", TensorProto.FLOAT, shape=[1, 1, 64, 32]
+            ),
+            helper.make_tensor_value_info(
+                "add_3_output", TensorProto.FLOAT, shape=[1, 1, 32, 32]
+            ),
+        ],
+        name="ReluMaxPoolConcatModel",
+    )
+    model = make_model(graph=graph)
+    onnx.checker.check_model(model, True)
+    return model
+
+
+def relu_maxpool_concat_model():
+    """
+                    ----- Add -------------
+            -- Add -+------------+
+    Input --+                    Concat ---
+            -- Relu -- MaxPool --+
+    """
+    graph = helper.make_graph(
+        nodes=[
+            helper.make_node(
+                "Relu",
+                inputs=["input"],
+                outputs=["relu_output"],
+                name="relu",
+            ),
+            helper.make_node(
+                "MaxPool",
+                inputs=["relu_output"],
+                outputs=["maxpool_output"],
+                name="maxpool",
+                kernel_shape=[3, 1],
+                auto_pad="SAME_UPPER",
+            ),
+            helper.make_node(
+                "Add",
+                inputs=["input", "input"],
+                outputs=["add_output"],
+                name="add",
+            ),
+            helper.make_node(
+                "Concat",
+                inputs=["maxpool_output", "add_output"],
+                outputs=["concat_output"],
+                name="concat",
+                axis=2,
+            ),
+            helper.make_node(
+                "Add",
+                inputs=["add_output", "add_output"],
+                outputs=["add_2_output"],
+                name="add_2",
+            ),
+        ],
+        inputs=[
+            helper.make_tensor_value_info(
+                "input", TensorProto.FLOAT, shape=[1, 1, 32, 32]
+            )
+        ],
+        outputs=[
+            helper.make_tensor_value_info(
+                "add_2_output", TensorProto.FLOAT, shape=[1, 1, 32, 32]
+            ),
+            helper.make_tensor_value_info(
+                "concat_output", TensorProto.FLOAT, shape=[1, 1, 64, 32]
+            ),
+        ],
+        name="ReluMaxPoolConcatModel",
+    )
+
+    model = make_model(graph=graph)
     onnx.checker.check_model(model, True)
     return model

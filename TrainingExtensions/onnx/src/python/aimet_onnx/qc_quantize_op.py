@@ -822,7 +822,9 @@ class QcQuantizeOp:
         if self.use_symmetric_encodings and fixed_range:
             _min, _max = fixed_range
             absmax = max(abs(_min), abs(_max))
-            self._encoding_min_max_fixed_vals = (-absmax, absmax)
+            fixed_range = (-absmax, absmax)
+
+        self.set_fixed_encoding_range(fixed_range)
 
 
 class GroupedBlockQuantizeDequantize(QcQuantizeOp):

@@ -4032,6 +4032,73 @@ class TestEncodingPropagation:
             sigmoid_output_encoding.delta, expected_scale, atol=np.finfo(np.float32).eps
         )
 
+    def test_quantsim_skips_unsafe_concat_tie_quantizers(self):
+        """
+        Given the model:
+
+                        ----- Add -------------
+                -- Add -+------------+
+        Input --+                    Concat ---
+                -- Relu -- MaxPool --+
+
+        Relu output quantizer has different constraints from Add, so concat tying should be skipped
+        """
+        model = models_for_tests.relu_maxpool_concat_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model, config_file="htp_v79")
+
+        assert sim.qc_quantize_op_dict["relu_output"]._encoding_min_max_fixed_vals == (
+            0.0,
+            None,
+        )
+        assert (
+            sim.qc_quantize_op_dict["concat_output"]._encoding_min_max_fixed_vals
+            is None
+        )
+        assert (
+            sim.qc_quantize_op_dict["concat_output"]
+            is not sim.qc_quantize_op_dict["relu_output"]
+        )
+
+    def test_propagation_retains_relu_constraints(self):
+        """
+        Given the model:
+
+        [input] -> BatchNorm -> Relu -> [output]
+        """
+        model = models_for_tests.simple_relu_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model, config_file="htp_v79")
+
+        assert sim.qc_quantize_op_dict["output"]._encoding_min_max_fixed_vals == (
+            0.0,
+            None,
+        )
+        assert sim.qc_quantize_op_dict["input"]._encoding_min_max_fixed_vals == (
+            0.0,
+            None,
+        )
+
+    def test_quantsim_skips_unsafe_concat_tie_quantizers_2(self):
+        """
+        Given the pattern:
+
+                -- Add -+-----------+
+        Input --+                   Concat ---
+                -- Mul -- MaxPool --+
+                                    -- Add ---
+
+        Mul output quantizer is consumed by both Concat and Add, so Concat tying should not occur
+        """
+        model = models_for_tests.unsafe_concat_tie_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model, config_file="htp_v79")
+
+        assert (
+            sim.qc_quantize_op_dict["concat_output"]
+            is not sim.qc_quantize_op_dict["mul_output"]
+        )
+
     def test_partial_encoding_constraints(self):
         """
         Given: model as below

@@ -327,16 +327,14 @@ class BlockwiseSampler:
             except StopForwardExceptionWithInput as e:
                 # pylint: disable=used-before-assignment
                 hook.remove()
-                del (
-                    next_block_input
-                )  # Clean up next_block_input from previous loop if necessary
                 next_block_input = e.captured_input
                 next_block_input.to("cpu")
+                del placed_sample, e.captured_input
 
                 if self.cache_activations_on_disk:
                     next_block_input.enable_disk_caching()
 
-                yield next_block_input
+            yield next_block_input
 
         for block in self.blocks[self.disable_caching_until_block : -1]:
             with next_block_input.load():

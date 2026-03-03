@@ -6,6 +6,18 @@
 Release notes
 #############
 
+2.25.1
+======
+* Bug fixes and Improvements
+    * ONNX
+        * Fix for encoding propagation for concat layers (`5084af3`_)
+    * Torch
+        * Fix to reduce GPU RAM usage for AdaScale for Qwen 3 VL model (`ee3d193`_)
+
+.. _5084af3: https://github.com/quic/aimet/commit/5084af38f40e297a0f73240c8ce8f9bad40880a0
+.. _ee3d193: https://github.com/quic/aimet/commit/ee3d1933e80ac37c79cf52b53d5a1528b16987ea
+
+
 2.25.0
 ======
 

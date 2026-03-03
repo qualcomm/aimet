@@ -222,6 +222,7 @@ def optional_dependencies() -> dict[str, list[str]]:
             "beautifulsoup4",
             "matplotlib",
             "onnx",
+            "protobuf<7",
             "pylint<3",
             "pytest",
             "pytest-xdist",
