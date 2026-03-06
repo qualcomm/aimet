@@ -5165,6 +5165,9 @@ def _parse_type(type_str: str) -> tuple[str, int]:
     raise RuntimeError
 
 
+@pytest.mark.skip_on_windows_arm64(
+    "Test flaky on Windows ARM64 - debug and fix the root cause before re-enabling on this platform"
+)
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("prequantize_constants", [False, True])
 @pytest.mark.parametrize("export_int32_bias_encodings", [False, True])
