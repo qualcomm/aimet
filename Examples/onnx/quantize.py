@@ -20,8 +20,10 @@ from GenAITests.onnx.models.utils.torch_onnx_interface import (
 from GenAITests.onnx.models.utils.quantsim_utils import (
     _set_tensors_to_output_n_bit_symmmetric,
     _tie_quantizers_for_kv_cache,
-    _set_lm_head_to_8b,
+    _set_lm_head_precision,
 )
+from GenAITests.shared.helpers.precision_config import WeightPrecision
+from aimet_onnx.common.defs import int8
 from GenAITests.onnx.helpers.quant_recipes import (
     _prefill_inputs,
 )
@@ -205,7 +207,7 @@ if __name__ == "__main__":
     # Setting kv_cache and some other layers to 8-bit
     _set_tensors_to_output_n_bit_symmmetric(quantsim, args.kv_bits)
     # Setting the LM head weights to 8-bit.
-    _set_lm_head_to_8b(quantsim)
+    _set_lm_head_precision(quantsim, WeightPrecision(qtype=int8, granularity="PCQ"))
     # Tie kv_cache
     _tie_quantizers_for_kv_cache(quantsim)
 
