@@ -485,7 +485,9 @@ class QuantizedTensorBase(torch.Tensor):
         """
         Returns a new QuantizedTensorBase with data and encoding detached from the current graph
         """
-        self_detached = super().detach().as_subclass(self.__class__)
+        self_detached = (
+            self.as_subclass(torch.Tensor).detach().as_subclass(self.__class__)
+        )
         self_detached.encoding = self.encoding and self.encoding._detach()  # pylint:disable = protected-access
         return self_detached
 

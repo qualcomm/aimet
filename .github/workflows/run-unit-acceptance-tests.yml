@@ -95,7 +95,7 @@ jobs:
           # Install test dependencies
           WHEEL_PATH=$(find downloads -name "aimet_*.whl" | head -n 1)
           cu=$(echo "${{ inputs.VER_CUDA }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')
-          python3 -m uv pip install "${WHEEL_PATH}[test]" --extra-index-url="https://download.pytorch.org/whl/${cu}"  --index-strategy unsafe-best-match
+          python3 -m uv pip install "${WHEEL_PATH}[test,v1-deps]" --extra-index-url="https://download.pytorch.org/whl/${cu}"  --index-strategy unsafe-best-match
 
       - name: Run pylint
         run: |
