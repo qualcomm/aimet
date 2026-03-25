@@ -78,7 +78,7 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\+cu121\ |whl_suffix|
+            python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\+cu126\ |whl_suffix|
 
         With CPU only:
 
@@ -93,7 +93,7 @@ Use one of the following commands to install AIMET based on your choice of frame
 
         .. parsed-literal::
 
-            python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cu121\ |torch_whl_suffix|
+            python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\+cu126\ |torch_whl_suffix|
 
         With CPU only:
 

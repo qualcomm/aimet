@@ -40,7 +40,7 @@ jobs:
           "runs-on":"k8s-gpu-release",
           "VER_PYTHON":"3.10",
           "VER_ONNXRUNTIME":"1.19.2",
-          "VER_CUDA":"12.1.0",
+          "VER_CUDA":"12.6.0",
           "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
@@ -58,7 +58,7 @@ jobs:
           "runs-on":"k8s-gpu-release",
           "VER_PYTHON":"3.10",
           "VER_TORCH":"2.*",
-          "VER_CUDA":"12.1.1",
+          "VER_CUDA":"12.6.0",
           "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
@@ -266,7 +266,7 @@ jobs:
       UV_LINK_MODE: "symlink"
       VER_PYTHON: "3.10"
       VER_TORCH: "2.*"
-      VER_CUDA_SHORT: "cu121"
+      VER_CUDA_SHORT: "cu126"
 
     steps:
       - name: Checkout code

@@ -34,7 +34,7 @@ jobs:
           "runs-on":"k8s-gpu",
           "VER_PYTHON":"3.10",
           "VER_ONNXRUNTIME":"1.19.2",
-          "VER_CUDA":"12.1.0",
+          "VER_CUDA":"12.6.0",
           "ENABLE_TESTS":"ON",
           "PIP_INDEX":""
         }]}
@@ -52,7 +52,7 @@ jobs:
           "runs-on":"k8s-gpu",
           "VER_PYTHON":"3.10",
           "VER_TORCH":"2.*",
-          "VER_CUDA":"12.1.1",
+          "VER_CUDA":"12.6.0",
           "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
@@ -312,7 +312,7 @@ jobs:
           uv venv .venv --python python${{ env.VER_PYTHON }}
           . .venv/bin/activate
 
-          uv pip install torch==2.* torchvision --index-url https://download.pytorch.org/whl/cu121
+          uv pip install torch==2.* torchvision --index-url https://download.pytorch.org/whl/cu126
           uv pip install qai-hub qai-hub-models==0.43.0 # TODO: Remove after next QAI Hub Models release
           uv pip install pynvml pytest requests object-detection-metrics
 
