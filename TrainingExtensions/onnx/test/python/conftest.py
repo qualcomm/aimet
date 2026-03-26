@@ -35,6 +35,10 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
+        "skip_on_windows_amd64(reason): skip test on Windows AMD64 with specified reason",
+    )
+    config.addinivalue_line(
+        "markers",
         "skip_on_macos(reason): skip test on MacOS with specified reason",
     )
 
@@ -43,6 +47,13 @@ def _is_windows_arm64():
     return sys.platform == "win32" and platform.machine().lower() in (
         "aarch64",
         "arm64",
+    )
+
+
+def _is_windows_amd64():
+    return sys.platform == "win32" and platform.machine().lower() in (
+        "amd64",
+        "x86_64",
     )
 
 
@@ -59,6 +70,15 @@ def skip_on_windows_arm64(request):
     if marker is not None:
         if _is_windows_arm64():
             reason = marker.args[0] if marker.args else "Not supported on Windows ARM64"
+            pytest.skip(reason)
+
+
+@pytest.fixture(autouse=True)
+def skip_on_windows_amd64(request):
+    marker = request.node.get_closest_marker("skip_on_windows_amd64")
+    if marker is not None:
+        if _is_windows_amd64():
+            reason = marker.args[0] if marker.args else "Not supported on Windows AMD64"
             pytest.skip(reason)
 
 

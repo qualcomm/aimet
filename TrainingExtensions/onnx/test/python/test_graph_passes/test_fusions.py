@@ -584,6 +584,9 @@ class TestRMSNormFusion:
         fused_output = session.run(None, dummy_input)[0]
         assert np.allclose(original_output, fused_output)
 
+    @pytest.mark.skip_on_windows_amd64(
+        "torch.onnx.export fails for rmsnorm_model on Windows AMD64"
+    )
     @pytest.mark.skipif(
         version.parse(onnxscript.__version__) < version.parse("0.4.0"),
         reason="Requires onnxscript >= 0.4.0",
@@ -618,6 +621,9 @@ class TestRMSNormFusion:
         fused_output = session.run(None, dummy_input)[0]
         assert np.allclose(original_output, fused_output)
 
+    @pytest.mark.skip_on_windows_amd64(
+        "torch.onnx.export fails for llama_rmsnorm_model on Windows AMD64"
+    )
     @pytest.mark.skipif(
         version.parse(onnxscript.__version__) < version.parse("0.4.0"),
         reason="Requires onnxscript >= 0.4.0",
@@ -714,6 +720,9 @@ class TestFusion:
 class TestInlineAllSupergroups:
     """Tests for inline_all_supergroups: unfusing supergroup functions back to primitives."""
 
+    @pytest.mark.skip_on_windows_amd64(
+        "torch.onnx.export fails for llama_rmsnorm_model on Windows AMD64"
+    )
     @pytest.mark.skipif(
         version.parse(onnxscript.__version__) < version.parse("0.4.0"),
         reason="Requires onnxscript >= 0.4.0",
