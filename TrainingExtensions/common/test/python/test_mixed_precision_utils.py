@@ -79,8 +79,7 @@ class TestCommonAMPUtils:
             (0.5, 0.3, None, None),
         ]
         file_path = "artifacts"
-        if not os.path.exists("artifacts"):
-            os.makedirs("artifacts")
+        os.makedirs("artifacts", exist_ok=True)
         plot = visualize_pareto_curve(pareto_list, file_path)
         file_path = os.path.join(file_path, "pareto_curve.html")
         assert plot.hover

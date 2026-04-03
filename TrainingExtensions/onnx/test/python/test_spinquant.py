@@ -686,6 +686,7 @@ class TestBlockIdentifier:
         with pytest.raises(ValueError):
             get_decoder_block_boundaries(model, cg)
 
+    @pytest.mark.skip_on_windows_amd64("Fails with OSError, no space left on device")
     @pytest.mark.skip_on_windows_arm64("transformers is not available on Windows ARM64")
     @pytest.mark.parametrize(
         "model_id, model_type, adaptations",
@@ -799,6 +800,7 @@ class TestDecoderRoleMap:
         with pytest.raises(ValueError):
             get_decoder_role_map(cg, blocks, active_norms, active_norms_per_block=3)
 
+    @pytest.mark.skip_on_windows_amd64("Fails with OSError, no space left on device")
     @pytest.mark.skip_on_windows_arm64("transformers is not available on Windows ARM64")
     def test_qwen3_role_map(self, add_genai_tests_path):
         """Qwen/Qwen3-0.6B with no adaptations."""
