@@ -1,6 +1,8 @@
 name: QC Preflight Checks
 
 on:
+  pull_request:
+    [ develop ]
   workflow_dispatch:
 
 jobs:
