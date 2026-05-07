@@ -2,7 +2,7 @@ name: QC Preflight Checks
 
 on:
   pull_request:
-    [ develop ]
+    branches: [ develop ]
   workflow_dispatch:
 
 jobs:
