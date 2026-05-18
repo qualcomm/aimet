@@ -117,6 +117,8 @@ jobs:
       BASELINE_SOURCE: ${{ github.event.inputs.baseline_source == 'custom' && github.event.inputs.baseline_source_custom || github.event.inputs.baseline_source || 'own' }}
       VER_TORCH: "2.*"
       VER_CUDA_SHORT: "cu126"
+      # Keep cu126 visible to every uv install so torch stays on cu126 across re-resolutions.
+      PIP_EXTRA_INDEX_URL: "https://download.pytorch.org/whl/cu126"
 
     steps:
       - name: Checkout code
@@ -162,17 +164,17 @@ jobs:
           . .venv/bin/activate
 
           # Pin torch before qai-hub-models; otherwise qai-hub-models pulls a torch version incompatible with the pod's CUDA driver.
-          # --extra-index-url is required on every subsequent install so uv cannot re-resolve torch onto a CUDA-13 wheel from plain PyPI.
+          # PIP_EXTRA_INDEX_URL (set at job level) keeps cu126 visible to every subsequent install.
           uv pip install torch==${{ env.VER_TORCH }} torchvision --index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
-          uv pip install qai-hub qai-hub-models==0.43.0 --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }} # TODO: Remove after next QAI Hub Models release
-          uv pip install onnxruntime-gpu==1.19.2 --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
-          uv pip install pynvml pytest requests --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
+          uv pip install qai-hub qai-hub-models
+          uv pip install onnxruntime-gpu==1.19.2
+          uv pip install pynvml pytest requests
 
       - name: Install AIMET
         run: |
           . .venv/bin/activate
           export PATH="$HOME/.local/bin:$PATH"
-          uv pip install downloads/*.whl --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
+          uv pip install downloads/*.whl
           python -c "import aimet_onnx; print('AIMET version:', aimet_onnx.__version__)"
 
       - name: Verify ONNX Runtime GPU
@@ -335,6 +337,8 @@ jobs:
       BASELINE_SOURCE: ${{ github.event.inputs.baseline_source == 'custom' && github.event.inputs.baseline_source_custom || github.event.inputs.baseline_source || 'own' }}
       VER_TORCH: "2.*"
       VER_CUDA_SHORT: "cu126"
+      # Keep cu126 visible to every uv install so torch stays on cu126 across re-resolutions.
+      PIP_EXTRA_INDEX_URL: "https://download.pytorch.org/whl/cu126"
 
     steps:
       - name: Checkout code
@@ -380,16 +384,16 @@ jobs:
           . .venv/bin/activate
 
           # Pin torch before qai-hub-models; otherwise qai-hub-models pulls a torch version incompatible with the pod's CUDA driver.
-          # --extra-index-url is required on every subsequent install so uv cannot re-resolve torch onto a CUDA-13 wheel from plain PyPI.
+          # PIP_EXTRA_INDEX_URL (set at job level) keeps cu126 visible to every subsequent install.
           uv pip install torch==${{ env.VER_TORCH }} torchvision --index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
-          uv pip install qai-hub qai-hub-models==0.43.0 --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }} # TODO: Remove after next QAI Hub Models release
-          uv pip install pynvml pytest requests object-detection-metrics --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
+          uv pip install qai-hub qai-hub-models
+          uv pip install pynvml pytest requests object-detection-metrics
 
       - name: Install AIMET
         run: |
           . .venv/bin/activate
           export PATH="$HOME/.local/bin:$PATH"
-          uv pip install downloads/*.whl --extra-index-url https://download.pytorch.org/whl/${{ env.VER_CUDA_SHORT }}
+          uv pip install downloads/*.whl
           python -c "import aimet_torch; print('AIMET Torch version:', aimet_torch.__version__)"
 
       - name: Verify PyTorch GPU
