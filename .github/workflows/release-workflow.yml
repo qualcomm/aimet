@@ -27,7 +27,7 @@ on:
 env:
   PUBLIC_REPO: "qualcomm/aimet"
   REPO_DIR: "aimet-repo"
-  DOCS_REPO: "quic/aimet-pages"
+  DOCS_REPO: "qualcomm/aimet-pages"
   DOCS_REPO_DIR: "aimet-pages-repo"
 
 jobs:
@@ -156,13 +156,13 @@ jobs:
           path: ${{ env.DOCS_REPO_DIR }}
           repository: ${{ env.DOCS_REPO }}
           github-server-url: https://github.com
-          token: ${{ secrets.AIMET_CI }}
+          token: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: Put up a PR for new docs
         if: ${{ inputs.push_docs }} == true
         env:
-          GITHUB_TOKEN: ${{ secrets.AIMET_CI }}
+          GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
           tag: ${{ inputs.version }}
         run: |
           # Copy Docs to aimet-pages
@@ -179,9 +179,9 @@ jobs:
 
           # Commit doc changes
           git add releases/
-          git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/${{ env.DOCS_REPO }}.git
-          git config user.email "aimetci@quicinc.com"
-          git config user.name "AIMET CI"
+          git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/${{ env.DOCS_REPO }}.git
+          git config user.email "aimet_bot@qualcomm.com"
+          git config user.name "aimet_bot"
           git commit -m "Release docs ${tag}" -s
 
           # Force push needed: aimet-pages is checked out at master and the release branch is created
@@ -200,6 +200,6 @@ jobs:
       - uses: slackapi/slack-github-action@v1.25.0
         with:
           channel-id: C0898PQVA31,C02TLE1KJ3B # channel ids in order: aimet, general
-          slack-message: ":rocket: *AIMET ${{ inputs.version }} released* :tada: \n *PyPI*\n- AIMET-ONNX: https://pypi.org/project/aimet-onnx/ \n- AIMET-TORCH: https://pypi.org/project/aimet-torch/ \n\n *Github*: https://github.com/quic/aimet/releases \n *Docs*: https://quic.github.io/aimet-pages/releases/latest/index.html \n"
+          slack-message: ":rocket: *AIMET ${{ inputs.version }} released* :tada: \n *PyPI*\n- AIMET-ONNX: https://pypi.org/project/aimet-onnx/ \n- AIMET-TORCH: https://pypi.org/project/aimet-torch/ \n\n *Github*: https://github.com/quic/aimet/releases \n *Docs*: https://qualcomm.github.io/aimet-pages/releases/latest/index.html \n"
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}

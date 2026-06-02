@@ -52,7 +52,7 @@ class UnknownModuleError(RuntimeError):
     module_cls: Type[torch.nn.Module]
     mixin_cls: Type["BaseQuantizationMixin"]
     api_reference_url = (
-        "https://quic.github.io/aimet-pages/releases/"
+        "https://qualcomm.github.io/aimet-pages/releases/"
         "latest/apiref/torch/generated/"
         "aimet_torch.nn.QuantizationMixin.html#aimet_torch.nn.QuantizationMixin.implements"
     )

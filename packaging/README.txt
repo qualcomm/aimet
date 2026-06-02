@@ -31,12 +31,12 @@ AIMET supports the following features
 ============
 Dependencies
 ============
-See the https://quic.github.io/aimet-pages/releases/latest/install/index.html for details.
+See the https://qualcomm.github.io/aimet-pages/releases/latest/install/index.html for details.
 
 =============
 Documentation
 =============
-Please refer to the Documentation at https://quic.github.io/aimet-pages/index.html
+Please refer to the Documentation at https://qualcomm.github.io/aimet-pages/index.html
 for the user guide and API documentation.
 
 =================

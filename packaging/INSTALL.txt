@@ -2,5 +2,5 @@
 # Installation instructions for AI Model Efficienty Toolkit package and dependencies
 # ==================================================================================
 
-# Please see https://quic.github.io/aimet-pages/releases/latest/install for the
+# Please see https://qualcomm.github.io/aimet-pages/releases/latest/install for the
 # latest installation instructions. This file will be removed shortly.

@@ -219,7 +219,7 @@ def get_package_url():
         package_url_base = "@REMOTE_URL@/releases/download/@SW_VERSION@"
     else:
         # This is the package homepage
-        package_url_base = "https://quic.github.io/aimet-pages/index.html"
+        package_url_base = "https://qualcomm.github.io/aimet-pages/index.html"
 
     return package_url_base
 

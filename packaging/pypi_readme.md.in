@@ -1,10 +1,10 @@
 # AI Model Efficiency Toolkit (AIMET) for @package@
 
 [[**GitHub**](https://github.com/quic/aimet)]
-[[**Docs**](https://quic.github.io/aimet-pages/releases/latest/user_guide/index.html)]
+[[**Docs**](https://qualcomm.github.io/aimet-pages/releases/latest/user_guide/index.html)]
 [[**Forums**](https://forums.quicinc.com)]
 
-[AIMET](https://quic.github.io/aimet-pages/index.html) is a library that provides advanced model quantization and compression techniques for trained neural network models. It provides features that have been proven to improve run-time performance of deep learning neural network models with  lower compute and memory requirements and minimal impact to task accuracy. AIMET is designed to work with [PyTorch](https://pytorch.org) and [ONNX](https://onnx.ai) models.
+[AIMET](https://qualcomm.github.io/aimet-pages/index.html) is a library that provides advanced model quantization and compression techniques for trained neural network models. It provides features that have been proven to improve run-time performance of deep learning neural network models with  lower compute and memory requirements and minimal impact to task accuracy. AIMET is designed to work with [PyTorch](https://pytorch.org) and [ONNX](https://onnx.ai) models.
 
 ## Table of Contents
 - [Requirements](#requirements)
@@ -29,7 +29,7 @@ This package supports the following environment:
 - **Supports advanced model compression techniques** that enable models to run faster at inference-time and require less memory
 - **AIMET is designed to automate optimization** of neural networks avoiding time-consuming and tedious manual tweaking. AIMET also provides user-friendly APIs that allow users to make calls directly from their or [PyTorch](https://pytorch.org) or [ONNX](https://onnx.ai) pipelines.
 
-Please visit the [AIMET on Github Pages](https://quic.github.io/aimet-pages/index.html) for more details.
+Please visit the [AIMET on Github Pages](https://qualcomm.github.io/aimet-pages/index.html) for more details.
 
 ## Supported Features
 ### Quantization
@@ -101,10 +101,10 @@ AIMET can also significantly compress models. For popular models, such as Resnet
 | ResNet 50 (top1) | 76.05 % | 75.75 % |
 
 ## Resources
-- [User Guide](https://quic.github.io/aimet-pages/releases/latest/user_guide/index.html)
-- [API Docs](https://quic.github.io/aimet-pages/releases/latest/api_docs/index.html)
+- [User Guide](https://qualcomm.github.io/aimet-pages/releases/latest/user_guide/index.html)
+- [API Docs](https://qualcomm.github.io/aimet-pages/releases/latest/api_docs/index.html)
 - [Discussion Forums](https://forums.quicinc.com/)
-- [Tutorial Videos](https://quic.github.io/aimet-pages/index.html#video)
+- [Tutorial Videos](https://qualcomm.github.io/aimet-pages/index.html#video)
 - [Example Code](https://github.com/quic/aimet/blob/develop/Examples/README.md)
 
 ## Contributions

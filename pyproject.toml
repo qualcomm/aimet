@@ -20,7 +20,7 @@ readme = "README.md"
 
 [project.urls]
 Homepage = "https://github.com/quic/aimet"
-Documentation = "https://quic.github.io/aimet-pages/releases/latest/index.html"
+Documentation = "https://qualcomm.github.io/aimet-pages/releases/latest/index.html"
 
 [tool.scikit-build]
 experimental = true

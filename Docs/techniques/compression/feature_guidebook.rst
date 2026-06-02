@@ -43,4 +43,4 @@ and Channel pruning:
     * a. Perform compression with a few target compression ratios (C\ :sub:`cp`). You can set the compression ratio(s) based on the C\ :sub:`ssvd` of the model obtained from spatial SVD step 3 such that C\ :sub:`ssvd` * C\ :sub:`cp` is approximately equal to C.
     * b. Perform fine-tuning to improve model accuracy.
 
-#. In the final step, select a model with a MAC ratio relative to the original uncompressed model close to C that meets your accuracy requirements. For example, for ResNet-50 results provided on `The AIMET product website <https://quic.github.io/aimet-pages/index.html>`_, C\ :sub:`ssvd` = 0.75 and C\ :sub:`cp` = 0.66 were used to achieve an overall compression of C = 0.5.
+#. In the final step, select a model with a MAC ratio relative to the original uncompressed model close to C that meets your accuracy requirements. For example, for ResNet-50 results provided on `The AIMET product website <https://qualcomm.github.io/aimet-pages/index.html>`_, C\ :sub:`ssvd` = 0.75 and C\ :sub:`cp` = 0.66 were used to achieve an overall compression of C = 0.5.

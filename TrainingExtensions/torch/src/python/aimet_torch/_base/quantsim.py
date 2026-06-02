@@ -834,7 +834,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
            This export method is deprecated.
            Please use the new export API `sim.onnx.export()`_ or :func:`aimet_torch.onnx.export` instead.
 
-        .. _sim.onnx.export(): https://quic.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.onnx
+        .. _sim.onnx.export(): https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.onnx
 
         This method exports out the quant-sim model so it is ready to be run on-target.
 

@@ -1,16 +1,16 @@
 
 ![Qualcomm Innovation Center, Inc.](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/logo-quic-on@h68.png)
 
-[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-overview.png" width="90" height="40">](https://quic.github.io/aimet-pages/releases/latest/index.html)
-[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-docs.png" width="90" height="40">](https://quic.github.io/aimet-pages/releases/latest/index.html)
-[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-install.png" width="90" height="40">](https://quic.github.io/aimet-pages/releases/latest/overview/install/quick-start.html)
+[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-overview.png" width="90" height="40">](https://qualcomm.github.io/aimet-pages/releases/latest/index.html)
+[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-docs.png" width="90" height="40">](https://qualcomm.github.io/aimet-pages/releases/latest/index.html)
+[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-install.png" width="90" height="40">](https://qualcomm.github.io/aimet-pages/releases/latest/overview/install/quick-start.html)
 [<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-forum.png" width="90" height="40">](https://github.com/quic/aimet/discussions)
 [<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-slack.png" width="90" height="40">](https://qualcomm-ai-hub.slack.com/archives/C08JKBE0UHY)
-[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-new.png" width="90" height="40">](https://quic.github.io/aimet-pages/releases/latest/release_notes.html)
+[<img src="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/readme/button-new.png" width="90" height="40">](https://qualcomm.github.io/aimet-pages/releases/latest/release_notes.html)
 
 # AI Model Efficiency Toolkit (AIMET)
 
-<a href="https://quic.github.io/aimet-pages/index.html">AIMET</a> is a software toolkit for quantizing trained ML models.
+<a href="https://qualcomm.github.io/aimet-pages/index.html">AIMET</a> is a software toolkit for quantizing trained ML models.
 
 AIMET improves the runtime performance of deep learning models by reducing compute load and memory footprint.
 Models quantized with AIMET facilitate its deployment on edge devices like mobile phones or laptops by reducing memory footprint.
@@ -32,38 +32,38 @@ You can find models quantized with AIMET on [Qualcomm AI Hub Models](https://git
 * **Supports advanced model compression techniques** that enable models to run faster at inference-time and require less memory
 * **AIMET is designed to automate optimization** of neural networks avoiding time-consuming and tedious manual tweaking. AIMET also provides user-friendly APIs that allow users to make calls directly from their [PyTorch](https://pytorch.org) pipelines.
 
-Please visit the [AIMET on Github Pages](https://quic.github.io/aimet-pages/index.html) for more details.
+Please visit the [AIMET on Github Pages](https://qualcomm.github.io/aimet-pages/index.html) for more details.
 
 ## Quick Start
 
 [aimet-onnx](https://pypi.org/project/aimet-onnx/) and [aimet-torch](https://pypi.org/project/aimet-torch/) is available on PyPI.
 
-Check our [Quick Start](https://quic.github.io/aimet-pages/releases/latest/overview/install/quick-start.html) to get started with latest AIMET package.
+Check our [Quick Start](https://qualcomm.github.io/aimet-pages/releases/latest/overview/install/quick-start.html) to get started with latest AIMET package.
 
 ### Build from source
 
-To build the latest AIMET code from the source, see [Build, install and run AIMET from source in *Docker* environment](https://quic.github.io/aimet-pages/releases/latest/overview/install/build_from_source.html#build-from-source)
+To build the latest AIMET code from the source, see [Build, install and run AIMET from source in *Docker* environment](https://qualcomm.github.io/aimet-pages/releases/latest/overview/install/build_from_source.html#build-from-source)
 
 
 ## Supported Features
 
 ### Post-Training Quantization(PTQ)
 
-[Check out guide](https://quic.github.io/aimet-pages/releases/latest/techniques/ptq.html) to get started on PTQ technique.
+[Check out guide](https://qualcomm.github.io/aimet-pages/releases/latest/techniques/ptq.html) to get started on PTQ technique.
 
 Following table summarizes basic technique such as `Calibration` to advanced techniques such as `SeqMSE` and `Adaptive Rounding(AdaRound)` that you can use with AIMET.
 
 | Technique | ONNX | PyTorch | What does it do? |
 | -- | -- | -- | -- |
-| [Calibration](https://quic.github.io/aimet-pages/releases/latest/techniques/ptq.html) | ✅ | ✅ | Computes Quantization parameters |
-| [AdaRound](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/adaround.html) | ✅ | ✅ | Rounds quantized weights |
-| [SeqMSE](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/seq_mse.html) | ✅ | ✅ | Optimizes encodings for each layer |
-| [BatchNorm Folding](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/bnf.html) | ✅ | ✅ | Folds batchnorm to bridge the gap between simulation and on-target |
-| [Cross Layer Equalization](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/cle.html) | ✅ | ✅ | Rescales the weight to reduce range imbalance |
-| [BatchNorm re-estimation](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/bn.html) | ✅ | ✅ | Re-estimates batchnorm statistics |
-| [AdaScale](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/adascale.html) | ✅ | ✅ | Learns per-weight scales via blockwise optimization to minimize quantization error |
-| [OmniQuant](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/omniquant.html) | ❌ | ✅ | Optimizes quantized weights |
-| [SpinQuant](https://quic.github.io/aimet-pages/releases/latest/ptq_techniques/spinquant.html) | ✅ | ✅ | Reduces activation outliers via Hadamard rotations |
+| [Calibration](https://qualcomm.github.io/aimet-pages/releases/latest/techniques/ptq.html) | ✅ | ✅ | Computes Quantization parameters |
+| [AdaRound](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/adaround.html) | ✅ | ✅ | Rounds quantized weights |
+| [SeqMSE](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/seq_mse.html) | ✅ | ✅ | Optimizes encodings for each layer |
+| [BatchNorm Folding](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/bnf.html) | ✅ | ✅ | Folds batchnorm to bridge the gap between simulation and on-target |
+| [Cross Layer Equalization](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/cle.html) | ✅ | ✅ | Rescales the weight to reduce range imbalance |
+| [BatchNorm re-estimation](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/bn.html) | ✅ | ✅ | Re-estimates batchnorm statistics |
+| [AdaScale](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/adascale.html) | ✅ | ✅ | Learns per-weight scales via blockwise optimization to minimize quantization error |
+| [OmniQuant](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/omniquant.html) | ❌ | ✅ | Optimizes quantized weights |
+| [SpinQuant](https://qualcomm.github.io/aimet-pages/releases/latest/ptq_techniques/spinquant.html) | ✅ | ✅ | Reduces activation outliers via Hadamard rotations |
 
 ### Quantization Aware Training(QAT)
 
@@ -73,7 +73,7 @@ If you want to use both QAT and some of the advanced [PTQ techniques from AIMET]
 
 ![QAT workflow](https://qaihub-public-assets.s3.us-west-2.amazonaws.com/aimet/docs/assets/images/workflow/qat.png)
 
-Check detailed [QAT guide here](https://quic.github.io/aimet-pages/releases/latest/techniques/qat.html)
+Check detailed [QAT guide here](https://qualcomm.github.io/aimet-pages/releases/latest/techniques/qat.html)
 
 ### Model Compression
 
@@ -205,11 +205,11 @@ The DFQ method applied to several popular networks, such as MobileNet-v2 and Res
 <br>
 
 ## Resources
-* [Documentation Main Page](https://quic.github.io/aimet-pages/releases/latest/index.html)
-* [API Reference](https://quic.github.io/aimet-pages/releases/latest/apiref/index.html)
+* [Documentation Main Page](https://qualcomm.github.io/aimet-pages/releases/latest/index.html)
+* [API Reference](https://qualcomm.github.io/aimet-pages/releases/latest/apiref/index.html)
 * [Discussion Forums](https://github.com/quic/aimet/discussions)
 * [Slack](https://qualcomm-ai-hub.slack.com/archives/C08JKBE0UHY)
-* [Tutorial Videos](https://quic.github.io/aimet-pages/index.html#video)
+* [Tutorial Videos](https://qualcomm.github.io/aimet-pages/index.html#video)
 * [Example Code](Examples/README.md)
 
 ## Contributions

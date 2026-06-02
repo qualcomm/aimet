@@ -463,8 +463,8 @@ class QuantizationSimModel(_QuantizationSimModelBase):  # pylint: disable=missin
     @deprecated(
         """
 Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information, see"
-  - https://quic.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.onnx"
-  - https://quic.github.io/aimet-pages/releases/latest/apiref/torch/onnx.html#aimet_torch.onnx.export""".strip()
+  - https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.onnx"
+  - https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/onnx.html#aimet_torch.onnx.export""".strip()
     )
     def export(
         self,
@@ -480,7 +480,7 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
                 msg += (
                     " To export 2.0.0 encoding, please use sim.onnx.export() instead."
                     " For more information on the new export API, see"
-                    " https://quic.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.onnx"
+                    " https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.onnx"
                 )
             raise RuntimeError(msg)
 
@@ -501,7 +501,7 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
                 "Please use aimet_torch.onnx.export() or sim.onnx.export() instead, "
                 "which supports exporting RNN/GRU/LSTM layers. "
                 "For more information, see "
-                "https://quic.github.io/aimet-pages/releases/latest/apiref/torch/"
+                "https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/"
                 "quantsim.html#aimet_torch.QuantizationSimModel.onnx"
             )
 

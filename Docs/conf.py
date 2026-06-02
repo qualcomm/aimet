@@ -162,7 +162,7 @@ html_sidebars = {
 
 html_context = {
   'current_version' : version,
-  'versions_page' : '<a href="https://quic.github.io/aimet-pages/releases/latest/versions.html">Other versions</a>'
+  'versions_page' : '<a href="https://qualcomm.github.io/aimet-pages/releases/latest/versions.html">Other versions</a>'
 }
 
 # -- Options for HTMLHelp output ---------------------------------------------
