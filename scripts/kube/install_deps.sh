@@ -4,16 +4,19 @@
 
 set -e
 
+CURL=(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 30)
+
 if ! command -v argo &>/dev/null; then
   echo "Installing Argo CLI..."
-  curl -fsSL "https://github.com/argoproj/argo-workflows/releases/download/v3.5.5/argo-linux-amd64.gz" | gunzip > /tmp/argo
+  "${CURL[@]}" "https://github.com/argoproj/argo-workflows/releases/download/v3.5.5/argo-linux-amd64.gz" -o /tmp/argo.gz
+  gunzip -f /tmp/argo.gz
   sudo install /tmp/argo /usr/local/bin/argo
   rm /tmp/argo
 fi
 
 if ! command -v kubectl &>/dev/null; then
   echo "Installing kubectl..."
-  curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /tmp/kubectl
+  "${CURL[@]}" "https://dl.k8s.io/release/$("${CURL[@]}" https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /tmp/kubectl
   sudo install /tmp/kubectl /usr/local/bin/kubectl
   rm /tmp/kubectl
 fi
