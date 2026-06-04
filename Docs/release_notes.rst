@@ -6,6 +6,16 @@
 Release notes
 #############
 
+2.32.1
+======
+
+* Bug fixes and Improvements
+    * ONNX
+        * Fix onnxruntime dispatching to incorrect function overload (`a969ada`_)
+
+.. _a969ada: https://github.com/qualcomm/aimet/commit/a969ada
+
+
 2.32.0
 ======
 
