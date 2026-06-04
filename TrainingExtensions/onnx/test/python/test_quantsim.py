@@ -102,7 +102,7 @@ from .models.onnx_qdq_models import (
     identity_tree,
     back_to_back_qdq_pairs,
 )
-from aimet_onnx.graph_passes.fusions import fuse_supergroups, AIMET_SUPERGROUP_DOMAIN
+from aimet_onnx.graph_passes.fusions import fuse_supergroups, is_fused_supergroup
 
 CPU_PROVIDERS = ["CPUExecutionProvider"]
 CUDA_PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -155,7 +155,7 @@ def _get_tensor_dtypes(model: onnx.ModelProto):
 
 
 def _has_aimet_supergroups(model: onnx.ModelProto):
-    return any(node.domain == AIMET_SUPERGROUP_DOMAIN for node in model.graph.node)
+    return any(is_fused_supergroup(node) for node in model.graph.node)
 
 
 def _fuse_all_supergroups(model: onnx.ModelProto):
@@ -7749,6 +7749,7 @@ def test_activation_uint(tmp_path: pathlib.Path, force_activation_as: str | None
 @pytest.mark.parametrize(
     "model_factory",
     [
+        lambda _: models_for_tests.model_with_transposed_and_non_transposed_gemm(),
         models_for_tests.llama_rmsnorm_model,
         models_for_tests.rmsnorm_model,
         partial(models_for_tests.rmsnorm_model, elementwise_affine=False),
@@ -7777,7 +7778,7 @@ def test_e2e_quantsim_with_fused_supergroups(model_factory, tmp_path, providers)
     supergroup_bias = set()
     supergroup_nodes = []
     for node in model.graph.node:
-        if node.domain != AIMET_SUPERGROUP_DOMAIN:
+        if not is_fused_supergroup(node):
             continue
         supergroup_nodes.append(node)
         if node.op_type in ("Gemm", "LayerNormalization"):

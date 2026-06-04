@@ -16,8 +16,11 @@ import onnxruntime
 from aimet_onnx.utils import make_dummy_input, get_node_attribute
 from aimet_onnx import QuantizationSimModel
 
-from aimet_onnx.graph_passes.fusions import fuse_supergroups, inline_all_supergroups
-from aimet_onnx.graph_passes.fusions.fusion_registry import AIMET_SUPERGROUP_DOMAIN
+from aimet_onnx.graph_passes.fusions import (
+    fuse_supergroups,
+    inline_all_supergroups,
+    is_fused_supergroup,
+)
 from ..models import models_for_tests
 from ..models.test_models import rmsnorm_model
 
@@ -365,6 +368,10 @@ class TestMatmulAddFusion:
     @pytest.mark.parametrize(
         "model_factory, expected_matches",
         [
+            (
+                lambda path: models_for_tests.model_with_transposed_and_non_transposed_gemm(),
+                2,
+            ),
             (lambda path: models_for_tests.matmul_bias_add_model(bias_first=True), 1),
             (lambda path: models_for_tests.matmul_bias_add_model(bias_first=False), 1),
             (lambda path: models_for_tests.matmul_add_model(), 0),  # Not a bias add
@@ -416,7 +423,7 @@ class TestMatmulAddFusion:
         supergroups = [
             node
             for node in model_proto.graph.node
-            if node.op_type == "Gemm" and node.domain == "aimet.supergroup"
+            if node.op_type == "Gemm" and is_fused_supergroup(node)
         ]
         assert len(supergroups) == expected_matches
 
@@ -445,7 +452,7 @@ class TestMatmulAddFusion:
         gemm_nodes = [
             node
             for node in model_proto.graph.node
-            if node.op_type == "Gemm" and node.domain == "aimet.supergroup"
+            if node.op_type == "Gemm" and is_fused_supergroup(node)
         ]
         assert len(gemm_nodes) == 1
 
@@ -468,7 +475,7 @@ class TestMatmulAddFusion:
         gemm_nodes = [
             node
             for node in model_proto.graph.node
-            if node.op_type == "Gemm" and node.domain == "aimet.supergroup"
+            if node.op_type == "Gemm" and is_fused_supergroup(node)
         ]
         assert len(gemm_nodes) == 1
 
@@ -769,14 +776,10 @@ class TestInlineAllSupergroups:
 
         # No supergroup functions remain
         assert not any(
-            func.domain == AIMET_SUPERGROUP_DOMAIN
-            for func in ir_model.functions.values()
+            is_fused_supergroup(func) for func in ir_model.functions.values()
         )
 
-        assert not any(
-            node.domain == AIMET_SUPERGROUP_DOMAIN
-            for node in ir_model.graph.all_nodes()
-        )
+        assert not any(is_fused_supergroup(node) for node in ir_model.graph.all_nodes())
 
         # Original non-Constant names are fully restored
         final_node_names = [
@@ -835,9 +838,7 @@ class TestSuperGroupNodeRenaming:
         model = fuse_supergroups(model, patterns=ALL_PATTERNS)
 
         supergroup_names = {
-            node.name
-            for node in model.graph.all_nodes()
-            if node.domain == AIMET_SUPERGROUP_DOMAIN
+            node.name for node in model.graph.all_nodes() if is_fused_supergroup(node)
         }
         assert supergroup_names == expected_names
 
@@ -860,7 +861,7 @@ class TestSuperGroupNodeRenaming:
         fuse_supergroups(model, patterns=ALL_PATTERNS)
 
         for node in model.graph.all_nodes():
-            if node.domain == AIMET_SUPERGROUP_DOMAIN:
+            if is_fused_supergroup(node):
                 assert node.name
 
         all_names = [node.name for node in model.graph.all_nodes()]

@@ -109,8 +109,8 @@ from aimet_onnx.utils import (
     OrtInferenceSession,
 )
 from aimet_onnx.graph_passes.fusions import (
-    AIMET_SUPERGROUP_DOMAIN,
     inline_all_supergroups,
+    is_fused_supergroup,
 )
 from aimet_onnx.batch_norm_fold import _has_unfolded_batchnorms
 import aimet_onnx
@@ -1944,8 +1944,7 @@ class QuantizationSimModel:
             with self._remove_quantization_nodes():
                 ir_model = onnx_ir.from_proto(self.model.model)
                 if any(
-                    node.domain == AIMET_SUPERGROUP_DOMAIN
-                    for node in ir_model.graph.all_nodes()
+                    is_fused_supergroup(node) for node in ir_model.graph.all_nodes()
                 ):
                     inline_all_supergroups(ir_model)
 
@@ -2555,10 +2554,7 @@ class QuantizationSimModel:
 
         # Note: Must inline supergroups before version conversion, since version_converter does not handle functions
         ir_model = onnx_ir.from_proto(model_copy)
-        if any(
-            node.domain == AIMET_SUPERGROUP_DOMAIN
-            for node in ir_model.graph.all_nodes()
-        ):
+        if any(is_fused_supergroup(node) for node in ir_model.graph.all_nodes()):
             inline_all_supergroups(ir_model)
             model_copy = onnx_ir.to_proto(ir_model)
 

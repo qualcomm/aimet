@@ -6,7 +6,7 @@
 from collections import defaultdict
 import onnx_ir
 from onnxscript.rewriter import pattern
-from .fusion_registry import FUSION_PASS_REGISTRY, AIMET_SUPERGROUP_DOMAIN
+from .fusion_registry import FUSION_PASS_REGISTRY
 from . import ir_utils
 
 
@@ -53,6 +53,8 @@ def fuse_supergroups(
         _inline_nested_functions(model)
         onnx_ir.passes.common.RemoveUnusedNodesPass().call(model)
         _rename_supergroup_nodes(model)
+        # Note: ORT does not correctly dispatch using function.overload, workaround by fusing to domain
+        ir_utils.fold_overload_into_op_domain(model)
 
     return model
 
@@ -64,7 +66,7 @@ def _inline_nested_functions(model: onnx_ir.Model):
         node.op_identifier()
         for func in model.functions.values()
         for node in func.graph.all_nodes()
-        if node.domain == AIMET_SUPERGROUP_DOMAIN
+        if ir_utils.is_fused_supergroup(node)
     )
     # Note: To get around name mangling of nested functions by InlinePass, sort functions hierarchically (outermost first)
     ir_utils._sort_functions_hierarchically(model)  # pylint: disable=protected-access
@@ -77,9 +79,7 @@ def _rename_supergroup_nodes(model: onnx_ir.Model):
     """Rename supergroup nodes to have more meaningful names derived from their function body, if possible."""
     node_names = {node.name for node in model.graph.all_nodes()}
     supergroup_nodes = [
-        node
-        for node in model.graph.all_nodes()
-        if node.domain == AIMET_SUPERGROUP_DOMAIN
+        node for node in model.graph.all_nodes() if ir_utils.is_fused_supergroup(node)
     ]
     root_to_nodes = defaultdict(list)
 

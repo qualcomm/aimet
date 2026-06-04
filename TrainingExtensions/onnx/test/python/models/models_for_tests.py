@@ -5432,3 +5432,37 @@ def matmul_add_with_shared_root_naming():
     )
     onnx.checker.check_model(model)
     return model
+
+
+def model_with_transposed_and_non_transposed_gemm():
+    class Model(torch.nn.Module):
+        """
+        W -> Transpose -----v        W2 -----v
+        x --------------> MatMul -> Add -> MatMul -> Add
+        """
+
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(in_features=10, out_features=5)
+            self.weight_2 = torch.nn.Parameter(torch.ones(5, 3))
+            self.bias_2 = torch.nn.Parameter(torch.ones(3))
+
+        def forward(self, x):
+            return self.linear(x) @ self.weight_2 + self.bias_2
+
+    model = Model()
+    x = torch.randn(1, 1, 10)
+    buffer = io.BytesIO()
+    torch.onnx.export(
+        model,
+        (x,),
+        buffer,
+        input_names=["input"],
+        output_names=["output"],
+        opset_version=20,
+        optimize=False,  # prevent folding transB
+    )
+    buffer.seek(0)
+    model = load_model(buffer)
+    onnx.checker.check_model(model)
+    return model
