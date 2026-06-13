@@ -11,24 +11,28 @@ Release notes
 
 * New Features
     * ONNX
-        * Add SpinQuant R3 online rotation and rework ``apply_spinquant`` to operate on ONNX models (`e941326bd`_)
+        * Added SpinQuant R2 merged rotation support (`e941326bd`_)
+        * Added SpinQuant R3 online rotation support (`e941326bd`_)
+        * SpinQuant API now operates on an ONNX model instead of a QuantSim model (`e941326bd`_)
 
 * Bug fixes and Improvements
     * ONNX
-        * Fuse RMSNorms with an internal Cast (`66db262be`_)
-        * Add ``mask_val`` as an input of the MaskedSoftmax function (`555c0df4d`_)
-        * Align MinMaxEncodingAnalyzer's minimum scale with aimet-torch (`edfe1e071`_)
+        * Fused RMSNorms with an internal Cast (`66db262be`_)
+        * Added ``mask_val`` as an input of the MaskedSoftmax function (`555c0df4d`_)
+        * Aligned MinMaxEncodingAnalyzer's minimum scale with aimet-torch (`edfe1e071`_)
+        * AdaScale: Added mechanism to speed up algo by stopping early if the loss has converged (`9d2ec9e0b`_)
+        * AdaScale: Added a new experimental loss function (`3761adde4`_)
 
     * Torch
-        * Enable full-graph compilation of affine QDQ for improved performance (`1239f0070`_)
-        * Support root module registered as a quantized module (`ff69bb809`_)
-        * Raise an error when exporting QLoRA models via :func:`QuantizationSimModel.export` (`0dc003a07`_)
-        * Remove outdated warning about switching the default quant scheme to min-max (`ad1ecd1f2`_)
+        * Enabled full-graph compilation of affine QDQ for improved performance (`1239f0070`_)
+        * Supported root module registered as a quantized module (`ff69bb809`_)
+        * Change to raise error when exporting QLoRA models via :func:`QuantizationSimModel.export` (`0dc003a07`_)
+        * Removed outdated warning about switching the default quant scheme to min-max (`ad1ecd1f2`_)
+        * AdaScale: Added mechanism to speed up algo by stopping early if the loss has converged (`9d2ec9e0b`_)
+        * AdaScale: Added a new experimental loss function (`3761adde4`_)
 
     * Common
         * Add eNPU v7 quantsim config files (`17018b6f8`_)
-        * AdaScale: opt-in early stopping behind a temporary flag (`9d2ec9e0b`_)
-        * AdaScale: opt-in sum-over-seq-dim loss (torch + onnx) (`3761adde4`_)
 
 .. _e941326bd: https://github.com/qualcomm/aimet/commit/e941326bd
 .. _66db262be: https://github.com/qualcomm/aimet/commit/66db262be
