@@ -6,6 +6,43 @@
 Release notes
 #############
 
+2.33.0
+======
+
+* New Features
+    * ONNX
+        * Add SpinQuant R3 online rotation and rework ``apply_spinquant`` to operate on ONNX models (`e941326bd`_)
+
+* Bug fixes and Improvements
+    * ONNX
+        * Fuse RMSNorms with an internal Cast (`66db262be`_)
+        * Add ``mask_val`` as an input of the MaskedSoftmax function (`555c0df4d`_)
+        * Align MinMaxEncodingAnalyzer's minimum scale with aimet-torch (`edfe1e071`_)
+
+    * Torch
+        * Enable full-graph compilation of affine QDQ for improved performance (`1239f0070`_)
+        * Support root module registered as a quantized module (`ff69bb809`_)
+        * Raise an error when exporting QLoRA models via :func:`QuantizationSimModel.export` (`0dc003a07`_)
+        * Remove outdated warning about switching the default quant scheme to min-max (`ad1ecd1f2`_)
+
+    * Common
+        * Add eNPU v7 quantsim config files (`17018b6f8`_)
+        * AdaScale: opt-in early stopping behind a temporary flag (`9d2ec9e0b`_)
+        * AdaScale: opt-in sum-over-seq-dim loss (torch + onnx) (`3761adde4`_)
+
+.. _e941326bd: https://github.com/qualcomm/aimet/commit/e941326bd
+.. _66db262be: https://github.com/qualcomm/aimet/commit/66db262be
+.. _555c0df4d: https://github.com/qualcomm/aimet/commit/555c0df4d
+.. _edfe1e071: https://github.com/qualcomm/aimet/commit/edfe1e071
+.. _1239f0070: https://github.com/qualcomm/aimet/commit/1239f0070
+.. _ff69bb809: https://github.com/qualcomm/aimet/commit/ff69bb809
+.. _0dc003a07: https://github.com/qualcomm/aimet/commit/0dc003a07
+.. _ad1ecd1f2: https://github.com/qualcomm/aimet/commit/ad1ecd1f2
+.. _17018b6f8: https://github.com/qualcomm/aimet/commit/17018b6f8
+.. _9d2ec9e0b: https://github.com/qualcomm/aimet/commit/9d2ec9e0b
+.. _3761adde4: https://github.com/qualcomm/aimet/commit/3761adde4
+
+
 2.32.1
 ======
 

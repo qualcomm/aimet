@@ -4,7 +4,8 @@
 AIMET documentation versions
 ############################
 
-* `2.32.1 (current) <https://qualcomm.github.io/aimet-pages/releases/2.32.1/index.html>`_
+* `2.33.0 (current) <https://qualcomm.github.io/aimet-pages/releases/2.33.0/index.html>`_
+* `2.32.1 <https://qualcomm.github.io/aimet-pages/releases/2.32.1/index.html>`_
 * `2.32.0 <https://qualcomm.github.io/aimet-pages/releases/2.32.0/index.html>`_
 * `2.31.0 <https://qualcomm.github.io/aimet-pages/releases/2.31.0/index.html>`_
 * `2.30.0 <https://qualcomm.github.io/aimet-pages/releases/2.30.0/index.html>`_
