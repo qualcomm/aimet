@@ -1722,3 +1722,22 @@ class RescaleModelWithSharedScaleFactor(torch.nn.Module):
     @staticmethod
     def dummy_input():
         return (torch.randn(1, 10),)
+
+
+class ModelWithBranch(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear1 = torch.nn.Linear(10, 10)
+        self.linear2 = torch.nn.Linear(10, 10)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = torch.nn.functional.gelu(x)
+        y = self.linear2(x)
+        y = torch.nn.functional.gelu(y)
+        x = x + y
+        return x
+
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 10),)

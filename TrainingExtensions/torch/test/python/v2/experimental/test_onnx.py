@@ -3419,3 +3419,31 @@ def test_qlinear_onnx_export(
         (out,) = sess.run(None, {"input": x.detach().numpy()})
         expected_out = qlinear(x)
         assert torch.allclose(torch.from_numpy(out), expected_out)
+
+
+def test_export_with_branch_input_quantizer(tmp_path):
+    """
+    Given: A tensor consumed by ops both with and without input quantizers
+    When: Export the model to onnx QDQ
+    Then: Ops without input quantizers should receive the unquantized tensor
+    """
+    model = test_models.ModelWithBranch()
+    (dummy_input,) = model.dummy_input()
+    sim = QuantizationSimModel(model, dummy_input)
+    remove_activation_quantizers(sim.model)
+    sim.model.linear2.input_quantizers[0] = Q.affine.QuantizeDequantize(
+        (), bitwidth=8, symmetric=False
+    )
+    sim.compute_encodings(lambda model: model(dummy_input))
+    aimet_torch.onnx.export(
+        sim.model,
+        dummy_input,
+        tmp_path / "branch_model.onnx",
+    )
+
+    onnx_model = onnx.load(tmp_path / "branch_model.onnx")
+    producers = {node.output[0]: node for node in onnx_model.graph.node}
+    add_node = next(node for node in onnx_model.graph.node if node.op_type == "Add")
+    # Add node only receives unquantized tensors in torch
+    for tensor in add_node.input:
+        assert producers[tensor].op_type != "DequantizeLinear"

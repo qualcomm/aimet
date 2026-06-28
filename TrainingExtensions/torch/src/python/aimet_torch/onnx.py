@@ -349,6 +349,14 @@ def _check_non_standard_quantizer(model: torch.nn.Module):
             )
 
 
+def _is_aimet_qdq_node(node: onnx.NodeProto) -> bool:
+    return (node.domain, node.op_type) in (
+        ("aimet", "quantize_dequantize"),
+        ("aimet", "QuantizeDequantize"),
+        ("aimet", "FloatQuantizeDequantize"),
+    )
+
+
 def _duplicate_shared_qdq_inputs(
     onnx_model: onnx.ModelProto, base_dir: str | None
 ) -> dict[str, str]:
@@ -392,13 +400,8 @@ def _duplicate_shared_qdq_inputs(
             aliases[output] = inp
 
     for node in onnx_model.graph.node:
-        if (node.domain, node.op_type) not in (
-            ("aimet", "quantize_dequantize"),
-            ("aimet", "QuantizeDequantize"),
-            ("aimet", "FloatQuantizeDequantize"),
-        ):
+        if not _is_aimet_qdq_node(node):
             continue
-
         input_name = aliases.get(node.input[0], node.input[0])
         qdq_nodes_with_shared_input.setdefault(input_name, []).append(node)
 
@@ -407,9 +410,6 @@ def _duplicate_shared_qdq_inputs(
     constants = _get_all_constants(onnx_model, consumers)
 
     for input_name, qdq_nodes in qdq_nodes_with_shared_input.items():
-        if len(qdq_nodes) <= 1:
-            continue
-
         for i, qdq_node in enumerate(qdq_nodes[1:]):
             if _encoding_equal(qdq_node, qdq_nodes[0], constants, base_dir):
                 # If multiple QDQ nodes have the same encoding,
@@ -431,6 +431,25 @@ def _duplicate_shared_qdq_inputs(
                 )
                 qdq_node.input[0] = identity_node.output[0]
                 producers[identity_node.output[0]] = identity_node
+
+        other_consumers = [
+            node
+            for node in consumers.get(qdq_nodes[0].input[0], [])
+            if not _is_aimet_qdq_node(node) and node.op_type != "Shape"
+        ]
+
+        # If there are non-QDQ consumers add Identity for qdq_nodes[0]
+        if other_consumers:
+            alias = f"{input_name}_dup_{len(qdq_nodes) - 1}"
+            aliases[alias] = input_name
+            identity_node = onnx.helper.make_node(
+                "Identity",
+                inputs=[input_name],
+                outputs=[alias],
+                name=f"Identity_{alias}",
+            )
+            qdq_nodes[0].input[0] = identity_node.output[0]
+            producers[identity_node.output[0]] = identity_node
 
     # Insert Identity nodes to the graph in topological order
     all_nodes = []
