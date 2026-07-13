@@ -2526,6 +2526,9 @@ class TestQuantSim:
         When: Instantiate quantsim
         Then: Quantizer placement is the same as for pure float32 model
         """
+        if not "CUDAExecutionProvider" in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+
         np.random.seed(0)
         fp32_model = models_for_tests.simple_mlp_model(torch.float32)
         bf16_model = models_for_tests.simple_mlp_model(torch.bfloat16)
