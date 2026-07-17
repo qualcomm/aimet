@@ -10,7 +10,7 @@ try:
         calculate_delta_offset,
         compute_min_max_given_delta_offset,
         _is_bias_out_of_int32_range,
-        _get_adjusted_weight_scale,
+        _adjust_weight_scale_against_bias_overflow,
     )
     from aimet_onnx.common import libpymo
 except ImportError:
@@ -18,7 +18,7 @@ except ImportError:
         calculate_delta_offset,
         compute_min_max_given_delta_offset,
         _is_bias_out_of_int32_range,
-        _get_adjusted_weight_scale,
+        _adjust_weight_scale_against_bias_overflow,
     )
 
     libpymo = None
@@ -186,7 +186,9 @@ class TestCommonQuantSim:
         bias = np.array([1.0], dtype=np.float32)
         input_scale = np.array([0.1], dtype=np.float32)
         weight_scale = np.array([0.1])
-        result = _get_adjusted_weight_scale(bias, input_scale, weight_scale)
+        result = _adjust_weight_scale_against_bias_overflow(
+            bias, input_scale, weight_scale
+        )
         assert type(result) == type(weight_scale)
         assert result == np.asarray(weight_scale, dtype=np.float32)
 
@@ -197,7 +199,7 @@ class TestCommonQuantSim:
         expected = np.array(
             [np.abs(bias[0]) / (2**31 * input_scale[0])], dtype=np.float32
         )
-        result = _get_adjusted_weight_scale(
+        result = _adjust_weight_scale_against_bias_overflow(
             bias, input_scale, weight_scale, num_steps=2**31
         )
         assert type(result) == type(weight_scale)
@@ -211,7 +213,7 @@ class TestCommonQuantSim:
             [weight_scale[0], np.abs(bias[1]) / (2**31 * input_scale[0])],
             dtype=np.float32,
         )
-        result = _get_adjusted_weight_scale(
+        result = _adjust_weight_scale_against_bias_overflow(
             bias, input_scale, weight_scale, num_steps=2**31
         )
         assert type(result) == type(weight_scale)
@@ -224,7 +226,7 @@ class TestCommonQuantSim:
         expected = np.array(
             [np.abs(bias[1]) / (2**31 * input_scale[0])], dtype=np.float32
         )
-        result = _get_adjusted_weight_scale(
+        result = _adjust_weight_scale_against_bias_overflow(
             bias, input_scale, weight_scale, num_steps=2**31
         )
         assert type(result) == type(weight_scale)
@@ -235,7 +237,7 @@ class TestCommonQuantSim:
         input_scale = 0.1
         weight_scale = 0.1
         expected = np.array([np.abs(bias[1]) / (2**31 * input_scale)], dtype=np.float32)
-        result = _get_adjusted_weight_scale(
+        result = _adjust_weight_scale_against_bias_overflow(
             bias, input_scale, weight_scale, num_steps=2**31
         )
         assert type(result) == type(weight_scale)

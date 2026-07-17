@@ -1052,7 +1052,16 @@ class TestQuantSim:
                     if encoding in encodings["activation_encodings"]
                     else param_enc
                 )
-                assert sim_enc != enc if allow_overwrite else sim_enc == enc
+                assert enc.keys() == sim_enc.keys()
+
+                if allow_overwrite:
+                    assert not np.allclose(sim_enc["scale"], enc["scale"])
+                else:
+                    assert np.allclose(sim_enc["scale"], enc["scale"])
+
+                for key in enc:
+                    if key not in ("scale", "offset"):
+                        assert sim_enc[key] == enc[key]
 
     @pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0", "2.0.0"])
     def test_load_partial_encodings_to_sim(self, tmp_dir, encoding_version: str):
@@ -3633,7 +3642,14 @@ class TestQuantSim:
         sim._compute_param_encodings(
             dummy_input=make_dummy_input(sim.model.model), overwrite=True
         )
-        assert weight_quantizer.export_encodings("2.0.0") == weight_encoding_unclipped
+        weight_encoding = weight_quantizer.export_encodings("2.0.0")
+
+        assert weight_encoding.keys() == weight_encoding_unclipped.keys()
+        for key in weight_encoding:
+            if key == "y_scale":
+                assert np.allclose(weight_encoding[key], weight_encoding_unclipped[key])
+            else:
+                assert weight_encoding[key] == weight_encoding_unclipped[key]
 
     def test_get_enabled_quantizer(self):
         model = models_for_tests.diverse_ops()
@@ -5365,8 +5381,8 @@ class TestEncodingPropagation:
                     print(f"Updated bias: {bias.name}")
                     _update_bias(ini)
 
-        adj_weight_scale = sim._adjust_weight_scales_for_int32_bias
-        sim._adjust_weight_scales_for_int32_bias = lambda: None
+        adj_weight_scale = sim._adjust_weight_scales_against_overflow
+        sim._adjust_weight_scales_against_overflow = lambda: None
         sim.compute_encodings([dummy_tensor])
         sim.export(tmp_dir, "before_weight_adj")
         with open(os.path.join(tmp_dir, "before_weight_adj.encodings")) as f:
@@ -5381,7 +5397,7 @@ class TestEncodingPropagation:
         """
         When: Call compute_encodings and export
         """
-        sim._adjust_weight_scales_for_int32_bias = adj_weight_scale
+        sim._adjust_weight_scales_against_overflow = adj_weight_scale
         sim.compute_encodings([dummy_tensor])
         sim.export(tmp_dir, "after_weight_adj", export_int32_bias=True)
 
@@ -5418,10 +5434,10 @@ class TestEncodingPropagation:
                   For BQ/LPBQ quantizers, bias_quantized values can be greater than 2.14748365e+09, since weight adjustment is not applied.
             """
             bias_quantized = bias_value / bias_scale
-            overflow_mask = np.any(bias_quantized >= 2**31)
-            assert np.all(overflow_mask)
 
-            if np.any(overflow_mask):
+            if not block_size:
+                assert np.all(bias_quantized < 2**31)
+            else:
                 """
                 Then: If the Bias is in exported encodings, then the adjusted weight scale must match (bias_float/(2**31 * input_scale))
                       For BQ/LPBQ scales, not weight scales adjustment applied, so it should match before the weight adjustment scale.
@@ -5433,6 +5449,93 @@ class TestEncodingPropagation:
                 else:
                     expected_weight_scale = bias_value / (2**31 * input_scale)
                 assert np.allclose(weight_scale, expected_weight_scale)
+
+
+@torch.no_grad()
+@pytest.mark.parametrize(
+    "module_factory",
+    [
+        partial(torch.nn.Conv2d, 10, 10, 3, bias=True),
+        partial(torch.nn.Conv2d, 10, 10, 3, bias=False),
+        partial(torch.nn.ConvTranspose2d, 10, 10, 3, bias=True),
+        partial(torch.nn.ConvTranspose2d, 10, 10, 3, bias=False),
+        partial(torch.nn.Linear, 10, 10, bias=True),
+        partial(torch.nn.Linear, 10, 10, bias=False),
+    ],
+)
+def test_htp_overflow_protection(tmp_path, module_factory):
+    """
+    Given:
+        Conv, Gemm, or MatMul with (1) tiny weight scale and (2) output scale >> input scale
+    """
+    dummy_input = torch.ones(1, 10, 10, 10)
+    module = module_factory()
+
+    weight = (
+        module.weight
+        if isinstance(module, (torch.nn.Conv2d, torch.nn.Linear))
+        else module.weight.transpose(0, 1)
+    )
+    # Expected weight scale @ channel 0: 1.0
+    weight[0].copy_(-(2**7))
+    # Expected weight scale @ channel 1: 1.0
+    weight[1].copy_(2**7 - 1)
+    # Expected weight scale @ channel 2: 2**-23 (float32 epsilon)
+    weight[2:].copy_(1e-6)
+
+    if module.bias is not None:
+        module.bias.zero_()
+
+    # Expected output_scale: > input_scale * 2**7
+    #
+    # Expected requant scale @ channel 2:
+    #   input_scale * weight_scale / output_scale < 2**-30
+    #
+    # Expected accumulator bias:
+    #   round(bias / (input_scale * weight_scale)) + round(output_offset / requant_scale)
+    #   =                0                         + round(-2**15 / requant_scale)
+    #   < -2**45
+
+    torch.onnx.export(
+        module,
+        (dummy_input,),
+        tmp_path / "model.onnx",
+        input_names=["input"],
+        output_names=["output"],
+        dynamo=False,
+    )
+
+    """
+    When: Create quantsim
+    Then:
+      1. Requantization scale must be > 2**-24
+      2. Accumulator bias must be within int32 range
+    """
+    sim = QuantizationSimModel(
+        onnx.load(tmp_path / "model.onnx"),
+        config_file="htp_v73",
+        param_type=aimet_onnx.int8,
+        activation_type=aimet_onnx.int16,
+    )
+    sim.compute_encodings([{"input": dummy_input.numpy()}])
+
+    input_scale = sim.qc_quantize_op_dict["input"]._get_scale()
+    output_scale = sim.qc_quantize_op_dict["output"]._get_scale()
+    output_offset = sim.qc_quantize_op_dict["output"]._get_offset()
+    for name, weight_qtzr in sim.qc_quantize_op_dict.items():
+        if name not in ("input", "output", "bias"):
+            weight_scale = weight_qtzr._get_scale()
+
+    # Requantization scale should be > 2**-24
+    requant_scale = input_scale * weight_scale / output_scale
+    assert np.all(requant_scale > 2**-24)
+
+    # Accumulator bias should be witin int32 range
+    accumulator_bias = np.abs(output_offset / requant_scale)
+    assert np.all(np.abs(accumulator_bias) < 2**31)
+
+    # Weight scales should remain unchanged if they already satisfy both conditions
+    assert np.all(weight_scale[0:2] == 1.0)
 
 
 @pytest.mark.parametrize("fuse_supergroups", [True, False])

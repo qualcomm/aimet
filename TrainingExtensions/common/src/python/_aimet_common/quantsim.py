@@ -9,6 +9,7 @@ import functools
 from typing import TypeVar, Union, Tuple, Dict
 import numpy as np
 import torch
+import ml_dtypes
 
 from .defs import QuantScheme, QuantizationDataType
 from .quantsim_config.quantsim_config import QuantSimConfigurator
@@ -469,7 +470,19 @@ def _is_bias_out_of_int32_range(
 T_w = TypeVar("T_w", bound=Union[np.ndarray, float, torch.Tensor])
 
 
-def _get_adjusted_weight_scale(
+def _to_torch_tensor(value: Union[np.ndarray, float, torch.Tensor]) -> torch.Tensor:
+    if isinstance(value, np.ndarray):
+        if value.dtype == ml_dtypes.bfloat16:
+            value = torch.from_numpy(value.astype(np.float32)).to(torch.bfloat16)
+        else:
+            value = torch.from_numpy(value)
+    else:
+        value = torch.tensor(value)
+
+    return value
+
+
+def _adjust_weight_scale_against_bias_overflow(
     bias_float: Union[np.ndarray, float, torch.Tensor],
     input_scale: Union[np.ndarray, float, torch.Tensor],
     weight_scale: T_w,
@@ -488,24 +501,13 @@ def _get_adjusted_weight_scale(
     :param num_steps: Maximum allowed quantized bias value (default threshold is 2**31)
     :return: adjusted weight scales
     """
-    if isinstance(bias_float, float):
-        bias_float = torch.tensor(bias_float)
-    elif isinstance(bias_float, np.ndarray):
-        bias_float = torch.from_numpy(bias_float)
-
-    if isinstance(input_scale, float):
-        input_scale = torch.tensor(input_scale)
-    elif isinstance(input_scale, np.ndarray):
-        input_scale = torch.from_numpy(input_scale)
+    bias_float = _to_torch_tensor(bias_float)
+    input_scale = _to_torch_tensor(input_scale)
 
     ret_type = type(weight_scale)
     ret_dtype = weight_scale.dtype if isinstance(weight_scale, torch.Tensor) else None
 
-    if isinstance(weight_scale, float):
-        weight_scale = torch.tensor(weight_scale)
-    elif isinstance(weight_scale, np.ndarray):
-        weight_scale = torch.from_numpy(weight_scale)
-
+    weight_scale = _to_torch_tensor(weight_scale)
     ret_shape = weight_scale.shape
 
     if torch.any(input_scale == 0):
@@ -535,6 +537,33 @@ def _get_adjusted_weight_scale(
         return adjusted_weight_scale.cpu().numpy().astype(np.float32)
     else:
         return adjusted_weight_scale
+
+
+def _adjust_weight_scale_against_scale_underflow(
+    input_scale: Union[np.ndarray, torch.Tensor],
+    weight_scale: Union[np.ndarray, torch.Tensor],
+    output_scale: Union[np.ndarray, torch.Tensor],
+):
+    """
+    Cap weight scale such that
+    requant_scale = input_scale * weight_scale / output_scale > 2**-24
+    This is to work around a bug in HexNN where if requant_scale <= 2**-24,
+    HexNN misinterprets the scale to be 2**(e+32) due to internal type casting bug.
+    """
+    ret_type = type(weight_scale)
+
+    if isinstance(input_scale, np.ndarray):
+        input_scale = torch.from_numpy(input_scale)
+    if isinstance(weight_scale, np.ndarray):
+        weight_scale = torch.from_numpy(weight_scale)
+    if isinstance(input_scale, np.ndarray):
+        output_scale = torch.from_numpy(output_scale)
+
+    # Use 2**-23.5 as min_requant_scale to ensure requant_scale is strictly greater than 2**-24
+    min_requant_scale = 2**-23.5
+    min_weight_scale = (min_requant_scale * output_scale) / input_scale
+    ret = torch.maximum(weight_scale, min_weight_scale)
+    return ret.numpy() if issubclass(ret_type, np.ndarray) else ret
 
 
 _INT4_MINIMUM_SCALE = _get_minimum_scale(2**4 - 1)

@@ -6,7 +6,6 @@ import ast
 import itertools
 import copy
 import functools
-from aimet_torch.quantization.affine.quantizer import AffineQuantizerBase
 from packaging import version
 from typing import Optional
 
@@ -2534,3 +2533,66 @@ def test_prequantized_weight(bitwidth: int):
     qlinear.compute_param_encodings()
 
     assert torch.allclose(qlinear.param_quantizers["weight"].get_scale(), weight_scale)
+
+
+@torch.no_grad()
+@pytest.mark.parametrize(
+    "module_factory",
+    [
+        functools.partial(torch.nn.Conv2d, 10, 10, 3, bias=True),
+        functools.partial(torch.nn.Conv2d, 10, 10, 3, bias=False),
+        functools.partial(torch.nn.ConvTranspose2d, 10, 10, 3, bias=True),
+        functools.partial(torch.nn.ConvTranspose2d, 10, 10, 3, bias=False),
+        functools.partial(torch.nn.Linear, 10, 10, bias=True),
+        functools.partial(torch.nn.Linear, 10, 10, bias=False),
+    ],
+)
+def test_htp_overflow_protection(module_factory):
+    """
+    Given:
+        Conv or Linear with (1) tiny weight scale and (2) output scale >> input scale
+    """
+    dummy_input = torch.ones(1, 10, 10, 10)
+    module = module_factory()
+
+    weight = (
+        module.weight
+        if isinstance(module, (torch.nn.Conv2d, torch.nn.Linear))
+        else module.weight.transpose(0, 1)
+    )
+    # Expected weight scale @ channel 0: 1.0
+    weight[0].copy_(-(2**7))
+    weight[0, 0] += 1
+    # Expected weight scale @ channel 1: 1.0
+    weight[1].copy_(2**7 - 1)
+    weight[1, 0] -= 1
+    # Expected weight scale @ channel 2: 2**-23 (float32 epsilon)
+    weight[2:].copy_(1e-6)
+
+    if module.bias is not None:
+        module.bias.zero_()
+
+    """
+    When: Create quantsim
+    Then:
+      1. Requantization scale must be > 2**-24
+      2. Accumulator bias must be within int32 range
+    """
+    sim = aimet_torch.QuantizationSimModel(module, dummy_input)
+    sim.compute_encodings(lambda model: model(dummy_input))
+
+    input_scale = sim.model.input_quantizers[0].get_scale()
+    weight_scale = sim.model.param_quantizers["weight"].get_scale()
+    output_scale = sim.model.output_quantizers[0].get_scale()
+    output_offset = sim.model.output_quantizers[0].get_offset()
+
+    # Requantization scale should be > 2**-24
+    requant_scale = input_scale * weight_scale / output_scale
+    assert torch.all(requant_scale > 2**-24)
+
+    # Accumulator bias should be witin int32 range
+    accumulator_bias = torch.abs(output_offset / requant_scale)
+    assert torch.all(torch.abs(accumulator_bias) < 2**31)
+
+    # Weight scales should remain unchanged if they already satisfy both conditions
+    assert torch.all(weight_scale.flatten()[0:2] == 1.0)

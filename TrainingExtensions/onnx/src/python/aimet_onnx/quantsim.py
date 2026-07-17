@@ -66,8 +66,8 @@ from aimet_onnx.common.quantsim import (
     extract_global_quantizer_args,
     VALID_ENCODING_VERSIONS,
     _INT32_MINIMUM_SCALE,
-    _is_bias_out_of_int32_range,
-    _get_adjusted_weight_scale,
+    _adjust_weight_scale_against_bias_overflow,
+    _adjust_weight_scale_against_scale_underflow,
     compute_min_max_given_delta_offset,
 )
 from aimet_onnx.common.utils import (
@@ -328,7 +328,7 @@ def compute_encodings(sim: "QuantizationSimModel"):
             qc_op.compute_encodings()
         qc_op.op_mode = OpMode.quantizeDequantize
 
-    sim._adjust_weight_scales_for_int32_bias()  # pylint: disable=protected-access
+    sim._adjust_weight_scales_against_overflow()  # pylint: disable=protected-access
 
 
 def _fill_missing_node_names(model: onnx.ModelProto):
@@ -1516,38 +1516,65 @@ class QuantizationSimModel:
 
         return model
 
-    def _adjust_weight_scales_for_int32_bias(self):
+    def _adjust_weight_scales_against_overflow(self):
         """
-        Given, bias_scale = weight_scale * input_scale and If max(input) * max(weight) << bias,
-        bias_scale becomes very small and dividing a large bias_float by a very small bias_scale
-        results in very large bias_int32, potentially exceeding the int32 range (-2147483648 to 2147483647)
-        during W16A16 quantization.
+        Given
+          y = round((xW + b) * sx * sw / sy - zy)
 
-        Adjusting weight_scale and bias_scale when the bias_float value exceeds the int32 range,
-        reduce the risk of saturation in activations (input @ weight + bias).
+        HTP implements this equation as either eq 1 or eq 2, depending on hw version and other parameters
+          y = round(( xW + b                ) * sx * sw / sy - zy)
+            = round(( xW + b                ) *     s'       - zy)  ... eq 1
+            = round(( xW + b -       zy/s'  ) *     s'           )
+            ≈ round(( xW + b - round(zy/s') ) *     s'           )
+            = round(( xW + b'               ) *     s'           )  ... eq 2
 
-        NOTE: Increasing the input_scale can reduce precision for all activations, while increasing
-              weight_scale only reduce the precision for the affected weights.
+        where:
+
+        | name |        description        |        dtype         |          equation          |
+        |------|---------------------------|----------------------|----------------------------|
+        |  x   | input                     | uint8 or uint16      | round(x_float / sx + zx)   |
+        |  W   | weight                    | int4, int8, or int16 | round(W_float / sw)        |
+        |  b   | bias                      | int32                | round(b_float / (sx * sw)) |
+        |  y   | output                    | dtype(x)             |        given above         |
+        |  sx  | input scale               | float                |             -              |
+        |  zx  | input zero_point          | dtype(x)             |             -              |
+        |  sw  | weight scale              | float                |             -              |
+        |  sy  | output scale              | float                |             -              |
+        |  zy  | output zero_point         | dtype(y)             |             -              |
+        |  s'  | requantization scale      | float                |        sx * sw / sy        |
+        |  b'  | combined accumulator bias | int32                |      b - round(zy / s')    |
+
+
+        This function adjusts the weight scale to prevent 3 possible scenarios of overflow/underflow
+
+        1. Bias Overflow
+           - occurs if:   |b| > 2**31
+           - bad because: Causes severe clipping error when exported as int32
+
+        2. Requantization Scale Underflow
+           - occurs if:   s' <= 2**-24
+           - bad because: If exponent e <= -24, HexNN misinterprets s'=2**e as 2**(e+32)
+                          due to internal type casting bug
+
+        3. Accumulator Bias Overflow
+           - occurs if:   |b'| > 2**31
+           - bad because: HexNN internally stores b' as int32
         """
         # pylint: disable=redefined-builtin, protected-access
 
-        ops_with_analytic_bias_scale = {
-            "Conv",
-            "Gemm",
-            "MatMul",
-            "ConvTranspose",
-        }
-
-        ops_with_bias = {
+        matmul_ops = {
             op: self._get_weight_and_bias(op)
             for op in self.connected_graph.get_all_ops().values()
-            if op.type in ops_with_analytic_bias_scale
+            if op.type
+            in (
+                "Conv",
+                "Gemm",
+                "MatMul",
+                "ConvTranspose",
+            )
         }
 
-        for op, (weight, bias) in ops_with_bias.items():
-            if bias is None:
-                continue
-
+        for op, (weight, bias) in matmul_ops.items():
             # TODO(hitameht): weight being None indicates that something went wrong during
             # onnx graph parsing. Need to investigate further.
             if weight is None:
@@ -1556,8 +1583,16 @@ class QuantizationSimModel:
             input, *_ = op.inputs
             input_qtzr = self._get_enabled_quantizer(input.name)
 
-            if not (input_qtzr and input_qtzr.enabled and input_qtzr.is_initialized()):
+            if not (
+                input_qtzr
+                and input_qtzr.enabled
+                and input_qtzr.data_type == QuantizationDataType.int
+                and input_qtzr.is_initialized()
+            ):
                 continue
+
+            (output,) = op.outputs
+            output_qtzr = self._get_enabled_quantizer(output.name)
 
             weight_qtzr = self.qc_quantize_op_dict.get(weight.name, None)
             if not (
@@ -1575,23 +1610,22 @@ class QuantizationSimModel:
                 # Handle weight adjustment for BQ and LPBQ quantizers
                 continue
 
-            bias_proto = self.model.get_initializer(bias.name)
-            if not bias_proto:
-                try:
-                    bias_proto = next(
-                        attr.t
-                        for node in self.model.graph().node
-                        if bias.name in node.output
-                        for attr in node.attribute
-                        if attr.type == onnx.AttributeProto.TENSOR
-                    )
-                except StopIteration:
-                    logger.info(
-                        "Bias tensor %s not found for op: %s", bias.name, op.name
-                    )
-                    continue
+            if bias:
+                bias_proto = self.model.get_initializer(bias.name)
 
-            bias_float = onnx.numpy_helper.to_array(bias_proto)
+                if not bias_proto:
+                    bias_proto = next(
+                        (
+                            attr.t
+                            for node in self.model.graph().node
+                            if bias.name in node.output
+                            for attr in node.attribute
+                            if attr.type == onnx.AttributeProto.TENSOR
+                        ),
+                        None,
+                    )
+            else:
+                bias_proto = None
 
             weight_scale = weight_qtzr._get_scale()
             input_scale = input_qtzr._get_scale()
@@ -1599,18 +1633,49 @@ class QuantizationSimModel:
             if weight_scale is None or input_scale is None:
                 continue
 
-            bias_scale = self._get_analytic_bias_scale(op)
-
-            if not np.any(_is_bias_out_of_int32_range(bias_float, bias_scale)):
-                continue
+            bias_float = (
+                onnx.numpy_helper.to_array(bias_proto)
+                if bias_proto
+                else np.zeros_like(weight_scale)
+            )
 
             encodings = weight_qtzr.get_encodings()
             if encodings is None:
                 continue
 
-            adjusted_weight_scale = _get_adjusted_weight_scale(
-                bias_float, input_scale, weight_scale
+            # Prevent bias overflow (1)
+            # Use slightly discounted num_steps to account for floating point precision error
+            adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
+                bias_float, input_scale, weight_scale, num_steps=2**31 - 2**15
             )
+
+            if (
+                output_qtzr
+                and output_qtzr.enabled
+                and output_qtzr.data_type == QuantizationDataType.int
+                and output_qtzr.is_initialized()
+            ):
+                output_scale = output_qtzr._get_scale()
+                output_offset = output_qtzr._get_offset()
+
+                # Prevent requantization scale underflow (2)
+                adjusted_weight_scale = _adjust_weight_scale_against_scale_underflow(
+                    input_scale, adjusted_weight_scale, output_scale
+                )
+
+                # Prevent accumulator bias overflow (3)
+                bias_scale = input_scale * adjusted_weight_scale
+                accumulator_bias = np.round(bias_float / bias_scale) + np.round(
+                    output_offset * output_scale / bias_scale
+                )
+                # Use slightly discounted num_steps to account for floating point precision error
+                adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
+                    accumulator_bias * bias_scale,
+                    input_scale,
+                    adjusted_weight_scale,
+                    num_steps=2**31 - 2**15,
+                )
+
             offset = np.array([enc.offset for enc in encodings], dtype=np.float32)
             adjusted_min, adjusted_max = compute_min_max_given_delta_offset(
                 adjusted_weight_scale,
@@ -1619,6 +1684,12 @@ class QuantizationSimModel:
                 weight_qtzr.use_symmetric_encodings,
                 weight_qtzr.use_strict_symmetric,
             )
+
+            if isinstance(adjusted_weight_scale, float):
+                adjusted_weight_scale = np.array([adjusted_weight_scale])
+
+            adjusted_weight_scale = adjusted_weight_scale.flatten()
+
             assert len(adjusted_weight_scale) == len(encodings), (
                 "Weight scale adjustment only supported for per-tensor and per-channel scales."
             )

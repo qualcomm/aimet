@@ -6,6 +6,16 @@
 Release notes
 #############
 
+2.35.1
+======
+
+* Bug fixes and Improvements
+    * Common
+        * Prevent HTP-specific requantization scale underflow and accumulator bias overflow issues (`a052923`_)
+
+.. _a052923: https://github.com/qualcomm/aimet/commit/a052923a7c8fb1107f3d6a790cd79ee1fc53ac6d
+
+
 2.35.0
 ======
 
