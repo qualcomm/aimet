@@ -5036,8 +5036,8 @@ def rmsnorm_invalid_wrong_power(tmpdir, dim: int = 32, opset=16):
             self.variance_epsilon = 0.003
 
         def forward(self, x):
-            # Use power of 3 instead of 2
-            variance = x.pow(3).mean(-1, keepdim=True)
+            # Use power of 4 instead of 2
+            variance = x.pow(4).mean(-1, keepdim=True)
             x = x / torch.sqrt(variance + self.variance_epsilon)
             return x * self.weight
 
