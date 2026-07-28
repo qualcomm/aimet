@@ -127,6 +127,7 @@ jobs:
           ENV_NAME: ${{ inputs.env_name }}
           VER_PYTHON: ${{ matrix.ver_python }}
       - name: Install test dependencies
+        shell: bash
         run: |
           . ./${{ inputs.env_name }}/bin/activate
 
@@ -301,6 +302,7 @@ jobs:
           ENV_NAME: ${{ inputs.env_name }}
           VER_PYTHON: ${{ matrix.ver_python }}
       - name: Install test dependencies
+        shell: bash
         run: |
           . ./${{ inputs.env_name }}/bin/activate
 
