@@ -233,14 +233,17 @@ jobs:
           # Create PR on quic/aimet-pages
           gh pr create --repo ${{ env.DOCS_REPO }} --base master --head ${{ github.ref_name }} --title "Release ${tag}" --body "Release docs for ${tag}"
 
-  notify_release_on_slack:
-    name: Announce release on internal channels
-    needs: [ release_aimet_torch_to_pypi, release_aimet_onnx_to_pypi, release_to_github ]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: slackapi/slack-github-action@v1.25.0
-        with:
-          channel-id: C0898PQVA31,C02TLE1KJ3B # channel ids in order: aimet, general
-          slack-message: ":rocket: *AIMET ${{ inputs.version }} released* :tada: \n *PyPI*\n- AIMET-ONNX: https://pypi.org/project/aimet-onnx/ \n- AIMET-TORCH: https://pypi.org/project/aimet-torch/ \n\n *Github*: https://github.com/quic/aimet/releases \n *Docs*: https://qualcomm.github.io/aimet-pages/releases/latest/index.html \n"
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+  # TODO(#7520): Slack notification job disabled — slackapi/slack-github-action
+  # is not on the enterprise-allowlisted actions list. Re-enable once the action
+  # is allowlisted or replaced with an allowlisted alternative.
+  # notify_release_on_slack:
+  #   name: Announce release on internal channels
+  #   needs: [ release_aimet_torch_to_pypi, release_aimet_onnx_to_pypi, release_to_github ]
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: slackapi/slack-github-action@v1.25.0
+  #       with:
+  #         channel-id: C0898PQVA31,C02TLE1KJ3B # channel ids in order: aimet, general
+  #         slack-message: ":rocket: *AIMET ${{ inputs.version }} released* :tada: \n *PyPI*\n- AIMET-ONNX: https://pypi.org/project/aimet-onnx/ \n- AIMET-TORCH: https://pypi.org/project/aimet-torch/ \n\n *Github*: https://github.com/quic/aimet/releases \n *Docs*: https://qualcomm.github.io/aimet-pages/releases/latest/index.html \n"
+  #       env:
+  #         SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}

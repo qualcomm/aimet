@@ -278,15 +278,18 @@ jobs:
         if: needs.docker-tag.outputs.tag != 'latest'
         run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" || true
 
-  notify_failure:
-    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && github.event_name == 'schedule' && github.run_attempt == '1' }}
-    name: Notify failure on slack
-    needs: [ docker-build-image, call-build-wheels, call-unit-acceptance-tests, docker-push-latest ]
-    runs-on: ubuntu-latest
-    steps:
-    - uses: slackapi/slack-github-action@v1.25.0
-      with:
-        channel-id: C0898PQVA31
-        slack-message: "AIMET Nightly Failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}"
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+  # TODO(#7520): Slack notification job disabled — slackapi/slack-github-action
+  # is not on the enterprise-allowlisted actions list. Re-enable once the action
+  # is allowlisted or replaced with an allowlisted alternative.
+  # notify_failure:
+  #   if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && github.event_name == 'schedule' && github.run_attempt == '1' }}
+  #   name: Notify failure on slack
+  #   needs: [ docker-build-image, call-build-wheels, call-unit-acceptance-tests, docker-push-latest ]
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: slackapi/slack-github-action@v1.25.0
+  #     with:
+  #       channel-id: C0898PQVA31
+  #       slack-message: "AIMET Nightly Failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}"
+  #     env:
+  #       SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}

@@ -1,34 +1,51 @@
-name: Notify public Github activity on Slack
+# TODO(#7520): Entire workflow disabled — slackapi/slack-github-action is
+# not on the enterprise-allowlisted actions list. Every job in this file is
+# purely a Slack notifier, so the whole file is short-circuited to a no-op
+# workflow until the action is allowlisted or replaced with an allowlisted
+# alternative.
+name: Notify public Github activity on Slack (disabled)
 
 on:
-  issues:
-    types: [opened]
-
-  pull_request:
-    branches:
-      - develop
+  workflow_dispatch:  # manual-only; prevents scheduled/pr triggers while disabled
 
 jobs:
-  notify_new_issue:
-    if: ${{ github.server_url == 'https://github.com' && github.event_name == 'issues' && github.event.action == 'opened' }}
-    name: Notify new issue created on public github
+  noop:
+    if: false
     runs-on: ubuntu-latest
     steps:
-    - uses: slackapi/slack-github-action@v1.25.0
-      with:
-        channel-id: C0898PQVA31
-        slack-message: ":ladybug: New issue created on public Github: ${{ github.event.issue.html_url }}"
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+      - run: echo "disabled"
 
-  notify_new_pr:
-    if: ${{ github.server_url == 'https://github.com' && github.event_name == 'pull_request' && github.event.action == 'opened' }}
-    name: Notify new PR created on public github
-    runs-on: ubuntu-latest
-    steps:
-    - uses: slackapi/slack-github-action@v1.25.0
-      with:
-        channel-id: C0898PQVA31
-        slack-message: ":loudspeaker: New PR created on public Github: ${{ github.event.pull_request.html_url }}"
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+# Original jobs (kept for reference; restore when the Slack action is allowlisted):
+#
+# on:
+#   issues:
+#     types: [opened]
+#
+#   pull_request:
+#     branches:
+#       - develop
+#
+# jobs:
+#   notify_new_issue:
+#     if: ${{ github.server_url == 'https://github.com' && github.event_name == 'issues' && github.event.action == 'opened' }}
+#     name: Notify new issue created on public github
+#     runs-on: ubuntu-latest
+#     steps:
+#     - uses: slackapi/slack-github-action@v1.25.0
+#       with:
+#         channel-id: C0898PQVA31
+#         slack-message: ":ladybug: New issue created on public Github: ${{ github.event.issue.html_url }}"
+#       env:
+#         SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+#
+#   notify_new_pr:
+#     if: ${{ github.server_url == 'https://github.com' && github.event_name == 'pull_request' && github.event.action == 'opened' }}
+#     name: Notify new PR created on public github
+#     runs-on: ubuntu-latest
+#     steps:
+#     - uses: slackapi/slack-github-action@v1.25.0
+#       with:
+#         channel-id: C0898PQVA31
+#         slack-message: ":loudspeaker: New PR created on public Github: ${{ github.event.pull_request.html_url }}"
+#       env:
+#         SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}

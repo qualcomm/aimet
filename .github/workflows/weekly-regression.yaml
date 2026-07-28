@@ -333,34 +333,37 @@ jobs:
             });
             core.setOutput('issue_url', data.html_url);
 
-      - name: Generate Slack message
-        if: steps.check_signal.outputs.notify_slack == 'true'
-        id: slack_msg
-        run: |
-          MSG=$(python3 AIMETRegression/workflow/summary.py \
-            --onnx-status "${{ needs.onnx-weekly.result }}" \
-            --torch-status "${{ needs.torch-weekly.result }}" \
-            --onnx-summary "summaries/onnx/comparison_summary.json" \
-            --torch-summary "summaries/torch/comparison_summary.json" \
-            --suite "weekly" \
-            --trigger "${{ github.event_name }}" \
-            --format slack \
-            --branch "${{ github.ref_name }}" \
-            --failed-stage "${{ steps.check_signal.outputs.failed_stage }}" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
-          if [ -n "${{ steps.create_issue.outputs.issue_url }}" ]; then
-            MSG="$MSG"$'\n'"Issue: ${{ steps.create_issue.outputs.issue_url }}"
-          fi
-          echo "message<<EOF" >> $GITHUB_OUTPUT
-          echo "$MSG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Notify Slack
-        if: steps.check_signal.outputs.notify_slack == 'true'
-        uses: slackapi/slack-github-action@v1.25.0
-        with:
-          channel-id: C0898PQVA31  # #aimet
-          slack-message: ${{ steps.slack_msg.outputs.message }}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+      # TODO(#7520): Slack notification disabled — slackapi/slack-github-action
+      # is not on the enterprise-allowlisted actions list. Re-enable once the
+      # action is allowlisted or replaced with an allowlisted alternative.
+      # - name: Generate Slack message
+      #   if: steps.check_signal.outputs.notify_slack == 'true'
+      #   id: slack_msg
+      #   run: |
+      #     MSG=$(python3 AIMETRegression/workflow/summary.py \
+      #       --onnx-status "${{ needs.onnx-weekly.result }}" \
+      #       --torch-status "${{ needs.torch-weekly.result }}" \
+      #       --onnx-summary "summaries/onnx/comparison_summary.json" \
+      #       --torch-summary "summaries/torch/comparison_summary.json" \
+      #       --suite "weekly" \
+      #       --trigger "${{ github.event_name }}" \
+      #       --format slack \
+      #       --branch "${{ github.ref_name }}" \
+      #       --failed-stage "${{ steps.check_signal.outputs.failed_stage }}" \
+      #       --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+      #     if [ -n "${{ steps.create_issue.outputs.issue_url }}" ]; then
+      #       MSG="$MSG"$'\n'"Issue: ${{ steps.create_issue.outputs.issue_url }}"
+      #     fi
+      #     echo "message<<EOF" >> $GITHUB_OUTPUT
+      #     echo "$MSG" >> $GITHUB_OUTPUT
+      #     echo "EOF" >> $GITHUB_OUTPUT
+      #
+      # - name: Notify Slack
+      #   if: steps.check_signal.outputs.notify_slack == 'true'
+      #   uses: slackapi/slack-github-action@v1.25.0
+      #   with:
+      #     channel-id: C0898PQVA31  # #aimet
+      #     slack-message: ${{ steps.slack_msg.outputs.message }}
+      #   env:
+      #     SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
 
