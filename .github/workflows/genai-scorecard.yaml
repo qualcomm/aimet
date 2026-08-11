@@ -146,7 +146,7 @@ jobs:
         with:
           runner-id: genai-onnx-${{ github.run_id }}-${{ github.run_attempt }}
           gpu-request: "1"
-          cpu-request: "32"
+          cpu-request: "64"
           memory-request: "512Gi"
           argo-namespace: "aihub"
           kubeconfig: ${{ secrets.KUBECONFIG }}

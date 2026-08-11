@@ -95,7 +95,7 @@ jobs:
         with:
           runner-id: onnx-gpu-weekly-${{ github.run_id }}-${{ github.run_attempt }}
           gpu-request: "1"
-          cpu-request: "16"
+          cpu-request: "64"
           memory-request: "160Gi"
           kubeconfig: ${{ secrets.KUBECONFIG }}
           pat-token: ${{ secrets.SOURCE_REPO_PAT }}

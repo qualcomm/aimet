@@ -70,6 +70,7 @@ jobs:
         with:
           runner-id: ${{ inputs.env_name }}-py${{ matrix.ver_python }}-tests-${{ github.run_id }}-${{ github.run_attempt }}
           gpu-request: ${{ inputs.ver_cuda != '' && '1' || '0' }}
+          cpu-request: "64"
           docker-image: ${{ inputs.ver_cuda != '' && format('docker-registry.qualcomm.com/library/nvidia/cuda:{0}-cudnn-devel-ubuntu22.04', inputs.ver_cuda) || 'docker-registry.qualcomm.com/library/ubuntu:22.04' }}
           kubeconfig: ${{ secrets.KUBECONFIG }}
           pat-token: ${{ secrets.SOURCE_REPO_PAT }}
