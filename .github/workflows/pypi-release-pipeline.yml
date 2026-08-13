@@ -118,7 +118,6 @@ jobs:
 
   publish:
     name: Publish the wheel packages
-    # twine reads the runner-local ~/.pypirc credentials.
     runs-on: ubuntu-latest
     needs: [ variants, call-run-unit-acceptance-tests ]
     # Unit tests must pass before publishing wheels to PyPI
@@ -144,6 +143,18 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install twine
           python3 -m pip install --force-reinstall wheel
+      - name: Create ~/.pypirc from secrets
+        if: ${{ inputs.deploy }}
+        run: |
+          cat > ~/.pypirc <<'EOF'
+          [testpypi]
+          username = __token__
+          password = ${{ secrets.TEST_PYPI_TOKEN }}
+
+          [pypi]
+          username = __token__
+          password = ${{ secrets.PYPI_TOKEN }}
+          EOF
       - name: Push to testpypi
         run: |
           # PyPI release does NOT have +cpu or +cu suffix
@@ -159,7 +170,7 @@ jobs:
           twine upload --verbose --repository testpypi --config-file ~/.pypirc $whl_file
           ;;
           (false)
-          echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."
+          echo "Deploy variable is false, deployment for twine upload --verbose --repository testpypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."
           ;;
           esac
       - name: Push to pypi
@@ -180,3 +191,6 @@ jobs:
           echo "Deploy variable is false, deployment for twine upload --verbose --repository pypi --config-file ~/.pypirc downloads/wheelhouse/* will not proceed."
           ;;
           esac
+      - name: Clean up ~/.pypirc
+        if: always()
+        run: rm -f ~/.pypirc
