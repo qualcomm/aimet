@@ -16,12 +16,11 @@ from typing import List, Optional, Tuple
 
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
-from aimet_onnx.meta.operations import Op
+from aimet_onnx.meta.operations import Op, Product
 from aimet_onnx.utils import ModelProto
 
 from aimet_onnx.experimental.llm_topology.norm_detection import (
     find_active_norms,
-    get_last_norm_op,
 )
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LlmTopology)
@@ -132,16 +131,13 @@ def get_decoder_block_boundaries(
 
     # Headless backbone: bound the last block with the trailing final non-active norm
     if not has_lm_head:
-        final_norm = get_last_norm_op(connected_graph)
-        active_norm_ops = {an.norm_op for an in active_norms}
-        if final_norm in active_norm_ops:
-            raise ValueError(
-                f"Last norm '{final_norm.name}' is an active block norm, not a trailing "
-                f"final norm; a headless backbone requires a final norm after the last block."
+        prev_residual_output = connected_graph.get_product(last_block_start)
+        residual_stream = _get_downstream_residuals(prev_residual_output)
+        if not residual_stream:
+            raise RuntimeError(
+                "Could not isolate lm_head layer or final residual add operation for graph"
             )
-        block_boundaries.append(
-            (last_block_start, _residual_input_tensor_name(final_norm))
-        )
+        block_boundaries.append((last_block_start, residual_stream[-1].outputs[0].name))
     else:
         block_boundaries.append(
             (
@@ -183,3 +179,19 @@ def _residual_input_tensor_name(norm_op: Op) -> str:
         f"norm op '{norm_op.name}' inputs[0] is a constant/param, not the residual activation."
     )
     return norm_op.inputs[0].name
+
+
+def _get_downstream_residuals(residual_start: Product):
+    """Collect all directly connected Add ops to residual_start tensor"""
+    consumers = residual_start.consumers
+    residual_stream = []
+    queue = list(consumers)
+    while queue:
+        curr_op = queue.pop(0)
+        if curr_op.type not in ("Add", "Cast"):
+            continue
+        if curr_op.type == "Add":
+            residual_stream.append(curr_op)
+        queue.extend(curr_op.outputs[0].consumers)
+
+    return residual_stream

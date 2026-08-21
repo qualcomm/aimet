@@ -273,7 +273,7 @@ class TestBlockIdentifier:
                 )
 
     def test_even_active_norms(self):
-        """Even active norm count must raise ValueError."""
+        """With no trailing norm, blocks are bounded by their residual adds."""
         torch.manual_seed(0)
 
         class _NoFinalNorm(nn.Module):
@@ -287,8 +287,12 @@ class TestBlockIdentifier:
 
         model = _export_decoder(_NoFinalNorm())
         cg = ConnectedGraph(model)
-        with pytest.raises(ValueError):
-            get_decoder_block_boundaries(model, cg)
+        boundaries = get_decoder_block_boundaries(model, cg)
+
+        assert len(boundaries) == 2
+        # Boundaries chain, and the last block ends on the graph output.
+        assert boundaries[0][1] == boundaries[1][0]
+        assert boundaries[1][1] == model.graph.output[0].name
 
 
 # ===========================================================================

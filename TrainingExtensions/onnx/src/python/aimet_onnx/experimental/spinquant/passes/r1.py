@@ -33,10 +33,7 @@ from aimet_onnx.common.onnx._utils import _is_grid_preserving_op
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.utils import ModelProto, ParamUtils
 
-from aimet_onnx.experimental.llm_topology.topology import (
-    BlockTopology,
-    LlmTopology,
-)
+from aimet_onnx.experimental.llm_topology.topology import LlmTopology
 from aimet_onnx.experimental.llm_topology.weight_utils import get_weight_product
 from aimet_onnx.experimental.spinquant.model_analysis import (
     find_post_writing_norms,
@@ -203,12 +200,11 @@ def _insert_final_hadamard_rotation(
     Used for headless backbones with no lm_head to absorb R1's inverse. All
     consumers of the residual add are rewired through the inserted MatMul.
     """
-    residual_add = _find_last_residual_add(role_map.blocks[-1])
-    residual_product = residual_add.outputs[0]
+    residual_product = role_map.blocks[-1].residual_output
     consumer_nodes = [op.get_module() for op in residual_product.consumers]
     if not consumer_nodes:
         raise RuntimeError(
-            f"Residual add '{residual_add.name}' has no consumers to rewire; "
+            f"Residual tensor '{residual_product.name}' has no consumers to rewire; "
             f"cannot un-rotate the residual stream."
         )
     insert_online_hadamard_node(
@@ -218,24 +214,6 @@ def _insert_final_hadamard_rotation(
         H=R1.T,
         name_prefix=f"spinquant_{residual_product.name}_R1",
     )
-
-
-def _find_last_residual_add(block: BlockTopology) -> Op:
-    """Return the residual ``Add`` that consumes the last block's down_proj output."""
-    residual_adds = set()
-    for down_proj in block.down_proj:
-        for out_op in down_proj.output_ops:
-            candidates = out_op.output_ops if out_op.type == "Cast" else [out_op]
-            residual_adds.update(op for op in candidates if op.type == "Add")
-
-    if len(residual_adds) != 1:
-        raise RuntimeError(
-            f"lm_head not found and could not isolate the last residual add: "
-            f"expected exactly one 'Add' downstream of the last block's down_proj "
-            f"({[op.name for op in block.down_proj]}), found "
-            f"{[op.name for op in residual_adds]}."
-        )
-    return next(iter(residual_adds))
 
 
 def _rotate_external_embedding(embedding: torch.Tensor, R1: np.ndarray) -> None:

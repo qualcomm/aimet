@@ -1609,14 +1609,13 @@ class TestApplySpinquant:
         w_after = numpy_helper.to_array(ParamUtils.get_param_by_name(model, embed_name))
         assert not np.array_equal(w_before, w_after)
 
-    def test_validation_failure_leaves_model_untouched(self):
-        """Model shouldn't be corrupted if the validation fails"""
+    def test_r1_preserves_output_with_no_final_norm(self):
+        """Model with no final norm layer should still work"""
         torch.manual_seed(0)
         np.random.seed(0)
 
         class _OddNormDecoder(nn.Module):
-            """1 block + embed_tokens + lm_head, no final norm → 2 active norms.
-            (2-1) % 2 = 1, so block detection raises ValueError."""
+            """1 block + embed_tokens + lm_head, no final norm → 2 active norms."""
 
             def __init__(self):
                 super().__init__()
@@ -1628,24 +1627,49 @@ class TestApplySpinquant:
                 return self.lm_head(self.block0(self.embed_tokens(token_ids)))
 
         model = _export_decoder_with_ids(_OddNormDecoder())
-
-        # Snapshot all initializers before the failed call.
-        init_before = {
-            t.name: numpy_helper.to_array(t).copy() for t in model.graph.initializer
-        }
+        token_ids = np.random.randint(0, _VOCAB, (_B, _SEQ)).astype(np.int64)
+        y_before = _run_model(model, token_ids)
 
         """
-        When: Block detection/classification raises an error.
-        Then: The model is unchanged.
+        When: apply_spinquant is called on a backbone with no trailing final norm.
+        Then: output is preserved, un-rotated by an online rotation on the residual.
         """
+        apply_spinquant(model, enable_r1=True)
 
-        with pytest.raises(ValueError):
-            apply_spinquant(model)
+        assert np.allclose(_run_model(model, token_ids), y_before, atol=1e-5)
 
-        # Every initializer must be bit-exact same.
-        for name, arr_before in init_before.items():
-            arr_after = numpy_helper.to_array(ParamUtils.get_param_by_name(model, name))
-            assert np.array_equal(arr_before, arr_after)
+    def test_r1_preserves_output_with_projection_before_final_norm(self):
+        """
+        Given:
+            Final Residual --> Linear --> RMSNorm --> Output
+        """
+        torch.manual_seed(0)
+        np.random.seed(0)
+
+        class _FinalProjectionDecoder(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.embed_tokens = nn.Embedding(_VOCAB, _H)
+                self.block0 = _LlamaBlock()
+                self.out_proj = nn.Linear(_H, _H, bias=False)
+                self.norm = RMSNorm(_H)
+
+            def forward(self, token_ids):
+                x = self.block0(self.embed_tokens(token_ids))
+                return self.norm(self.out_proj(x))
+
+        model = _export_decoder_with_ids(_FinalProjectionDecoder())
+        token_ids = np.random.randint(0, _VOCAB, (_B, _SEQ)).astype(np.int64)
+        y_before = _run_model(model, token_ids)
+
+        """
+        When: apply_spinquant is called on a backbone whose last residual add is
+              followed by a projection.
+        Then: The final model output is preserved.
+        """
+        apply_spinquant(model, enable_r1=True)
+
+        assert np.allclose(_run_model(model, token_ids), y_before, atol=1e-5)
 
     def test_embedding_weight_rotated(self):
         """External embedding.pth weight (raw tensor) must be rotated by R_L after apply_spinquant."""
