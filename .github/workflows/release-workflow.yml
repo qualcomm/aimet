@@ -146,6 +146,9 @@ jobs:
           ref: ${{ github.ref_name }}
           path: ${{ env.REPO_DIR }}
           fetch-depth: 0
+          # Otherwise the persisted GITHUB_TOKEN overrides the PAT in the
+          # public-origin URL below and the push fails as github-actions[bot].
+          persist-credentials: false
 
       - name: Public release branch to public
         run: |
