@@ -59,7 +59,7 @@ ADASCALE_NUM_ITERATIONS = 2048  # reduce for larger models; see quantization rec
 
 train_dataset = Wikitext.load_encoded_dataset(tokenizer, CONTEXT_LENGTH, "train")
 prefilled_inputs = _prefill_inputs(
-    generator, train_dataset, num_batches=ADASCALE_NUM_BATCHES, device=torch.device("cpu")
+    generator, train_dataset, ADASCALE_NUM_BATCHES, torch.device("cpu")
 )
 
 apply_adascale(

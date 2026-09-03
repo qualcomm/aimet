@@ -69,7 +69,7 @@ quantsim = QuantizationSimModel(
     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
 )
 # Setting kv_cache and some other layers to 8-bit
-_set_tensors_to_output_n_bit_symmmetric(quantsim, kv_bits=8)
+_set_tensors_to_output_n_bit_symmmetric(quantsim, 8)
 _set_lm_head_precision(quantsim, WeightPrecision(qtype=int8, granularity="PCQ"))
 _tie_quantizers_for_kv_cache(quantsim)
 
@@ -90,7 +90,7 @@ ADASCALE_NUM_ITERATIONS = 2048  # reduce for larger models; see quantization rec
 
 train_dataset = Wikitext.load_encoded_dataset(tokenizer, CONTEXT_LENGTH, "train")
 prefilled_inputs = _prefill_inputs(
-    quantsim, generator, train_dataset, num_batches=ADASCALE_NUM_BATCHES
+    quantsim, generator, train_dataset, ADASCALE_NUM_BATCHES
 )
 
 AdaScale.apply_adascale(
@@ -104,7 +104,7 @@ AdaScale.apply_adascale(
 # [compute-encodings]
 from tqdm import tqdm
 
-calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, num_batches=20)
+calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, 20)
 
 
 def _forward(session, _):
