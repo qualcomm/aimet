@@ -316,26 +316,44 @@ def compute_encodings(sim: "QuantizationSimModel"):
         ...     for input in dataset:
         ...         _ = sim.session.run(None, {"input": input})
     """
+    if getattr(sim, "_is_computing_encodings", False):
+        yield
+        return
+
     enabled_quantizers = {
         name: q for name, q in sim.qc_quantize_op_dict.items() if q.enabled
     }
-    for op_name, qc_op in enabled_quantizers.items():
-        qc_op.reset_encoding_stats()
-        if op_name in sim.activation_names:
-            qc_op.op_mode = OpMode.updateStats
-        else:
-            qc_op.op_mode = OpMode.oneShotQuantizeDequantize
-            if qc_op.is_encoding_frozen():
-                qc_op.op_mode = OpMode.quantizeDequantize
+    original_states = {
+        name: (q.op_mode, q.get_encodings()) for name, q in enabled_quantizers.items()
+    }
+    sim._is_computing_encodings = True  # pylint: disable=protected-access
+    try:
+        for op_name, qc_op in enabled_quantizers.items():
+            qc_op.reset_encoding_stats()
+            if op_name in sim.activation_names:
+                qc_op.op_mode = OpMode.updateStats
+            else:
+                qc_op.op_mode = OpMode.oneShotQuantizeDequantize
+                if qc_op.is_encoding_frozen():
+                    qc_op.op_mode = OpMode.quantizeDequantize
 
-    yield
+        yield
 
-    for op_name, qc_op in enabled_quantizers.items():
-        if not qc_op.is_encoding_frozen():
-            qc_op.compute_encodings()
-        qc_op.op_mode = OpMode.quantizeDequantize
+        for op_name, qc_op in enabled_quantizers.items():
+            if not qc_op.is_encoding_frozen():
+                qc_op.compute_encodings()
+            qc_op.op_mode = OpMode.quantizeDequantize
 
-    sim._adjust_weight_scales_against_overflow()  # pylint: disable=protected-access
+        sim._adjust_weight_scales_against_overflow()  # pylint: disable=protected-access
+    except BaseException:
+        for name, qc_op in enabled_quantizers.items():
+            op_mode, encodings = original_states[name]
+            if encodings:
+                qc_op.load_encodings(encodings)
+            qc_op.op_mode = op_mode
+        raise
+    finally:
+        sim._is_computing_encodings = False  # pylint: disable=protected-access
 
 
 def _fill_missing_node_names(model: onnx.ModelProto):

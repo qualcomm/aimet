@@ -338,6 +338,65 @@ class TestQuantSim:
             assert qc_op.is_initialized()
             assert qc_op.op_mode == OpMode.quantizeDequantize
 
+    def test_compute_encodings_restores_quantizer_state_on_exception(self):
+        model = build_dummy_model()
+        sim = QuantizationSimModel(model)
+        inputs = make_dummy_input(model)
+        sim.compute_encodings([inputs])
+
+        expected_states = {
+            name: (qc_op.op_mode, qc_op.get_encodings())
+            for name, qc_op in sim.qc_quantize_op_dict.items()
+            if qc_op.enabled
+        }
+        expected_outputs = sim.session.run(None, inputs)
+
+        def failing_callback(session):
+            session.run(None, inputs)
+            raise RuntimeError("Calibration failed")
+
+        with pytest.raises(RuntimeError, match="Calibration failed"):
+            sim.compute_encodings(failing_callback)
+
+        for name, (expected_mode, expected_encodings) in expected_states.items():
+            qc_op = sim.qc_quantize_op_dict[name]
+            assert qc_op.op_mode == expected_mode
+            actual_encodings = qc_op.get_encodings()
+            assert len(actual_encodings) == len(expected_encodings)
+            assert all(
+                _compare_encodings(actual, expected)
+                for actual, expected in zip(actual_encodings, expected_encodings)
+            )
+
+        actual_outputs = sim.session.run(None, inputs)
+        for actual, expected in zip(actual_outputs, expected_outputs):
+            np.testing.assert_array_equal(actual, expected)
+
+    def test_compute_encodings_nested_context(self):
+        model = build_dummy_model()
+        sim = QuantizationSimModel(model)
+        inputs = make_dummy_input(model)
+
+        with aimet_onnx.compute_encodings(sim):
+            sim.session.run(None, inputs)
+            with aimet_onnx.compute_encodings(sim):
+                sim.session.run(None, inputs)
+
+            for name, qc_op in sim.qc_quantize_op_dict.items():
+                if not qc_op.enabled:
+                    continue
+                expected_mode = (
+                    OpMode.updateStats
+                    if name in sim.activation_names
+                    else OpMode.quantizeDequantize
+                )
+                assert qc_op.op_mode == expected_mode
+
+        for qc_op in sim.qc_quantize_op_dict.values():
+            if qc_op.enabled:
+                assert qc_op.is_initialized()
+                assert qc_op.op_mode == OpMode.quantizeDequantize
+
     def test_compute_encodings_with_non_lennable_iterator(self):
         model = build_dummy_model()
 
