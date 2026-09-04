@@ -388,10 +388,8 @@ class TestQuantSim:
                 expected_mode = (
                     OpMode.updateStats
                     if name in sim.activation_names
-                    else OpMode.oneShotQuantizeDequantize
+                    else OpMode.quantizeDequantize
                 )
-                if qc_op.is_encoding_frozen():
-                    expected_mode = OpMode.quantizeDequantize
                 assert qc_op.op_mode == expected_mode
 
         for qc_op in sim.qc_quantize_op_dict.values():
