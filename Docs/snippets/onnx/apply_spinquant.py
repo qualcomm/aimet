@@ -68,7 +68,7 @@ quantsim = QuantizationSimModel(
     config_file="htp_v73",
     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
 )
-_set_tensors_to_output_n_bit_symmmetric(quantsim, kv_bits=8)
+_set_tensors_to_output_n_bit_symmmetric(quantsim, 8)
 _set_lm_head_precision(quantsim, WeightPrecision(qtype=int8, granularity="PCQ"))
 _tie_quantizers_for_kv_cache(quantsim)
 
@@ -89,7 +89,7 @@ from GenAILab.bench.datasets import Wikitext
 from GenAILab.bench.onnx.quant_recipes import _prefill_inputs
 
 train_dataset = Wikitext.load_encoded_dataset(tokenizer, CONTEXT_LENGTH, "train")
-calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, num_batches=20)
+calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, 20)
 
 
 def _forward(session, _):
