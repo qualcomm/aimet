@@ -265,3 +265,20 @@ def get_weight_value(node: onnx_ir.Node) -> Tuple[Optional[onnx_ir.Value], bool]
             if is_static(transpose_inp):
                 return transpose_inp, True
     return None, False
+
+
+def get_constant_value(value: Optional[onnx_ir.Value]) -> Optional[onnx_ir.Value]:
+    """
+    Propagates through Identity ops to find a the upstream value tensor
+    if it is static. Behaviorally similar to ``ParamUtils.get_param``.
+
+    :param value: onnx_ir value to search upwards from
+    """
+    if value is None:
+        return None
+    # Propagate through all Identities
+    while value.producer() and value.producer().op_type == "Identity":
+        value = value.producer().inputs[0]
+    if is_static(value):
+        return value
+    return None

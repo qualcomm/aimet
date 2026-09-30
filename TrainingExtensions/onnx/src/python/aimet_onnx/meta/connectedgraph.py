@@ -13,6 +13,7 @@ from collections import deque
 from typing import Dict, List, Optional, Tuple, Union
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 import onnx
+import onnx_ir
 from packaging import version
 
 from aimet_onnx.common.connected_graph.connectedgraph import (
@@ -24,7 +25,8 @@ from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.common.model_module import ONNXModelModule
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.meta.product import Product
-from aimet_onnx.utils import ParamUtils, retrieve_constant_input
+from aimet_onnx.utils import ParamUtils
+from aimet_onnx.ir_utils import get_constant_value, get_weight_value, _has_transposed_b
 
 # pylint: disable=no-name-in-module, ungrouped-imports
 if version.parse(onnx.__version__) >= version.parse("1.14.0"):
@@ -325,7 +327,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 op.add_subgraph_op(body_op)
 
         # TODO: Move this process outside of ConnectedGraph altogether
-        self._identify_param_products()
+        self._set_param_products()
 
     def _top_level_ops(self) -> List[Op]:
         """
@@ -369,14 +371,16 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         emit(self._ordered_top_level_ops())
         return ordered
 
-    def _identify_param_products(self):
+    def _set_param_products(self):
         """Identify products which are parameters of select modules"""
 
         def set_as_param(
-            param_tensor: TensorProto, my_op: Op, product_type: Union[str, None]
+            param_name: str,
+            param_tensor: TensorProto,
+            my_op: Op,
+            product_type: Union[str, None],
         ):
             """Create product with given name, shape, and corresponding tensor.  Connect product to my_op."""
-            param_name = param_tensor.name
             product_shape = param_tensor.dims
             product = self._products[param_name]
             product.shape = product_shape
@@ -385,105 +389,29 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             product.tensor = param_tensor
             product.is_const = False  # Backward compatibility
 
-        def create_weight_bias_params(my_op: Op):
-            """Create products for conv2d, dense, depthwise conv2d, and similar"""
-            op = my_op.get_module()
+        ir_model = onnx_ir.from_proto(self.model)
+        info_dict = find_all_node_info(ir_model)
 
-            weight_tensor = ParamUtils.get_param(self.model, op, WEIGHT_INDEX)
-            if weight_tensor:
-                set_as_param(weight_tensor, my_op, "weight")
+        tensor_dict = {}
+        for graph in _iterate_graphs_recursive(self.model.graph):
+            tensor_dict.update({init.name: init for init in graph.initializer})
+            for node in graph.node:
+                if node.op_type != "Constant":
+                    continue
 
-            bias_tensor = ParamUtils.get_param(self.model, op, BIAS_INDEX)
-            if bias_tensor:
-                set_as_param(bias_tensor, my_op, "bias")
+                for attribute in node.attribute:
+                    if attribute.name == "value":
+                        param = attribute.t
+                        tensor_dict[node.output[0]] = param
 
-        def create_weight_params(my_op: Op):
-            """Registers second input of my_op as weight"""
-            op = my_op.get_module()
+        for node_name, op in self._ops.items():
+            info = info_dict[node_name]
+            for param_type, param_name in info.parameters.items():
+                param_tensor = tensor_dict.get(param_name)
+                if param_tensor is not None:
+                    set_as_param(param_name, param_tensor, op, param_type)
 
-            weight_tensor = ParamUtils.get_param(self.model, op, WEIGHT_INDEX)
-            if weight_tensor:
-                set_as_param(weight_tensor, my_op, "weight")
-
-        def create_matmul_params(my_op: Op):
-            """
-            Create products for MatMul layer
-
-            :param my_op: Connected Graph Op
-            """
-            op = my_op.get_module()
-            weight_tensor, transposed = retrieve_constant_input(
-                op, self.model, WEIGHT_INDEX
-            )
-            my_op.transposed_params = transposed
-            if weight_tensor:
-                set_as_param(weight_tensor, my_op, "weight")
-
-        def create_recurrent_type_params(my_op: Op):
-            """
-            Create products for RNN, LSTM and GRU layer
-
-            :param my_op: Connected Graph Op
-            """
-            op = my_op.get_module()
-            weight_tensor = ParamUtils.get_param(self.model, op, 1)
-            if weight_tensor:
-                set_as_param(weight_tensor, my_op, "weight")
-
-            recurrent_weight_tensor = ParamUtils.get_param(self.model, op, 2)
-            if recurrent_weight_tensor:
-                set_as_param(recurrent_weight_tensor, my_op, "weight_r")
-
-            bias_tensor = ParamUtils.get_param(self.model, op, 3)
-            if bias_tensor:
-                set_as_param(bias_tensor, my_op, "bias")
-
-        def create_batchnorm_params(my_op: Op):
-            """Create products for fusedbatchnorm"""
-            op = my_op.get_module()
-
-            gamma_tensor = ParamUtils.get_param(self.model, op, WEIGHT_INDEX)
-            if gamma_tensor:
-                set_as_param(gamma_tensor, my_op, "weight")
-
-            beta_tensor = ParamUtils.get_param(self.model, op, BIAS_INDEX)
-            if beta_tensor:
-                set_as_param(beta_tensor, my_op, "bias")
-
-            moving_mean_tensor = ParamUtils.get_param(
-                self.model, op, RUNNING_MEAN_INDEX
-            )
-            if moving_mean_tensor:
-                set_as_param(moving_mean_tensor, my_op, "running_mean")
-
-            moving_variance_tensor = ParamUtils.get_param(
-                self.model, op, RUNNING_VAR_INDEX
-            )
-            if moving_variance_tensor:
-                set_as_param(moving_variance_tensor, my_op, "running_var")
-
-        def handle_default(my_op: Op):
-            """Handler for other modules"""
-            logger.debug("Nothing to handle for op %s", my_op.name)
-
-        switcher = {
-            "Conv": create_weight_bias_params,
-            "Gemm": create_weight_bias_params,
-            "ConvTranspose": create_weight_bias_params,
-            "RNN": create_recurrent_type_params,
-            "LSTM": create_recurrent_type_params,
-            "GRU": create_recurrent_type_params,
-            "BatchNormalization": create_batchnorm_params,
-            "InstanceNormalization": create_weight_bias_params,
-            "LayerNormalization": create_weight_bias_params,
-            "GroupNormalization": create_weight_bias_params,
-            "RMSNormalization": create_weight_params,
-            "MatMul": create_matmul_params,
-        }
-
-        for op in self._ops.values():
-            handler = switcher.get(op.type, handle_default)
-            handler(op)
+            op.transposed_params = info.transposed_params
 
 
 def _get_matmul_add_bias_idx(cg_op: Op, model: ModelProto) -> Optional[int]:
@@ -537,3 +465,94 @@ def get_op_attributes(node: NodeProto, attribute_name: str):
         if attribute.name == attribute_name:
             return attribute.i
     return None
+
+
+class NodeInfo:
+    """Captures extra metadata stored on CG Op"""
+
+    parameters = {}
+    transposed_params = False
+
+
+def find_all_node_info(model: onnx_ir.Model) -> dict[str, NodeInfo]:
+    """
+    Extracts all extra metadata for ops held by connectedgraph
+    """
+
+    def _find_parameters(node, param_type_to_index: dict[str, int]):
+        parameters = {}
+        for param_type, index in param_type_to_index.items():
+            if index >= len(node.inputs):
+                continue
+            tensor = get_constant_value(node.inputs[index])
+            if tensor:
+                parameters[param_type] = tensor.name
+
+        return parameters
+
+    def find_weight_bias_params(node: onnx_ir.Node) -> dict[str, str]:
+        param_type_to_index = {
+            "weight": WEIGHT_INDEX,
+            "bias": BIAS_INDEX,
+        }
+        return _find_parameters(node, param_type_to_index)
+
+    def find_weight_params(node: onnx_ir.Node) -> dict[str, str]:
+        param_type_to_index = {"weight": WEIGHT_INDEX}
+        return _find_parameters(node, param_type_to_index)
+
+    def find_matmul_params(node: onnx_ir.Node) -> dict[str, str]:
+        parameters = {}
+        weight_tensor, _ = get_weight_value(node)
+        if weight_tensor:
+            parameters["weight"] = weight_tensor.name
+        return parameters
+
+    def find_recurrent_type_params(node: onnx_ir.Node) -> dict[str, str]:
+        param_type_to_index = {
+            "weight": 1,
+            "weight_r": 2,
+            "bias": 3,
+        }
+        return _find_parameters(node, param_type_to_index)
+
+    def find_batchnorm_params(node: onnx_ir.Node) -> dict[str, str]:
+        param_type_to_index = {
+            "weight": WEIGHT_INDEX,
+            "bias": BIAS_INDEX,
+            "running_mean": RUNNING_MEAN_INDEX,
+            "running_var": RUNNING_VAR_INDEX,
+        }
+        return _find_parameters(node, param_type_to_index)
+
+    switcher = {
+        "Conv": find_weight_bias_params,
+        "Gemm": find_weight_bias_params,
+        "ConvTranspose": find_weight_bias_params,
+        "RNN": find_recurrent_type_params,
+        "LSTM": find_recurrent_type_params,
+        "GRU": find_recurrent_type_params,
+        "BatchNormalization": find_batchnorm_params,
+        "InstanceNormalization": find_weight_bias_params,
+        "LayerNormalization": find_weight_bias_params,
+        "GroupNormalization": find_weight_bias_params,
+        "RMSNormalization": find_weight_params,
+        "MatMul": find_matmul_params,
+    }
+
+    info_dict = {}
+    for node in model.graph.all_nodes():
+        node_info = NodeInfo()
+        handler = switcher.get(node.op_type)
+        if handler:
+            node_info.parameters = handler(node)
+
+        if node.op_type == "Gemm":
+            node_info.transposed_params = _has_transposed_b(node)
+        elif node.op_type == "MatMul":
+            _, transposed = get_weight_value(node)
+            node_info.transposed_params = transposed
+
+        info_dict[node.name] = node_info
+
+    return info_dict
