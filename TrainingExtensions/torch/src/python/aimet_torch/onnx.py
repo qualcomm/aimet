@@ -181,7 +181,9 @@ def export(
         stack.enter_context(_remove_fp16_quantizers(model))
         stack.enter_context(_remove_fp16_quantized_parameters(model))
 
-        onnx_model, tensor_to_encoding_map = _to_onnx(model, args, f, **kwargs)
+        onnx_model, tensor_to_encoding_map = _to_onnx(
+            model, args, f, **kwargs, propagate_int32_encodings=False
+        )
 
     if _TORCH_MAX_OPSET < target_version:
         try:
@@ -1096,6 +1098,8 @@ def _to_onnx(
     model: torch.nn.Module,
     args: Union[Tuple[Any, ...], torch.Tensor],
     f: Union[str, io.BytesIO],
+    *,
+    propagate_int32_encodings: bool,
     **kwargs,
 ) -> Tuple[onnx.ModelProto, dict]:
     # pylint: disable=protected-access
@@ -1150,6 +1154,16 @@ def _to_onnx(
     derived_encodings |= _derive_data_movement_op_encodings(
         onnx_model, encoding_dict | derived_encodings
     )
+
+    if not propagate_int32_encodings:
+        # When exporting to ONNX QDQ, int32 encodings cannot be propagated
+        # because ONNX only supports int32 DequantizeLinear but not QuantizeLinear.
+        derived_encodings = {
+            name: enc
+            for name, enc in derived_encodings.items()
+            if enc["output_dtype"] != "int32"
+        }
+
     tensor_to_encoding_map |= {
         name: (AffineEncoding._from_qnn_encoding_dict(encoding, version="2.1.0"), False)
         for name, encoding in derived_encodings.items()

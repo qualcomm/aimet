@@ -3529,21 +3529,29 @@ def test_rotary_embedding_export_encodings(tmp_path: pathlib.Path, dynamo: bool)
         torch.randn(1, 2, 2),
         torch.randn(1, 2, 2),
     )
-    input_names = ["input", "cos", "sin"]
-    output_names = ["output"]
     sim = QuantizationSimModel(rope, dummy_input)
     sim.compute_encodings(lambda m: m(*dummy_input))
-    _, tensor_to_encoding_map = _to_onnx(
-        sim.model,
+    sim.onnx.export(
         dummy_input,
         str(tmp_path / "rotary_embedding.onnx"),
-        input_names=input_names,
-        output_names=output_names,
+        input_names=["input", "cos", "sin"],
+        output_names=["output"],
         dynamo=dynamo,
+        encoding_version="2.0.0",
     )
 
-    assert len(tensor_to_encoding_map.keys()) == 6
-    assert ("concat_1" if dynamo else "/rope/Concat_output_0") in tensor_to_encoding_map
+    with open(tmp_path / "rotary_embedding.encodings") as f:
+        encodings = json.load(f)["encodings"]
+
+    encoding_names = {e["name"] for e in encodings}
+    expected_names = {"input", "cos", "sin", "output"}
+
+    if dynamo:
+        expected_names |= {"concat_1", "add"}
+    else:
+        expected_names |= {"/rope/Concat_output_0", "/add/Add_output_0"}
+
+    assert encoding_names == expected_names
 
 
 def test_export_aten_quantize_dequantize(tmp_path: pathlib.Path):
@@ -3956,3 +3964,43 @@ def test_export_nvfp4_onnx_qdq(tmp_path: pathlib.Path, dynamo: bool, nvfp4_sim):
     (out,) = sess.run(None, {"input": dummy_input.detach().numpy()})
     expected_out = nvfp4_sim.model(dummy_input)
     assert torch.allclose(torch.from_numpy(out), expected_out)
+
+
+def test_int32_encoding_propagation(tmp_path):
+    """
+    When: Exporting a model with int32 bias to onnx QDQ
+    Then: Int32 DQ should not be propagated
+    """
+
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.bias = torch.nn.Parameter(torch.randn(16))
+            self.bias_quantizer = Q.affine.QuantizeDequantize(
+                shape=(),
+                qmin=-(2**31),
+                qmax=2**31 - 1,
+                symmetric=True,
+            )
+            self.bias_quantizer.set_range(-1, 1)
+
+        def forward(self, x):
+            bias_qdq = self.bias_quantizer(self.bias)
+            return x + bias_qdq.reshape(4, 4)
+
+    model = Model()
+    dummy_input = torch.randn(4, 4)
+    aimet_torch.onnx.export(
+        model,
+        (dummy_input,),
+        tmp_path / "int32_model.onnx",
+        input_names=["input"],
+        output_names=["output"],
+        opset_version=21,
+    )
+    onnx_model = onnx.load(tmp_path / "int32_model.onnx")
+    onnx.checker.check_model(onnx_model)
+    dq_nodes = [dq for dq in onnx_model.graph.node if dq.op_type == "DequantizeLinear"]
+    assert len(dq_nodes) == 1
+    (dq,) = dq_nodes
+    assert dq.input[0] == "bias_q"

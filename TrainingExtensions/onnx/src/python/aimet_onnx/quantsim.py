@@ -2777,6 +2777,13 @@ class QuantizationSimModel:
                 model_copy,
                 dict(zip(qdq_node_info["input_names"], qdq_node_info["encodings"])),
             )
+            # When exporting to ONNX QDQ, int32 encodings cannot be propagated
+            # because ONNX only supports int32 DequantizeLinear but not QuantizeLinear.
+            derived_encodings = {
+                name: enc
+                for name, enc in derived_encodings.items()
+                if enc["output_dtype"] != "int32"
+            }
 
             for name, encoding in derived_encodings.items():
                 qdq_node_info["input_names"].append(name)

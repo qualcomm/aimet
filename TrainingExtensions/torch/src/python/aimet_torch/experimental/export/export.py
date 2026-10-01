@@ -169,6 +169,18 @@ def _try_insert_output_qdq(ep: ExportedProgram, node: torch.fx.Node):
     ):
         return
 
+    qtype = input_q.args[5] if len(input_q.args) > 5 else input_q.kwargs["dtype"]
+
+    if qtype == torch.int32:
+        # Skip int32 encoding propagation for the convenience of ONNX export.
+        # Currently, torch.onnx.export produces int32 QuantizeLinear
+        # when exporting int32 torch.ops.quantized_decomposed.quantize_per_tensor,
+        # which is technically invalid according to ONNX spec.
+        # Therefore, disable int32 encoding propagation as a workaround to avoid
+        # exporting int32 QuantizeLinear.
+        # For more information, see https://github.com/pytorch/pytorch/issues/198691
+        return
+
     if _is_multi_output_op(node):
         for user in list(node.users):
             if (
@@ -240,6 +252,17 @@ def _try_insert_input_qdq(ep: ExportedProgram, node: torch.fx.Node):
         return
 
     qtype = output_q.args[5] if len(output_q.args) > 5 else output_q.kwargs["dtype"]
+
+    if qtype == torch.int32:
+        # Skip int32 encoding propagation for the convenience of ONNX export.
+        # Currently, torch.onnx.export produces int32 QuantizeLinear
+        # when exporting int32 torch.ops.quantized_decomposed.quantize_per_tensor,
+        # which is technically invalid according to ONNX spec.
+        # Therefore, disable int32 encoding propagation as a workaround to avoid
+        # exporting int32 QuantizeLinear.
+        # For more information, see https://github.com/pytorch/pytorch/issues/198691
+        return
+
     with ep.graph.inserting_after(input):
         input_q = ep.graph.create_node(
             op=output_q.op,

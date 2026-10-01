@@ -1217,7 +1217,7 @@ class QuantizationSimModelOnnxExporter:
             stack.enter_context(_remove_fp16_quantized_parameters(self.sim.model))
 
             onnx_model, tensor_to_encoding_map = _to_onnx(
-                self.sim.model, args, f, **kwargs
+                self.sim.model, args, f, **kwargs, propagate_int32_encodings=True
             )
 
         onnx.save(
