@@ -109,7 +109,7 @@ Step 2: Create QuantizationSimModel
 Create a :ref:`QuantizationSimModel <quantsim-index>` with the desired quantization configuration.
 
 **ONNX only**: this step instead exports the model to ONNX and analyzes its decoder-stack structure
-with :ref:`analyze_llm_topology <apiref-onnx-spinquant>`. The sim is created in `Step 3`_, *after*
+with :ref:`analyze_llm_topology_by_norm_count <apiref-onnx-spinquant>`. The sim is created in `Step 3`_, *after*
 the rotation, because ONNX SpinQuant rewrites the float graph and R3 inserts new ops that only a sim
 built on the rotated graph can wrap in quantizers. A topology describes the model, not the sim, so
 derive it once here; `Step 3`_ hands it to SpinQuant, which uses it to place every rotation.

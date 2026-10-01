@@ -13,7 +13,9 @@ CONTEXT_LENGTH = 4096
 
 model_id = "meta-llama/Llama-3.2-1B-Instruct"
 hf_model = AutoModelForCausalLM.from_pretrained(model_id, dtype=torch.float32)
-tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained(
+    model_id, use_fast=True, trust_remote_code=True
+)
 
 # Wrap model to satisfy static graph constraints for JIT trace
 traceable_model = ONNXExportableModuleWithCache(hf_model)
@@ -24,7 +26,7 @@ import os
 import tempfile
 import onnx
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.experimental.llm_topology import analyze_llm_topology_by_norm_count
 from GenAILab.qai_hub_lm.models.base import LLM
 from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descriptors
 from GenAILab.qai_hub_lm.models.generator import Generator
@@ -64,7 +66,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 # Analyze the decoder-stack structure on the FLOAT model, before quantizing. The
 # topology describes the model, so it is derived once here and then handed to any
 # technique that needs to know where the decoder blocks are (AdaScale, below).
-topology = analyze_llm_topology(onnx_model)
+topology = analyze_llm_topology_by_norm_count(onnx_model)
 
 quantsim = QuantizationSimModel(
     model=onnx_model,
@@ -80,7 +82,9 @@ _set_lm_head_precision(quantsim, WeightPrecision(qtype=int8, granularity="PCQ"))
 _tie_quantizers_for_kv_cache(quantsim)
 
 quantsim_with_torch_interface = TorchONNXInterface(quantsim, hf_model.config)
-generator = Generator(quantsim_with_torch_interface, tokenizer, SEQUENCE_LENGTH, CONTEXT_LENGTH)
+generator = Generator(
+    quantsim_with_torch_interface, tokenizer, SEQUENCE_LENGTH, CONTEXT_LENGTH
+)
 # End of [create-sim]
 
 # [adascale-apply]
@@ -91,7 +95,7 @@ from aimet_onnx.experimental.adascale.adascale_optimizer import (
 from GenAILab.bench.datasets import Wikitext
 from GenAILab.bench.onnx.quant_recipes import _prefill_inputs
 
-ADASCALE_NUM_BATCHES = 128   # reduce for larger models to control runtime
+ADASCALE_NUM_BATCHES = 128  # reduce for larger models to control runtime
 ADASCALE_NUM_ITERATIONS = 2048  # reduce for larger models; see quantization recipes
 
 train_dataset = Wikitext.load_encoded_dataset(tokenizer, CONTEXT_LENGTH, "train")

@@ -145,7 +145,7 @@ def _block_boundaries_from_topology(topology: LlmTopology) -> List[Tuple[str, st
     if not topology.blocks:
         raise ValueError(
             "topology contains no decoder blocks, so there is nothing for AdaScale to optimize. "
-            "Verify that analyze_llm_topology() was run on the model being optimized."
+            "Verify that analyze_llm_topology_by_norm_count() was run on the model being optimized."
         )
 
     boundaries = []
@@ -225,9 +225,10 @@ class AdaScale:
                                       Llama, Qwen2, Mistral, Qwen3, Phi3. For other models use AdaScaleModelConfig
         :param num_iterations: Number of iterations to optimize for during AdaScale
         :param topology: Decoder-stack topology of the model held by ``sim``, from
-            :func:`~aimet_onnx.experimental.llm_topology.analyze_llm_topology`. AdaScale optimizes one
-            decoder block at a time and takes the block boundaries from it — structure discovery belongs
-            to ``llm_topology``, not to AdaScale. Analyze the **float** model before building the sim:
+            :func:`~aimet_onnx.experimental.llm_topology.analyze_llm_topology_by_norm_count`.
+            AdaScale optimizes one decoder block at a time and takes the block boundaries from
+            it — structure discovery belongs to ``llm_topology``, not to AdaScale. Analyze the
+            **float** model before building the sim:
             a topology describes the model rather than the sim, so it is derived once and reused.
             Optional today: when omitted the topology is discovered internally from the sim's graph
             and a warning is raised. Passing it explicitly is recommended, and may become required
@@ -239,7 +240,7 @@ class AdaScale:
             >>> model = DummyModel()
             >>> inputs = ...
             >>> adascale_model_config = adascale_model_config['llama']
-            >>> topology = analyze_llm_topology(model)   # analyze the float model
+            >>> topology = analyze_llm_topology_by_norm_count(model)   # analyze the float model
             >>> sim = QuantizationSimModel(model)
             >>> apply_adascale(sim, inputs, adascale_model_config, num_iterations=num_iterations,
             ...                topology=topology)
@@ -262,9 +263,9 @@ class AdaScale:
             warnings.warn(
                 "apply_adascale() was called without 'topology', so the decoder-block "
                 "structure is being discovered internally from the sim. Prefer building it "
-                "with aimet_onnx.experimental.llm_topology.analyze_llm_topology(model) on the "
-                "float model and passing topology=...; this argument may become required in a "
-                "future release.",
+                "with aimet_onnx.experimental.llm_topology."
+                "analyze_llm_topology_by_norm_count(model) on the float model and passing "
+                "topology=...; this argument may become required in a future release.",
                 UserWarning,
                 stacklevel=2,
             )

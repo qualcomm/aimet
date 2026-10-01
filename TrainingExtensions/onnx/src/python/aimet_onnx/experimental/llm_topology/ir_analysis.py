@@ -34,7 +34,12 @@ import onnx_ir
 
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.graph_passes.fusions import fuse_supergroups, is_fused_supergroup
-from aimet_onnx.ir_utils import is_static, remove_quantizers, get_weight_value
+from aimet_onnx.ir_utils import (
+    get_weight_value,
+    is_static,
+    remove_quantizers,
+    static_tensor,
+)
 from aimet_onnx.utils import ModelProto
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LlmTopology)
@@ -178,6 +183,20 @@ def is_weighted_linear(node: onnx_ir.Node) -> bool:
 def is_dynamic_matmul(node: onnx_ir.Node) -> bool:
     """Return True if ``node`` is a MatMul with no static weight (both inputs dynamic)."""
     return node.op_type == "MatMul" and get_weight_value(node)[0] is None
+
+
+def is_embedding_table_gather(node: onnx_ir.Node) -> bool:
+    """Return True if ``node`` is a token-embedding ``Gather`` (data is a 2-D table).
+
+    A real embedding ``Gather`` has the embedding *table* as its first (data)
+    input — a static rank-2 ``[vocab, hidden]`` initializer. Other Gathers in
+    the prologue (e.g. position-id lookups, ``shape``-derived indexers) hold
+    static scalar or 1-D constants on input 0 and must be excluded.
+    """
+    if node.op_type not in EMBEDDING_TYPES or not node.inputs:
+        return False
+    table = static_tensor(node.inputs[0])
+    return table is not None and len(table.shape) >= 2
 
 
 def is_rms_norm(node: onnx_ir.Node) -> bool:

@@ -29,7 +29,7 @@ from aimet_onnx.experimental.llm_configurator.llm_configurator import (
     _tie_quantizers_for_kv_cache,
     configure_llm,
 )
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.experimental.llm_topology import analyze_llm_topology_by_norm_count
 from aimet_onnx.defs import QSpec
 import aimet_onnx
 
@@ -554,7 +554,7 @@ class TestConfigureLlm:
 
     def test_ties_kv_cache_quantizers(self, sim):
         """Each kv-cache input shares one quantizer with the output of the same layer."""
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         configure_llm(sim, topology)
 
@@ -567,7 +567,7 @@ class TestConfigureLlm:
 
     def test_kv_cache_quantizers_are_tied_per_layer(self, sim):
         """Tying does not merge separate caches into a single quantizer."""
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         configure_llm(sim, topology)
 
@@ -593,7 +593,7 @@ class TestConfigureLlm:
         "precision", [aimet_onnx.int8, aimet_onnx.int16, "int8", "int16"]
     )
     def test_sets_kv_cache_precision(self, sim, precision):
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         configure_llm(sim, topology, kv_cache_type=precision)
 
@@ -608,7 +608,7 @@ class TestConfigureLlm:
 
     def test_sets_projection_weight_precision(self, sim):
         """Every projection of every block is reprecisioned, lm head is not."""
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         configure_llm(sim, topology, projection_weight_type=aimet_onnx.int4)
 
@@ -622,7 +622,7 @@ class TestConfigureLlm:
         assert _param_precision(sim, lm_head) == aimet_onnx.int8
 
     def test_sets_lm_head_weight_precision(self, sim):
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         configure_llm(sim, topology, lm_head_weight_type=aimet_onnx.int4)
 
@@ -649,7 +649,7 @@ class TestConfigureLlm:
             decoder_cls(), add_value_input=False
         )
         sim = QuantizationSimModel(model)
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         configure_llm(sim, topology, projection_weight_type=aimet_onnx.int4)
 
@@ -660,7 +660,7 @@ class TestConfigureLlm:
 
     def test_accepts_qspec_weight_type(self, sim):
         """A QSpec configures granularity, not just bitwidth."""
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
         spec = QSpec.lpbq(aimet_onnx.int4, block_size=8)
 
         configure_llm(sim, topology, projection_weight_type=spec)
@@ -675,7 +675,7 @@ class TestConfigureLlm:
 
     def test_leaves_precisions_unchanged_when_no_type_given(self, sim):
         """With no precision argument the call only ties quantizers."""
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
         before = {
             name: quantizer.precision()
             for name, quantizer in sim.qc_quantize_op_dict.items()
@@ -690,13 +690,13 @@ class TestConfigureLlm:
         assert before == after
 
     def test_raises_on_unpaired_kv_cache_names(self, sim):
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
         topology.past_key_output_names.pop()
 
         with pytest.raises(RuntimeError, match="cache inputs and outputs"):
             configure_llm(sim, topology)
 
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
         topology.past_value_output_names.pop()
 
         with pytest.raises(RuntimeError, match="cache inputs and outputs"):
@@ -711,7 +711,7 @@ class TestConfigureLlm:
         Exports without an lm head and/or without embed_tokens configure the same.
         """
         sim = QuantizationSimModel(qwen3_models[(with_lm_head, with_embedding)])
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
         assert bool(topology.lm_head) == with_lm_head
         assert bool(topology.embed_tokens) == with_embedding
 
@@ -735,7 +735,7 @@ class TestConfigureLlm:
     def test_ignores_lm_head_type_when_model_has_no_lm_head(self, qwen3_models):
         """``lm_head_weight_type`` on a headless model reprecisions nothing."""
         sim = QuantizationSimModel(qwen3_models[(False, True)])
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
         before = _all_param_precisions(sim)
 
         configure_llm(sim, topology, lm_head_weight_type=aimet_onnx.int4)
@@ -758,7 +758,7 @@ class TestConfigureLlm:
     ):
         """Precisions changed by the exception rules only warn if they were requested here."""
         sim = QuantizationSimModel(decoder_model, config_file=config_file)
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         with mock.patch.object(llm_configurator.logger, "warning") as mock_warning:
             configure_llm(
@@ -787,7 +787,7 @@ class TestConfigureLlm:
     def test_does_not_warn_when_no_type_given(self, decoder_model):
         """Configuring nothing cannot override anything, even on a constrained backend."""
         sim = QuantizationSimModel(decoder_model, config_file="htp_v69")
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         with mock.patch.object(llm_configurator.logger, "warning") as mock_warning:
             configure_llm(sim, topology)
@@ -804,7 +804,7 @@ class TestConfigureLlm:
             style_decoders.LlamaStyleDecoder()
         )
         sim = QuantizationSimModel(model)
-        topology = analyze_llm_topology(sim.model.model)
+        topology = analyze_llm_topology_by_norm_count(sim.model.model)
 
         with pytest.raises(RuntimeError, match="value cache inputs and outputs"):
             configure_llm(sim, topology)

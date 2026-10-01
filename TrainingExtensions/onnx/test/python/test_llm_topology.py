@@ -12,7 +12,7 @@ Three groups:
   :func:`get_decoder_block_boundaries`, and :func:`get_llm_topology` on tiny
   hand-built decoders (relocated here from ``test_spinquant.py``).
 * **End-to-end facade** — :class:`TestAnalyzeLlmTopology`, covering
-  :func:`analyze_llm_topology` and the ``onnx_ir`` re-attachment in
+  :func:`analyze_llm_topology_by_norm_count` and the ``onnx_ir`` re-attachment in
   :func:`~.ir_adapter.resolve_topology`.
 
 Broader coverage across real HuggingFace architectures lives in
@@ -54,7 +54,7 @@ from aimet_onnx.experimental.llm_topology.topology import (
     _PAST_VALUE_OUTPUT_NAME_PATTERN,
     _collect_matching_names_in_order,
     _infer_hidden_size,
-    analyze_llm_topology,
+    analyze_llm_topology_by_norm_count,
     get_llm_topology,
 )
 
@@ -91,7 +91,7 @@ _DECODERS = [
 def _name_topology(model, **kwargs):
     """Build the name-based topology for ``model``, the way the facade does.
 
-    Mirrors :func:`analyze_llm_topology` but stops before dimension
+    Mirrors :func:`analyze_llm_topology_by_norm_count` but stops before dimension
     inference and exposes ``get_llm_topology``'s knobs, so tests can drive that
     function directly.
     """
@@ -724,10 +724,10 @@ class TestDecoderRoleMap:
 
 
 # ===========================================================================
-# End-to-end facade (analyze_llm_topology).
+# End-to-end facade (analyze_llm_topology_by_norm_count).
 # ===========================================================================
 class TestAnalyzeLlmTopology:
-    """Tests for the analyze_llm_topology one-shot facade."""
+    """Tests for the analyze_llm_topology_by_norm_count one-shot facade."""
 
     @pytest.mark.parametrize("decoder_cls", _DECODERS)
     def test_populates_dims_and_roles(self, decoder_cls):
@@ -735,7 +735,7 @@ class TestAnalyzeLlmTopology:
         torch.manual_seed(0)
         model = _export_decoder_with_ids(decoder_cls())
 
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
 
         assert len(topology.blocks) == 2
         assert len(topology.embed_tokens) == 1
@@ -758,7 +758,7 @@ class TestAnalyzeLlmTopology:
         torch.manual_seed(0)
         model = _export_decoder_with_ids(decoder_cls())
 
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
         from_topology = [
             (block.residual_input, block.residual_output) for block in topology.blocks
         ]
@@ -775,7 +775,7 @@ class TestAnalyzeLlmTopology:
             LlamaStyleDecoder(), torch.randint(0, _VOCAB, (1, _SEQ))
         )
 
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
 
         assert topology.head_dim is None
         # hidden_size is still derivable from the embedding table.
@@ -786,7 +786,7 @@ class TestAnalyzeLlmTopology:
         torch.manual_seed(0)
         model = _export_decoder_with_ids(LlamaStyleDecoder())
         with pytest.raises(ValueError):
-            analyze_llm_topology(model, expected_num_blocks=3)
+            analyze_llm_topology_by_norm_count(model, expected_num_blocks=3)
 
     @pytest.mark.parametrize("decoder_cls", _DECODERS)
     def test_ir_resolution_matches_name_topology(self, decoder_cls):
@@ -803,7 +803,7 @@ class TestAnalyzeLlmTopology:
         torch.manual_seed(0)
         model = _export_decoder_with_ids(decoder_cls())
 
-        by_name = analyze_llm_topology(model)
+        by_name = analyze_llm_topology_by_norm_count(model)
         resolved = resolve_topology(by_name, onnx_ir.from_proto(model))
 
         assert by_name.embed_tokens == [n.name for n in resolved.embed_tokens]
@@ -851,7 +851,7 @@ class TestAnalysisIr:
         model = _export_decoder_with_ids(decoder_cls())
         before = model.SerializeToString()
 
-        analyze_llm_topology(model)
+        analyze_llm_topology_by_norm_count(model)
 
         assert model.SerializeToString() == before
 
@@ -913,8 +913,8 @@ class TestAnalysisIr:
         torch.manual_seed(0)
         model = _export_decoder_with_ids(decoder_cls())
 
-        decomposed = analyze_llm_topology(model)
-        prefused = analyze_llm_topology(_fuse_rms_norms(model))
+        decomposed = analyze_llm_topology_by_norm_count(model)
+        prefused = analyze_llm_topology_by_norm_count(_fuse_rms_norms(model))
 
         assert [an.scale_name for an in prefused.active_norms] == [
             an.scale_name for an in decomposed.active_norms

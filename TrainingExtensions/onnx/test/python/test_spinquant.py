@@ -52,7 +52,7 @@ from aimet_onnx.ir_utils import static_tensor
 from aimet_onnx.utils import ParamUtils, make_dummy_input
 
 from aimet_onnx.experimental.llm_topology.topology import (
-    analyze_llm_topology,
+    analyze_llm_topology_by_norm_count,
 )
 from aimet_onnx.experimental.llm_topology.topology_types import LlmTopology
 from aimet_onnx.experimental.llm_topology.ir_adapter import (
@@ -122,7 +122,7 @@ def resolve_active_norms(model: onnx.ModelProto, ir_model: onnx_ir.Model):
 
 def analyze_on_ir(model: onnx.ModelProto, ir_model: onnx_ir.Model) -> IrLlmTopology:
     """Topology of ``model``, resolved onto ``ir_model``."""
-    return resolve_topology(analyze_llm_topology(model), ir_model)
+    return resolve_topology(analyze_llm_topology_by_norm_count(model), ir_model)
 
 
 def weight_array(value) -> np.ndarray:
@@ -2094,7 +2094,7 @@ class TestTopologyArgument:
             explicit,
             enable_r1=True,
             enable_r2=True,
-            topology=analyze_llm_topology(explicit),
+            topology=analyze_llm_topology_by_norm_count(explicit),
         )
 
         from_internal = self._initializers(internal)
@@ -2106,7 +2106,7 @@ class TestTopologyArgument:
     def test_explicit_topology_does_not_warn(self):
         """Passing a topology is the supported call; it must stay warning-free."""
         model = self._model()
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -2131,7 +2131,7 @@ class TestTopologyArgument:
     def test_topology_without_hidden_size_raises(self):
         """R1's Hadamard has no dimension without ``hidden_size``."""
         model = self._model()
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
         topology.hidden_size = None
 
         with pytest.raises(ValueError, match="hidden_size is None"):
@@ -2145,7 +2145,7 @@ class TestTopologyArgument:
         error matters more than the others — assert the model is left alone too.
         """
         model = self._model()
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
         topology.active_norms = []
         init_before = self._initializers(model)
 
@@ -2163,7 +2163,7 @@ class TestTopologyArgument:
         must come back unrotated rather than half-rotated.
         """
         model = self._model()
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
         topology.blocks[0].o_proj = ["no_such_node_in_this_graph"]
         init_before = self._initializers(model)
 
@@ -2223,7 +2223,7 @@ class TestTopologySurvivesRotation:
         """
         torch.manual_seed(0)
         model = _export_decoder_with_pkv(LlamaStyleDecoder())
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
         boundaries = self._boundary_names(topology)
         assert boundaries and all(name is not None for name in boundaries)
 
@@ -2250,7 +2250,7 @@ class TestTopologySurvivesRotation:
 
         torch.manual_seed(0)
         model = _export_decoder_with_pkv(LlamaStyleDecoder())
-        topology = analyze_llm_topology(model)
+        topology = analyze_llm_topology_by_norm_count(model)
 
         apply_spinquant(model, topology=topology, enable_r1=True, enable_r3=True)
 

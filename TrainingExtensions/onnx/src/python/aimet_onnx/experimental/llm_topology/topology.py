@@ -5,18 +5,22 @@
 
 Describes the structure of an ONNX decoder-stack model at two levels:
 
-* *block level* — where each decoder block starts/ends on the residual stream
-  (from :func:`get_decoder_block_boundaries`); and
+* *block level* — where each decoder block starts/ends on the residual stream; and
 * *intra-block level* — the individual weighted projections
-  (q/k/v/o, gate/up/down, or their fused variants) and the two dynamic
-  (non-weighted) attention MatMuls (Q·Kᵀ and softmax·V) inside each block,
-  plus the model-level embed_tokens and lm_head.
+  (q/k/v/o, gate/up/down) and the two dynamic (non-weighted) attention MatMuls
+  (Q·Kᵀ and softmax·V) inside each block, plus the model-level embed_tokens and
+  lm_head.
 
-Weighted read projections are grouped coarsely by the active norm they read
-from (the ``qkv`` and ``gate_up`` :class:`LinearGroup`\\ s), and each group also
-carries a fine-grained role split (``q_proj`` / ``k_proj`` / ``v_proj`` /
-``gate_proj`` / ``up_proj``) derived from module names by :mod:`layer_roles`.
-The dynamic MatMuls are found by pure graph topology.
+:func:`analyze_llm_topology` finds every named layer by its HuggingFace module
+path for a given ``model_type`` (see :mod:`hf_patterns`), derives the unnamed
+parts (residual tensors, dynamic MatMuls) from the graph around them, and
+cross-checks the names against the graph structure.
+
+.. note::
+   :func:`analyze_llm_topology_by_norm_count` (built on :func:`get_llm_topology`)
+   is the legacy path, which infers blocks by counting active norms (from
+   :func:`get_decoder_block_boundaries`) and splits roles by :mod:`layer_roles`.
+   It is kept until its callers migrate and will be removed.
 
 Technique-agnostic: it describes a decoder stack without knowing about any
 specific quantization technique. Everything here works on the analysis IR (see
@@ -42,12 +46,20 @@ from aimet_onnx.utils import ModelProto
 from aimet_onnx.experimental.llm_topology import ir_analysis
 from aimet_onnx.experimental.llm_topology.block_boundaries import (
     get_decoder_block_boundaries_in_ir,
+    headless_block_end,
+)
+from aimet_onnx.experimental.llm_topology.hf_patterns import (
+    BlockMatch,
+    NamedLayerMatch,
+    get_hf_model_patterns,
+    match_named_layers,
 )
 from aimet_onnx.experimental.llm_topology.layer_roles import (
     LinearRole,
 )
 from aimet_onnx.experimental.llm_topology.norm_detection import (
     ActiveNorm,
+    get_active_norm,
     find_active_norms_in_ir,
 )
 from aimet_onnx.experimental.llm_topology.topology_types import (
@@ -260,8 +272,7 @@ def get_llm_topology(
             node
             for node in ir_model.graph
             if topo_index[node] < first_start_topo
-            and node.op_type in ir_analysis.EMBEDDING_TYPES
-            and _is_embedding_table_gather(node)
+            and ir_analysis.is_embedding_table_gather(node)
         ]
     )
     if not result.embed_tokens:
@@ -301,28 +312,103 @@ def get_llm_topology(
 
 def analyze_llm_topology(
     model: ModelProto,
-    active_norms_per_block: int = 2,
-    expected_num_blocks: Optional[int] = None,
-    role_patterns: Optional[Dict[LinearRole, Pattern]] = None,
+    model_type: str,
+    *,
     ir_model: Optional[onnx_ir.Model] = None,
 ) -> LlmTopology:
     """Analyze ``model`` end-to-end and return a name-based :class:`LlmTopology`.
 
-    Runs the whole pipeline on a private onnx_ir copy of ``model``: strip
-    quantizers, fuse RMSNorms, detect active norms and block boundaries, build
-    the per-block topology, and infer ``hidden_size`` / ``head_dim``.
+    Every field that corresponds to a named HuggingFace module is found by name
+    (see :mod:`~.hf_patterns`): the per-block projections and norms,
+    ``embed_tokens``, the final norm and ``lm_head``. Blocks are the decoder
+    layers those names belong to. The remaining fields are derived from the
+    graph around the named layers:
 
-    :param model: ONNX ModelProto to analyze. Not mutated.
-    :param active_norms_per_block: Active norms per decoder block (see
-        :func:`get_decoder_block_boundaries`). Defaults to 2.
-    :param expected_num_blocks: If given, validated against the detected count.
-    :param role_patterns: Optional module-name → role override (see
-        :func:`classify_linear_role`).
+    * ``residual_input`` — the tensor entering the block's input norm;
+      ``residual_output`` — the next block's ``residual_input``, or for the last
+      block the tensor entering the final norm (the final residual ``Add``'s
+      output for a headless backbone).
+    * ``qk_matmul`` / ``attn_v_matmul`` — the dynamic MatMuls between the named
+      q/k/v and o_proj (best-effort: empty when attention is a fused op).
+    * KV-cache names, ``hidden_size`` and ``head_dim`` — as before.
+
+    The named layers are then cross-checked against the graph, so a name that
+    points at the wrong node is an error rather than a wrong topology: each
+    block's q/k/v (gate/up) must be exactly the weighted linears its input
+    (post-attention) norm feeds, o_proj and down_proj must be the linears
+    writing the residual stream, and the final norm must feed exactly lm_head.
+
+    :param model: ONNX ModelProto to analyze. May be a float export or a
+        ``QuantizationSimModel`` graph. Not mutated. A dynamo export must first
+        go through
+        :func:`~aimet_onnx.prepare_passes.fix_node_names_in_dynamo_exported_onnx.fix_node_names_pass`.
+    :param model_type: HuggingFace ``PretrainedConfig.model_type`` of the model
+        (for a VLM, of its text config), e.g. ``"llama"``.
     :param ir_model: Pre-built *analysis* IR for ``model`` — as returned by
         :func:`~.ir_analysis.build_analysis_ir`, i.e. quantizer-stripped and
         RMSNorm-fused. Built here when ``None``. Pass one only to avoid a second
         ``from_proto`` of a large model when the caller already holds it; a
         faithful (unfused) IR will not detect norms and must not be passed.
+    :return: LlmTopology with every field populated. ``head_dim`` is ``None``
+        when the export exposes no ``past_value`` graph input to derive it from.
+    :raises ValueError: If ``model_type`` is unsupported, if the layers cannot
+        be identified by name (:class:`~.hf_patterns.NamedLayerMatchError`), or
+        if the named layers disagree with the graph.
+    """
+    patterns = get_hf_model_patterns(model_type)
+    if ir_model is None:
+        ir_model = ir_analysis.build_analysis_ir(model)
+    topo_index = ir_analysis.topological_index(ir_model)
+    match = match_named_layers(ir_model, patterns)
+    topology = _build_named_topology(ir_model, match, topo_index)
+    topology.hidden_size = _infer_hidden_size(ir_model, topology)
+
+    # head_dim requires a KV-cache 'past_value' graph input; tolerate its
+    # absence (prefill-only / R1-only flows do not need it).
+    try:
+        topology.head_dim = _infer_head_dim(model)
+    except ValueError:
+        topology.head_dim = None
+
+    _logger.info(
+        "Backbone (%s): %d block(s), embed_tokens=%s, lm_head=%s.",
+        model_type,
+        len(topology.blocks),
+        topology.embed_tokens,
+        topology.lm_head,
+    )
+    return topology
+
+
+def analyze_llm_topology_by_norm_count(
+    model: ModelProto,
+    active_norms_per_block: int = 2,
+    expected_num_blocks: Optional[int] = None,
+    role_patterns: Optional[Dict[LinearRole, Pattern]] = None,
+    ir_model: Optional[onnx_ir.Model] = None,
+) -> LlmTopology:
+    """Analyze ``model`` the legacy way: decoder blocks by counting active norms.
+
+    The behavior (and signature) :func:`analyze_llm_topology` had before it took a
+    ``model_type``: detect every active RMSNorm, group them ``active_norms_per_block``
+    at a time into decoder blocks, split each block's linears into roles with the
+    generic :func:`~.layer_roles.classify_linear_role` table, and infer
+    ``hidden_size`` / ``head_dim``. Needs no ``model_type``, so it also runs on
+    architectures without a built-in name table.
+
+    .. warning::
+       Temporary. Kept for callers that have not migrated to
+       :func:`analyze_llm_topology`, and removed together with
+       :func:`get_llm_topology`.
+
+    :param model: ONNX ModelProto to analyze. Not mutated.
+    :param active_norms_per_block: Active norms per decoder block (see
+        :func:`~.block_boundaries.get_decoder_block_boundaries`). Defaults to 2.
+    :param expected_num_blocks: If given, validated against the detected count.
+    :param role_patterns: Optional module-name → role override (see
+        :func:`~.layer_roles.classify_linear_role`).
+    :param ir_model: Pre-built analysis IR for ``model``, as for
+        :func:`analyze_llm_topology`.
     :return: LlmTopology with block/backbone roles, ``active_norms``,
         ``hidden_size`` and ``head_dim`` populated. ``head_dim`` is ``None`` when
         the export exposes no ``past_value`` graph input to derive it from.
@@ -360,30 +446,211 @@ def analyze_llm_topology(
     return topology
 
 
+def _build_named_topology(
+    ir_model: onnx_ir.Model,
+    match: NamedLayerMatch,
+    topo_index: Dict[onnx_ir.Node, int],
+) -> LlmTopology:
+    """Build an :class:`LlmTopology` from validated named layers.
+
+    :raises ValueError: Listing every place the named layers disagree with the
+        graph.
+    """
+    node_by_name = ir_analysis.node_by_name(ir_model)
+    node_by_output = ir_analysis.node_by_output_tensor(ir_model)
+    problems: List[str] = []
+
+    def active_norm(name: str) -> ActiveNorm:
+        norm = get_active_norm(node_by_name[name], topo_index)
+        # A gamma shared between norms (identical tensors de-duplicated by the
+        # exporter) is rejected rather than followed: SpinQuant's norm fusion resets
+        # each gamma to ones in place, so with one shared tensor the first reset
+        # would silently change every other norm. Trained models never share gammas.
+        if norm is None:
+            raise ValueError(
+                f"Norm '{name}' has no static gamma (scale) input of its own. "
+                "Either the norm is not affine, or the exporter de-duplicated "
+                "identical gamma tensors (e.g. behind an Identity op), as happens "
+                "for an untrained model whose gammas are all 1.0."
+            )
+        return norm
+
+    input_norms = [active_norm(block.input_norm) for block in match.blocks]
+    post_attention_norms = [
+        active_norm(block.post_attention_norm) for block in match.blocks
+    ]
+    final_norm = active_norm(match.final_norm) if match.final_norm else None
+
+    # The last block ends where the final norm reads the residual stream, as every
+    # other block ends at the next one's input norm. A headless backbone's final
+    # norm feeds no linear and may be absent altogether, so there the last block
+    # ends on the final residual Add instead: SpinQuant un-rotates the stream by
+    # rewiring every consumer of that tensor, the backbone output included.
+    residual_starts = [norm.input_tensor for norm in input_norms]
+    if final_norm is not None and final_norm.downstream_linears:
+        residual_starts.append(final_norm.input_tensor)
+    else:
+        residual_starts.append(
+            headless_block_end(ir_model, residual_starts[-1], topo_index)
+        )
+
+    result = LlmTopology()
+    for i, block in enumerate(match.blocks):
+        input_norm, post_attention_norm = input_norms[i], post_attention_norms[i]
+        label = f"Block {i} (layer {block.layer_id})"
+
+        qkv = _named_group(block, _QKV_ROLES, topo_index, node_by_name)
+        gate_up = _named_group(block, _GATE_UP_ROLES, topo_index, node_by_name)
+        problems += _compare(
+            f"{label}: q/k/v",
+            qkv.linears,
+            "input norm consumers",
+            input_norm.downstream_linears,
+        )
+        problems += _compare(
+            f"{label}: gate/up",
+            gate_up.linears,
+            "post-attention norm consumers",
+            post_attention_norm.downstream_linears,
+        )
+
+        o_proj = block.linears[LinearRole.O_PROJ]
+        down_proj = block.linears[LinearRole.DOWN_PROJ]
+        attn_writers = _find_nearest_upstream_linears(
+            post_attention_norm.input_tensor,
+            input_norm.input_tensor,
+            node_by_output,
+            topo_index,
+        )
+        mlp_writers = _find_nearest_upstream_linears(
+            residual_starts[i + 1],
+            post_attention_norm.input_tensor,
+            node_by_output,
+            topo_index,
+        )
+        problems += _compare(
+            f"{label}: o_proj",
+            o_proj,
+            "attention residual writers",
+            ir_analysis.node_names(attn_writers),
+        )
+        problems += _compare(
+            f"{label}: down_proj",
+            down_proj,
+            "MLP residual writers",
+            ir_analysis.node_names(mlp_writers),
+        )
+
+        qk_matmul, attn_v_matmul = _find_attention_matmuls(
+            [node_by_name[name] for name in qkv.linears],
+            [node_by_name[name] for name in o_proj],
+            topo_index,
+        )
+        if not qk_matmul or not attn_v_matmul:
+            _logger.debug(
+                "%s: dynamic attention MatMuls not found (qk=%s, attn_v=%s); "
+                "attention may be a fused op.",
+                label,
+                qk_matmul,
+                attn_v_matmul,
+            )
+
+        result.blocks.append(
+            BlockTopology(
+                qkv=qkv,
+                o_proj=list(o_proj),
+                gate_up=gate_up,
+                down_proj=list(down_proj),
+                qk_matmul=ir_analysis.node_names(qk_matmul),
+                attn_v_matmul=ir_analysis.node_names(attn_v_matmul),
+                residual_input=residual_starts[i],
+                residual_output=residual_starts[i + 1],
+            )
+        )
+
+    result.lm_head = [match.lm_head] if match.lm_head else []
+    result.embed_tokens = [match.embed_tokens] if match.embed_tokens else []
+    if final_norm is not None:
+        problems += _compare(
+            "lm_head",
+            result.lm_head,
+            "final norm consumers",
+            final_norm.downstream_linears,
+        )
+    if problems:
+        raise ValueError(
+            "The layers identified by name disagree with the graph structure:\n"
+            + "\n".join(f"  - {problem}" for problem in problems)
+        )
+
+    # Same membership rule as find_active_norms_in_ir: a norm is active iff it
+    # feeds a weighted linear, which leaves out a headless backbone's final norm.
+    result.active_norms = sorted(
+        (
+            norm
+            for norm in (*input_norms, *post_attention_norms, final_norm)
+            if norm is not None and norm.downstream_linears
+        ),
+        key=lambda norm: norm.topo_index,
+    )
+
+    result.past_key_input_names = _collect_matching_names_in_order(
+        ir_model.graph.inputs, _PAST_KEY_INPUT_NAME_PATTERN
+    )
+    result.past_value_input_names = _collect_matching_names_in_order(
+        ir_model.graph.inputs, _PAST_VALUE_INPUT_NAME_PATTERN
+    )
+    result.past_key_output_names = _collect_matching_names_in_order(
+        ir_model.graph.outputs, _PAST_KEY_OUTPUT_NAME_PATTERN
+    )
+    result.past_value_output_names = _collect_matching_names_in_order(
+        ir_model.graph.outputs, _PAST_VALUE_OUTPUT_NAME_PATTERN
+    )
+    return result
+
+
+#: Roles of the attention read group, and of the MLP read group.
+_QKV_ROLES = (LinearRole.Q_PROJ, LinearRole.K_PROJ, LinearRole.V_PROJ)
+_GATE_UP_ROLES = (LinearRole.GATE_PROJ, LinearRole.UP_PROJ)
+
+
+def _named_group(
+    block: BlockMatch,
+    roles: Tuple[LinearRole, ...],
+    topo_index: Dict[onnx_ir.Node, int],
+    node_by_name: Dict[str, onnx_ir.Node],
+) -> LinearGroup:
+    """Build a read group from the named linears of ``roles``, in topological order."""
+    by_role: Dict[LinearRole, List[str]] = {role: [] for role in LinearRole}
+    for role in roles:
+        by_role[role] = list(block.linears[role])
+    linears = sorted(
+        (name for role in roles for name in block.linears[role]),
+        key=lambda name: topo_index[node_by_name[name]],
+    )
+    return LinearGroup(linears=linears, by_role=by_role)
+
+
+def _compare(
+    named_label: str,
+    named: List[str],
+    graph_label: str,
+    from_graph: List[str],
+) -> List[str]:
+    """Return a problem if the ``named`` nodes are not the ``from_graph`` nodes."""
+    if set(named) == set(from_graph):
+        return []
+    return [
+        f"{named_label} by name {sorted(named)} != {graph_label} in the graph "
+        f"{sorted(from_graph)}."
+    ]
+
+
 def _collect_matching_names_in_order(
     values: Iterable[onnx_ir.Value], pattern: Pattern
 ) -> List[str]:
     """Return names matching ``pattern`` in graph declaration order."""
     return [value.name for value in values if value.name and pattern.search(value.name)]
-
-
-def _is_embedding_table_gather(node: onnx_ir.Node) -> bool:
-    """Return True if ``node`` is a token-embedding ``Gather`` (data is a 2-D table).
-
-    A real embedding ``Gather`` has the embedding *table* as its first (data)
-    input — a static rank-2 ``[vocab, hidden]`` initializer. Other Gathers in
-    the prologue (e.g. position-id lookups, ``shape``-derived indexers) hold
-    static scalar or 1-D constants on input 0 and must be excluded.
-
-    :param node: Candidate Gather node.
-    :return: True iff ``node`` looks like a token-embedding lookup.
-    """
-    if not node.inputs:
-        return False
-    table = static_tensor(node.inputs[0])
-    if table is None:
-        return False
-    return len(table.shape) >= 2
 
 
 def _find_attention_matmuls(
@@ -602,5 +869,6 @@ def _infer_head_dim(model: ModelProto) -> int:
 
 __all__ = [
     "analyze_llm_topology",
+    "analyze_llm_topology_by_norm_count",
     "get_llm_topology",
 ]

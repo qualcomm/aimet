@@ -41,6 +41,7 @@ from aimet_onnx.experimental.llm_topology.norm_detection import (
 )
 from aimet_onnx.experimental.llm_topology.topology import (
     analyze_llm_topology,
+    analyze_llm_topology_by_norm_count,
     get_llm_topology,
 )
 from aimet_onnx.experimental.llm_topology.topology_types import (
@@ -60,6 +61,7 @@ __all__ = [
     "LinearRole",
     "LlmTopology",
     "analyze_llm_topology",
+    "analyze_llm_topology_by_norm_count",
     "classify_linear_role",
     "find_active_norms",
     "get_decoder_block_boundaries",

@@ -128,6 +128,36 @@ def find_active_norms_in_ir(
     return result
 
 
+def get_active_norm(
+    node: onnx_ir.Node,
+    topo_index: Dict[onnx_ir.Node, int],
+) -> Optional[ActiveNorm]:
+    """Return the :class:`ActiveNorm` for one fused RMSNorm node.
+
+    Unlike :func:`find_active_norms_in_ir` the norm is not required to feed a
+    weighted linear, so ``downstream_linears`` may be empty (e.g. the final norm
+    of a headless backbone). The caller decides whether that is acceptable.
+
+    :param node: Fused ``RMSNormalization`` node, e.g. one found by name.
+    :param topo_index: Node → topological index map.
+    :return: The norm, or None if ``node`` is not a fused affine RMSNorm applied
+        to an activation.
+    """
+    if not ir_analysis.is_rms_norm(node):
+        return None
+    scale = _gamma_input(node)
+    input_tensor = _residual_input(node)
+    if scale is None or input_tensor is None:
+        return None
+    return ActiveNorm(
+        norm=ir_analysis.node_name(node),
+        input_tensor=input_tensor,
+        scale_name=scale.name or "",
+        downstream_linears=_find_downstream_linears(node, topo_index),
+        topo_index=topo_index[node],
+    )
+
+
 def get_last_norm_input_tensor(model: ModelProto) -> str:
     """Return the residual tensor entering the last RMSNorm in topological order.
 
@@ -232,6 +262,7 @@ def _find_downstream_linears(
 
 __all__ = [
     "ActiveNorm",
+    "get_active_norm",
     "find_active_norms",
     "find_active_norms_in_ir",
     "get_last_norm_input_tensor",

@@ -151,7 +151,7 @@ def get_decoder_block_boundaries_in_ir(
         block_boundaries.append(
             (
                 last_block_start,
-                _headless_block_end(ir_model, last_block_start, topo_index),
+                headless_block_end(ir_model, last_block_start, topo_index),
             )
         )
 
@@ -217,7 +217,7 @@ def _resolve_norms_per_block(
     return 2  # default: Llama/Qwen2/Mistral/Phi family
 
 
-def _headless_block_end(
+def headless_block_end(
     ir_model: onnx_ir.Model,
     last_block_start: str,
     topo_index: Dict[onnx_ir.Node, int],
@@ -292,5 +292,6 @@ def _find_value(ir_model: onnx_ir.Model, tensor_name: str) -> Optional[onnx_ir.V
 __all__ = [
     "get_decoder_block_boundaries",
     "get_decoder_block_boundaries_in_ir",
+    "headless_block_end",
     "resolve_residual_tensor_name",
 ]

@@ -79,7 +79,7 @@ class TestRecipesConsumeSuppliedTopology:
         assert mock_adascale.call_args.kwargs["topology"] is topology
 
     def test_neither_recipe_analyzes_topology_itself(self):
-        """``analyze_llm_topology`` belongs to the runner, not to the recipes.
+        """Topology analysis belongs to the runner, not to the recipes.
 
         A recipe that analyzed on its own would reintroduce the per-call analysis
         this change removed — and, after a rotation, would analyze a different
@@ -90,7 +90,7 @@ class TestRecipesConsumeSuppliedTopology:
         import GenAILab.bench.onnx.quant_recipes as quant_recipes
         from GenAILab.bench.onnx.quant_recipes import AdaScale, SpinQuant
 
-        assert not hasattr(quant_recipes, "analyze_llm_topology")
+        assert not hasattr(quant_recipes, "analyze_llm_topology_by_norm_count")
 
         topology = MagicMock(name="topology")
         float_model = MagicMock()
@@ -99,7 +99,7 @@ class TestRecipesConsumeSuppliedTopology:
         generator.config.model_type = "llama"
 
         with patch(
-            "aimet_onnx.experimental.llm_topology.topology.analyze_llm_topology"
+            "aimet_onnx.experimental.llm_topology.topology.analyze_llm_topology_by_norm_count"
         ) as mock_analyze:
             with patch("GenAILab.bench.onnx.quant_recipes.apply_spinquant"):
                 SpinQuant.apply(float_model, enable_r1=True, topology=topology)

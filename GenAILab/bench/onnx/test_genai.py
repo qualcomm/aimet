@@ -13,7 +13,7 @@ from pathlib import Path
 from transformers.processing_utils import ProcessorMixin
 
 from aimet_onnx.quantsim import load_encodings_to_sim
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.experimental.llm_topology import analyze_llm_topology_by_norm_count
 
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
 from GenAILab.bench.profiler import (
@@ -135,7 +135,7 @@ def test_llm_quantization(
     # in missing names, but a raw export has not been through that, so a graph
     # from an exporter that leaves nodes unnamed raises here with a clear message
     # instead of failing opaquely later.
-    topology = analyze_llm_topology(entry.backbone)
+    topology = analyze_llm_topology_by_norm_count(entry.backbone)
 
     # Apply the pre-sim chain generically (name -> registered
     # PreQuantizationTechnique -> apply(float_model, **flags)); the onnx float

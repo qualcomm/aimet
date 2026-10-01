@@ -13,7 +13,7 @@ import tempfile
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.experimental.llm_topology import analyze_llm_topology_by_norm_count
 
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import (
     TorchONNXInterface,
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     # Analyze the decoder-stack structure on the float model, before quantizing:
     # the topology describes the model, not the sim. SpinQuant uses it to place its
     # rotations; AdaScale uses it to locate the decoder blocks it optimizes.
-    topology = analyze_llm_topology(onnx_model)
+    topology = analyze_llm_topology_by_norm_count(onnx_model)
 
     # SpinQuant rewrites the float graph, so it runs before the sim is built: the sim
     # must wrap the rotated weights (and the ops R3 inserts) in its quantizers.
