@@ -19,9 +19,10 @@ exports, with expected node names derived from the torch model.
 
 :func:`analyze_llm_topology` on top of the matches:
 
-* :class:`TestAnalyzeLlmTopology` — every topology field on real HF Llama /
-  Qwen3 exports under both exporters, plus agreement with the legacy
-  norm-counting analysis.
+* :class:`TestAnalyzeLlmTopology` — every topology field on real HF exports of
+  every supported model_type (Gemma 2, Gemma 3, Llama, Phi-3, Qwen2, Qwen3, and
+  the Qwen2.5-VL / Qwen3-VL text backbones) under both exporters, plus agreement
+  with the legacy norm-counting analysis.
 * :class:`TestStructuralCrossChecks` — names swapped between nodes still match
   one-per-field, so only the structural checks can catch them.
 * :class:`TestExportVariants` — KV-cache, headless, ``inputs_embeds`` and
@@ -29,9 +30,11 @@ exports, with expected node names derived from the torch model.
 """
 
 import copy
+import dataclasses
 import os
 import tempfile
 
+import numpy as np
 import onnx
 import onnx_ir
 import pytest
@@ -55,7 +58,9 @@ from aimet_onnx.experimental.llm_topology.topology import (
     analyze_llm_topology,
     analyze_llm_topology_by_norm_count,
 )
+from aimet_onnx.experimental.llm_topology import hf_patterns
 from aimet_onnx.experimental.llm_topology.hf_patterns import (
+    HfModelPatterns,
     ModuleKind,
     ModuleNode,
     NamedLayerMatchError,
@@ -72,10 +77,25 @@ _NUM_LAYERS = 2
 _SEQ = 8
 _BACKENDS = ("torchscript", "dynamo")
 
-# HF model_type -> transformers config class name.
+# Causal-LM model_type -> transformers config class name.
 _HF_MODELS = {
+    "gemma2": "Gemma2Config",
+    "gemma3_text": "Gemma3TextConfig",
     "llama": "LlamaConfig",
+    "phi3": "Phi3Config",
+    "qwen2": "Qwen2Config",
     "qwen3": "Qwen3Config",
+}
+
+# VLM text model_type -> (VLM config class name, vision config kwargs). The text
+# config is passed as a dict, so the VLM config builds its own text config class.
+_VISION = dict(depth=2, hidden_size=32, intermediate_size=64, num_heads=2)
+_HF_VLMS = {
+    "qwen2_5_vl_text": ("Qwen2_5_VLConfig", dict(_VISION, out_hidden_size=64)),
+    "qwen3_vl_text": (
+        "Qwen3VLConfig",
+        dict(_VISION, out_hidden_size=64, deepstack_visual_indexes=[0]),
+    ),
 }
 
 # Module attribute path under ``layers.<N>`` for each projection role.
@@ -89,6 +109,26 @@ _ROLE_MODULES = {
     LinearRole.DOWN_PROJ: "mlp.down_proj",
 }
 
+# Phi-3 fuses q/k/v and gate/up into one projection each.
+_FUSED_ROLE_MODULES = {
+    LinearRole.FUSED_QKV: "self_attn.qkv_proj",
+    LinearRole.O_PROJ: "self_attn.o_proj",
+    LinearRole.FUSED_GATE_UP: "mlp.gate_up_proj",
+    LinearRole.DOWN_PROJ: "mlp.down_proj",
+}
+
+
+def _role_modules(model_type):
+    """Module path under ``layers.<N>`` per projection role of ``model_type``."""
+    return _FUSED_ROLE_MODULES if model_type == "phi3" else _ROLE_MODULES
+
+
+def _block_norms(model_type):
+    """HF names of the pre-attention and pre-MLP norms of a ``model_type`` layer."""
+    patterns = get_hf_model_patterns(model_type)
+    return patterns.input_norm, patterns.post_attention_norm
+
+
 _TINY_TEXT_CONFIG = dict(
     num_hidden_layers=_NUM_LAYERS,
     hidden_size=64,
@@ -97,6 +137,8 @@ _TINY_TEXT_CONFIG = dict(
     num_key_value_heads=2,
     head_dim=16,
     vocab_size=128,
+    # Phi-3 defaults to pad_token_id=32000, outside this vocab.
+    pad_token_id=0,
     tie_word_embeddings=False,
 )
 
@@ -107,6 +149,20 @@ def _config(config_attr, **kwargs):
     if cfg_cls is None:
         pytest.skip(f"{config_attr} is not available in this transformers version")
     return cfg_cls(**kwargs)
+
+
+def _vlm_config(model_type):
+    """Tiny config of the VLM whose text config is ``model_type``."""
+    config_attr, vision_config = _HF_VLMS[model_type]
+    text_config = dict(_TINY_TEXT_CONFIG)
+    if model_type == "qwen2_5_vl_text":
+        # Multimodal RoPE splits head_dim / 2 = 8 frequencies over (t, h, w).
+        text_config["rope_parameters"] = dict(
+            rope_type="default", rope_theta=1e6, mrope_section=[2, 3, 3]
+        )
+    cfg = _config(config_attr, text_config=text_config, vision_config=vision_config)
+    assert cfg.text_config.model_type == model_type
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +198,91 @@ class TestModulePathOf:
 def test_unknown_model_type_lists_supported():
     with pytest.raises(ValueError, match="Unsupported model_type 'gpt2'") as exc:
         get_hf_model_patterns("gpt2")
-    for model_type in _HF_MODELS:
+    for model_type in (*_HF_MODELS, *_HF_VLMS):
         assert model_type in str(exc.value)
+
+
+class TestHfModelPatternsConstruction:
+    """Every field has a visible default; a set fused projection takes precedence."""
+
+    def test_split_projections_default_to_llama_names(self):
+        patterns = HfModelPatterns()
+        assert (patterns.q_proj, patterns.k_proj, patterns.v_proj) == (
+            "self_attn.q_proj",
+            "self_attn.k_proj",
+            "self_attn.v_proj",
+        )
+        assert (patterns.gate_proj, patterns.up_proj) == (
+            "mlp.gate_proj",
+            "mlp.up_proj",
+        )
+        assert patterns.qkv_proj is None and patterns.gate_up_proj is None
+
+    def test_fused_projections_take_precedence_in_linears(self):
+        """The split fields keep their defaults but are not matched."""
+        patterns = HfModelPatterns(
+            qkv_proj="self_attn.qkv_proj", gate_up_proj="mlp.gate_up_proj"
+        )
+        assert patterns.q_proj == "self_attn.q_proj"
+        assert patterns.linears == {
+            LinearRole.FUSED_QKV: "self_attn.qkv_proj",
+            LinearRole.O_PROJ: "self_attn.o_proj",
+            LinearRole.FUSED_GATE_UP: "mlp.gate_up_proj",
+            LinearRole.DOWN_PROJ: "mlp.down_proj",
+        }
+
+    def test_one_fused_projection_keeps_the_other_side_split(self):
+        """Only the side that is fused is replaced."""
+        linears = HfModelPatterns(qkv_proj="self_attn.qkv_proj").linears
+        assert LinearRole.FUSED_QKV in linears and LinearRole.Q_PROJ not in linears
+        assert linears[LinearRole.GATE_PROJ] == "mlp.gate_proj"
+        assert linears[LinearRole.UP_PROJ] == "mlp.up_proj"
+
+    @pytest.mark.parametrize(
+        "kwargs, conflicting",
+        [
+            ({"qkv_proj": "self_attn.qkv_proj", "q_proj": "self_attn.q"}, "q_proj"),
+            (
+                {"qkv_proj": "a.qkv", "k_proj": "a.k", "v_proj": "a.v"},
+                "k_proj, v_proj",
+            ),
+            ({"gate_up_proj": "mlp.gate_up_proj", "up_proj": "mlp.up"}, "up_proj"),
+        ],
+    )
+    def test_fused_and_overridden_split_is_rejected(self, kwargs, conflicting):
+        with pytest.raises(ValueError, match=f"replaces .*but {conflicting} "):
+            HfModelPatterns(**kwargs)
+
+    def test_replace_derives_a_fused_entry(self):
+        """``dataclasses.replace`` works: construction no longer rewrites fields."""
+        derived = dataclasses.replace(HfModelPatterns(), qkv_proj="self_attn.qkv_proj")
+        assert LinearRole.FUSED_QKV in derived.linears
+
+    def test_language_model_default(self):
+        assert HfModelPatterns().language_model == "language_model"
+
+    def test_patterns_stay_frozen(self):
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            HfModelPatterns().q_proj = "x"
+
+
+@pytest.mark.parametrize(
+    "config_attr, model_type",
+    [
+        # Phi-3.5-mini and Phi-4 / Phi-4-mini ship as Phi3ForCausalLM.
+        ("Phi3Config", "phi3"),
+        # Qwen2.5 ships as Qwen2ForCausalLM.
+        ("Qwen2Config", "qwen2"),
+        ("Gemma2Config", "gemma2"),
+        # Also the text_config of a Gemma 3 VLM (model_type "gemma3").
+        ("Gemma3TextConfig", "gemma3_text"),
+        ("Qwen2_5_VLTextConfig", "qwen2_5_vl_text"),
+        ("Qwen3VLTextConfig", "qwen3_vl_text"),
+    ],
+)
+def test_registered_model_type_is_the_hf_config_model_type(config_attr, model_type):
+    """Table keys are what ``config.model_type`` (``text_config`` for a VLM) reports."""
+    assert _config(config_attr).model_type == model_type
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +333,8 @@ class TestPatternsOnHfModuleTrees:
         assert match.decoder_prefix == "model"
         assert [b.layer_id for b in match.blocks] == list(range(_NUM_LAYERS))
         for block in match.blocks:
-            for role, module in _ROLE_MODULES.items():
+            assert set(block.linears) == set(_role_modules(model_type))
+            for role, module in _role_modules(model_type).items():
                 assert block.linears[role] == [
                     f"/model.layers.{block.layer_id}.{module}/Op"
                 ]
@@ -229,10 +369,25 @@ class TestPatternsOnHfModuleTrees:
                 get_hf_model_patterns("llama"),
             )
 
+    def test_phi3_with_llama_patterns_is_rejected(self):
+        """Fused qkv_proj / gate_up_proj are not Llama modules, and vice versa."""
+        cfg = _config("Phi3Config", **_TINY_TEXT_CONFIG)
+        with pytest.raises(NamedLayerMatchError, match=r"self_attn\.qkv_proj"):
+            match_module_nodes(
+                _module_nodes(_meta_model("AutoModelForCausalLM", cfg)),
+                get_hf_model_patterns("llama"),
+            )
+        cfg = _config("LlamaConfig", **_TINY_TEXT_CONFIG)
+        with pytest.raises(NamedLayerMatchError, match=r"self_attn\.q_proj"):
+            match_module_nodes(
+                _module_nodes(_meta_model("AutoModelForCausalLM", cfg)),
+                get_hf_model_patterns("phi3"),
+            )
+
     @pytest.mark.parametrize(
         "config_attr, extra, offending",
         [
-            ("Phi3Config", {"pad_token_id": 0}, r"self_attn\.qkv_proj"),
+            ("Gemma2Config", {}, r"pre_feedforward_layernorm"),
             ("Gemma3TextConfig", {}, r"pre_feedforward_layernorm"),
             # Experts are not nn.Linear, so no gate/up/down projection is found.
             (
@@ -261,12 +416,27 @@ class TestPatternsOnHfModuleTrees:
             num_attention_heads=2,
         )
         return {
+            **{
+                model_type: _meta_model(
+                    "AutoModelForImageTextToText", _vlm_config(model_type)
+                )
+                for model_type in _HF_VLMS
+            },
             "llama": _meta_model(
                 "AutoModelForImageTextToText",
                 _config(
                     "LlavaConfig",
                     text_config=_config("LlamaConfig", **_TINY_TEXT_CONFIG),
                     vision_config=_config("CLIPVisionConfig", **vision),
+                ),
+            ),
+            "gemma3_text": _meta_model(
+                "AutoModelForImageTextToText",
+                _config(
+                    "Gemma3Config",
+                    text_config=dict(_TINY_TEXT_CONFIG),
+                    vision_config=dict(vision, image_size=28, patch_size=14),
+                    mm_tokens_per_image=4,
                 ),
             ),
             "qwen3": _meta_model(
@@ -279,12 +449,19 @@ class TestPatternsOnHfModuleTrees:
             ),
         }
 
-    @pytest.mark.parametrize("model_type", sorted(_HF_MODELS))
+    #: Text models whose VLM is built in ``vlms``.
+    _VLM_TEXT_MODELS = sorted(("gemma3_text", "llama", "qwen3", *_HF_VLMS))
+
+    @pytest.mark.parametrize("model_type", _VLM_TEXT_MODELS)
     def test_vlm_language_backbone_matches(self, vlms, model_type):
         """The text backbone of a VLM, exported on its own, sits under language_model."""
         nodes = _module_nodes(
             vlms[model_type],
-            exclude=("model.vision_tower", "model.multi_modal_projector"),
+            exclude=(
+                "model.vision_tower",
+                "model.multi_modal_projector",
+                "model.visual",
+            ),
         )
         match = match_module_nodes(nodes, get_hf_model_patterns(model_type))
 
@@ -294,14 +471,19 @@ class TestPatternsOnHfModuleTrees:
         assert match.final_norm == "/model.language_model.norm/Op"
         assert match.lm_head == "/lm_head/Op"
 
-    @pytest.mark.parametrize("model_type", sorted(_HF_MODELS))
+    @pytest.mark.parametrize("model_type", _VLM_TEXT_MODELS)
     def test_full_vlm_is_rejected(self, vlms, model_type):
         """A vision tower's q_proj etc. must never be mistaken for decoder layers.
 
-        LLaVA's CLIP tower is a second ``layers.<N>`` stack; InternVL's is
+        LLaVA's CLIP and Gemma 3's SigLIP towers are a second ``layers.<N>``
+        stack; InternVL's is
         ``layer.<N>``, so it is caught as look-alike names outside the decoder.
+        Qwen2.5-VL's and Qwen3-VL's are ``blocks.<N>`` with names (``attn.qkv``,
+        ``linear_fc1``) mostly unknown to the table, caught as nodes outside the
+        language backbone.
         """
-        with pytest.raises(NamedLayerMatchError, match="vision_tower"):
+        tower = "visual" if model_type in _HF_VLMS else "vision_tower"
+        with pytest.raises(NamedLayerMatchError, match=tower):
             match_module_nodes(
                 _module_nodes(vlms[model_type]), get_hf_model_patterns(model_type)
             )
@@ -320,67 +502,108 @@ class _RMSNorm(nn.Module):
 
 
 class _Attention(nn.Module):
-    """Single-head attention; ``qk_norm`` adds Qwen3's per-head ``q_norm`` / ``k_norm``."""
+    """Single-head attention.
 
-    def __init__(self, dim, call_o_proj_twice=False, qk_norm=False):
+    ``qk_norm`` adds Qwen3's per-head ``q_norm`` / ``k_norm``; ``fused`` replaces
+    q/k/v with Phi-3's single ``qkv_proj``.
+    """
+
+    def __init__(self, dim, call_o_proj_twice=False, qk_norm=False, fused=False):
         super().__init__()
-        self.q_proj, self.k_proj, self.v_proj, self.o_proj = (
-            nn.Linear(dim, dim, bias=False) for _ in range(4)
-        )
+        if fused:
+            self.qkv_proj = nn.Linear(dim, 3 * dim, bias=False)
+        else:
+            self.q_proj, self.k_proj, self.v_proj = (
+                nn.Linear(dim, dim, bias=False) for _ in range(3)
+            )
+        self.o_proj = nn.Linear(dim, dim, bias=False)
         self.q_norm = _RMSNorm(dim) if qk_norm else None
         self.k_norm = _RMSNorm(dim) if qk_norm else None
+        self.fused = fused
         self.call_o_proj_twice = call_o_proj_twice
 
     def forward(self, x):
-        q, k = self.q_proj(x), self.k_proj(x)
+        if self.fused:
+            q, k, v = self.qkv_proj(x).chunk(3, dim=-1)
+        else:
+            q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x)
         if self.q_norm is not None:
             q, k = self.q_norm(q), self.k_norm(k)
         scores = q @ k.transpose(-1, -2)
-        out = self.o_proj(torch.softmax(scores, dim=-1) @ self.v_proj(x))
+        out = self.o_proj(torch.softmax(scores, dim=-1) @ v)
         if self.call_o_proj_twice:
             out = self.o_proj(out)
         return out
 
 
 class _Mlp(nn.Module):
-    def __init__(self, dim):
+    """Gated MLP; ``fused`` replaces gate/up with Phi-3's single ``gate_up_proj``."""
+
+    def __init__(self, dim, fused=False):
         super().__init__()
-        self.gate_proj = nn.Linear(dim, 2 * dim, bias=False)
-        self.up_proj = nn.Linear(dim, 2 * dim, bias=False)
+        if fused:
+            self.gate_up_proj = nn.Linear(dim, 4 * dim, bias=False)
+        else:
+            self.gate_proj = nn.Linear(dim, 2 * dim, bias=False)
+            self.up_proj = nn.Linear(dim, 2 * dim, bias=False)
         self.down_proj = nn.Linear(2 * dim, dim, bias=False)
 
     def forward(self, x):
-        return self.down_proj(torch.relu(self.gate_proj(x)) * self.up_proj(x))
+        return _gated_mlp(self._modules, x)
 
 
 class _DictMlp(nn.Module):
-    """``_Mlp`` whose projections live in a ``ModuleDict``: ``mlp.proj.gate_proj``."""
+    """``_Mlp`` whose projections live in a ``ModuleDict``: ``mlp.proj.<name>``."""
 
-    def __init__(self, dim):
+    def __init__(self, dim, fused=False):
         super().__init__()
-        mlp = _Mlp(dim)
-        self.proj = nn.ModuleDict(
-            {
-                "gate_proj": mlp.gate_proj,
-                "up_proj": mlp.up_proj,
-                "down_proj": mlp.down_proj,
-            }
-        )
+        self.proj = nn.ModuleDict(dict(_Mlp(dim, fused).named_children()))
 
     def forward(self, x):
-        gate = torch.relu(self.proj["gate_proj"](x))
-        return self.proj["down_proj"](gate * self.proj["up_proj"](x))
+        return _gated_mlp(self.proj, x)
+
+
+def _gated_mlp(projections, x):
+    """Gated MLP over ``projections``, a name -> module mapping."""
+    if "gate_up_proj" in projections:
+        gate, up = projections["gate_up_proj"](x).chunk(2, dim=-1)
+    else:
+        gate, up = projections["gate_proj"](x), projections["up_proj"](x)
+    return projections["down_proj"](torch.relu(gate) * up)
 
 
 class _Layer(nn.Module):
-    def __init__(self, dim, mlp_cls=_Mlp, call_o_proj_twice=False, qk_norm=False):
+    """Decoder layer; ``sandwich_norm`` uses Gemma's four norms per layer.
+
+    Gemma norms both the input and the output of attention and of the MLP, and
+    its ``post_attention_layernorm`` is the attention *output* norm.
+    """
+
+    def __init__(
+        self,
+        dim,
+        mlp_cls=_Mlp,
+        call_o_proj_twice=False,
+        qk_norm=False,
+        fused=False,
+        sandwich_norm=False,
+    ):
         super().__init__()
         self.input_layernorm = _RMSNorm(dim)
-        self.self_attn = _Attention(dim, call_o_proj_twice, qk_norm)
+        self.self_attn = _Attention(dim, call_o_proj_twice, qk_norm, fused)
         self.post_attention_layernorm = _RMSNorm(dim)
-        self.mlp = mlp_cls(dim)
+        if sandwich_norm:
+            self.pre_feedforward_layernorm = _RMSNorm(dim)
+            self.post_feedforward_layernorm = _RMSNorm(dim)
+        self.mlp = mlp_cls(dim, fused)
+        self.sandwich_norm = sandwich_norm
 
     def forward(self, x):
+        if self.sandwich_norm:
+            attn = self.self_attn(self.input_layernorm(x))
+            x = x + self.post_attention_layernorm(attn)
+            mlp = self.mlp(self.pre_feedforward_layernorm(x))
+            return x + self.post_feedforward_layernorm(mlp)
         x = x + self.self_attn(self.input_layernorm(x))
         return x + self.mlp(self.post_attention_layernorm(x))
 
@@ -497,12 +720,22 @@ def _export_synthetic(module, backend):
     return onnx_model
 
 
-#: Synthetic-model layout per supported model type.
-_SYNTHETIC_LAYOUT = {"llama": {}, "qwen3": {"qk_norm": True}}
+#: Synthetic-model layout per distinct module layout of the supported model
+#: types (qwen2, gemma3_text and the VLM text models share one of these).
+_SYNTHETIC_LAYOUT = {
+    "gemma2": {"sandwich_norm": True},
+    "llama": {},
+    "phi3": {"fused": True},
+    "qwen3": {"qk_norm": True},
+}
 
 
 def _synthetic_causal_lm(model_type="llama", **kwargs):
-    """``_CausalLm`` in ``model_type``'s module layout (Qwen3 adds q_norm / k_norm)."""
+    """``_CausalLm`` in ``model_type``'s module layout.
+
+    Qwen3 adds q_norm / k_norm; Phi-3 fuses q/k/v and gate/up; Gemma 2 norms
+    both sides of attention and the MLP.
+    """
     return _CausalLm(**_SYNTHETIC_LAYOUT[model_type], **kwargs)
 
 
@@ -532,7 +765,7 @@ class TestExporterNaming:
         assert match.decoder_prefix == "model"
         assert [b.layer_id for b in match.blocks] == list(range(_NUM_LAYERS))
         for block in match.blocks:
-            assert set(block.linears) == set(_ROLE_MODULES)
+            assert set(block.linears) == set(_role_modules(model_type))
             assert all(len(names) == 1 for names in block.linears.values())
         assert match.embed_tokens is not None
         assert match.final_norm is not None
@@ -546,8 +779,8 @@ class TestExporterNaming:
             _match_synthetic(backend, model_type, call_o_proj_twice=True)
 
     def test_module_dict_level_is_rejected_under_dynamo(self, model_type):
-        """``mlp.proj.gate_proj`` (a ``ModuleDict`` child) is not a table path."""
-        with pytest.raises(NamedLayerMatchError, match=r"mlp\.proj\.gate_proj"):
+        """``mlp.proj.down_proj`` (a ``ModuleDict`` child) is not a table path."""
+        with pytest.raises(NamedLayerMatchError, match=r"mlp\.proj\.down_proj"):
             _match_synthetic("dynamo", model_type, mlp_cls=_DictMlp)
 
     def test_module_dict_level_is_invisible_under_torchscript(self, model_type):
@@ -560,8 +793,8 @@ class TestExporterNaming:
         are the safety net for a mis-assigned role.
         """
         match = _match_synthetic("torchscript", model_type, mlp_cls=_DictMlp)
-        assert match.blocks[0].linears[LinearRole.GATE_PROJ] == [
-            "/model/layers.0/mlp/gate_proj/MatMul"
+        assert match.blocks[0].linears[LinearRole.DOWN_PROJ] == [
+            "/model/layers.0/mlp/down_proj/MatMul"
         ]
 
     @pytest.mark.parametrize("backend", _BACKENDS)
@@ -650,15 +883,24 @@ class _LogitsWrapper(nn.Module):
 
 
 def _build_hf_model(model_type):
-    """Tiny randomly initialized ``AutoModelForCausalLM`` for ``model_type``.
+    """Tiny randomly initialized model for ``model_type``.
+
+    An ``AutoModelForCausalLM``, or for a VLM text model_type the whole
+    ``AutoModelForImageTextToText``: exported with only ``input_ids``, its vision
+    tower is never called and so drops out of the graph.
 
     Norm gammas are randomized: HF initializes them all to 1.0, and the exporters
     then de-duplicate the identical tensors (torchscript behind ``Identity``
     ops, dynamo into one shared initializer), which no trained model has.
     """
-    cfg = _config(_HF_MODELS[model_type], **_TINY_TEXT_CONFIG)
     torch.manual_seed(0)
-    model = transformers.AutoModelForCausalLM.from_config(cfg).eval()
+    if model_type in _HF_VLMS:
+        model = transformers.AutoModelForImageTextToText.from_config(
+            _vlm_config(model_type)
+        ).eval()
+    else:
+        cfg = _config(_HF_MODELS[model_type], **_TINY_TEXT_CONFIG)
+        model = transformers.AutoModelForCausalLM.from_config(cfg).eval()
     with torch.no_grad():
         for name, param in model.named_parameters():
             if name.endswith("norm.weight"):
@@ -668,7 +910,7 @@ def _build_hf_model(model_type):
 
 def _export_hf(model, backend):
     """Export ``model`` under ``backend``; dynamo exports get their names fixed."""
-    input_ids = torch.randint(0, model.config.vocab_size, (1, _SEQ))
+    input_ids = torch.randint(0, model.config.get_text_config().vocab_size, (1, _SEQ))
     attention_mask = torch.zeros(1, 1, _SEQ, _SEQ)
     onnx_model = _export_to_onnx(
         _LogitsWrapper(model),
@@ -682,7 +924,12 @@ def _export_hf(model, backend):
     return onnx_model
 
 
-@pytest.fixture(scope="module", params=sorted(_HF_MODELS))
+def _backbone(model_type):
+    """Module path of the language backbone in ``_build_hf_model(model_type)``."""
+    return "model.language_model" if model_type in _HF_VLMS else "model"
+
+
+@pytest.fixture(scope="module", params=sorted((*_HF_MODELS, *_HF_VLMS)))
 def hf_model(request):
     return request.param, _build_hf_model(request.param)
 
@@ -725,31 +972,48 @@ class TestMatchRealHfExports:
         match = match_named_layers(ir_model, get_hf_model_patterns(model_type))
         modules = dict(model.named_modules())
 
-        assert match.decoder_prefix == "model.model"
+        backbone = _backbone(model_type)
+        assert match.decoder_prefix == f"model.{backbone}"
         assert [b.layer_id for b in match.blocks] == list(
-            range(model.config.num_hidden_layers)
+            range(model.config.get_text_config().num_hidden_layers)
         )
         for block in match.blocks:
-            layer = f"model.layers.{block.layer_id}"
-            for role, module in _ROLE_MODULES.items():
+            layer = f"{backbone}.layers.{block.layer_id}"
+            for role, module in _role_modules(model_type).items():
                 assert isinstance(modules[f"{layer}.{module}"], nn.Linear)
                 (name,) = block.linears[role]
                 assert name.startswith(_node_prefix(f"{layer}.{module}") + "/")
-            assert block.input_norm == _node_prefix(f"{layer}.input_layernorm")
+            input_norm, post_attention_norm = _block_norms(model_type)
+            assert block.input_norm == _node_prefix(f"{layer}.{input_norm}")
             assert block.post_attention_norm == _node_prefix(
-                f"{layer}.post_attention_layernorm"
+                f"{layer}.{post_attention_norm}"
             )
-        assert match.embed_tokens == _node_prefix("model.embed_tokens") + "/Gather"
-        assert match.final_norm == _node_prefix("model.norm")
+        assert match.embed_tokens in _embed_tokens_nodes(model_type)
+        assert match.final_norm == _node_prefix(f"{backbone}.norm")
         assert match.lm_head.startswith(_node_prefix("lm_head") + "/")
 
     def test_qwen3_export_is_rejected_by_llama_patterns(self, hf_export):
-        """Qwen3's q_norm / k_norm fuse into RMSNorms that llama does not name."""
+        """q_norm / k_norm fuse into RMSNorms that llama does not name."""
         model_type, _, ir_model = hf_export
-        if model_type != "qwen3":
-            pytest.skip("q_norm / k_norm are Qwen3-only")
+        if "self_attn.q_norm" not in get_hf_model_patterns(model_type).ignored:
+            pytest.skip("q_norm / k_norm are Qwen3 / Qwen3-VL / Gemma 3 only")
         with pytest.raises(NamedLayerMatchError, match=r"self_attn\.q_norm"):
             match_named_layers(ir_model, get_hf_model_patterns("llama"))
+
+
+def _embed_tokens_nodes(model_type):
+    """Names the embedding ``Gather`` of ``_build_hf_model(model_type)`` may have.
+
+    A VLM's outer model calls ``language_model.embed_tokens`` itself, which
+    torchscript names after the outer model and dynamo + ``fix_node_names_pass``
+    as a single ``language_model.embed_tokens`` segment.
+    """
+    if model_type not in _HF_VLMS:
+        return {_node_prefix("model.embed_tokens") + "/Gather"}
+    return {
+        _node_prefix("model.embed_tokens") + "/Gather",
+        _node_prefix("model") + "/language_model.embed_tokens/Gather",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -776,60 +1040,72 @@ class TestAnalyzeLlmTopology:
         )
 
     def test_blocks_hold_the_named_projections(self, analyzed):
-        _, model, _, topology = analyzed
+        model_type, model, _, topology = analyzed
+        backbone = _backbone(model_type)
 
-        assert len(topology.blocks) == model.config.num_hidden_layers
+        assert len(topology.blocks) == model.config.get_text_config().num_hidden_layers
         for i, block in enumerate(topology.blocks):
             by_role = {
-                LinearRole.Q_PROJ: block.q_proj,
-                LinearRole.K_PROJ: block.k_proj,
-                LinearRole.V_PROJ: block.v_proj,
+                **{role: names for role, names in block.qkv.by_role.items() if names},
+                **{
+                    role: names
+                    for role, names in block.gate_up.by_role.items()
+                    if names
+                },
                 LinearRole.O_PROJ: block.o_proj,
-                LinearRole.GATE_PROJ: block.gate_proj,
-                LinearRole.UP_PROJ: block.up_proj,
                 LinearRole.DOWN_PROJ: block.down_proj,
             }
-            for role, module in _ROLE_MODULES.items():
-                expected = _node_prefix(f"model.layers.{i}.{module}") + "/MatMul"
+            assert set(by_role) == set(_role_modules(model_type))
+            for role, module in _role_modules(model_type).items():
+                expected = _node_prefix(f"{backbone}.layers.{i}.{module}") + "/MatMul"
                 assert by_role[role] == [expected], role
-            assert sorted(block.qkv.linears) == sorted(
-                block.q_proj + block.k_proj + block.v_proj
-            )
-            assert sorted(block.gate_up.linears) == sorted(
-                block.gate_proj + block.up_proj
-            )
+
+    def test_fused_projections_have_no_split_roles(self, analyzed):
+        """Phi-3's fused qkv_proj / gate_up_proj report no q/k/v, gate/up."""
+        model_type, _, _, topology = analyzed
+        fused = model_type == "phi3"
+        for block in topology.blocks:
+            assert bool(block.qkv.role(LinearRole.FUSED_QKV)) == fused
+            assert bool(block.gate_up.role(LinearRole.FUSED_GATE_UP)) == fused
+            for role in (LinearRole.Q_PROJ, LinearRole.K_PROJ, LinearRole.V_PROJ):
+                assert bool(block.qkv.role(role)) != fused
+            for role in (LinearRole.GATE_PROJ, LinearRole.UP_PROJ):
+                assert bool(block.gate_up.role(role)) != fused
 
     def test_model_level_roles(self, analyzed):
-        _, _, _, topology = analyzed
+        model_type, _, _, topology = analyzed
 
-        assert topology.embed_tokens == [_node_prefix("model.embed_tokens") + "/Gather"]
+        (embed_tokens,) = topology.embed_tokens
+        assert embed_tokens in _embed_tokens_nodes(model_type)
         assert topology.lm_head == [_node_prefix("lm_head") + "/MatMul"]
 
     def test_residual_stream_chains_through_the_norms(self, analyzed):
-        _, _, onnx_model, topology = analyzed
+        model_type, _, onnx_model, topology = analyzed
+        backbone = _backbone(model_type)
         norm_input = {norm.norm: norm.input_tensor for norm in topology.active_norms}
         num_blocks = len(topology.blocks)
 
         for i, block in enumerate(topology.blocks):
             assert (
                 block.residual_input
-                == norm_input[_norm_node(f"model.layers.{i}.input_layernorm")]
+                == norm_input[_norm_node(f"{backbone}.layers.{i}.input_layernorm")]
             )
             if i + 1 < num_blocks:
                 assert block.residual_output == topology.blocks[i + 1].residual_input
         assert (
-            topology.blocks[-1].residual_output == norm_input[_norm_node("model.norm")]
+            topology.blocks[-1].residual_output
+            == norm_input[_norm_node(f"{backbone}.norm")]
         )
         tensors = {out for node in onnx_model.graph.node for out in node.output}
         for block in topology.blocks:
             assert {block.residual_input, block.residual_output} <= tensors
 
     def test_attention_matmuls_found_by_structure(self, analyzed):
-        _, _, onnx_model, topology = analyzed
+        model_type, _, onnx_model, topology = analyzed
         op_type = {node.name: node.op_type for node in onnx_model.graph.node}
 
         for i, block in enumerate(topology.blocks):
-            attn = _node_prefix(f"model.layers.{i}.self_attn") + "/"
+            attn = _node_prefix(f"{_backbone(model_type)}.layers.{i}.self_attn") + "/"
             for names in (block.qk_matmul, block.attn_v_matmul):
                 assert len(names) == 1
                 assert op_type[names[0]] == "MatMul"
@@ -839,21 +1115,31 @@ class TestAnalyzeLlmTopology:
     def test_active_norms_are_the_named_norms(self, analyzed):
         """Input + post-attention norm per block, then the final norm.
 
-        Qwen3's q_norm / k_norm are RMSNorms too, but are never active norms.
+        Qwen3's q_norm / k_norm are RMSNorms too, but are never active norms;
+        nor are Gemma's norms on the attention / MLP outputs.
         """
-        _, model, _, topology = analyzed
+        model_type, model, onnx_model, topology = analyzed
+        backbone = _backbone(model_type)
         expected = [
-            f"model.layers.{i}.{norm}"
-            for i in range(model.config.num_hidden_layers)
-            for norm in ("input_layernorm", "post_attention_layernorm")
-        ] + ["model.norm"]
+            f"{backbone}.layers.{i}.{norm}"
+            for i in range(model.config.get_text_config().num_hidden_layers)
+            for norm in _block_norms(model_type)
+        ] + [f"{backbone}.norm"]
 
         assert [n.norm for n in topology.active_norms] == [
             _norm_node(path) for path in expected
         ]
-        assert [n.scale_name for n in topology.active_norms] == [
-            f"model.{path}.weight" for path in expected
-        ]
+        # Gemma scales by (1 + weight), which the exporter folds into one unnamed
+        # initializer, so the gamma is checked by value rather than by name.
+        offset = 1.0 if model_type.startswith("gemma") else 0.0
+        modules = dict(model.named_modules())
+        initializers = {
+            init.name: onnx.numpy_helper.to_array(init)
+            for init in onnx_model.graph.initializer
+        }
+        for norm, path in zip(topology.active_norms, expected):
+            gamma = modules[path].weight.detach().numpy() + offset
+            np.testing.assert_allclose(initializers[norm.scale_name], gamma, rtol=1e-6)
         blocks = topology.blocks
         for i, block in enumerate(blocks):
             input_norm, post_attention_norm = topology.active_norms[2 * i : 2 * i + 2]
@@ -864,7 +1150,7 @@ class TestAnalyzeLlmTopology:
     def test_dims(self, analyzed):
         _, model, _, topology = analyzed
 
-        assert topology.hidden_size == model.config.hidden_size
+        assert topology.hidden_size == model.config.get_text_config().hidden_size
         assert topology.head_dim is None  # prefill export: no past_value input
         assert topology.past_key_input_names == []
 
@@ -952,6 +1238,23 @@ class TestStructuralCrossChecks:
         )
         with pytest.raises(ValueError, match=r"o_proj by name .* attention residual"):
             analyze_llm_topology(swapped, "llama")
+
+    def test_gemma_attention_output_norm_is_not_the_pre_mlp_norm(self, monkeypatch):
+        """Gemma's post_attention_layernorm normalizes the attention *output*.
+
+        A table that took it for the pre-MLP norm, as in Llama, still names one
+        node per field; the norm feeds no gate/up, so the cross-check rejects it.
+        """
+        monkeypatch.setitem(
+            hf_patterns._HF_MODEL_PATTERNS,
+            "gemma2",
+            HfModelPatterns(
+                ignored=("pre_feedforward_layernorm", "post_feedforward_layernorm")
+            ),
+        )
+        onnx_model = _export_hf(_build_hf_model("gemma2"), "torchscript")
+        with pytest.raises(ValueError, match=r"gate/up by name .* post-attention norm"):
+            analyze_llm_topology(onnx_model, "gemma2")
 
     def test_swapped_norms(self, llama_onnx):
         """The node named input_layernorm must be the norm feeding q/k/v.

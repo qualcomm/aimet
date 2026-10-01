@@ -609,9 +609,15 @@ def _build_named_topology(
     return result
 
 
-#: Roles of the attention read group, and of the MLP read group.
-_QKV_ROLES = (LinearRole.Q_PROJ, LinearRole.K_PROJ, LinearRole.V_PROJ)
-_GATE_UP_ROLES = (LinearRole.GATE_PROJ, LinearRole.UP_PROJ)
+#: Roles of the attention read group, and of the MLP read group. A block has
+#: either the separate or the fused roles, as its architecture's table names.
+_QKV_ROLES = (
+    LinearRole.Q_PROJ,
+    LinearRole.K_PROJ,
+    LinearRole.V_PROJ,
+    LinearRole.FUSED_QKV,
+)
+_GATE_UP_ROLES = (LinearRole.GATE_PROJ, LinearRole.UP_PROJ, LinearRole.FUSED_GATE_UP)
 
 
 def _named_group(
@@ -623,9 +629,9 @@ def _named_group(
     """Build a read group from the named linears of ``roles``, in topological order."""
     by_role: Dict[LinearRole, List[str]] = {role: [] for role in LinearRole}
     for role in roles:
-        by_role[role] = list(block.linears[role])
+        by_role[role] = list(block.linears.get(role, []))
     linears = sorted(
-        (name for role in roles for name in block.linears[role]),
+        (name for role in roles for name in by_role[role]),
         key=lambda name: topo_index[node_by_name[name]],
     )
     return LinearGroup(linears=linears, by_role=by_role)

@@ -36,14 +36,24 @@ problem instead of guessing:
   (e.g. a VLM vision tower) is an error, not extra blocks.
 * Every weighted linear and RMSNorm inside a decoder layer must be named by the
   table (or listed as ``ignored``). This catches a wrong ``model_type`` (e.g.
-  fused ``qkv_proj``, extra Gemma norms) and a module called again from its
+  Phi-3's fused ``qkv_proj`` or Gemma's extra norms under the ``llama`` table)
+  and a module called again from its
   parent, which torchscript names ``<parent>/<module>`` without the module's
   own attribute path.
 * A node outside the decoder stack whose module is named like a table entry
   (e.g. ``down_proj`` at the root, left by a torchscript export of a module
   called directly rather than through its parents) is an error.
+* Under a decoder prefix, every other node must sit under that prefix or be
+  ``lm_head``. This catches a VLM vision tower or projector exported alongside
+  the language backbone, whatever its modules are named (Qwen3-VL's vision
+  blocks are ``blocks.<N>`` with ``attn.qkv`` / ``linear_fc1``).
 * Layer indices must be contiguous, and each field must match exactly one node
   per layer. Under dynamo, a module called twice has two nodes.
+
+One quirk is allowed for rather than rejected: an HF VLM looks up token
+embeddings from its outer model (``get_input_embeddings()(input_ids)``), so
+torchscript names a ``<X>.language_model.embed_tokens`` call ``<X>.embed_tokens``.
+For a decoder under ``<X>.language_model``, ``embed_tokens`` matches at either.
 
 One case name matching cannot see: torchscript drops a ``ModuleDict`` level, so
 ``mlp.proj.gate_proj`` exports as ``mlp/gate_proj``. Standard HF decoders have
@@ -56,6 +66,7 @@ no ``ModuleDict`` on these paths; the structural cross-checks in
 """
 
 import re
+import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -113,15 +124,23 @@ class HfModelPatterns:
     ``model.language_model``), and must be the same for every match.
 
     Every field defaults to the Llama module name, so an entry spells out only
-    where an architecture differs.
+    where an architecture differs. An architecture with a fused projection sets
+    ``qkv_proj`` (``gate_up_proj``), which then replaces ``q_proj`` / ``k_proj`` /
+    ``v_proj`` (``gate_proj`` / ``up_proj``) under the corresponding ``FUSED_*``
+    role, and the split fields are then not used. Overriding both a fused field
+    and any of its split fields is contradictory, and raises.
 
-    :param q_proj: Per-layer query projection.
-    :param k_proj: Per-layer key projection.
-    :param v_proj: Per-layer value projection.
+    :param q_proj: Per-layer query projection. Unused when ``qkv_proj`` is set.
+    :param k_proj: Per-layer key projection. Unused when ``qkv_proj`` is set.
+    :param v_proj: Per-layer value projection. Unused when ``qkv_proj`` is set.
     :param o_proj: Per-layer attention output projection.
-    :param gate_proj: Per-layer MLP gate projection.
-    :param up_proj: Per-layer MLP up projection.
+    :param gate_proj: Per-layer MLP gate projection. Unused when ``gate_up_proj``
+        is set.
+    :param up_proj: Per-layer MLP up projection. Unused when ``gate_up_proj`` is
+        set.
     :param down_proj: Per-layer MLP down projection.
+    :param qkv_proj: Per-layer fused query/key/value projection, if fused.
+    :param gate_up_proj: Per-layer fused MLP gate/up projection, if fused.
     :param input_norm: Per-layer pre-attention norm.
     :param post_attention_norm: Per-layer pre-MLP norm.
     :param ignored: Per-layer modules that are known to exist but belong to no
@@ -130,6 +149,13 @@ class HfModelPatterns:
     :param embed_tokens: Token embedding.
     :param final_norm: Norm after the last decoder layer.
     :param lm_head: Vocabulary projection.
+    :param language_model: Attribute a VLM keeps its language backbone under
+        (``<outer>.language_model``). When the decoder stack sits under it, the
+        outer model calls ``embed_tokens`` itself, so an exporter may name that
+        node after the outer model; ``embed_tokens`` is then also accepted one
+        level up.
+    :raises ValueError: If a fused projection is set together with an override
+        of any of the split projections it replaces.
     """
 
     q_proj: str = "self_attn.q_proj"
@@ -139,6 +165,8 @@ class HfModelPatterns:
     gate_proj: str = "mlp.gate_proj"
     up_proj: str = "mlp.up_proj"
     down_proj: str = "mlp.down_proj"
+    qkv_proj: Optional[str] = None
+    gate_up_proj: Optional[str] = None
     input_norm: str = "input_layernorm"
     post_attention_norm: str = "post_attention_layernorm"
     ignored: Tuple[str, ...] = ()
@@ -146,17 +174,51 @@ class HfModelPatterns:
     embed_tokens: str = "embed_tokens"
     final_norm: str = "norm"
     lm_head: str = "lm_head"
+    language_model: str = "language_model"
+
+    def __post_init__(self):
+        self._check_fused_excludes_split("qkv_proj", ("q_proj", "k_proj", "v_proj"))
+        self._check_fused_excludes_split("gate_up_proj", ("gate_proj", "up_proj"))
+
+    def _check_fused_excludes_split(self, fused: str, split: Tuple[str, ...]):
+        """Reject a fused projection set together with an override of its split ones.
+
+        Read-only: the split fields keep their declared defaults; a set fused field
+        simply takes precedence over them in :attr:`linears`.
+        """
+        if getattr(self, fused) is None:
+            return
+        defaults = {f.name: f.default for f in dataclasses.fields(self)}
+        overridden = [name for name in split if getattr(self, name) != defaults[name]]
+        if overridden:
+            raise ValueError(
+                f"HfModelPatterns: {fused} replaces {', '.join(split)}, but "
+                f"{', '.join(overridden)} {'is' if len(overridden) == 1 else 'are'} "
+                "also overridden. Set one or the other."
+            )
 
     @property
     def linears(self) -> Dict[LinearRole, str]:
         """Per-layer projection paths, by role."""
+        if self.qkv_proj is not None:
+            attention = {LinearRole.FUSED_QKV: self.qkv_proj}
+        else:
+            attention = {
+                LinearRole.Q_PROJ: self.q_proj,
+                LinearRole.K_PROJ: self.k_proj,
+                LinearRole.V_PROJ: self.v_proj,
+            }
+        if self.gate_up_proj is not None:
+            mlp = {LinearRole.FUSED_GATE_UP: self.gate_up_proj}
+        else:
+            mlp = {
+                LinearRole.GATE_PROJ: self.gate_proj,
+                LinearRole.UP_PROJ: self.up_proj,
+            }
         return {
-            LinearRole.Q_PROJ: self.q_proj,
-            LinearRole.K_PROJ: self.k_proj,
-            LinearRole.V_PROJ: self.v_proj,
+            **attention,
             LinearRole.O_PROJ: self.o_proj,
-            LinearRole.GATE_PROJ: self.gate_proj,
-            LinearRole.UP_PROJ: self.up_proj,
+            **mlp,
             LinearRole.DOWN_PROJ: self.down_proj,
         }
 
@@ -217,11 +279,38 @@ _QWEN3_PATTERNS = HfModelPatterns(
     ignored=("self_attn.q_norm", "self_attn.k_norm"),
 )
 
+_GEMMA2_PATTERNS = HfModelPatterns(
+    # Gemma norms both sides of each sub-block. The norms *before* attention and
+    # the MLP are the ones the topology wants; HF's post_attention_layernorm here
+    # is the attention-output norm, ahead of the residual Add.
+    post_attention_norm="pre_feedforward_layernorm",
+    ignored=("post_attention_layernorm", "post_feedforward_layernorm"),
+)
+
+_GEMMA3_PATTERNS = HfModelPatterns(
+    post_attention_norm=_GEMMA2_PATTERNS.post_attention_norm,
+    ignored=(*_QWEN3_PATTERNS.ignored, *_GEMMA2_PATTERNS.ignored),
+)
+
+_PHI3_PATTERNS = HfModelPatterns(
+    qkv_proj="self_attn.qkv_proj",
+    gate_up_proj="mlp.gate_up_proj",
+)
+
 #: Built-in patterns, keyed by HF ``PretrainedConfig.model_type``. For a VLM, key
 #: on the text config's ``model_type``.
 _HF_MODEL_PATTERNS: Dict[str, HfModelPatterns] = {
+    "gemma2": _GEMMA2_PATTERNS,
+    # Gemma 3 text models, and the text backbone of Gemma 3 VLMs.
+    "gemma3_text": _GEMMA3_PATTERNS,
     "llama": _LLAMA_PATTERNS,
+    # Phi-3, Phi-3.5 and Phi-4 (incl. -mini) text models.
+    "phi3": _PHI3_PATTERNS,
+    # Qwen2 and Qwen2.5. The q/k/v bias is a separate Add, which is not matched.
+    "qwen2": _LLAMA_PATTERNS,
+    "qwen2_5_vl_text": _LLAMA_PATTERNS,
     "qwen3": _QWEN3_PATTERNS,
+    "qwen3_vl_text": _QWEN3_PATTERNS,
 }
 
 
@@ -438,15 +527,23 @@ def _match_model_level(
     def under_decoder(path: str) -> str:
         return f"{prefix}.{path}" if prefix else path
 
+    embed_paths = {under_decoder(patterns.embed_tokens)}
+    # A VLM's outer model calls its language backbone's embed_tokens directly.
+    outer, _, leaf = prefix.rpartition(".")
+    if leaf == patterns.language_model:
+        embed_paths.add(
+            f"{outer}.{patterns.embed_tokens}" if outer else patterns.embed_tokens
+        )
+
     model_level = {
-        "embed_tokens": (ModuleKind.EMBEDDING, under_decoder(patterns.embed_tokens)),
-        "final_norm": (ModuleKind.NORM, under_decoder(patterns.final_norm)),
+        "embed_tokens": (ModuleKind.EMBEDDING, embed_paths),
+        "final_norm": (ModuleKind.NORM, {under_decoder(patterns.final_norm)}),
     }
     matches: Dict[str, List[str]] = {name: [] for name in (*model_level, "lm_head")}
     leftovers: List[ModuleNode] = []
     for node in outside:
-        for name, (kind, path) in model_level.items():
-            if node.kind is kind and node.module_path == path:
+        for name, (kind, paths) in model_level.items():
+            if node.kind is kind and node.module_path in paths:
                 matches[name].append(node.node_name)
                 break
         else:
@@ -477,6 +574,21 @@ def _match_model_level(
             f"the decoder stack '{stack}' (e.g. a module called directly rather "
             f"than through its parents, or a second model in the graph): "
             + _listed(lookalikes)
+        )
+
+    # At the root, everything is under the decoder prefix.
+    foreign = [
+        node
+        for node in leftovers
+        if prefix
+        and node not in lookalikes
+        and not node.module_path.startswith(prefix + ".")
+    ]
+    if foreign:
+        problems.append(
+            f"these nodes sit outside the language backbone '{prefix}' (e.g. a VLM "
+            f"vision tower or projector). Export the language backbone on its own: "
+            + _listed(foreign)
         )
     return problems
 
