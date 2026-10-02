@@ -231,6 +231,52 @@ class TestBuildLayerCacheDescriptors:
         assert descs[1].attention_type == AttentionType.FULL
         assert descs[0].sliding_window_size == 64
 
+    def test_global_head_dim_for_full_attention(self):
+        """Before transformers 5.17, Gemma4 keeps the full-attention head_dim
+        in ``global_head_dim`` on the top-level config."""
+
+        @dataclass
+        class Cfg:
+            num_hidden_layers: int = 2
+            num_attention_heads: int = 8
+            num_key_value_heads: int = 2
+            hidden_size: int = 128
+            head_dim: int = 16
+            global_head_dim: int = 32
+            layer_types: list = None
+
+        cfg = Cfg(layer_types=["sliding_attention", "full_attention"])
+        descs = build_layer_cache_descriptors(cfg)
+        assert [d.head_dim for d in descs] == [16, 32]
+
+    def test_per_layer_config(self):
+        """From transformers 5.17, settings that differ between layers are only
+        readable through ``per_layer_config``."""
+
+        @dataclass
+        class LayerCfg:
+            num_attention_heads: int = 8
+            num_key_value_heads: int = 2
+            hidden_size: int = 128
+            head_dim: int = 16
+
+        class Cfg:
+            num_hidden_layers = 2
+            layer_types = ["sliding_attention", "full_attention"]
+            is_heterogeneous = True
+            per_layer_config = [
+                LayerCfg(),
+                LayerCfg(head_dim=32, num_key_value_heads=4),
+            ]
+
+            @property
+            def head_dim(self):
+                raise RuntimeError("per-layer attribute")
+
+        descs = build_layer_cache_descriptors(Cfg())
+        assert [d.head_dim for d in descs] == [16, 32]
+        assert [d.num_kv_heads for d in descs] == [2, 4]
+
 
 class TestResolveTextConfig:
     def test_returns_text_config_when_present(self):

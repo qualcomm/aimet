@@ -117,14 +117,6 @@ def build_layer_cache_descriptors(
     config = _resolve_text_config(config)
     num_kv_shared = getattr(config, "num_kv_shared_layers", 0)
     num_layers = config.num_hidden_layers - num_kv_shared
-    head_dim = (
-        config.head_dim
-        if hasattr(config, "head_dim") and config.head_dim is not None
-        else config.hidden_size // config.num_attention_heads
-    )
-    # Some models (e.g. Gemma4) use a larger head_dim for full-attention layers
-    global_head_dim = getattr(config, "global_head_dim", None) or head_dim
-    num_kv_heads = config.num_key_value_heads
     sliding_window = getattr(config, "sliding_window", None)
     layer_types = getattr(config, "layer_types", None)
 
@@ -164,9 +156,11 @@ def build_layer_cache_descriptors(
         sw_size = (
             sliding_window if attention_type == AttentionType.SLIDING_WINDOW else None
         )
-        layer_head_dim = (
-            head_dim if attention_type != AttentionType.FULL else global_head_dim
-        )
+        layer_config = _layer_config(config, i)
+        head_dim = _head_dim(layer_config)
+        if attention_type == AttentionType.FULL:
+            # Some models (e.g. Gemma4) use a larger head_dim for full-attention layers
+            head_dim = getattr(layer_config, "global_head_dim", None) or head_dim
 
         # Include linear attention dimensions when applicable
         linear_kwargs = {}
@@ -183,14 +177,34 @@ def build_layer_cache_descriptors(
             LayerCacheDescriptor(
                 layer_idx=i,
                 attention_type=attention_type,
-                num_kv_heads=num_kv_heads,
-                head_dim=layer_head_dim,
+                num_kv_heads=layer_config.num_key_value_heads,
+                head_dim=head_dim,
                 sliding_window_size=sw_size,
                 **linear_kwargs,
             )
         )
 
     return descriptors
+
+
+def _layer_config(config: PretrainedConfig, layer_idx: int) -> PretrainedConfig:
+    """Return the config that holds layer *layer_idx*'s own attention settings.
+
+    From transformers 5.17, settings that differ between layers (e.g. Gemma4's
+    larger head_dim on full-attention layers) live in ``config.per_layer_config``,
+    and reading them from the top-level config raises. Older versions keep every
+    setting on the top-level config.
+    """
+    if getattr(config, "is_heterogeneous", False):
+        return config.per_layer_config[layer_idx]
+    return config
+
+
+def _head_dim(config: PretrainedConfig) -> int:
+    head_dim = getattr(config, "head_dim", None)
+    if head_dim is not None:
+        return head_dim
+    return config.hidden_size // config.num_attention_heads
 
 
 def has_sliding_window_layers(
