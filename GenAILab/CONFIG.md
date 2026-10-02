@@ -549,6 +549,11 @@ Two caveats worth knowing before enabling it:
   `false` to fall back (aggregate scores stay comparable, individual responses
   may not).
 
+The grader always runs deterministically, so the same responses get the same
+grades on every run. It uses deterministic torch/cuBLAS kernels and a fixed
+seed, and turns off cuDNN attention, which is not repeatable on H100. The job
+log shows `Grader deterministic mode: ... cudnn_sdp=False`.
+
 ### Models
 
 Plain LLMs use the registered default class (`LLM_Torch` / `LLM_ONNX`). Special models register against their HuggingFace `model_type`:
