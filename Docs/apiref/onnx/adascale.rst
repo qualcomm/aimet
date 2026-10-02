@@ -20,11 +20,11 @@ AdaScale optimizes one decoder block at a time and takes those block boundaries 
 ``LlmTopology``, which describes the structure of the decoder stack. Analyze the float model
 before creating the sim, then pass the result as ``topology``::
 
-    topology = analyze_llm_topology_by_norm_count(onnx_model)
+    topology = analyze_llm_topology(onnx_model, model_type="llama")
     sim = QuantizationSimModel(onnx_model, ...)
     apply_adascale(sim, inputs, adascale_model_config, topology=topology)
 
-.. autofunction:: aimet_onnx.experimental.llm_topology.analyze_llm_topology_by_norm_count
+.. autofunction:: aimet_onnx.experimental.llm_topology.analyze_llm_topology
 
 .. autoclass:: aimet_onnx.experimental.llm_topology.LlmTopology
     :members:

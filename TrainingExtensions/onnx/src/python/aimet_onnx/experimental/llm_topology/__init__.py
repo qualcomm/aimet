@@ -40,6 +40,7 @@ from aimet_onnx.experimental.llm_topology.norm_detection import (
     find_active_norms,
 )
 from aimet_onnx.experimental.llm_topology.topology import (
+    ACTIVE_NORM_MODEL_TYPES,
     analyze_llm_topology,
     analyze_llm_topology_by_norm_count,
     get_llm_topology,
@@ -51,6 +52,7 @@ from aimet_onnx.experimental.llm_topology.topology_types import (
 )
 
 __all__ = [
+    "ACTIVE_NORM_MODEL_TYPES",
     "ActiveNorm",
     "BlockTopology",
     "IrActiveNorm",

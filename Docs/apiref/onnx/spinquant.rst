@@ -18,11 +18,11 @@ decoder stack: which linears read from and write to the residual stream (R1), wh
 projections (R2), and which Q/K edges feed each QKᵀ MatMul (R3). Analyze the model, then pass the
 result as ``topology``::
 
-    topology = analyze_llm_topology_by_norm_count(onnx_model)
+    topology = analyze_llm_topology(onnx_model, model_type="llama")
     apply_spinquant(onnx_model, topology=topology)
     sim = QuantizationSimModel(onnx_model, ...)   # built on the rotated graph
 
-.. autofunction:: aimet_onnx.experimental.llm_topology.analyze_llm_topology_by_norm_count
+.. autofunction:: aimet_onnx.experimental.llm_topology.analyze_llm_topology
 
 .. autoclass:: aimet_onnx.experimental.llm_topology.LlmTopology
     :members:

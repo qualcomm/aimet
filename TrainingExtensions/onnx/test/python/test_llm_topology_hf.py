@@ -17,16 +17,17 @@ Name matching has two independent halves, tested separately:
 :class:`TestMatchRealHfExports` then checks the whole path on tiny real HF
 exports, with expected node names derived from the torch model.
 
-:func:`analyze_llm_topology` on top of the matches:
+:func:`analyze_llm_topology` analyzes some model types by active norms and the
+rest by name. The by-name analysis on top of the matches:
 
 * :class:`TestAnalyzeLlmTopology` — every topology field on real HF exports of
   every supported model_type (Gemma 2, Gemma 3, Llama, Phi-3, Qwen2, Qwen3, and
   the Qwen2.5-VL / Qwen3-VL text backbones) under both exporters, plus agreement
-  with the legacy norm-counting analysis.
+  with the norm-counting analysis and the dispatch between the two.
 * :class:`TestStructuralCrossChecks` — names swapped between nodes still match
   one-per-field, so only the structural checks can catch them.
 * :class:`TestExportVariants` — KV-cache, headless, ``inputs_embeds`` and
-  QuantizationSimModel graphs.
+  QuantizationSimModel graphs, under both analyses.
 """
 
 import copy
@@ -54,7 +55,10 @@ from aimet_onnx.graph_passes.fusions import fuse_supergroups
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import make_dummy_input
 from aimet_onnx.experimental.llm_topology import ir_analysis
+from aimet_onnx.experimental.llm_topology import topology as topology_module
 from aimet_onnx.experimental.llm_topology.topology import (
+    ACTIVE_NORM_MODEL_TYPES,
+    _analyze_llm_topology_by_name,
     analyze_llm_topology,
     analyze_llm_topology_by_norm_count,
 )
@@ -1026,7 +1030,12 @@ def _norm_node(module_path):
 
 @pytest.mark.skip_on_windows_amd64("torch.onnx export is not supported on Windows")
 class TestAnalyzeLlmTopology:
-    """analyze_llm_topology on tiny real HF exports, under both exporters."""
+    """The by-name analysis on tiny real HF exports, under both exporters.
+
+    Run directly rather than through :func:`analyze_llm_topology`, which takes
+    :data:`ACTIVE_NORM_MODEL_TYPES` the other way, so that the name tables of
+    those model types stay covered too.
+    """
 
     @pytest.fixture(scope="class")
     def analyzed(self, hf_onnx):
@@ -1036,7 +1045,7 @@ class TestAnalyzeLlmTopology:
             model_type,
             model,
             onnx_model,
-            analyze_llm_topology(onnx_model, model_type),
+            _analyze_llm_topology_by_name(onnx_model, model_type),
         )
 
     def test_blocks_hold_the_named_projections(self, analyzed):
@@ -1154,19 +1163,44 @@ class TestAnalyzeLlmTopology:
         assert topology.head_dim is None  # prefill export: no past_value input
         assert topology.past_key_input_names == []
 
-    def test_matches_legacy_norm_counting_analysis(self, analyzed):
-        """Same result as the norm-counting path it replaces, field for field.
-
-        TODO: Remove together with ``analyze_llm_topology_by_norm_count``
-        (Phase 4 cleanup).
-        """
+    def test_matches_norm_counting_analysis(self, analyzed):
+        """Same result as the norm-counting analysis, field for field."""
         _, _, onnx_model, topology = analyzed
         assert analyze_llm_topology_by_norm_count(onnx_model) == topology
+
+    def test_dispatch(self, analyzed, monkeypatch):
+        """analyze_llm_topology analyzes by active norms or by name, by model_type.
+
+        A VLM is also analyzed under its top-level model_type (e.g. ``qwen3_vl``),
+        which is what a caller holding the VLM's config passes.
+        """
+        model_type, model, onnx_model, topology = analyzed
+        calls = []
+
+        def spy(name, fn):
+            def wrapped(*args, **kwargs):
+                calls.append(name)
+                return fn(*args, **kwargs)
+
+            monkeypatch.setattr(topology_module, name, wrapped)
+
+        spy("analyze_llm_topology_by_norm_count", analyze_llm_topology_by_norm_count)
+        spy("_analyze_llm_topology_by_name", _analyze_llm_topology_by_name)
+
+        for requested in dict.fromkeys((model_type, model.config.model_type)):
+            calls.clear()
+            assert analyze_llm_topology(onnx_model, requested) == topology
+            assert calls == [
+                "analyze_llm_topology_by_norm_count"
+                if requested in ACTIVE_NORM_MODEL_TYPES
+                else "_analyze_llm_topology_by_name"
+            ], requested
 
     def test_input_proto_is_not_mutated(self, hf_onnx):
         model_type, _, onnx_model = hf_onnx
         before = onnx_model.SerializeToString()
         analyze_llm_topology(onnx_model, model_type)
+        _analyze_llm_topology_by_name(onnx_model, model_type)
         assert onnx_model.SerializeToString() == before
 
     def test_prefused_model_analyzes_identically(self, analyzed):
@@ -1188,7 +1222,7 @@ class TestAnalyzeLlmTopology:
             node.op_type == "RMSNormalization" for node in onnx_model.graph.node
         )
 
-        assert analyze_llm_topology(prefused, model_type) == topology
+        assert _analyze_llm_topology_by_name(prefused, model_type) == topology
 
     def test_unknown_model_type(self, hf_onnx):
         _, _, onnx_model = hf_onnx
@@ -1228,7 +1262,7 @@ class TestStructuralCrossChecks:
         with pytest.raises(
             ValueError, match=r"Block 0 \(layer 0\): q/k/v by name"
         ) as exc:
-            analyze_llm_topology(swapped, "llama")
+            _analyze_llm_topology_by_name(swapped, "llama")
         assert "gate/up by name" in str(exc.value)
 
     def test_swapped_write_projections(self, llama_onnx):
@@ -1237,7 +1271,7 @@ class TestStructuralCrossChecks:
             llama_onnx, self._proj("self_attn.o_proj"), self._proj("mlp.down_proj")
         )
         with pytest.raises(ValueError, match=r"o_proj by name .* attention residual"):
-            analyze_llm_topology(swapped, "llama")
+            _analyze_llm_topology_by_name(swapped, "llama")
 
     def test_gemma_attention_output_norm_is_not_the_pre_mlp_norm(self, monkeypatch):
         """Gemma's post_attention_layernorm normalizes the attention *output*.
@@ -1254,7 +1288,7 @@ class TestStructuralCrossChecks:
         )
         onnx_model = _export_hf(_build_hf_model("gemma2"), "torchscript")
         with pytest.raises(ValueError, match=r"gate/up by name .* post-attention norm"):
-            analyze_llm_topology(onnx_model, "gemma2")
+            _analyze_llm_topology_by_name(onnx_model, "gemma2")
 
     def test_swapped_norms(self, llama_onnx):
         """The node named input_layernorm must be the norm feeding q/k/v.
@@ -1274,7 +1308,7 @@ class TestStructuralCrossChecks:
         with pytest.raises(
             ValueError, match=r"q/k/v by name .* != input norm consumers in the graph"
         ):
-            analyze_llm_topology(swapped, "llama")
+            _analyze_llm_topology_by_name(swapped, "llama")
 
 
 # ---------------------------------------------------------------------------
@@ -1294,10 +1328,21 @@ _QWEN3_KV = dict(
 
 @pytest.mark.skip_on_windows_amd64("torch.onnx export is not supported on Windows")
 class TestExportVariants:
-    """KV-cache, headless and inputs_embeds exports of a real Qwen3."""
+    """KV-cache, headless and inputs_embeds exports of a real Qwen3.
 
-    def test_kv_cache_export(self):
-        topology = analyze_llm_topology(qwen3_causal_lm(**_QWEN3_KV), "qwen3")
+    Qwen3 is analyzed by active norms, so each test also runs the by-name
+    analysis on the same export.
+    """
+
+    @pytest.fixture(
+        params=[analyze_llm_topology, _analyze_llm_topology_by_name],
+        ids=["by_active_norms", "by_name"],
+    )
+    def analyze(self, request):
+        return request.param
+
+    def test_kv_cache_export(self, analyze):
+        topology = analyze(qwen3_causal_lm(**_QWEN3_KV), "qwen3")
 
         assert topology.head_dim == _QWEN3_KV["head_dim"]
         assert topology.hidden_size == _QWEN3_KV["hidden_size"]
@@ -1309,25 +1354,25 @@ class TestExportVariants:
             f"past_value_{i}_out" for i in layers
         ]
 
-    def test_headless_backbone(self):
+    def test_headless_backbone(self, analyze):
         """No lm_head: the final norm is inactive and the last block ends on its Add."""
         onnx_model = qwen3_causal_lm(with_lm_head=False, **_QWEN3_KV)
-        topology = analyze_llm_topology(onnx_model, "qwen3")
+        topology = analyze(onnx_model, "qwen3")
 
         assert topology.lm_head == []
         assert len(topology.active_norms) == 2 * _NUM_LAYERS
         producer = {out: node for node in onnx_model.graph.node for out in node.output}
         assert producer[topology.blocks[-1].residual_output].op_type == "Add"
 
-    def test_inputs_embeds_backbone(self):
+    def test_inputs_embeds_backbone(self, analyze):
         onnx_model = qwen3_causal_lm(with_embedding=False, **_QWEN3_KV)
-        topology = analyze_llm_topology(onnx_model, "qwen3")
+        topology = analyze(onnx_model, "qwen3")
 
         assert topology.embed_tokens == []
         assert len(topology.blocks) == _NUM_LAYERS
         assert topology.hidden_size == _QWEN3_KV["hidden_size"]
 
-    def test_quantsim_graph_matches_float_graph(self):
+    def test_quantsim_graph_matches_float_graph(self, analyze):
         """A sim graph interleaves QcQuantizeOps and renames consumed tensors.
 
         The analysis strips quantizers first, so the topology must be the float
@@ -1337,8 +1382,8 @@ class TestExportVariants:
         dummy_input = make_dummy_input(onnx_model)
         sim = QuantizationSimModel(copy.deepcopy(onnx_model), dummy_input=dummy_input)
 
-        float_topology = analyze_llm_topology(onnx_model, "qwen3")
-        sim_topology = analyze_llm_topology(sim.model.model, "qwen3")
+        float_topology = analyze(onnx_model, "qwen3")
+        sim_topology = analyze(sim.model.model, "qwen3")
 
         assert sim_topology.blocks == float_topology.blocks
         assert sim_topology.active_norms == float_topology.active_norms

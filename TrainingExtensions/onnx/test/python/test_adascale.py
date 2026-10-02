@@ -32,7 +32,7 @@ from aimet_onnx.experimental.adascale.quantizer import (
     QuantizedConv2d,
 )
 from aimet_onnx.experimental.llm_topology import (
-    analyze_llm_topology_by_norm_count,
+    analyze_llm_topology,
     LlmTopology,
 )
 from aimet_onnx.experimental.adascale.model_converter import (
@@ -45,6 +45,7 @@ from .models.style_decoders import (
     _VOCAB,
     _export_decoder_with_ids,
     LlamaStyleDecoder,
+    STRUCTURAL_MODEL_TYPE,
 )
 
 # TODO: Move block definitions to a util file
@@ -1113,9 +1114,8 @@ class TestTopologyArgument:
         has, which is what makes the recommended analyze-then-quantize workflow valid.
         """
         model = self._float_model()
-        topology = analyze_llm_topology_by_norm_count(
-            model
-        )  # float model, before the sim
+        # float model, before the sim
+        topology = analyze_llm_topology(model, STRUCTURAL_MODEL_TYPE)
         sim = self._sim(model)
         inputs = self._inputs(sim)
         config = adascale_model_config_dict["llama"]
@@ -1136,7 +1136,7 @@ class TestTopologyArgument:
     def test_explicit_topology_does_not_warn(self):
         """Passing a topology is the supported call; it must stay warning-free."""
         model = self._float_model()
-        topology = analyze_llm_topology_by_norm_count(model)
+        topology = analyze_llm_topology(model, STRUCTURAL_MODEL_TYPE)
         sim = self._sim(model)
         inputs = self._inputs(sim)
 
@@ -1172,7 +1172,7 @@ class TestTopologyArgument:
     def test_block_without_residual_names_raises(self):
         """A block with no residual boundary cannot be sliced out of the graph."""
         model = self._float_model()
-        topology = analyze_llm_topology_by_norm_count(model)
+        topology = analyze_llm_topology(model, STRUCTURAL_MODEL_TYPE)
         sim = self._sim(model)
         topology.blocks[1].residual_output = None
 
@@ -1296,7 +1296,7 @@ def test_adascale_e2e(add_genai_tests_path, dtype, small_model: bool = True):
             )
         # Analyze the float model, before it is quantized: the decoder-stack
         # structure is a property of the model itself, not of the sim.
-        topology = analyze_llm_topology_by_norm_count(entry.backbone)
+        topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
         collection = model_cls.instantiate_quantsim(entry)
         sim = collection.backbone
 
@@ -1425,7 +1425,7 @@ def test_adascale_e2e_fp16_qwen3_bf16_upcast(
             )
         # Analyze the float model, before it is quantized: the decoder-stack
         # structure is a property of the model itself, not of the sim.
-        topology = analyze_llm_topology_by_norm_count(entry.backbone)
+        topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
         collection = model_cls.instantiate_quantsim(entry)
         sim = collection.backbone
         adascale_model_config_dict["qwen3"].model_config = llm_config
@@ -1549,7 +1549,7 @@ def test_qwen_adascale_e2e_ppl(add_genai_tests_path, small_model=False):
         )
         # Analyze the float model, before it is quantized: the decoder-stack
         # structure is a property of the model itself, not of the sim.
-        topology = analyze_llm_topology_by_norm_count(entry.backbone)
+        topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
         collection = model_cls.instantiate_quantsim(entry)
         sim = collection.backbone
 

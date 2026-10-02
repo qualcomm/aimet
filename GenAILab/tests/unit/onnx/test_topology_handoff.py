@@ -90,7 +90,7 @@ class TestRecipesConsumeSuppliedTopology:
         import GenAILab.bench.onnx.quant_recipes as quant_recipes
         from GenAILab.bench.onnx.quant_recipes import AdaScale, SpinQuant
 
-        assert not hasattr(quant_recipes, "analyze_llm_topology_by_norm_count")
+        assert not hasattr(quant_recipes, "analyze_llm_topology")
 
         topology = MagicMock(name="topology")
         float_model = MagicMock()
@@ -99,7 +99,7 @@ class TestRecipesConsumeSuppliedTopology:
         generator.config.model_type = "llama"
 
         with patch(
-            "aimet_onnx.experimental.llm_topology.topology.analyze_llm_topology_by_norm_count"
+            "aimet_onnx.experimental.llm_topology.topology.analyze_llm_topology"
         ) as mock_analyze:
             with patch("GenAILab.bench.onnx.quant_recipes.apply_spinquant"):
                 SpinQuant.apply(float_model, enable_r1=True, topology=topology)

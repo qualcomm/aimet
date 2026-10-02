@@ -11,16 +11,17 @@ Describes the structure of an ONNX decoder-stack model at two levels:
   (Q·Kᵀ and softmax·V) inside each block, plus the model-level embed_tokens and
   lm_head.
 
-:func:`analyze_llm_topology` finds every named layer by its HuggingFace module
-path for a given ``model_type`` (see :mod:`hf_patterns`), derives the unnamed
-parts (residual tensors, dynamic MatMuls) from the graph around them, and
-cross-checks the names against the graph structure.
+:func:`analyze_llm_topology` is the entry point. It analyzes a ``model_type`` one
+of two ways:
 
-.. note::
-   :func:`analyze_llm_topology_by_norm_count` (built on :func:`get_llm_topology`)
-   is the legacy path, which infers blocks by counting active norms (from
-   :func:`get_decoder_block_boundaries`) and splits roles by :mod:`layer_roles`.
-   It is kept until its callers migrate and will be removed.
+* *by active norms* (:func:`analyze_llm_topology_by_norm_count`, built on
+  :func:`get_llm_topology`) — infers blocks by counting active norms (from
+  :func:`get_decoder_block_boundaries`) and splits roles by :mod:`layer_roles`.
+  Used for the model types in :data:`ACTIVE_NORM_MODEL_TYPES`.
+* *by name* — finds every named layer by its HuggingFace module path (see
+  :mod:`hf_patterns`), derives the unnamed parts (residual tensors, dynamic
+  MatMuls) from the graph around them, and cross-checks the names against the
+  graph structure. Used for every other supported model type.
 
 Technique-agnostic: it describes a decoder stack without knowing about any
 specific quantization technique. Everything here works on the analysis IR (see
@@ -87,6 +88,26 @@ _PAST_KEY_OUTPUT_NAME_PATTERN = re.compile(
 )
 _PAST_VALUE_OUTPUT_NAME_PATTERN = re.compile(
     r"^(?:past_(?:value|v)_\d+(?:_out)?|present_value_\d+|present\.\d+\.value)$"
+)
+
+#: HF ``model_type`` values that :func:`analyze_llm_topology` analyzes by active
+#: norms rather than by HuggingFace module name. A VLM is listed under its
+#: top-level ``model_type``; ``qwen3_vl_text`` is also accepted for its backbone.
+ACTIVE_NORM_MODEL_TYPES = frozenset(
+    {
+        "gemma3",
+        "gemma3_text",
+        "internvl_chat",
+        "llama",
+        "mistral",
+        "phi3",
+        "qwen2",
+        "qwen2_5_vl",
+        "qwen3",
+        "qwen3_5",
+        "qwen3_vl",
+        "qwen3_vl_text",
+    }
 )
 
 
@@ -318,32 +339,39 @@ def analyze_llm_topology(
 ) -> LlmTopology:
     """Analyze ``model`` end-to-end and return a name-based :class:`LlmTopology`.
 
-    Every field that corresponds to a named HuggingFace module is found by name
-    (see :mod:`~.hf_patterns`): the per-block projections and norms,
-    ``embed_tokens``, the final norm and ``lm_head``. Blocks are the decoder
-    layers those names belong to. The remaining fields are derived from the
-    graph around the named layers:
+    How the decoder blocks and their layers are found depends on ``model_type``:
 
-    * ``residual_input`` — the tensor entering the block's input norm;
-      ``residual_output`` — the next block's ``residual_input``, or for the last
-      block the tensor entering the final norm (the final residual ``Add``'s
-      output for a headless backbone).
-    * ``qk_matmul`` / ``attn_v_matmul`` — the dynamic MatMuls between the named
-      q/k/v and o_proj (best-effort: empty when attention is a fused op).
-    * KV-cache names, ``hidden_size`` and ``head_dim`` — as before.
+    * For :data:`ACTIVE_NORM_MODEL_TYPES`, by graph structure, as
+      :func:`analyze_llm_topology_by_norm_count` does with its defaults: every
+      active RMSNorm is detected, and the norms are grouped two per decoder block.
+    * For every other supported model type, by HuggingFace module name (see
+      :mod:`~.hf_patterns`): the per-block projections and norms,
+      ``embed_tokens``, the final norm and ``lm_head``. Blocks are the decoder
+      layers those names belong to. The remaining fields are derived from the
+      graph around the named layers:
 
-    The named layers are then cross-checked against the graph, so a name that
-    points at the wrong node is an error rather than a wrong topology: each
-    block's q/k/v (gate/up) must be exactly the weighted linears its input
-    (post-attention) norm feeds, o_proj and down_proj must be the linears
-    writing the residual stream, and the final norm must feed exactly lm_head.
+      * ``residual_input`` — the tensor entering the block's input norm;
+        ``residual_output`` — the next block's ``residual_input``, or for the last
+        block the tensor entering the final norm (the final residual ``Add``'s
+        output for a headless backbone).
+      * ``qk_matmul`` / ``attn_v_matmul`` — the dynamic MatMuls between the named
+        q/k/v and o_proj (best-effort: empty when attention is a fused op).
+      * KV-cache names, ``hidden_size`` and ``head_dim`` — as before.
+
+      The named layers are then cross-checked against the graph, so a name that
+      points at the wrong node is an error rather than a wrong topology: each
+      block's q/k/v (gate/up) must be exactly the weighted linears its input
+      (post-attention) norm feeds, o_proj and down_proj must be the linears
+      writing the residual stream, and the final norm must feed exactly lm_head.
 
     :param model: ONNX ModelProto to analyze. May be a float export or a
         ``QuantizationSimModel`` graph. Not mutated. A dynamo export must first
         go through
         :func:`~aimet_onnx.prepare_passes.fix_node_names_in_dynamo_exported_onnx.fix_node_names_pass`.
-    :param model_type: HuggingFace ``PretrainedConfig.model_type`` of the model
-        (for a VLM, of its text config), e.g. ``"llama"``.
+    :param model_type: HuggingFace ``PretrainedConfig.model_type`` of the model,
+        e.g. ``"llama"``. For a VLM, that of its top-level config (e.g.
+        ``"qwen3_vl"``); the name tables of VLM backbones not analyzed by active
+        norms are keyed by the text config's instead (e.g. ``"qwen2_5_vl_text"``).
     :param ir_model: Pre-built *analysis* IR for ``model`` — as returned by
         :func:`~.ir_analysis.build_analysis_ir`, i.e. quantizer-stripped and
         RMSNorm-fused. Built here when ``None``. Pass one only to avoid a second
@@ -352,8 +380,39 @@ def analyze_llm_topology(
     :return: LlmTopology with every field populated. ``head_dim`` is ``None``
         when the export exposes no ``past_value`` graph input to derive it from.
     :raises ValueError: If ``model_type`` is unsupported, if the layers cannot
-        be identified by name (:class:`~.hf_patterns.NamedLayerMatchError`), or
-        if the named layers disagree with the graph.
+        be identified by name (:class:`~.hf_patterns.NamedLayerMatchError`), if
+        the named layers disagree with the graph, or if the decoder blocks cannot
+        be found by active norms.
+    """
+    if model_type in ACTIVE_NORM_MODEL_TYPES:
+        topology = analyze_llm_topology_by_norm_count(model, ir_model=ir_model)
+        method = "by active norms"
+    else:
+        topology = _analyze_llm_topology_by_name(model, model_type, ir_model=ir_model)
+        method = "by name"
+
+    _logger.info(
+        "Backbone (%s, %s): %d block(s), embed_tokens=%s, lm_head=%s.",
+        model_type,
+        method,
+        len(topology.blocks),
+        topology.embed_tokens,
+        topology.lm_head,
+    )
+    return topology
+
+
+def _analyze_llm_topology_by_name(
+    model: ModelProto,
+    model_type: str,
+    *,
+    ir_model: Optional[onnx_ir.Model] = None,
+) -> LlmTopology:
+    """Analyze ``model`` by HuggingFace module name (see :func:`analyze_llm_topology`).
+
+    :raises ValueError: If ``model_type`` has no built-in name table, if the
+        layers cannot be identified by name, or if the named layers disagree with
+        the graph.
     """
     patterns = get_hf_model_patterns(model_type)
     if ir_model is None:
@@ -369,14 +428,6 @@ def analyze_llm_topology(
         topology.head_dim = _infer_head_dim(model)
     except ValueError:
         topology.head_dim = None
-
-    _logger.info(
-        "Backbone (%s): %d block(s), embed_tokens=%s, lm_head=%s.",
-        model_type,
-        len(topology.blocks),
-        topology.embed_tokens,
-        topology.lm_head,
-    )
     return topology
 
 
@@ -387,19 +438,14 @@ def analyze_llm_topology_by_norm_count(
     role_patterns: Optional[Dict[LinearRole, Pattern]] = None,
     ir_model: Optional[onnx_ir.Model] = None,
 ) -> LlmTopology:
-    """Analyze ``model`` the legacy way: decoder blocks by counting active norms.
+    """Analyze ``model`` by active norms: decoder blocks by counting active norms.
 
-    The behavior (and signature) :func:`analyze_llm_topology` had before it took a
-    ``model_type``: detect every active RMSNorm, group them ``active_norms_per_block``
-    at a time into decoder blocks, split each block's linears into roles with the
-    generic :func:`~.layer_roles.classify_linear_role` table, and infer
-    ``hidden_size`` / ``head_dim``. Needs no ``model_type``, so it also runs on
-    architectures without a built-in name table.
-
-    .. warning::
-       Temporary. Kept for callers that have not migrated to
-       :func:`analyze_llm_topology`, and removed together with
-       :func:`get_llm_topology`.
+    Detect every active RMSNorm, group them ``active_norms_per_block`` at a time
+    into decoder blocks, split each block's linears into roles with the generic
+    :func:`~.layer_roles.classify_linear_role` table, and infer ``hidden_size`` /
+    ``head_dim``. Needs no ``model_type``, so it also runs on architectures
+    without a built-in name table. :func:`analyze_llm_topology` uses it, with the
+    defaults, for :data:`ACTIVE_NORM_MODEL_TYPES`.
 
     :param model: ONNX ModelProto to analyze. Not mutated.
     :param active_norms_per_block: Active norms per decoder block (see
@@ -874,6 +920,7 @@ def _infer_head_dim(model: ModelProto) -> int:
 
 
 __all__ = [
+    "ACTIVE_NORM_MODEL_TYPES",
     "analyze_llm_topology",
     "analyze_llm_topology_by_norm_count",
     "get_llm_topology",

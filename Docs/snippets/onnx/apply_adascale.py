@@ -26,7 +26,7 @@ import os
 import tempfile
 import onnx
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology_by_norm_count
+from aimet_onnx.experimental.llm_topology import analyze_llm_topology
 from GenAILab.qai_hub_lm.models.base import LLM
 from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descriptors
 from GenAILab.qai_hub_lm.models.generator import Generator
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 # Analyze the decoder-stack structure on the FLOAT model, before quantizing. The
 # topology describes the model, so it is derived once here and then handed to any
 # technique that needs to know where the decoder blocks are (AdaScale, below).
-topology = analyze_llm_topology_by_norm_count(onnx_model)
+topology = analyze_llm_topology(onnx_model, hf_model.config.model_type)
 
 quantsim = QuantizationSimModel(
     model=onnx_model,

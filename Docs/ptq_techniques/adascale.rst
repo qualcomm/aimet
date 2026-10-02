@@ -85,7 +85,7 @@ For ONNX, this step also exports the model to ONNX first — the ONNX tab includ
 ``torch.onnx.export`` call that produces the correctly named inputs required by AdaScale.
 
 The ONNX tab additionally analyzes the model's decoder-stack structure with
-:ref:`analyze_llm_topology_by_norm_count <apiref-onnx-adascale>`, on the **float** model and before the sim is
+:ref:`analyze_llm_topology <apiref-onnx-adascale>`, on the **float** model and before the sim is
 created. A topology describes the model, not the sim, so derive it once here; `Step 3`_ hands it to
 AdaScale, which uses it to locate the decoder blocks.
 

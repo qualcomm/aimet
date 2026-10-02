@@ -89,7 +89,7 @@ def apply_spinquant(
         the KV cache are already rotated; the model's ``present_key`` output then
         carries rotated K (cache convention is self-consistent across steps).
     :param topology: Decoder-stack topology of ``model``, from
-        :func:`~aimet_onnx.experimental.llm_topology.analyze_llm_topology_by_norm_count`.
+        :func:`~aimet_onnx.experimental.llm_topology.analyze_llm_topology`.
         Every rotation is placed by it — which linears read from and write to the
         residual stream (R1), which are the V/O projections (R2), which are the Q/K edges
         into QKᵀ (R3) — because discovering model structure belongs to ``llm_topology``,
@@ -107,7 +107,7 @@ def apply_spinquant(
 
     Example (LLM)::
 
-        topology = analyze_llm_topology_by_norm_count(model)
+        topology = analyze_llm_topology(model, model_type="llama")
         apply_spinquant(model, topology=topology)
         sim = QuantizationSimModel(model)   # built on the rotated graph
         sim.compute_encodings(calibration_data)
@@ -115,7 +115,7 @@ def apply_spinquant(
     Example (VLM)::
 
         embedding = torch.load("embedding.pth")   # torch.Tensor [vocab, hidden]
-        topology = analyze_llm_topology_by_norm_count(backbone_model)
+        topology = analyze_llm_topology(backbone_model, model_type="qwen2_5_vl")
         apply_spinquant(
             backbone_model,
             visual_model=visual_model,
@@ -179,7 +179,7 @@ def _build_context(
         warnings.warn(
             "apply_spinquant() was called without 'topology', so the decoder-stack "
             "structure is being analyzed internally. Prefer building it with "
-            "aimet_onnx.experimental.llm_topology.analyze_llm_topology_by_norm_count(model) "
+            "aimet_onnx.experimental.llm_topology.analyze_llm_topology(model, model_type) "
             "and passing topology=...; this argument may become required in a future release.",
             UserWarning,
             stacklevel=3,
@@ -243,14 +243,14 @@ def _validate_topology(topology: LlmTopology) -> None:
     if not topology.blocks:
         raise ValueError(
             "topology contains no decoder blocks, so there is nothing for SpinQuant to "
-            "rotate. Verify that analyze_llm_topology_by_norm_count() was run on the model "
+            "rotate. Verify that analyze_llm_topology() was run on the model "
             "being rotated."
         )
 
     if topology.hidden_size is None:
         raise ValueError(
             "topology.hidden_size is None, so R1 has no residual-stream dimension to build "
-            "its Hadamard at. analyze_llm_topology_by_norm_count() fills this in; a hand-built "
+            "its Hadamard at. analyze_llm_topology() fills this in; a hand-built "
             "topology must set it to the model's hidden size."
         )
 
@@ -261,7 +261,7 @@ def _validate_topology(topology: LlmTopology) -> None:
         raise ValueError(
             "topology.active_norms is empty, so R1 has no RMSNorm scales to absorb into "
             "the linears it rotates. Rotating without that fusion silently changes the "
-            "model's outputs, so it is refused. analyze_llm_topology_by_norm_count() populates "
+            "model's outputs, so it is refused. analyze_llm_topology() populates "
             "this field."
         )
 

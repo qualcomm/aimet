@@ -40,6 +40,11 @@ _NUM_HEADS, _HEAD_DIM = 2, 4  # _H == _NUM_HEADS * _HEAD_DIM
 _VOCAB = 16
 _B, _SEQ = 1, 4  # batch, sequence length
 
+#: ``model_type`` to analyze hand-built decoder fixtures with. Their modules carry no
+#: HuggingFace names, so it must be one that ``analyze_llm_topology`` analyzes by
+#: active norms rather than by name; which one is otherwise irrelevant.
+STRUCTURAL_MODEL_TYPE = "llama"
+
 # ViT dims.
 _VIT_D, _VIT_I = 8, 12  # ViT hidden size, intermediate dim
 _VIT_S_SQ = 4
