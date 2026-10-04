@@ -6,6 +6,32 @@
 Release notes
 #############
 
+2.41.0
+======
+
+* Bug fixes and Improvements
+    * ONNX
+        * Fix encoding propagation across the ``Pad`` op (`5f80b04`_)
+        * Fix AdaScale silently overriding per-quantizer weight bitwidth (`4591f60`_)
+        * Remove quantizers from the ``onnx_ir`` model instead of ``ModelProto`` during export (`6a6824d`_)
+
+    * Torch
+        * Fix stale ``ConnectedGraph`` products when an op output feeds the same consumer twice (`db7a805`_)
+        * Use a trivial encoding when an uninitialized quantizer receives an empty input (`5561564`_)
+        * Restrict power-of-two scales to MXFP4 instead of all FP4 quantizers (`065e5a0`_)
+
+    * Common
+        * Add compatibility with onnx 1.23.0 (`88b4cb6`_)
+
+.. _5f80b04: https://github.com/qualcomm/aimet/commit/5f80b044ab80420d2fc5a31923587bb6a5f849ee
+.. _4591f60: https://github.com/qualcomm/aimet/commit/4591f60d797128eeec1367c7e09b7ef5d56247d7
+.. _6a6824d: https://github.com/qualcomm/aimet/commit/6a6824d5f5c0e2c4cc81bff7900aa27b3e34fc73
+.. _db7a805: https://github.com/qualcomm/aimet/commit/db7a805e726a500d6eec5e39feb3d3be85486947
+.. _5561564: https://github.com/qualcomm/aimet/commit/55615645e1ed2d05fb381a97832c05ce8f9b6d0b
+.. _065e5a0: https://github.com/qualcomm/aimet/commit/065e5a0e8feea36b0d7210b0381cb3452d56a520
+.. _88b4cb6: https://github.com/qualcomm/aimet/commit/88b4cb6280ccbdbbe0b00e12efd8ad88def6eae7
+
+
 2.40.0
 ======
 
