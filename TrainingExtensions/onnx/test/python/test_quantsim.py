@@ -62,6 +62,8 @@ from aimet_onnx.quantsim import (
     set_lpbq_for_params,
     set_param_type,
     _ENCODING_LOADERS,
+    _ENCODING_SECTIONS,
+    _validate_encodings,
 )
 from aimet_onnx.common.defs import QTYPE_ALIASES
 import aimet_onnx
@@ -7403,7 +7405,7 @@ def test_encodings_to_onnx_qdq_unregistered_version(tmp_dir):
     """
     Given: An encodings file claiming a version with no registered file layout
     When: Converted to QDQ
-    Then: It raises and names the extension point, rather than guessing at the layout
+    Then: It raises ValueError naming the supported versions, rather than guessing at the layout
     """
     np.random.seed(0)
     torch.manual_seed(0)
@@ -7413,8 +7415,322 @@ def test_encodings_to_onnx_qdq_unregistered_version(tmp_dir):
     encodings = _export_encodings(sim, tmp_dir, "1.0.0")
     encodings["version"] = "3.0.0"
 
-    with pytest.raises(NotImplementedError, match="_ENCODING_LOADERS"):
+    with pytest.raises(ValueError, match="Unsupported encoding version '3.0.0'"):
         encodings_to_onnx_qdq(model, encodings)
+
+
+def test_encodings_to_onnx_qdq_sections_cover_all_encoding_versions():
+    """
+    Given: The encoding versions this converter registers a file layout for
+    When: Compared against the versions whose required sections are declared
+    Then: Every registered layout is validated, so a newly registered version cannot reach a
+          loader unchecked
+    """
+    assert set(_ENCODING_LOADERS) == set(_ENCODING_SECTIONS), (
+        "A registered encoding version has no declared sections. Add its required sections to "
+        "aimet_onnx.quantsim._ENCODING_SECTIONS so malformed files are reported clearly."
+    )
+
+
+@pytest.mark.parametrize("encoding_version", sorted(_ENCODING_SECTIONS))
+def test_encodings_to_onnx_qdq_missing_section(tmp_dir, encoding_version):
+    """
+    Given: An encodings file with one of its version's required sections removed
+    When: Converted to QDQ
+    Then: It raises ValueError naming the section, rather than a KeyError from inside a loader
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    # aimet-onnx cannot export 2.1.0; it shares 2.0.0's layout, so relabel.
+    export_version = "2.0.0" if encoding_version == "2.1.0" else encoding_version
+    exported = _export_encodings(sim, tmp_dir, export_version)
+    exported["version"] = encoding_version
+
+    for section in _ENCODING_SECTIONS[encoding_version]:
+        encodings = {k: v for k, v in exported.items() if k != section}
+
+        with pytest.raises(ValueError, match=section):
+            encodings_to_onnx_qdq(model, encodings)
+
+
+@pytest.mark.parametrize("encoding_version", sorted(_ENCODING_SECTIONS))
+def test_encodings_to_onnx_qdq_wrong_section_type(tmp_dir, encoding_version):
+    """
+    Given: An encodings file whose section has the other layout's type, e.g. a 1.0.0 file whose
+           param_encodings is a dict as 0.6.1 would store it
+    When: Converted to QDQ
+    Then: It raises ValueError naming the section, rather than reading zero encodings
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    # aimet-onnx cannot export 2.1.0; it shares 2.0.0's layout, so relabel.
+    export_version = "2.0.0" if encoding_version == "2.1.0" else encoding_version
+    exported = _export_encodings(sim, tmp_dir, export_version)
+    exported["version"] = encoding_version
+
+    for section, expected_type in _ENCODING_SECTIONS[encoding_version].items():
+        # Swap in the type the *other* layout uses for this section.
+        wrong_value = [] if expected_type is dict else {}
+        encodings = {**exported, section: wrong_value}
+
+        with pytest.raises(ValueError, match=section):
+            encodings_to_onnx_qdq(model, encodings)
+
+
+@pytest.mark.parametrize(
+    "param_type, activation_type",
+    [("int8", "int8"), ("int4", "int16"), ("float16", "float16")],
+)
+@pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0", "2.0.0"])
+def test_encodings_to_onnx_qdq_validation_accepts_real_exports(
+    tmp_dir, encoding_version, param_type, activation_type
+):
+    """
+    Given: A real export, across the quantization schemes whose encodings carry different fields
+           -- notably float16, which is a plain cast and so carries no scale at all
+    When: Validated
+    Then: It is accepted, i.e. no required-field rule is stricter than what AIMET exports
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(
+        model,
+        config_file="htp_v81",
+        param_type=param_type,
+        activation_type=activation_type,
+    )
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, encoding_version)
+
+    _validate_encodings(encodings, encoding_version)
+
+
+@pytest.mark.parametrize("encoding_version", ["1.0.0", "2.0.0"])
+def test_encodings_to_onnx_qdq_validation_accepts_lpbq(tmp_dir, encoding_version):
+    """
+    Given: An LPBQ export, which carries per_channel_float_scale / per_block_int_scale rather
+           than the plain scale fields
+    When: Validated
+    Then: It is accepted, i.e. the scale check recognizes every spelling of a scale
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    set_lpbq_for_params(sim, op_types=["Conv"], bitwidth=4, block_size=4)
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, encoding_version)
+
+    _validate_encodings(encodings, encoding_version)
+
+
+def test_encodings_to_onnx_qdq_mixed_version_entry(tmp_dir):
+    """
+    Given: A 2.0.0 file with an entry carrying 'bw', the marker of a 1.0.0 encoding
+    When: Converted to QDQ
+    Then: It raises, rather than parsing that entry as 1.0.0. EncodingBase re-derives each
+          entry's version from its own fields and ignores the version the file declares
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "2.0.0")
+    encodings["encodings"][0]["bw"] = 8
+
+    with pytest.raises(ValueError, match="older encoding version"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+@pytest.mark.parametrize(
+    "bad_scale", [0.0, -0.125, float("nan"), float("inf"), "0.125"]
+)
+def test_encodings_to_onnx_qdq_degenerate_scale(tmp_dir, bad_scale):
+    """
+    Given: An encoding whose scale is non-positive, non-finite, or not a number
+    When: Converted to QDQ
+    Then: It raises, rather than emitting a graph ONNX runs while producing zeros or NaNs
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "2.0.0")
+    for entry in encodings["encodings"]:
+        if isinstance(entry.get("y_scale"), float):
+            entry["y_scale"] = bad_scale
+            break
+
+    with pytest.raises(ValueError, match="y_scale"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+def test_encodings_to_onnx_qdq_zero_point_out_of_dtype_range(tmp_dir):
+    """
+    Given: A uint8 encoding whose zero point does not fit in a uint8
+    When: Converted to QDQ
+    Then: It raises, rather than wrapping the value on write and shifting the whole grid
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "2.0.0")
+    patched = False
+    for entry in encodings["encodings"]:
+        if entry.get("output_dtype") == "uint8" and "y_zero_point" in entry:
+            entry["y_zero_point"] = 99999
+            patched = True
+            break
+    assert patched, "fixture carried no uint8 activation encoding to corrupt"
+
+    with pytest.raises(ValueError, match="y_zero_point"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+def test_encodings_to_onnx_qdq_duplicate_encoding(tmp_dir):
+    """
+    Given: Two encodings naming the same tensor
+    When: Converted to QDQ
+    Then: It raises. The loaders key by name, so one would be applied and the other dropped
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "2.0.0")
+    encodings["encodings"].append(dict(encodings["encodings"][0]))
+
+    with pytest.raises(ValueError, match="more than one encoding"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+@pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0"])
+def test_encodings_to_onnx_qdq_tensor_in_both_legacy_sections(
+    tmp_dir, encoding_version
+):
+    """
+    Given: A legacy file naming one tensor in both activation_encodings and param_encodings
+    When: Converted to QDQ
+    Then: It raises. The loaders merge with `param | activation`, so one encoding is dropped
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, encoding_version)
+
+    if encoding_version == "0.6.1":
+        name, entry = next(iter(encodings["param_encodings"].items()))
+        encodings["activation_encodings"][name] = entry
+    else:
+        entry = encodings["param_encodings"][0]
+        encodings["activation_encodings"].append(dict(entry))
+
+    with pytest.raises(ValueError, match="both"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+@pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0"])
+def test_encodings_to_onnx_qdq_legacy_affine_missing_offset(tmp_dir, encoding_version):
+    """
+    Given: A legacy integer encoding with no offset, which the affine parser reads unconditionally
+    When: Converted to QDQ
+    Then: It raises ValueError naming the field, rather than a KeyError from inside the parser
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, encoding_version)
+
+    if encoding_version == "0.6.1":
+        for entry in encodings["param_encodings"].values():
+            for element in entry:
+                element.pop("offset", None)
+    else:
+        for entry in encodings["param_encodings"]:
+            entry.pop("offset", None)
+
+    with pytest.raises(ValueError, match="offset"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+def test_encodings_to_onnx_qdq_unknown_enc_type(tmp_dir):
+    """
+    Given: A 1.0.0 encoding with an enc_type the parser does not implement
+    When: Converted to QDQ
+    Then: It raises ValueError listing the supported values, rather than failing later
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "1.0.0")
+    encodings["param_encodings"][0]["enc_type"] = "NOT_A_TYPE"
+
+    with pytest.raises(ValueError, match="enc_type"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+def test_encodings_to_onnx_qdq_blockwise_without_block_size(tmp_dir):
+    """
+    Given: A 1.0.0 encoding declaring a blockwise enc_type but carrying no block_size
+    When: Converted to QDQ
+    Then: It raises ValueError, rather than a KeyError from the blockwise branch
+    """
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = single_residual_model(opset_version=21)
+    sim = QuantizationSimModel(model, config_file="htp_v81")
+    sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "1.0.0")
+    encodings["param_encodings"][0]["enc_type"] = "PER_BLOCK"
+    encodings["param_encodings"][0].pop("block_size", None)
+
+    with pytest.raises(ValueError, match="block_size"):
+        encodings_to_onnx_qdq(model, encodings)
+
+
+def test_encodings_to_onnx_qdq_non_dict_encodings(tmp_dir):
+    """
+    Given: Encodings that are neither a dict nor a path to an encodings file
+    When: Converted to QDQ
+    Then: It raises ValueError, rather than AttributeError from .get on the wrong type
+    """
+    model = single_residual_model(opset_version=21)
+
+    with pytest.raises(ValueError, match="dict or a path"):
+        encodings_to_onnx_qdq(model, [{"name": "input"}])
+
+
+def test_encodings_to_onnx_qdq_non_dict_encodings_file(tmp_dir):
+    """
+    Given: An encodings file that is valid JSON but whose top level is a list
+    When: Converted to QDQ
+    Then: It raises ValueError, since the encodings format requires a top-level dict
+    """
+    model = single_residual_model(opset_version=21)
+    path = os.path.join(tmp_dir, "list.encodings")
+    with open(path, "w") as f:
+        json.dump([{"name": "input"}], f)
+
+    with pytest.raises(ValueError, match="dict at the top level"):
+        encodings_to_onnx_qdq(model, path)
 
 
 def test_encodings_to_onnx_qdq_2_1_0_shares_2_x_layout(tmp_dir):

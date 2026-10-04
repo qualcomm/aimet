@@ -25,6 +25,7 @@ from typing import (
 )
 from functools import wraps
 import json
+import re
 import warnings
 import numpy as np
 import onnx
@@ -3488,6 +3489,342 @@ _ENCODING_LOADERS = {
     "2.1.0": _flatten_2_x,
 }
 
+# The sections each layout stores its encodings in, and the type each must have.
+_ENCODING_SECTIONS = {
+    "0.6.1": {"activation_encodings": dict, "param_encodings": dict},
+    "1.0.0": {"activation_encodings": list, "param_encodings": list},
+    "2.0.0": {"encodings": list},
+    "2.1.0": {"encodings": list},
+}
+
+# Fields every entry needs: what EncodingBase.get_subclass reads to pick a parser. Scale fields
+# are checked separately, per encoding type, because float16/bfloat16 are plain casts with no
+# scale at all and LPBQ spells its scale differently -- requiring one here would reject them.
+_REQUIRED_ENCODING_FIELDS = {
+    "0.6.1": ("bitwidth", "dtype"),
+    "1.0.0": ("bw", "dtype", "enc_type"),
+    "2.0.0": ("output_dtype",),
+    "2.1.0": ("output_dtype",),
+}
+
+# Fields only an integer encoding needs, read unconditionally by the affine parsers.
+_REQUIRED_AFFINE_FIELDS = {
+    "0.6.1": ("is_symmetric", "offset"),
+    "1.0.0": ("is_sym", "offset"),
+    "2.0.0": (),
+    "2.1.0": (),
+}
+
+# Derived from the enum so a new member cannot fall out of sync.
+_VALID_ENC_TYPES = {member.name for member in EncodingType}
+_BLOCK_ENC_TYPES = {EncodingType.PER_BLOCK.name, EncodingType.LPBQ.name}
+
+# Any one of these counts as "this entry carries a scale".
+_SCALE_FIELDS = {
+    "0.6.1": ("scale",),
+    "1.0.0": ("scale",),
+    "2.0.0": ("y_scale", "per_channel_float_scale", "per_block_int_scale"),
+    "2.1.0": ("y_scale", "per_channel_float_scale", "per_block_int_scale"),
+}
+
+# Where each version states its dtype, and the substring marking an integer one. Mirrors the
+# dtype checks in EncodingBase.get_subclass.
+_INT_DTYPE_FIELD = {
+    "0.6.1": ("dtype", "int"),
+    "1.0.0": ("dtype", "INT"),
+    "2.0.0": ("output_dtype", "int"),
+    "2.1.0": ("output_dtype", "int"),
+}
+
+# Fields that must NOT appear, because EncodingBase._infer_encoding_version re-derives each
+# entry's version from its own shape ("bw" present means 1.0.0, absent means 2.x) and ignores the
+# file's declared version. An entry carrying another layout's marker is otherwise parsed as that
+# version, silently, until some unrelated field turns up missing.
+_FOREIGN_ENCODING_FIELDS = {
+    "0.6.1": (),
+    "1.0.0": (),
+    "2.0.0": ("bw",),
+    "2.1.0": ("bw",),
+}
+
+
+def _integer_dtype_range(dtype: str) -> Optional[Tuple[int, int]]:
+    """
+    The representable range of an integer dtype name such as ``"uint8"`` or ``"int4"``.
+
+    :return: (min, max), or None if the name is not an integer dtype this can size
+    """
+    match = re.fullmatch(r"(u?)int(\d+)", dtype)
+    if not match:
+        return None
+
+    unsigned, bits = match.group(1) == "u", int(match.group(2))
+    if unsigned:
+        return 0, 2**bits - 1
+    return -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
+
+
+def _validate_zero_point(element: dict, name: str, dtype: str, encoding_version: str):
+    """
+    Check that zero points fit the quantized dtype.
+
+    A zero point outside the dtype's range wraps when written as an ONNX initializer, shifting
+    the whole grid: the graph still validates and runs, and the output is simply wrong.
+
+    :param element: One encoding entry
+    :param name: The tensor the entry belongs to, for the error message
+    :param dtype: The entry's integer dtype, e.g. ``"uint8"`` (2.x) or ``"INT"`` (1.0.0)
+    :param encoding_version: The file's declared ``"version"``
+    :raises ValueError: If a zero point does not fit the dtype
+    """
+    if encoding_version in ("0.6.1", "1.0.0"):
+        # Legacy states an additive offset and a bitwidth rather than a named dtype.
+        bitwidth = element.get("bitwidth" if encoding_version == "0.6.1" else "bw")
+        if not isinstance(bitwidth, int) or isinstance(bitwidth, bool):
+            raise ValueError(
+                f"Encoding for '{name}' has a non-integer bitwidth ({bitwidth!r})."
+            )
+        if not 1 <= bitwidth <= 32:
+            raise ValueError(
+                f"Encoding for '{name}' has an out-of-range bitwidth ({bitwidth}); expected "
+                f"1 to 32."
+            )
+        low, high = -(2**bitwidth), 2**bitwidth - 1
+        values, field = element.get("offset"), "offset"
+    else:
+        bounds = _integer_dtype_range(dtype)
+        if bounds is None:
+            # The exporter reports unrecognized dtype names against the target opset.
+            return
+        low, high = bounds
+        values, field = element.get("y_zero_point"), "y_zero_point"
+
+    if values is None:
+        return
+
+    for scalar in np.asarray(values, dtype=object).reshape(-1):
+        # AIMET writes legacy offsets as floats (e.g. -128.0), so accept any integral number.
+        if (
+            not isinstance(scalar, (int, float))
+            or isinstance(scalar, bool)
+            or not float(scalar).is_integer()
+        ):
+            raise ValueError(
+                f"Encoding for '{name}' has a non-integer '{field}' ({scalar!r})."
+            )
+        if not low <= scalar <= high:
+            raise ValueError(
+                f"Encoding for '{name}' has '{field}' {scalar}, outside the range "
+                f"[{low}, {high}] representable by {dtype}. A zero point that does not fit "
+                f"the quantized dtype wraps silently and shifts the entire grid."
+            )
+
+
+def _validate_encoding_entry(entry: Any, name: str, encoding_version: str):
+    """
+    Check one encoding entry against the layout its file declares.
+
+    :param entry: A single encoding, as stored in the file
+    :param name: The tensor the entry belongs to, for the error message
+    :param encoding_version: The file's declared ``"version"``
+    :raises ValueError: If the entry is the wrong type, or is missing or misdeclaring fields
+    """
+    # 0.6.1 stores a list of per-channel dicts; every other layout stores one dict.
+    if encoding_version == "0.6.1":
+        if not isinstance(entry, list) or not entry:
+            raise ValueError(
+                f"Encoding for '{name}' in a version 0.6.1 file must be a non-empty list of "
+                f"per-channel encodings, got "
+                f"{type(entry).__name__ if not isinstance(entry, list) else 'an empty list'}."
+            )
+        per_channel = entry
+    else:
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"Encoding for '{name}' in a version {encoding_version} file must be a dict, "
+                f"got {type(entry).__name__}."
+            )
+        per_channel = [entry]
+
+    for element in per_channel:
+        if not isinstance(element, dict):
+            raise ValueError(
+                f"Encoding for '{name}' in a version {encoding_version} file must contain "
+                f"dicts, got {type(element).__name__}."
+            )
+
+        missing = [
+            field
+            for field in _REQUIRED_ENCODING_FIELDS[encoding_version]
+            if field not in element
+        ]
+        if missing:
+            raise ValueError(
+                f"Encoding for '{name}' is missing field(s) {missing}, required by encoding "
+                f"version {encoding_version}. Does the file's version match its contents?"
+            )
+
+        foreign = [
+            field
+            for field in _FOREIGN_ENCODING_FIELDS[encoding_version]
+            if field in element
+        ]
+        if foreign:
+            raise ValueError(
+                f"Encoding for '{name}' declares field(s) {foreign}, which belong to an older "
+                f"encoding version, in a version {encoding_version} file. Mixed-version "
+                f"encodings are parsed as the wrong version; re-export the file."
+            )
+
+        enc_type = element.get("enc_type")
+        if enc_type is not None:
+            if enc_type not in _VALID_ENC_TYPES:
+                raise ValueError(
+                    f"Encoding for '{name}' has unsupported enc_type '{enc_type}'. Expected "
+                    f"one of {sorted(_VALID_ENC_TYPES)}."
+                )
+            if enc_type in _BLOCK_ENC_TYPES and "block_size" not in element:
+                raise ValueError(
+                    f"Encoding for '{name}' has enc_type '{enc_type}' but no 'block_size', "
+                    f"which every blockwise layout requires."
+                )
+
+        # Legacy is exempt: it derives the axis from enc_type plus a caller-supplied default, so
+        # its blockwise entries legitimately carry no axis.
+        if (
+            encoding_version not in ("0.6.1", "1.0.0")
+            and "block_size" in element
+            and "axis" not in element
+        ):
+            raise ValueError(
+                f"Encoding for '{name}' has 'block_size' but no 'axis'. Blockwise encodings "
+                f"must state the axis the blocks run along."
+            )
+
+        axis = element.get("axis")
+        if axis is not None and not isinstance(axis, int) or isinstance(axis, bool):
+            raise ValueError(
+                f"Encoding for '{name}' has a non-integer 'axis' ({axis!r})."
+            )
+
+        # Only integer encodings define a grid. float16/bfloat16 are simulated as a plain cast,
+        # so carrying no scale is correct for them.
+        dtype_field, int_marker = _INT_DTYPE_FIELD[encoding_version]
+        dtype = element.get(dtype_field)
+        if isinstance(dtype, str) and int_marker in dtype:
+            affine_missing = [
+                field
+                for field in _REQUIRED_AFFINE_FIELDS[encoding_version]
+                if field not in element
+            ]
+            if affine_missing:
+                raise ValueError(
+                    f"Integer encoding for '{name}' is missing field(s) {affine_missing}, "
+                    f"required by encoding version {encoding_version}."
+                )
+
+            scales = [f for f in _SCALE_FIELDS[encoding_version] if f in element]
+            if not scales:
+                raise ValueError(
+                    f"Integer encoding for '{name}' has no scale. Expected one of "
+                    f"{list(_SCALE_FIELDS[encoding_version])} in a version "
+                    f"{encoding_version} file."
+                )
+
+            for field in scales:
+                value = element[field]
+                flat = value if isinstance(value, (list, tuple)) else [value]
+                if not len(flat):
+                    raise ValueError(f"Encoding for '{name}' has an empty '{field}'.")
+                # A non-positive or non-finite scale gives a degenerate or NaN grid, which ONNX
+                # runs without complaint.
+                for scalar in np.asarray(value, dtype=object).reshape(-1):
+                    if not isinstance(scalar, (int, float)) or isinstance(scalar, bool):
+                        raise ValueError(
+                            f"Encoding for '{name}' has a non-numeric value in '{field}': "
+                            f"{scalar!r}."
+                        )
+                    if field != "per_block_int_scale" and (
+                        not np.isfinite(scalar) or scalar <= 0
+                    ):
+                        raise ValueError(
+                            f"Encoding for '{name}' has a non-positive or non-finite "
+                            f"'{field}' ({scalar}). Scales must be finite and > 0."
+                        )
+
+            _validate_zero_point(element, name, dtype, encoding_version)
+
+
+def _validate_encodings(encodings_dict: dict, encoding_version: str):
+    """
+    Check that an encodings file matches the layout its ``"version"`` declares.
+
+    The loaders subscript the file directly, so without this a malformed one surfaces as a
+    ``KeyError`` or ``TypeError`` from inside a comprehension.
+
+    :param encodings_dict: Loaded encodings file
+    :param encoding_version: The file's ``"version"``, already known to be registered
+    :raises ValueError: If a section or entry does not match the declared version's layout
+    """
+    for section, expected_type in _ENCODING_SECTIONS[encoding_version].items():
+        if section not in encodings_dict:
+            raise ValueError(
+                f"Encodings file of version {encoding_version} is missing required section "
+                f"'{section}'. Expected section(s): "
+                f"{sorted(_ENCODING_SECTIONS[encoding_version])}."
+            )
+
+        entries = encodings_dict[section]
+        if not isinstance(entries, expected_type):
+            raise ValueError(
+                f"Section '{section}' of a version {encoding_version} encodings file must be "
+                f"a {expected_type.__name__}, got {type(entries).__name__}."
+            )
+
+        if isinstance(entries, dict):
+            # 0.6.1 keys by tensor name, so duplicates cannot occur.
+            for name, entry in entries.items():
+                _validate_encoding_entry(entry, name, encoding_version)
+        else:
+            seen = set()
+            for position, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    raise ValueError(
+                        f"Entry {position} of '{section}' in a version {encoding_version} "
+                        f"encodings file must be a dict, got {type(entry).__name__}."
+                    )
+                if "name" not in entry:
+                    raise ValueError(
+                        f"Entry {position} of '{section}' in a version {encoding_version} "
+                        f"encodings file has no 'name' field, so it cannot be matched to a "
+                        f"tensor."
+                    )
+                # The loaders key by name, so a repeat discards the earlier entry.
+                if entry["name"] in seen:
+                    raise ValueError(
+                        f"Tensor '{entry['name']}' has more than one encoding in '{section}'. "
+                        f"Only one would be applied and the rest silently discarded."
+                    )
+                seen.add(entry["name"])
+                _validate_encoding_entry(entry, entry["name"], encoding_version)
+
+    # The loaders merge the legacy sections with `param | activation`, so a name in both keeps
+    # one encoding and drops the other.
+    if encoding_version in ("0.6.1", "1.0.0"):
+        activations, params = (
+            encodings_dict["activation_encodings"],
+            encodings_dict["param_encodings"],
+        )
+        if isinstance(activations, dict):
+            shared = set(activations) & set(params)
+        else:
+            shared = {e["name"] for e in activations} & {e["name"] for e in params}
+        if shared:
+            raise ValueError(
+                f"Tensor(s) {sorted(shared)} appear in both 'activation_encodings' and "
+                f"'param_encodings'. Each tensor must be quantized as one or the other."
+            )
+
 
 def _flatten_encodings(
     encodings: dict | str,
@@ -3499,9 +3836,20 @@ def _flatten_encodings(
     """
     if isinstance(encodings, dict):
         encodings_dict = encodings
-    else:
+    elif isinstance(encodings, (str, os.PathLike)):
         with open(encodings) as json_file:
             encodings_dict = json.load(json_file)
+    else:
+        raise ValueError(
+            f"Encodings must be a dict or a path to an encodings file, got "
+            f"{type(encodings).__name__}."
+        )
+
+    if not isinstance(encodings_dict, dict):
+        raise ValueError(
+            f"Encodings must be a dict at the top level, got "
+            f"{type(encodings_dict).__name__}."
+        )
 
     encoding_version = encodings_dict.get("version", None)
     try:
@@ -3509,11 +3857,12 @@ def _flatten_encodings(
     except KeyError:
         # Deliberately not falling back to a layout guess: a version added to AIMET after
         # this table was written must be registered explicitly, not silently misread.
-        raise NotImplementedError(
-            f"Encoding version should be one of {sorted(_ENCODING_LOADERS)}; "
-            f"got {encoding_version}. To support a new version, register its file layout "
-            "in aimet_onnx.quantsim._ENCODING_LOADERS."
+        raise ValueError(
+            f"Unsupported encoding version {encoding_version!r}; expected one of "
+            f"{sorted(_ENCODING_LOADERS)}."
         ) from None
+
+    _validate_encodings(encodings_dict, encoding_version)
 
     return flatten(encodings_dict)
 
