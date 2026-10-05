@@ -33,7 +33,7 @@ release = ''
 if "SW_VERSION" in os.environ:
     version = os.environ['SW_VERSION']
 else:    
-    sys.exit("Unable to set version. SOFTWARE_VERSION is NOT defined.")
+    sys.exit("Unable to set version. SW_VERSION is NOT defined.")
 
 included_features = []
 

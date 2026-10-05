@@ -13,13 +13,167 @@ These values, known as quantization encodings, are exported alongside the model 
 :func:`QuantizationSimModel.export` (aimet-onnx) or :func:`QuantizationSimModel.onnx.export` (aimet-torch).
 The resulting encoding file can be consumed by target runtimes such as |qnn|.
 
-1. Version 2.0.0 (latest)
+.. _encoding-spec-v2-1-0:
+
+1. Version 2.1.0 (latest)
 =========================
+
+Version 2.1.0 is a superset of :ref:`version 2.0.0 <encoding-spec-v2-0-0>`. It adds the
+:ref:`meta encoding schema <meta-encoding-dict>`, which expresses double quantization
+(a quantized scale plus a second-level scale) inside the ``y_scale`` field.
+
+1.1. Standard Encoding
+----------------------
+
+The standard encoding dict is unchanged from version 2.0.0, except that ``y_scale`` may now also be a
+:ref:`meta encoding dict <meta-encoding-dict>` to describe a double-quantized scale.
+
+.. image:: ../images/v2_encoding.svg
+   :width: 600
+   :align: center
+   :alt: Mapping between onnx::QuantizeLinear and Encoding v2.0.0-2.1.0
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 20 15 50
+
+   * - Field
+     - Type
+     - Mandatory
+     - Description
+   * - ``name``
+     - string
+     - Yes
+     - Name of the tensor associated with this encoding
+   * - ``output_dtype``
+     - string
+     - Yes
+     - Data type of the quantized tensor. One of: ``int2``, ``uint2``, ``int4``, ``uint4``, ``int8``, ``uint8``, ``int16``, ``uint16``, ``int32``, ``float4e2m1``, ``float8e4m3fn``, ``float8e4m3fnuz``, ``float8e5m2``, ``float8e5m2fnuz``.
+   * - ``y_scale``
+     - float, nested list of float, or :ref:`meta encoding dict <meta-encoding-dict>`
+     - Yes
+     - Quantization scale
+   * - ``y_zero_point``
+     - int, float, or nested list
+     - No
+     - Quantization zero point. Defaults to zero if omitted. May be float for 2-bit encodings.
+   * - ``axis``
+     - int
+     - No
+     - Channel or block axis. Required for per-channel and per-block quantization.
+   * - ``block_size``
+     - int
+     - No
+     - Block size. Required for per-block quantization.
+
+
+.. _meta-encoding-dict:
+
+1.2. Meta Encoding (optional)
+-----------------------------
+
+Meta encoding is an optional dictionary that describes a double-quantized scale, as used by
+:ref:`Low-Power Blockwise Quantization (LPBQ) <techniques-lpbq>` and NVFP4. The effective scale is
+obtained by dequantizing ``x`` with ``x_scale`` and ``x_zero_point``.
+
+.. image:: ../images/v210_double_quantization_encoding.svg
+   :width: 600
+   :align: center
+   :alt: Double quantization encoding mapped to ONNX DequantizeLinear + QuantizeLinear
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 20 15 50
+
+   * - Field
+     - Type
+     - Mandatory
+     - Description
+   * - ``x``
+     - nested list of int or float
+     - Yes
+     - Quantized scale
+   * - ``x_scale``
+     - float or nested list of float
+     - Yes
+     - Meta scale for dequantizing ``x``
+   * - ``x_zero_point``
+     - int, float, or nested list
+     - No
+     - Meta zero point for dequantizing ``x``. Defaults to zero if omitted. Rarely used in practice.
+   * - ``input_dtype``
+     - string
+     - No
+     - Data type of ``x``. Mandatory if ``x`` is float; otherwise inferred from the value range of ``x``.
+       One of: ``int2``, ``uint2``, ``int4``, ``uint4``, ``int8``, ``uint8``, ``int16``, ``uint16``, ``int32``, ``float4e2m1``, ``float8e4m3fn``, ``float8e4m3fnuz``, ``float8e5m2``, ``float8e5m2fnuz``.
+   * - ``axis``
+     - int
+     - No
+     - Channel or block axis for dequantizing ``x``
+   * - ``block_size``
+     - int
+     - No
+     - Block size for dequantizing ``x``
+
+1.3. Examples
+-------------
+
+**LPBQ encoding (channel_axis=0, block_axis=1, block_size=32):**
+
+The per-block scales are quantized to integers in ``x``, and ``x_scale`` holds one float scale per
+channel. ``input_dtype`` is omitted because it can be inferred from the value range of ``x``.
+
+.. code-block:: json
+
+    {
+        "name": "weight",
+        "y_scale": {
+            "x": [
+                [3, 5],
+                [11, 9],
+                [7, 16]
+            ],
+            "x_scale": [0.001, 0.002, 0.003],
+            "axis": 0
+        },
+        "axis": 1,
+        "block_size": 32,
+        "output_dtype": "int4"
+    }
+
+**NVFP4 encoding (channel_axis=0, block_axis=1, block_size=16):**
+
+The per-block scales are quantized to ``float8e4m3fn`` in ``x``, with a single per-tensor
+``x_scale``. Here ``input_dtype`` is mandatory because ``x`` is float.
+
+.. code-block:: json
+
+    {
+        "name": "weight",
+        "y_scale": {
+            "x": [
+                [0.5, 1.0],
+                [2.0, 1.5],
+                [1.0, 0.5]
+            ],
+            "x_scale": 0.0009,
+            "input_dtype": "float8e4m3fn"
+        },
+        "axis": 1,
+        "block_size": 16,
+        "output_dtype": "float4e2m1"
+    }
+
+
+.. _encoding-spec-v2-0-0:
+
+2. Version 2.0.0
+================
 
 Version 2.0.0 introduces a new JSON schema for quantization encodings that is fully aligned with
 `onnx::QuantizeLinear <https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html>`_ (opset 23).
 
-1.1. Per-Tensor/Channel/Block Encodings
+2.1. Per-Tensor/Channel/Block Encodings
 ---------------------------------------
 
 Each field in the encoding maps directly to an input or attribute of an ``onnx::QuantizeLinear`` node:
@@ -31,7 +185,7 @@ Each field in the encoding maps directly to an input or attribute of an ``onnx::
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 25 15 40
+   :widths: 15 20 15 50
 
    * - Field
      - Type
@@ -169,10 +323,14 @@ The ``y_zero_point`` field may be omitted when all values are zero. The followin
         "output_dtype": "int8"
     }
 
-1.2. LPBQ Encodings
+2.2. LPBQ Encodings
 -------------------
 
-LPBQ (Low-Precision Block Quantization) encodings decompose blockwise ``y_scale`` into two components:
+.. note::
+   In :ref:`version 2.1.0 <encoding-spec-v2-1-0>` LPBQ can be expressed with the
+   :ref:`meta encoding dict <meta-encoding-dict>` instead.
+
+LPBQ encodings decompose blockwise ``y_scale`` into two components:
 ``per_block_int_scale`` and ``per_channel_float_scale``. This corresponds to an ONNX graph
 where a ``DequantizeLinear`` node computes the effective scale, which is then fed into a
 ``QuantizeLinear`` node:
@@ -223,7 +381,7 @@ The effective scale is: ``y_scale = per_block_int_scale * per_channel_float_scal
 
 The channel axis can be inferred from the shapes of ``per_channel_float_scale`` and ``per_block_int_scale``.
 
-2. Version 1.0.0
+3. Version 1.0.0
 ================
 
 Changes from 0.6.1:
@@ -233,7 +391,7 @@ Changes from 0.6.1:
 * Notably, per channel encodings are now contained in a single encoding dictionary instead of a list of encodings with length num_channels. Instead, ``scale`` and ``offset`` fields are now 1-D arrays of length num_channels.
 * Encodings for per-block quantization and Low Power Blockwise Quantization are now supported.
 
-2.1. Encoding specification
+3.1. Encoding specification
 ---------------------------
 
 .. list-table:: Top level structure
@@ -401,12 +559,11 @@ Certain keys will only be present for certain quantization types, as indicated i
 * For Per Channel quantization, the channel axis is defined to be the output channel dimension. For Per Block quantization, the channel axis is the output channel dimension while the block axis is the input channel dimension.
 * For Per Tensor quantization, scales and offsets will be a 1-D array of length 1. For Per Channel quantization, the length will be the the number of output channels. For Per Block quantization, the length will be ``number of output channels`` x ``number of input channels / block size``
 
-3. Version 0.6.1 (deprecated)
+4. Version 0.6.1 (deprecated)
 =============================
 
-3.1. Encoding specification
+4.1. Encoding specification
 ---------------------------
-
 
 .. code-block::
 
