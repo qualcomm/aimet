@@ -97,6 +97,7 @@ ACTIVE_NORM_MODEL_TYPES = frozenset(
     {
         "gemma3",
         "gemma3_text",
+        "gemma4_text",
         "internvl_chat",
         "llama",
         "mistral",
@@ -105,6 +106,7 @@ ACTIVE_NORM_MODEL_TYPES = frozenset(
         "qwen2_5_vl",
         "qwen3",
         "qwen3_5",
+        "qwen3_5_text",
         "qwen3_vl",
         "qwen3_vl_text",
     }

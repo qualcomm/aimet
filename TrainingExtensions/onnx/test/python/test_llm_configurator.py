@@ -1,11 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import copy
 import json
-import platform
-import sys
+from collections import defaultdict
 from unittest import mock
 
+import onnx_ir
 import pytest
 import torch
 
@@ -30,8 +31,11 @@ from aimet_onnx.experimental.llm_configurator.llm_configurator import (
     configure_llm,
 )
 from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.graph_passes.fusions import fuse_supergroups
 from aimet_onnx.defs import QSpec
 import aimet_onnx
+from aimet_onnx import int4, int8, int16, quantsim
+from aimet_onnx.utils import duplicate_shared_initializers
 
 import onnx
 import os
@@ -43,8 +47,13 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaConf
 from transformers.models.phi3.modeling_phi3 import Phi3ForCausalLM, Phi3Config
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM, Qwen2Config
 from transformers.cache_utils import DynamicCache
+from transformers.models.gemma3 import Gemma3TextConfig
+from transformers.models.gemma4 import Gemma4TextConfig
+from transformers.models.qwen3 import Qwen3Config
+from transformers.models.qwen3_5 import Qwen3_5TextConfig
 
 from .models import models_for_tests, style_decoders, transformer_blocks
+from .utils import add_genai_tests_path, force_random_weight_init
 from .models.style_decoders import STRUCTURAL_MODEL_TYPE
 
 from aimet_onnx.quantsim import QuantizationSimModel
@@ -611,7 +620,7 @@ class TestConfigureLlm:
         """Every projection of every block is reprecisioned, lm head is not."""
         topology = analyze_llm_topology(sim.model.model, STRUCTURAL_MODEL_TYPE)
 
-        configure_llm(sim, topology, projection_weight_type=aimet_onnx.int4)
+        configure_llm(sim, topology, backbone_weight_type=aimet_onnx.int4)
 
         projections = _collect_all_projections(topology)
         assert len(projections) == 24  # 8 qkv + o + gate + up + down, per block
@@ -621,6 +630,15 @@ class TestConfigureLlm:
         # lm_head is not a block projection, so it keeps the sim default.
         (lm_head,) = topology.lm_head
         assert _param_precision(sim, lm_head) == aimet_onnx.int8
+
+    def test_sets_weight_precision_for_linear_not_listed_in_topology(self, sim):
+        """Auxiliary backbone linears receive block precision like GenAILab."""
+        topology = analyze_llm_topology(sim.model.model, STRUCTURAL_MODEL_TYPE)
+        auxiliary_linear = topology.blocks[0].qkv.linears.pop()
+
+        configure_llm(sim, topology, backbone_weight_type=aimet_onnx.int4)
+
+        assert _param_precision(sim, auxiliary_linear) == aimet_onnx.int4
 
     def test_sets_lm_head_weight_precision(self, sim):
         topology = analyze_llm_topology(sim.model.model, STRUCTURAL_MODEL_TYPE)
@@ -652,7 +670,7 @@ class TestConfigureLlm:
         sim = QuantizationSimModel(model)
         topology = analyze_llm_topology(sim.model.model, STRUCTURAL_MODEL_TYPE)
 
-        configure_llm(sim, topology, projection_weight_type=aimet_onnx.int4)
+        configure_llm(sim, topology, backbone_weight_type=aimet_onnx.int4)
 
         projections = _collect_all_projections(topology)
         assert len(projections) == expected_projections
@@ -664,7 +682,7 @@ class TestConfigureLlm:
         topology = analyze_llm_topology(sim.model.model, STRUCTURAL_MODEL_TYPE)
         spec = QSpec.lpbq(aimet_onnx.int4, block_size=8)
 
-        configure_llm(sim, topology, projection_weight_type=spec)
+        configure_llm(sim, topology, backbone_weight_type=spec)
 
         for node_name in _collect_all_projections(topology):
             op = sim.connected_graph.get_all_ops()[node_name]
@@ -720,7 +738,7 @@ class TestConfigureLlm:
             sim,
             topology,
             kv_cache_type=aimet_onnx.int16,
-            projection_weight_type=aimet_onnx.int4,
+            backbone_weight_type=aimet_onnx.int4,
         )
 
         for input_name, output_name in _kv_cache_io_names():
@@ -766,7 +784,7 @@ class TestConfigureLlm:
                 sim,
                 topology,
                 kv_cache_type=aimet_onnx.int16,
-                projection_weight_type=aimet_onnx.int4,
+                backbone_weight_type=aimet_onnx.int4,
             )
 
         for input_name, output_name in _kv_cache_io_names():
@@ -809,3 +827,266 @@ class TestConfigureLlm:
 
         with pytest.raises(RuntimeError, match="value cache inputs and outputs"):
             configure_llm(sim, topology)
+
+
+# GenAILab end-to-end parity coverage
+
+
+def _create_tiny_hf_config(model_type):
+    """Create a two-layer config that GenAILab can load without a download."""
+    common = {
+        "hidden_size": 64,
+        "intermediate_size": 128,
+        "num_hidden_layers": 2,
+        "num_attention_heads": 4,
+        "head_dim": 16,
+        "vocab_size": 17,
+        "max_position_embeddings": 16,
+    }
+    if model_type == "qwen3":
+        return Qwen3Config(**common, num_key_value_heads=2)
+
+    if model_type == "qwen2":
+        return Qwen2Config(**common, num_key_value_heads=2)
+
+    if model_type == "llama":
+        return LlamaConfig(**common, num_key_value_heads=4)
+
+    if model_type == "phi3":
+        return Phi3Config(
+            **common,
+            num_key_value_heads=2,
+            original_max_position_embeddings=16,
+            pad_token_id=0,
+            eos_token_id=1,
+        )
+
+    if model_type == "qwen3_5":
+        return Qwen3_5TextConfig(
+            **common,
+            num_key_value_heads=2,
+            layer_types=["linear_attention", "full_attention"],
+            linear_key_head_dim=16,
+            linear_value_head_dim=16,
+            linear_num_key_heads=4,
+            linear_num_value_heads=4,
+        )
+
+    if model_type == "gemma3":
+        return Gemma3TextConfig(
+            **common,
+            num_key_value_heads=2,
+            query_pre_attn_scalar=16,
+            sliding_window=8,
+        )
+
+    if model_type == "gemma4":
+        return Gemma4TextConfig(
+            **common,
+            num_key_value_heads=2,
+            global_head_dim=16,
+            sliding_window=8,
+            vocab_size_per_layer_input=17,
+            hidden_size_per_layer_input=64,
+        )
+
+    raise ValueError(f"Unsupported test model type: {model_type}")
+
+
+@pytest.fixture(
+    scope="module",
+    params=[
+        pytest.param(("qwen2", None), id="qwen2-qwen2.5"),
+        pytest.param(("qwen3", None), id="qwen3"),
+        pytest.param(("llama", None), id="llama-mha"),
+        pytest.param(("llama", ["SHA"]), id="llama-sha"),
+        pytest.param(("phi3", ["SplitFusedLayers"]), id="phi3"),
+        pytest.param(("qwen3_5", ["ExportableLinearAttention"]), id="qwen3.5-text"),
+        pytest.param(("gemma3", None), id="gemma3-text"),
+        pytest.param(("gemma4", None), id="gemma4-text"),
+    ],
+)
+def _two_layer_llm(request, tmp_path_factory, add_genai_tests_path):
+    """Export a small two-layer decoder through GenAILab's float-model flow."""
+    from GenAILab.bench.yaml_config_parser import YAMLConfigParser
+    from GenAILab.qai_hub_lm.backends.onnx import LLM_ONNX
+
+    model_type, adaptations = request.param
+    checkpoint_dir = tmp_path_factory.mktemp(f"{model_type}-checkpoint")
+    export_dir = tmp_path_factory.mktemp(f"{model_type}-onnx")
+    _create_tiny_hf_config(model_type).save_pretrained(checkpoint_dir)
+
+    if model_type in {"gemma3", "gemma4"}:
+        # Exercise only the language backbone, not the registered multimodal model.
+        model_cls = LLM_ONNX
+    else:
+        model_cls = YAMLConfigParser.get_model_class(
+            model_type, adaptations=adaptations
+        )
+
+    with force_random_weight_init(vocab_size=17):
+        entry = model_cls._export_to_cache_entry(
+            str(checkpoint_dir),
+            context_length=4,
+            sequence_length=2,
+            small_model=True,
+            directory=str(export_dir),
+        )
+    model = entry.backbone
+    duplicate_shared_initializers(model.graph)
+    model = onnx_ir.to_proto(
+        fuse_supergroups(
+            onnx_ir.from_proto(model),
+            patterns=["LayerNormalization", "RMSNormalization", "MatmulAdd"],
+        )
+    )
+    return entry.config.model_type, model
+
+
+def _quantizer_state(quantizer):
+    """Return the configuration state that affects how a tensor is quantized."""
+    scale_quantizer = quantizer._scale_quantizer
+    return {
+        "enabled": quantizer.enabled,
+        "precision": quantizer.precision(),
+        "symmetric": quantizer.use_symmetric_encodings,
+        "strict_symmetric": quantizer.use_strict_symmetric,
+        "unsigned_symmetric": quantizer.use_unsigned_symmetric,
+        "per_channel": quantizer.quant_info.usePerChannelMode,
+        "channel_axis": quantizer.quant_info.channelAxis,
+        "block_axis": (
+            quantizer.quant_info.blockAxis
+            if quantizer.quant_info.blockSize > 0
+            else None
+        ),
+        "block_size": quantizer.quant_info.blockSize,
+        "encoding_type": quantizer._encoding_type(),
+        "scale_bits": scale_quantizer.scale_bits if scale_quantizer else None,
+    }
+
+
+def _quantizer_states(sim):
+    return {
+        name: _quantizer_state(quantizer)
+        for name, quantizer in sim.qc_quantize_op_dict.items()
+    }
+
+
+def _tied_quantizer_groups(sim):
+    """Describe quantizer sharing by tensor name, independent of object identity."""
+    names_by_quantizer = defaultdict(set)
+    for name, quantizer in sim.qc_quantize_op_dict.items():
+        names_by_quantizer[id(quantizer)].add(name)
+
+    return {frozenset(names) for names in names_by_quantizer.values() if len(names) > 1}
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize(
+    "kv_cache_type",
+    [
+        pytest.param(int8, id="kv-int8"),
+        pytest.param(int16, id="kv-int16"),
+    ],
+)
+@pytest.mark.parametrize(
+    "block_precision_kwargs, backbone_weight_type",
+    [
+        pytest.param(
+            {"qtype": int4},
+            QSpec.per_channel(int4),
+            id="blocks-int4-pcq",
+        ),
+        pytest.param(
+            {
+                "qtype": int4,
+                "granularity": "LPBQ",
+                "block_size": 64,
+            },
+            QSpec.lpbq(int4, block_size=64),
+            id="blocks-int4-lpbq64",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "lm_head_precision_kwargs, lm_head_weight_type",
+    [
+        pytest.param(
+            {"qtype": int8},
+            QSpec.per_channel(int8),
+            id="lm-head-int8-pcq",
+        ),
+        pytest.param(
+            {
+                "qtype": int4,
+                "granularity": "LPBQ",
+                "block_size": 64,
+            },
+            QSpec.lpbq(int4, block_size=64),
+            id="lm-head-int4-lpbq64",
+        ),
+    ],
+)
+def test_genailab_quantsim_matches_configure_llm(
+    _two_layer_llm,
+    kv_cache_type,
+    block_precision_kwargs,
+    backbone_weight_type,
+    lm_head_precision_kwargs,
+    lm_head_weight_type,
+):
+    """GenAILab precision configuration should equal the public LLM configurator."""
+    from GenAILab.bench.model_cache import ModelCacheEntry
+    from GenAILab.bench.precision import PrecisionConfig, WeightPrecision
+    from GenAILab.qai_hub_lm.backends import QUANTSIM_CONFIG
+    from GenAILab.qai_hub_lm.backends.onnx.llm import LLM_ONNX
+    from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
+        AttributePatch,
+    )
+
+    providers = ["CUDAExecutionProvider"]
+
+    model_type, onnx_model = _two_layer_llm
+    block_precision = WeightPrecision(**block_precision_kwargs)
+    lm_head_precision = WeightPrecision(**lm_head_precision_kwargs)
+    precision = PrecisionConfig(
+        kv_cache=kv_cache_type,
+        blocks={"default": block_precision},
+        lm_head=lm_head_precision,
+    )
+
+    genailab_sim = LLM_ONNX.instantiate_quantsim(
+        ModelCacheEntry(backbone=copy.deepcopy(onnx_model)),
+        precision=precision,
+    ).backbone
+
+    topology = analyze_llm_topology(onnx_model, model_type)
+    # NOTE: These are the patches added during GenAI lab instantiation
+    with (
+        AttributePatch(quantsim, "op_types_to_tie_qtzrs", ["Concat"]),
+        AttributePatch(
+            quantsim,
+            "op_outputs_to_ignore",
+            quantsim.op_outputs_to_ignore + ["Slice", "Constant"],
+        ),
+    ):
+        configured_sim = QuantizationSimModel(
+            model=onnx_model,
+            quant_scheme="min_max",
+            param_type=block_precision.qtype,
+            activation_type=precision.activations,
+            config_file=QUANTSIM_CONFIG,
+            providers=providers,
+        )
+    configure_llm(
+        configured_sim,
+        topology,
+        kv_cache_type=kv_cache_type,
+        backbone_weight_type=backbone_weight_type,
+        lm_head_weight_type=lm_head_weight_type,
+    )
+
+    assert _quantizer_states(genailab_sim) == _quantizer_states(configured_sim)
+    assert _tied_quantizer_groups(genailab_sim) == _tied_quantizer_groups(
+        configured_sim
+    )

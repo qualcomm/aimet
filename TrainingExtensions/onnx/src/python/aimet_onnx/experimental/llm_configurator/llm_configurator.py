@@ -3,7 +3,10 @@
 
 from typing import Optional
 import itertools
-from aimet_onnx.quantsim import QuantizationSimModel, set_param_type
+from aimet_onnx.quantsim import (
+    QuantizationSimModel,
+    set_param_type,
+)
 from aimet_onnx.defs import QSpec, qtype
 from aimet_onnx.experimental.llm_topology import LlmTopology
 from aimet_onnx.common.onnx._utils import _is_grid_preserving_op
@@ -253,7 +256,7 @@ def configure_llm(
     topology: LlmTopology,
     *,
     kv_cache_type: Optional[qtype | str] = None,
-    projection_weight_type: Optional[qtype | str | QSpec] = None,
+    backbone_weight_type: Optional[qtype | str | QSpec] = None,
     lm_head_weight_type: Optional[qtype | str | QSpec] = None,
 ):
     """
@@ -263,7 +266,9 @@ def configure_llm(
         sim (QuantizationSimModel): QuantSim to configure
         topology (LlmTopology): Extracted LLM topology.
         kv_cache_type: Quantization precision for key/value cache tensors. If None, left unchanged.
-        projection_weight_type: Quantization precision for projection layer weights. If None, left unchanged.
+        backbone_weight_type: Quantization precision for all weighted MatMul,
+            Gemm, and Conv layers in the backbone except the LM head. If None,
+            left unchanged.
         lm_head_weight_type: Quantization precision for lm head weight. If None, left unchanged.
     """
     if len(topology.past_key_input_names) != len(topology.past_key_output_names):
@@ -307,13 +312,14 @@ def configure_llm(
         logger.info("Setting lm head precision to %s", str(lm_head_weight_type))
         set_param_type(sim, lm_head_weight_type, nodes_to_include=lm_head_layers)
 
-    if projection_weight_type is not None:
-        logger.info(
-            "Setting projection weight types to %s", str(projection_weight_type)
-        )
-        all_projections = _collect_all_projections(topology)
+    if backbone_weight_type is not None:
+        logger.info("Setting backbone weight types to %s", str(backbone_weight_type))
         set_param_type(
-            sim, projection_weight_type, nodes_to_include=set(all_projections)
+            sim,
+            backbone_weight_type,
+            op_types=("Gemm", "MatMul", "Conv"),
+            nodes_to_exclude=set(lm_head_layers),
+            strict=False,
         )
 
     requested_precisions = _enabled_precisions(sim)

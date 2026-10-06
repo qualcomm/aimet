@@ -20,13 +20,15 @@ def tmp_dir():
         yield tmpdir
 
 
-@pytest.fixture
-def add_genai_tests_path(monkeypatch):
+@pytest.fixture(scope="module")
+def add_genai_tests_path():
     """
     Pytest fixture to add the GenAILab directory to sys.path.
     """
     path = os.path.abspath(os.path.join(Path(__file__).parent, "../../../../"))
-    monkeypatch.syspath_prepend(path)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.syspath_prepend(path)
+        yield
 
 
 @contextmanager
