@@ -7,6 +7,7 @@
 import functools
 import pytest
 import unittest
+import unittest.mock
 import torch
 import torch.nn as nn
 
@@ -1190,9 +1191,12 @@ class TestConnectedGraphUtils(unittest.TestCase):
 
         dummy_input = torch.randn(1, 3, 32, 32)
 
-        aimet_torch.utils.modules_to_treat_as_leaf = [ConvLinearModel]
-
-        cg_1 = ConnectedGraph(model, model_input=dummy_input)
+        # Patch rather than rebind the global so leaf types registered at import time
+        # (e.g. Qwen3MoeTopKRouter) are restored for tests that run later in this process
+        with unittest.mock.patch.object(
+            aimet_torch.utils, "modules_to_treat_as_leaf", [ConvLinearModel]
+        ):
+            cg_1 = ConnectedGraph(model, model_input=dummy_input)
         assert len(cg_1.ordered_ops) == 2
 
         assert len(cg_1.ordered_ops[0].inputs) == 3
@@ -1248,9 +1252,10 @@ class TestConnectedGraphUtils(unittest.TestCase):
         dummy_input = torch.randn(1, 3, 3, 3)
 
         # out = model(dummy_input)
-        aimet_torch.utils.modules_to_treat_as_leaf = [ConvLinearModel]
-
-        cg_1 = ConnectedGraph(model, model_input=dummy_input)
+        with unittest.mock.patch.object(
+            aimet_torch.utils, "modules_to_treat_as_leaf", [ConvLinearModel]
+        ):
+            cg_1 = ConnectedGraph(model, model_input=dummy_input)
 
         # three ops in total: linear1, layer1(non-leaf), linear2
         assert len(cg_1.ordered_ops) == 3
