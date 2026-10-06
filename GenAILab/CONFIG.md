@@ -302,7 +302,8 @@ metrics:
 | Key            | Required | Type            | Default | Notes                                            |
 | -------------- | -------- | --------------- | ------- | ------------------------------------------------ |
 | `model`        | yes      | dict            | —       | Model identification + adaptations.              |
-| `metrics`      | yes      | list of dict    | —       | Evaluation metrics.                              |
+| `metrics`      | yes*     | list of dict    | —       | Evaluation metrics. *Optional when `analysis` is set; see [`analysis`](#analysis). |
+| `analysis`     | no       | dict or list    | —       | One analysis pass, run after `metrics` (ONNX only). |
 | `precision`    | no       | dict            | (built-in) | Quantization precision overrides.             |
 | `recipe`       | no       | dict or list    | `RemoveQuantization` (or `Skip` if `model.encodings` is set) | Quantization technique pipeline. |
 | `dataset`      | no       | dict            | —       | **Deprecated.** Top-level dataset, migrated into the first backbone recipe step. |
@@ -416,6 +417,24 @@ A list of dicts (a single dict is accepted and wrapped). Each dict:
 | `name` | yes      | str  | Metric class name. See [registered metrics](#metrics). |
 | (other) | no      | (varies) | Additional kwargs are forwarded to the metric class. |
 
+### `analysis`
+
+One analysis pass (a one-element list is also accepted). It runs on the ONNX
+backend only, after the recipe chain and after the top-level `metrics`. Those
+metrics are the baseline: they run on the plain sim and fill
+`accuracy_results` as usual.
+
+| Subkey    | Required | Type         | Notes |
+| --------- | -------- | ------------ | ----- |
+| `name`    | yes      | str          | Pass class name. See [registered analysis passes](#analysis-passes). |
+| `metrics` | no       | list of str  | Names of top-level metrics to run per condition (default: all). Without top-level `metrics` there is no baseline, and this list is required. Rejected on a pass that uses no metrics. |
+| (other)   | no       | (varies)     | Forwarded to the pass class; an unknown kwarg fails at parse time. |
+
+Each run writes one directory, `<results>/analysis/<slug>/`, where `<slug>` is
+`<model_type>_<model>_<pass>_<UTC timestamp>_<8 hex chars>`. It holds the
+markdown report `<slug>.md` next to the pass's artifacts. The `analysis` column
+in `profiling_data` points at the report.
+
 ### `dataset` (top-level, deprecated)
 
 A backward-compatibility shim. If `dataset` is present and the first `backbone` recipe step does not already have `dataset`, the value is migrated into that step. If the first backbone step already has its own `dataset`, the top-level value is silently discarded. Prefer setting `dataset` directly on each recipe step.
@@ -458,6 +477,32 @@ Both backends (torch + onnx) register the same six names. Default values differ 
 | `Calibration` step end-of-chain auto-insertion uses Wikitext/train. |
 | `RemoveQuantization`  | torch, onnx  | none.                                            |
 | `Skip`                | torch, onnx  | none.                                            |
+
+### Analysis passes
+
+| Name                    | Uses `metrics` | Kwargs |
+| ----------------------- | -------------- | ------ |
+| `TruncationSimulation`  | yes | `truncation_bits` (int or list of ints, required). Each value is one condition: Truncate nodes are inserted into every sim's session, the metrics run, and the session is restored. |
+| `QuantizerSensitivity`  | no  | `mode` (`weights` or `kv_cache`, default `weights`); `num_samples` (int, default `4`); `top_k` (int, default `10`); `report_top_n` (int, default `20`). |
+
+`QuantizerSensitivity` ranks backbone quantizers by top-k logit PSNR against
+the FP model (the same sim with every quantizer off), enabling one group at a
+time:
+- `weights` sweeps the weight quantizers, grouped by ONNX node. Activation
+  quantizers stay off, so each score is weight error alone.
+- `kv_cache` sweeps the `past_key_<i>_in` / `past_value_<i>_in` quantizers.
+
+Bit widths come from `precision`. Inputs are `num_samples` Wikitext train
+samples prefilled in FP mode. `top_k` is how many of the FP model's largest
+logits per position are compared. `report_top_n` only limits the report table;
+`<mode>_sensitivity.json` and `<mode>_sensitivity.html` in the run directory
+hold every group.
+
+It is meant for a plain quantsim. Keep the backbone recipe to `Calibration`
+(or `model.encodings` saved from one); after `SpinQuant`, `AdaScale` or
+`SeqMSE` the ranking describes the transformed model. This is not checked.
+Visual/audio encoders are not swept. Example:
+[qwen3_0.6b_sensitivity.yaml](configs/qwen3_0.6b_sensitivity.yaml).
 
 ### Datasets
 

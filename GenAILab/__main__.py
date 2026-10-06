@@ -388,6 +388,23 @@ def _download_and_merge(gh, run_id, results_dir, frameworks):
                 count = merge_csv_results(remote_csv, local_csv)
                 print(f"Merged {count} rows from {variant} CSV into {local_csv}")
 
+            # Analysis run dirs hold the reports the merged entries point at.
+            # Each dir name ends in a random suffix, so one never collides
+            # with a local run; an existing dir is a re-download and is kept.
+            remote_analysis = os.path.join(tmpdir, "analysis")
+            if os.path.isdir(remote_analysis):
+                local_analysis = os.path.join(results_dir, "analysis")
+                os.makedirs(local_analysis, exist_ok=True)
+                copied = 0
+                for name in os.listdir(remote_analysis):
+                    dest = os.path.join(local_analysis, name)
+                    if not os.path.exists(dest):
+                        shutil.copytree(os.path.join(remote_analysis, name), dest)
+                        copied += 1
+                print(
+                    f"Copied {copied} analysis run(s) from {variant} into {local_analysis}"
+                )
+
 
 # ---------------------------------------------------------------------------
 # Git helpers

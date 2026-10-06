@@ -11,7 +11,6 @@ import gc
 import os
 import yaml
 from pathlib import Path
-from transformers.processing_utils import ProcessorMixin
 
 from aimet_torch.v2.nn import QuantizationMixin, compute_param_encodings
 from aimet_torch.v2.utils import remove_all_quantizers
@@ -20,17 +19,14 @@ from GenAILab.qai_hub_lm.models.base import LLM, VLM
 from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descriptors
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
 from GenAILab.bench.profiler import (
-    GPUMeter,
-    MetricResult,
     ComponentRecipeStats,
     RecipeStepStats,
-    ScoredResult,
     write_stats_to_disk,
 )
 from GenAILab.bench.determinism import set_seed
 from GenAILab.bench.eval_context import EvaluationContext
 from GenAILab.bench.fp_cache import DiskBackedFPCache
-from GenAILab.bench.metrics import TextEvaluationMetric
+from GenAILab.bench.metrics import run_metrics
 from GenAILab.bench.recipe_chain import (
     apply_pre_quantization_chain,
     apply_quantization_chain,
@@ -47,12 +43,13 @@ def test_llm_quantization(
     recipe_cache,
     export_dir,
     results_dir,
-    truncation_aware,
 ):
-    if truncation_aware:
-        raise ValueError("--truncation-aware is not supported with torch framework")
     if test_config is None:
         pytest.skip("No GenAI test parameters provided.")
+    if "analysis" in test_config:
+        raise ValueError(
+            "The 'analysis' config section is only supported with the ONNX framework."
+        )
     set_seed(42)
 
     config = YAMLConfigParser.parse_document(test_config, export_base_dir=export_dir)
@@ -357,48 +354,17 @@ def test_llm_quantization(
                 yaml.dump(data, file, default_flow_style=False)
 
     with generator.on_device(device):
-        evaluation_results = []
-        with torch.no_grad():
-            for metric in config.metrics:
-                metric_cls = metric.metric_cls
-                tokenizer_arg = (
-                    tokenizer.tokenizer
-                    if isinstance(tokenizer, ProcessorMixin)
-                    and issubclass(metric_cls, TextEvaluationMetric)
-                    else tokenizer
-                )
-                with GPUMeter(
-                    capture_intermediate_data=False, **config.profiler.gpu_meter_kwargs
-                ) as profiler:
-                    extra_metric_kwargs = {}
-                    if not issubclass(metric_cls, TextEvaluationMetric):
-                        extra_metric_kwargs["image_size"] = image_size
-                    result = metric_cls.evaluate(
-                        generator,
-                        tokenizer_arg,
-                        context_length,
-                        eval_ctx=eval_ctx,
-                        **extra_metric_kwargs,
-                        **metric.metric_kwargs,
-                    )
-                    # Unwrap so the log line and the stats row read the same
-                    # whether or not the metric reported a breakdown.
-                    details = None
-                    if isinstance(result, ScoredResult):
-                        result, details = result.result, result.details
-                    print(f"{metric_cls.__name__} result: {result}")
-
-                evaluation_results.append(
-                    MetricResult(
-                        metric_name=metric_cls.__name__,
-                        result=result,
-                        profiler=profiler
-                        if config.profiler.capture_intermediate_data
-                        else None,
-                        scoring_version=metric_cls.SCORING_VERSION,
-                        details=details,
-                    )
-                )
+        evaluation_results = run_metrics(
+            config.metrics,
+            generator,
+            tokenizer,
+            context_length,
+            eval_ctx,
+            image_size=image_size,
+            audio_frames=audio_frames,
+            gpu_meter_kwargs=config.profiler.gpu_meter_kwargs,
+            capture_intermediate_data=config.profiler.capture_intermediate_data,
+        )
 
     # Snapshot of the authored model section for the report, derived from the
     # parsed config (not the instantiation kwargs) so fields like ``adaptations``

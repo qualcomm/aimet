@@ -65,6 +65,7 @@ from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
     _remove_activation_quantizers,
 )
 from GenAILab.bench.onnx.quant_recipes import _prefill_inputs
+from GenAILab.bench.onnx.analysis_passes import kv_quantizer_names, quantizers_by_group
 from GenAILab.bench.datasets import Wikitext
 
 DEFAULT_SEQUENCE_LENGTH = 2048
@@ -73,8 +74,6 @@ NUM_CALIBRATION_ITERATIONS = 20
 NUM_EVAL_ITERATIONS = 4
 ATTENTION_MASK_MIN = -100
 ONNX_CHECKPOINT_ROOT = "./onnx_checkpoints"
-
-_KV_NAME_RE = re.compile(r"^past_(key|value)_(\d+)_in$")
 
 
 class _SessionHolder:
@@ -101,31 +100,6 @@ def _fp_prefill_model(fp_session, config):
     expect, without reimplementing them.
     """
     return TorchONNXInterface(_SessionHolder(fp_session), config)
-
-
-def _kv_quantizer_names(sim: QuantizationSimModel):
-    """Return the KV cache input quantizer names present in the sim."""
-    return [name for name in sim.qc_quantize_op_dict if _KV_NAME_RE.match(name)]
-
-
-def _quantizers_by_group(sim: QuantizationSimModel, group_fn, scores: dict) -> dict:
-    """Map each swept group key back to the quantizer tensor names behind it.
-
-    The weights sweep reports scores keyed by ONNX node name, which hides which
-    initializer was actually quantized. Passing this to ``save_sensitivity_plot``
-    /``save_sensitivity_results`` as ``details`` keeps the tensor name visible in
-    the tooltip, table and JSON. Only currently-enabled quantizers are listed --
-    the sweep skips disabled ones, so a disabled bias would otherwise be
-    attributed to a group it never contributed to.
-    """
-    details = {}
-    for name, quantizer in sim.qc_quantize_op_dict.items():
-        if not quantizer.enabled:
-            continue
-        key = group_fn(name)
-        if key in scores:
-            details.setdefault(key, []).append(name)
-    return {key: ", ".join(names) for key, names in details.items()}
 
 
 def _model_slug(model_id: str) -> str:
@@ -294,7 +268,7 @@ def main():
         _remove_activation_quantizers(quant_sim)
     else:
         # KV-cache sweep: only the past_key/past_value graph inputs matter.
-        kv_names = set(_kv_quantizer_names(quant_sim))
+        kv_names = set(kv_quantizer_names(quant_sim))
         if not kv_names:
             raise RuntimeError(
                 "KV cache mode: no past_key_<i>_in / past_value_<i>_in quantizers found"
@@ -335,7 +309,7 @@ def main():
         group_fn = group_by_op_name(quant_sim)
         scores = analyze_per_quantizer_sensitivity(quant_sim, metric, group_fn=group_fn)
         # Safe to inspect enabled state after the sweep: it restores it on exit.
-        details = _quantizers_by_group(quant_sim, group_fn, scores)
+        details = quantizers_by_group(quant_sim, group_fn, scores)
         _print_ranking("Weight Sensitivity Report", scores, metric)
 
         print("\nFlipping the top-10% most sensitive weights to int16...")
@@ -346,7 +320,7 @@ def main():
         # Restrict the same per-quantizer sweep to the KV inputs by returning
         # None from group_fn for everything else. KV inputs are graph inputs with
         # already-structured names (past_key_0_in), so they are not renamed.
-        kv_names = set(_kv_quantizer_names(quant_sim))
+        kv_names = set(kv_quantizer_names(quant_sim))
         group_fn = lambda name: name if name in kv_names else None  # noqa: E731
         details = None
         scores = analyze_per_quantizer_sensitivity(quant_sim, metric, group_fn=group_fn)

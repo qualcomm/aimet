@@ -88,6 +88,25 @@ class ResolvedMetric:
 
 
 @dataclass(frozen=True)
+class ResolvedAnalysis:
+    """A single analysis pass, resolved against the registry.
+
+    ``analysis_pass`` is the constructed pass instance. ``kwargs`` is the raw
+    YAML kwargs it was built from (minus ``name``/``metrics``), kept as given
+    for the report and the DB column. ``metrics`` is already the pass's
+    resolved metric subset. When top-level metrics exist, these are the same
+    ``ResolvedMetric`` objects, so the pass evaluates each metric with the
+    top-level kwargs; an omitted subset means all top-level metrics. Without
+    top-level metrics, the named metrics are resolved with default kwargs.
+    """
+
+    name: str
+    analysis_pass: Any
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    metrics: tuple[ResolvedMetric, ...] = ()
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     """Parsed model section."""
 
@@ -158,6 +177,7 @@ class ParsedConfig:
     export: str | None = None  # None = no export; str = export dir path
     eval_in_onnx: bool = False
     run_group: str | None = None
+    analysis: ResolvedAnalysis | None = None
 
 
 @dataclass
@@ -175,6 +195,7 @@ class YAMLConfigParser:
     dataset_lookup: dict = {}
     metrics_lookup: dict = {}
     adaptation_lookup: dict = {}  # {(model_type, adaptation_name): AdaptationInfo}
+    analysis_lookup: dict = {}  # {pass_name: pass_cls}
 
     _default_llm_cls: type = None
 
@@ -344,6 +365,18 @@ class YAMLConfigParser:
         return decorator
 
     @classmethod
+    def register_analysis(cls, pass_cls):
+        """Register an analysis pass under its class name.
+
+        The pass's ``__init__`` keyword arguments are its config kwargs; see
+        ``bench/analysis.py``. Passes are registered only by the runner
+        that can execute them (``bench/onnx/test_genai.py`` imports
+        ``bench/onnx/analysis_passes.py``).
+        """
+        cls.analysis_lookup[pass_cls.__name__] = pass_cls
+        return pass_cls
+
+    @classmethod
     def register_dataset(cls, spec_cls):
         """Register a dataset lowering, bound to its schema ``spec_cls``.
 
@@ -389,6 +422,109 @@ class YAMLConfigParser:
     @classmethod
     def get_metric(cls, metrics_name):
         return cls.metrics_lookup[metrics_name]
+
+    @classmethod
+    def _resolve_metric(cls, metric: dict) -> ResolvedMetric:
+        metric_name = metric["name"]
+        try:
+            metric_cls = cls.get_metric(metric_name)
+        except LookupError as exc:
+            raise LookupError(
+                f"Specified metric name ({metric_name}) not found."
+            ) from exc
+        return ResolvedMetric(
+            name=metric_name,
+            metric_cls=metric_cls,
+            metric_kwargs={k: v for k, v in metric.items() if k != "name"},
+        )
+
+    @classmethod
+    def get_analysis(cls, name: str) -> type:
+        if name in cls.analysis_lookup:
+            return cls.analysis_lookup[name]
+        raise LookupError(
+            f"Analysis pass '{name}' not found. Registered analysis passes: "
+            f"{', '.join(sorted(cls.analysis_lookup)) or 'none'}."
+        )
+
+    @classmethod
+    def _resolve_analysis(
+        cls, pass_dict: dict, top_level_metrics: list[ResolvedMetric]
+    ) -> ResolvedAnalysis:
+        """Resolve one analysis pass dict against the registry.
+
+        The pass is constructed from its kwargs (everything except ``name`` and
+        ``metrics``); its ``__init__`` is the config contract, so an unknown or
+        missing kwarg raises ``TypeError`` and a bad value ``ValueError``.
+
+        The ``metrics`` subset rules:
+          - A pass with ``uses_metrics = False`` takes no ``metrics`` list and
+            needs none anywhere in the config.
+          - Otherwise ``metrics``, when given, is a non-empty list of names.
+          - With top-level metrics, every name must be one of them, and the
+            subset reuses those ``ResolvedMetric`` objects, so it inherits their
+            kwargs instead of restating them. Omitted means all of them.
+          - Without top-level metrics there is no baseline run on the plain
+            sim, so the pass must name its metrics; they get default kwargs.
+        """
+        pass_name = pass_dict["name"]
+        pass_metrics = pass_dict.get("metrics")
+        pass_kwargs = {
+            k: v for k, v in pass_dict.items() if k not in ("name", "metrics")
+        }
+        pass_cls = cls.get_analysis(pass_name)
+
+        if not getattr(pass_cls, "uses_metrics", True):
+            if pass_metrics is not None:
+                raise RuntimeError(
+                    f"analysis pass '{pass_name}' does not evaluate metrics, "
+                    f"so it takes no 'metrics' list (got {pass_metrics!r})."
+                )
+            subset_metrics = ()
+        elif pass_metrics is None:
+            if not top_level_metrics:
+                raise RuntimeError(
+                    "Top-level 'metrics' section not specified, and analysis "
+                    f"pass '{pass_name}' does not specify its own 'metrics' "
+                    "list either -- at least one of the two is required."
+                )
+            subset_metrics = tuple(top_level_metrics)
+        else:
+            if (
+                not isinstance(pass_metrics, list)
+                or not pass_metrics
+                or not all(isinstance(n, str) for n in pass_metrics)
+            ):
+                raise RuntimeError(
+                    f"Invalid analysis section: pass '{pass_name}' 'metrics' must "
+                    f"be a non-empty list of metric names, got {pass_metrics!r}."
+                )
+            if top_level_metrics:
+                by_name = {m.name: m for m in top_level_metrics}
+                unknown = set(pass_metrics) - by_name.keys()
+                if unknown:
+                    raise RuntimeError(
+                        f"analysis pass '{pass_name}' references metric(s) "
+                        f"{sorted(unknown)} not present in the top-level "
+                        f"'metrics' section ({sorted(by_name)})."
+                    )
+                subset_metrics = tuple(by_name[n] for n in pass_metrics)
+            else:
+                subset_metrics = tuple(
+                    cls._resolve_metric({"name": n}) for n in pass_metrics
+                )
+
+        try:
+            analysis_pass = pass_cls(**pass_kwargs)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"Invalid analysis pass '{pass_name}': {exc}") from exc
+
+        return ResolvedAnalysis(
+            name=pass_name,
+            analysis_pass=analysis_pass,
+            kwargs=pass_kwargs,
+            metrics=subset_metrics,
+        )
 
     @classmethod
     def detect_model_type(cls, model_id: str) -> str:
@@ -532,7 +668,9 @@ class YAMLConfigParser:
     def validate_config(cls, doc):
         if "model" not in doc:
             raise RuntimeError("Model section not specified.")
-        if "metrics" not in doc:
+        # Top-level 'metrics' may be omitted only when an analysis pass names
+        # its own metrics or uses none; _resolve_analysis checks that.
+        if "metrics" not in doc and "analysis" not in doc:
             raise RuntimeError("Metrics not specified.")
 
         if not isinstance(doc["model"], dict):
@@ -606,12 +744,40 @@ class YAMLConfigParser:
             else:
                 doc.pop("dataset")  # Component has its own dataset, discard top-level
 
-        metrics = (
-            doc["metrics"] if isinstance(doc["metrics"], list) else [doc["metrics"]]
-        )
-        for metric in metrics:
-            if "name" not in metric:
-                raise RuntimeError("Metric name not specified.")
+        if "metrics" in doc:
+            metrics = (
+                doc["metrics"] if isinstance(doc["metrics"], list) else [doc["metrics"]]
+            )
+            for metric in metrics:
+                if "name" not in metric:
+                    raise RuntimeError("Metric name not specified.")
+
+        # Only the analysis section's shape is checked here: exactly one pass
+        # dict with a name. A list is accepted so that multiple passes can be
+        # added later without a config format change. Everything that needs the
+        # registered pass class is in _resolve_analysis.
+        if "analysis" in doc:
+            passes = doc["analysis"]
+            if isinstance(passes, dict):
+                passes = [passes]
+            if not isinstance(passes, list) or not all(
+                isinstance(p, dict) for p in passes
+            ):
+                raise RuntimeError(
+                    "Invalid analysis section: expected a pass dict or a list of "
+                    f"pass dicts, got {doc['analysis']!r}."
+                )
+            if len(passes) != 1:
+                raise RuntimeError(
+                    f"Exactly one analysis pass is supported per document, got "
+                    f"{len(passes)} ({[p.get('name') for p in passes]}). Multiple "
+                    f"analysis passes are not yet supported."
+                )
+            if not isinstance(passes[0].get("name"), str):
+                raise RuntimeError(
+                    "Invalid analysis section: pass 'name' not specified."
+                )
+            doc["analysis"] = passes
 
     @classmethod
     def parse_document(
@@ -811,28 +977,19 @@ class YAMLConfigParser:
             **component_resolved,
         )
 
-        # Metrics parsing
-        metrics_list = (
-            doc["metrics"] if isinstance(doc["metrics"], list) else [doc["metrics"]]
-        )
-        resolved_metrics = []
-        for metric in metrics_list:
-            metric_name = metric["name"]
-            try:
-                metric_cls = cls.get_metric(metric_name)
-            except LookupError as exc:
-                raise LookupError(
-                    f"Specified metric name ({metric_name}) not found."
-                ) from exc
-            metric_kwargs = {k: v for k, v in metric.items() if k != "name"}
-            resolved_metrics.append(
-                ResolvedMetric(
-                    name=metric_name,
-                    metric_cls=metric_cls,
-                    metric_kwargs=metric_kwargs,
-                )
-            )
-        del doc["metrics"]
+        # Metrics parsing. Empty only when an analysis pass supplies its own
+        # metrics or uses none (_resolve_analysis enforces this), meaning
+        # "no baseline run".
+        metrics_list = doc.pop("metrics", [])
+        if not isinstance(metrics_list, list):
+            metrics_list = [metrics_list]
+        resolved_metrics = [cls._resolve_metric(metric) for metric in metrics_list]
+
+        resolved_analysis = None
+        if "analysis" in doc:
+            # Exactly one pass, enforced by validate_config.
+            (pass_dict,) = doc.pop("analysis")
+            resolved_analysis = cls._resolve_analysis(pass_dict, resolved_metrics)
 
         # Profiler parsing
         profiler_dict = doc.pop("profiler", {})
@@ -854,6 +1011,7 @@ class YAMLConfigParser:
             export=export_dir,
             eval_in_onnx=eval_in_onnx,
             run_group=run_group,
+            analysis=resolved_analysis,
         )
 
     @classmethod

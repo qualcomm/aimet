@@ -13,7 +13,7 @@ import subprocess
 import sys
 import fcntl
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 # Import GPUMeter from AIMETRegression evaluation module
 sys.path.append(
@@ -117,6 +117,19 @@ class ComponentRecipeStats:
     """Dataclass to hold a chain of recipe steps for a model component"""
 
     steps: list[RecipeStepStats]
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    """The sparse ``analysis`` column: which pass ran, its kwargs, and its report.
+
+    ``report`` is a path relative to the results dir, so it survives the
+    artifact download/merge path.
+    """
+
+    name: str
+    kwargs: dict
+    report: str
 
 
 def recursive_update(d, u):
@@ -237,6 +250,47 @@ def _serialize_dtype(value: "str | torch.dtype") -> str:
     return str(value).removeprefix("torch.")
 
 
+_CSV_HEADER = [
+    "model_type",
+    "model_id",
+    "model_modifiers",
+    "precision",
+    "components",
+    "accuracy_results",
+    "export",
+    "environment",
+    "run_group",
+    "analysis",
+]
+
+
+def _rotate_stale_csv(filename: str, expected_header: list[str]):
+    """Rename ``filename`` aside if its header doesn't match ``expected_header``.
+
+    Must be called with ``_file_lock(filename)`` already held, so a width or
+    schema change (e.g. a new column) never misaligns a row into a
+    pre-existing file -- the stale file is preserved rather than overwritten
+    or corrupted, and a fresh file starts with the new header. The suffix
+    loop finds the first free name, so repeated schema changes never clobber
+    an earlier rotation.
+    """
+    if not os.path.exists(filename):
+        return
+    with open(filename, "r", newline="") as f:
+        existing_header = next(csv.reader(f), None)
+    if existing_header == expected_header:
+        return
+    suffix = 1
+    while os.path.exists(f"{filename}.stale-{suffix}"):
+        suffix += 1
+    rotated = f"{filename}.stale-{suffix}"
+    os.rename(filename, rotated)
+    print(
+        f"NOTICE: {filename} had an incompatible header (schema change); "
+        f"rotated the existing file to {rotated} and started a new one."
+    )
+
+
 def write_stats_to_disk(
     output_folder: str,
     filename: str,
@@ -248,6 +302,7 @@ def write_stats_to_disk(
     export_location: str | None = None,
     precision: dict | None = None,
     run_group: str | None = None,
+    analysis: AnalysisResult | None = None,
 ):
     if "dtype" in model_modifiers:
         model_modifiers["dtype"] = _serialize_dtype(model_modifiers["dtype"])
@@ -261,6 +316,7 @@ def write_stats_to_disk(
         export_location,
         precision,
         run_group,
+        analysis,
     )
 
     _write_stats_to_csv(
@@ -273,6 +329,7 @@ def write_stats_to_disk(
         export_location,
         precision,
         run_group,
+        analysis,
     )
 
 
@@ -286,6 +343,7 @@ def _write_stats_to_csv(
     export_location: str | None = None,
     precision: dict | None = None,
     run_group: str | None = None,
+    analysis: AnalysisResult | None = None,
 ):
     def dict_to_postgres_csv_json_field(d):
         json_str = json.dumps(d, separators=(",", ":"))  # Compact JSON
@@ -315,26 +373,19 @@ def _write_stats_to_csv(
         export_location if export_location is not None else "",
         dict_to_postgres_csv_json_field(_collect_environment()),
         run_group or "",
+        dict_to_postgres_csv_json_field(asdict(analysis))
+        if analysis is not None
+        else "",
     ]
 
     # Use file lock to ensure process-safe writes
     with _file_lock(filename):
+        _rotate_stale_csv(filename, _CSV_HEADER)
+
         if not os.path.exists(filename):
             with open(filename, "w", newline="") as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(
-                    [
-                        "model_type",
-                        "model_id",
-                        "model_modifiers",
-                        "precision",
-                        "components",
-                        "accuracy_results",
-                        "export",
-                        "environment",
-                        "run_group",
-                    ]
-                )
+                writer.writerow(_CSV_HEADER)
 
         with open(filename, "a", newline="") as csvfile:
             writer = csv.writer(csvfile)
@@ -351,6 +402,7 @@ def _write_stats_to_json(
     export_location: str | None = None,
     precision: dict | None = None,
     run_group: str | None = None,
+    analysis: AnalysisResult | None = None,
 ):
     """Helper function to write collected stats to disk, only overwriting newly collected fields.
 
@@ -376,6 +428,9 @@ def _write_stats_to_json(
 
     if run_group is not None:
         stats["run_group"] = run_group
+
+    if analysis is not None:
+        stats["analysis"] = asdict(analysis)
 
     # Use file lock to ensure process-safe read-modify-write
     with _file_lock(filename):
@@ -455,7 +510,16 @@ def merge_csv_results(source_path, dest_path):
     header = rows[0]
     data_rows = rows[1:]
 
-    if not os.path.exists(dest_path):
+    if os.path.exists(dest_path):
+        with open(dest_path, "r", newline="") as f:
+            dest_header = next(csv.reader(f), None)
+        if dest_header != header:
+            raise ValueError(
+                f"Cannot merge {source_path} into {dest_path}: header mismatch "
+                f"(source={header}, dest={dest_header}). Merging would silently "
+                f"misalign columns."
+            )
+    else:
         with open(dest_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(header)

@@ -10,24 +10,21 @@ import torch
 import gc
 import os
 from pathlib import Path
-from transformers.processing_utils import ProcessorMixin
 
 from aimet_onnx.quantsim import load_encodings_to_sim
 from aimet_onnx.experimental.llm_topology import analyze_llm_topology
 
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
+from GenAILab.bench.analysis import run_analysis
 from GenAILab.bench.profiler import (
-    GPUMeter,
-    MetricResult,
     ComponentRecipeStats,
     RecipeStepStats,
-    ScoredResult,
     write_stats_to_disk,
 )
 from GenAILab.bench.determinism import set_seed
 from GenAILab.bench.eval_context import EvaluationContext
 from GenAILab.bench.fp_cache import DiskBackedFPCache
-from GenAILab.bench.metrics import TextEvaluationMetric
+from GenAILab.bench.metrics import run_metrics
 from GenAILab.bench.model_cache import DiskBackedModelCache
 from GenAILab.bench.recipe_chain import (
     apply_pre_quantization_chain,
@@ -38,6 +35,7 @@ from GenAILab.qai_hub_lm.models.base import LLM, VLM
 from GenAILab.bench import datasets, metrics  # noqa: F401 — triggers registration
 from GenAILab.qai_hub_lm.backends import onnx as models  # noqa: F401 — triggers registration
 from GenAILab.bench.onnx import quant_recipes  # noqa: F401 — triggers registration
+from GenAILab.bench.onnx import analysis_passes  # noqa: F401 — triggers registration
 from GenAILab.qai_hub_lm.backends.onnx.generator_utils import generator_factory
 from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import quantize_embedding_weights
 
@@ -62,7 +60,6 @@ def test_llm_quantization(
     recipe_cache,
     export_dir,
     results_dir,
-    truncation_aware,
 ):
     if test_config is None:
         pytest.skip("No GenAI test parameters provided.")
@@ -322,64 +319,36 @@ def test_llm_quantization(
                 os.path.join(export_dir, "embedding.pth"),
             )
 
-    if truncation_aware:
-        from aimet_onnx.experimental._truncation_aware import (
-            create_truncation_aware_session,
+    results_folder = Path(results_dir)
+    results_folder.mkdir(parents=True, exist_ok=True)
+    precision_dict = precision.to_dict()
+
+    evaluation_results = run_metrics(
+        config.metrics,
+        generator,
+        tokenizer,
+        context_length,
+        eval_ctx,
+        image_size=image_size,
+        audio_frames=audio_frames,
+        gpu_meter_kwargs=config.profiler.gpu_meter_kwargs,
+        capture_intermediate_data=config.profiler.capture_intermediate_data,
+    )
+
+    # Runs after the metrics above: they are the baseline, and they warm the FP
+    # cache that the pass may only read.
+    analysis_result = None
+    if config.analysis is not None:
+        analysis_result = run_analysis(
+            config,
+            sim_collection=sim_collection,
+            generator=generator,
+            tokenizer=tokenizer,
+            fp_cache=fp_cache,
+            results_dir=results_folder,
+            precision=precision_dict,
+            recipe_chain="+".join(step.recipe_name for step in backbone_steps),
         )
-
-        for sim in (
-            sim_collection.backbone,
-            *(
-                sim_collection.component(name)
-                for name in sim_collection.present_components()
-            ),
-        ):
-            del sim.session
-            sim.session = create_truncation_aware_session(sim, truncation_bits=8)
-
-    evaluation_results = []
-    with torch.no_grad():
-        for metric in config.metrics:
-            metric_cls = metric.metric_cls
-            with GPUMeter(
-                capture_intermediate_data=False, **config.profiler.gpu_meter_kwargs
-            ) as profiler:
-                extra_metric_kwargs = {}
-                if not issubclass(metric_cls, TextEvaluationMetric):
-                    extra_metric_kwargs["image_size"] = image_size
-                    extra_metric_kwargs["audio_frames"] = audio_frames
-                tokenizer_arg = (
-                    tokenizer.tokenizer
-                    if isinstance(tokenizer, ProcessorMixin)
-                    and issubclass(metric_cls, TextEvaluationMetric)
-                    else tokenizer
-                )
-                result = metric_cls.evaluate(
-                    generator,
-                    tokenizer_arg,
-                    context_length,
-                    eval_ctx=eval_ctx,
-                    **extra_metric_kwargs,
-                    **metric.metric_kwargs,
-                )
-                # Unwrap so the log line and the stats row read the same
-                # whether or not the metric reported a breakdown.
-                details = None
-                if isinstance(result, ScoredResult):
-                    result, details = result.result, result.details
-                print(f"{metric_cls.__name__} result: {result}")
-
-            evaluation_results.append(
-                MetricResult(
-                    metric_name=metric_cls.__name__,
-                    result=result,
-                    profiler=profiler
-                    if config.profiler.capture_intermediate_data
-                    else None,
-                    scoring_version=metric_cls.SCORING_VERSION,
-                    details=details,
-                )
-            )
 
     # Snapshot of the authored model section for the report, derived from the
     # parsed config (not the instantiation kwargs) so fields like ``adaptations``
@@ -411,9 +380,6 @@ def test_llm_quantization(
     for _component, _steps in component_steps.items():
         components[_component] = ComponentRecipeStats(steps=_steps)
 
-    results_folder = Path(results_dir)
-    results_folder.mkdir(parents=True, exist_ok=True)
-    precision_dict = precision.to_dict()
     write_stats_to_disk(
         output_folder=str(results_folder),
         filename="profiling_data",
@@ -425,6 +391,7 @@ def test_llm_quantization(
         export_location=export_dir,
         precision=precision_dict,
         run_group=run_group,
+        analysis=analysis_result,
     )
 
     if export_dir:
@@ -438,4 +405,5 @@ def test_llm_quantization(
             accuracy_results=evaluation_results,
             precision=precision_dict,
             run_group=run_group,
+            analysis=analysis_result,
         )

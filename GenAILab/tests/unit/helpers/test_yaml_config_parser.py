@@ -7,6 +7,7 @@ import copy
 from unittest.mock import patch, MagicMock
 
 import pytest
+import yaml
 
 from GenAILab.bench.yaml_config_parser import (
     YAMLConfigParser,
@@ -29,6 +30,7 @@ def _clean_registry():
         "dataset": dict(YAMLConfigParser.dataset_lookup),
         "metrics": dict(YAMLConfigParser.metrics_lookup),
         "adaptation": dict(YAMLConfigParser.adaptation_lookup),
+        "analysis": dict(YAMLConfigParser.analysis_lookup),
         "default_llm": YAMLConfigParser._default_llm_cls,
     }
     yield
@@ -37,6 +39,7 @@ def _clean_registry():
     YAMLConfigParser.dataset_lookup = saved["dataset"]
     YAMLConfigParser.metrics_lookup = saved["metrics"]
     YAMLConfigParser.adaptation_lookup = saved["adaptation"]
+    YAMLConfigParser.analysis_lookup = saved["analysis"]
     YAMLConfigParser._default_llm_cls = saved["default_llm"]
 
 
@@ -531,6 +534,101 @@ class TestValidateConfig:
             )
 
 
+class TestValidateConfigAnalysis:
+    """The `analysis` section's shape: one pass dict per doc, with a name.
+    The metric subset and pass kwargs need the registered pass class, so they
+    are checked in parse_document -- see TestParseDocument."""
+
+    @staticmethod
+    def _doc(**analysis_overrides):
+        doc = {
+            "model": {"model_id": "x", "sequence_length": 32, "context_length": 64},
+            "metrics": [{"name": "Grace"}, {"name": "MMLU"}],
+            "analysis": {"name": "TruncationSimulation", "truncation_bits": 8},
+        }
+        doc["analysis"].update(analysis_overrides)
+        return doc
+
+    def test_valid_analysis_normalized_to_list(self):
+        doc = self._doc()
+        YAMLConfigParser.validate_config(doc)
+        assert doc["analysis"] == [
+            {"name": "TruncationSimulation", "truncation_bits": 8}
+        ]
+
+    @pytest.mark.parametrize("bad", ["TruncationSimulation", 8, [8], None])
+    def test_non_dict_analysis_section_raises(self, bad):
+        doc = self._doc()
+        doc["analysis"] = bad
+        with pytest.raises(RuntimeError, match="Invalid analysis section"):
+            YAMLConfigParser.validate_config(doc)
+
+    def test_missing_pass_name_raises(self):
+        doc = self._doc()
+        del doc["analysis"]["name"]
+        with pytest.raises(RuntimeError, match="'name' not specified"):
+            YAMLConfigParser.validate_config(doc)
+
+    def test_multiple_passes_rejected(self):
+        doc = self._doc()
+        doc["analysis"] = [
+            {"name": "TruncationSimulation", "truncation_bits": 8},
+            {"name": "TruncationSimulation", "truncation_bits": 12},
+        ]
+        with pytest.raises(RuntimeError, match="Exactly one analysis pass"):
+            YAMLConfigParser.validate_config(doc)
+
+    def test_metrics_optional_when_analysis_present(self):
+        doc = {
+            "model": {"model_id": "x", "sequence_length": 32, "context_length": 64},
+            "analysis": {"name": "QuantizerSensitivity"},
+        }
+        YAMLConfigParser.validate_config(doc)
+        assert doc["analysis"] == [{"name": "QuantizerSensitivity"}]
+
+    def test_top_level_metrics_still_required_without_analysis(self):
+        doc = {
+            "model": {"model_id": "x", "sequence_length": 32, "context_length": 64},
+        }
+        with pytest.raises(RuntimeError, match="Metrics not specified"):
+            YAMLConfigParser.validate_config(doc)
+
+
+# ---------------------------------------------------------------------------
+def _register_fake_truncation_pass():
+    """Register a stand-in ``TruncationSimulation`` and return it.
+
+    A required ``truncation_bits`` (int or list) and no other kwargs, like the
+    real pass, without importing the ONNX backend.
+    """
+
+    @YAMLConfigParser.register_analysis
+    class TruncationSimulation:
+        def __init__(self, *, truncation_bits):
+            if not truncation_bits:
+                raise ValueError("truncation_bits must not be empty")
+            self.truncation_bits = (
+                [truncation_bits]
+                if isinstance(truncation_bits, int)
+                else truncation_bits
+            )
+
+    return TruncationSimulation
+
+
+def _register_fake_sensitivity_pass():
+    """Register a stand-in ``QuantizerSensitivity``: a pass that uses no metrics."""
+
+    @YAMLConfigParser.register_analysis
+    class QuantizerSensitivity:
+        uses_metrics = False
+
+        def __init__(self, *, mode="weights"):
+            self.mode = mode
+
+    return QuantizerSensitivity
+
+
 # ---------------------------------------------------------------------------
 # Full parse_document (requires mocking detect_model_type)
 # ---------------------------------------------------------------------------
@@ -818,6 +916,221 @@ class TestParseDocument:
         }
         result = YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
         assert len(result.recipe.pre_sim) == 0
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_analysis_resolved_with_omitted_metrics_means_all(
+        self, mock_detect, tmp_path
+    ):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        TruncationSimulation = _register_fake_truncation_pass()
+
+        doc = {
+            "model": {
+                "model_id": "org/model",
+                "sequence_length": 32,
+                "context_length": 64,
+            },
+            "metrics": [{"name": "PPL"}, {"name": "TinyMMLU"}],
+            "analysis": {"name": "TruncationSimulation", "truncation_bits": [8, 12]},
+        }
+        result = YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+        assert result.analysis.name == "TruncationSimulation"
+        assert isinstance(result.analysis.analysis_pass, TruncationSimulation)
+        assert result.analysis.analysis_pass.truncation_bits == [8, 12]
+        assert result.analysis.kwargs == {"truncation_bits": [8, 12]}
+        assert [m.name for m in result.analysis.metrics] == ["PPL", "TinyMMLU"]
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_analysis_metric_subset_resolved_to_top_level_objects(
+        self, mock_detect, tmp_path
+    ):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = {
+            "model": {
+                "model_id": "org/model",
+                "sequence_length": 32,
+                "context_length": 64,
+            },
+            # top-level PPL kwarg that the subset must inherit rather than restate.
+            "metrics": [{"name": "PPL", "n_samples": 5}, {"name": "TinyMMLU"}],
+            "analysis": {
+                "name": "TruncationSimulation",
+                "truncation_bits": 8,
+                "metrics": ["PPL"],
+            },
+        }
+        result = YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+        assert [m.name for m in result.analysis.metrics] == ["PPL"]
+        # same ResolvedMetric object as the top-level one -- kwargs inherited,
+        # never re-specified.
+        assert result.analysis.metrics[0] is result.metrics[0]
+        assert result.analysis.metrics[0].metric_kwargs == {"n_samples": 5}
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_omitted_top_level_metrics_means_analysis_only(self, mock_detect, tmp_path):
+        """When 'metrics' is omitted entirely, there is no baseline run: the
+        top-level metric set is empty and only the pass's own metrics run."""
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = {
+            "model": {
+                "model_id": "org/model",
+                "sequence_length": 32,
+                "context_length": 64,
+            },
+            "analysis": {
+                "name": "TruncationSimulation",
+                "truncation_bits": 8,
+                "metrics": ["PPL"],
+            },
+        }
+        result = YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+        assert result.metrics == ()
+        assert [m.name for m in result.analysis.metrics] == ["PPL"]
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_metric_free_pass_resolves_with_no_metrics(self, mock_detect, tmp_path):
+        """A pass with ``uses_metrics = False`` gets an empty metric subset, even
+        when top-level metrics exist (they still run as the baseline)."""
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_sensitivity_pass()
+
+        doc = {
+            "model": {
+                "model_id": "org/model",
+                "sequence_length": 32,
+                "context_length": 64,
+            },
+            "metrics": [{"name": "PPL"}],
+            "analysis": {"name": "QuantizerSensitivity", "mode": "kv_cache"},
+        }
+        result = YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+        assert [m.name for m in result.metrics] == ["PPL"]
+        assert result.analysis.metrics == ()
+        assert result.analysis.kwargs == {"mode": "kv_cache"}
+        assert result.analysis.analysis_pass.mode == "kv_cache"
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_exported_config_retains_analysis_section(self, mock_detect, tmp_path):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = {
+            "model": {
+                "model_id": "org/model",
+                "sequence_length": 32,
+                "context_length": 64,
+            },
+            "metrics": [{"name": "PPL"}],
+            "analysis": {"name": "TruncationSimulation", "truncation_bits": 8},
+            "export": True,
+        }
+        YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+
+        exported = list(tmp_path.rglob("config.yaml"))
+        assert len(exported) == 1
+        with open(exported[0]) as f:
+            exported_doc = yaml.safe_load(f)
+        assert exported_doc["analysis"] == [
+            {"name": "TruncationSimulation", "truncation_bits": 8}
+        ]
+
+    @staticmethod
+    def _analysis_doc(**analysis):
+        return {
+            "model": {
+                "model_id": "org/model",
+                "sequence_length": 32,
+                "context_length": 64,
+            },
+            "metrics": [{"name": "PPL"}],
+            "analysis": {"name": "TruncationSimulation", **analysis},
+        }
+
+    @pytest.mark.parametrize(
+        "analysis_kwargs",
+        [
+            {},  # truncation_bits missing
+            {"truncation_bits": 8, "made_up_kwarg": 1},  # unknown kwarg
+            {"truncation_bits": []},  # bad value
+        ],
+    )
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_bad_pass_kwargs_raise(self, mock_detect, tmp_path, analysis_kwargs):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = self._analysis_doc(**analysis_kwargs)
+        with pytest.raises(
+            RuntimeError, match="Invalid analysis pass 'TruncationSimulation'"
+        ):
+            YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+
+    @pytest.mark.parametrize("bad", [[], "PPL", [1]])
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_bad_metrics_subset_raises(self, mock_detect, tmp_path, bad):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = self._analysis_doc(truncation_bits=8, metrics=bad)
+        with pytest.raises(RuntimeError, match="non-empty list of metric names"):
+            YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_metrics_subset_name_must_exist_in_top_level(self, mock_detect, tmp_path):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = self._analysis_doc(truncation_bits=8, metrics=["TinyMMLU"])
+        with pytest.raises(RuntimeError, match="TinyMMLU"):
+            YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_top_level_and_pass_metrics_both_omitted_raises(
+        self, mock_detect, tmp_path
+    ):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = self._analysis_doc(truncation_bits=8)
+        del doc["metrics"]
+        with pytest.raises(RuntimeError, match="at least one of the two is required"):
+            YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_metric_free_pass_needs_no_metrics_anywhere(self, mock_detect, tmp_path):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_sensitivity_pass()
+
+        doc = self._analysis_doc()
+        doc["analysis"]["name"] = "QuantizerSensitivity"
+        del doc["metrics"]
+        result = YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+        assert result.metrics == ()
+        assert result.analysis.metrics == ()
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_metric_free_pass_rejects_metrics_list(self, mock_detect, tmp_path):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_sensitivity_pass()
+
+        doc = self._analysis_doc(metrics=["PPL"])
+        doc["analysis"]["name"] = "QuantizerSensitivity"
+        with pytest.raises(RuntimeError, match="takes no 'metrics' list"):
+            YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
+
+    @patch.object(YAMLConfigParser, "detect_model_type", return_value="llama")
+    def test_unknown_pass_name_raises(self, mock_detect, tmp_path):
+        YAMLConfigParser._default_llm_cls = type("FakeLLM_ONNX", (), {})
+        _register_fake_truncation_pass()
+
+        doc = self._analysis_doc(truncation_bits=8)
+        doc["analysis"]["name"] = "NotARealPass"
+        with pytest.raises(LookupError, match="NotARealPass"):
+            YAMLConfigParser.parse_document(doc, export_base_dir=str(tmp_path))
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,8 @@ _NON_METRIC_KEYS = {
     "components",
     "export",
     "run_group",
+    "accuracy_details",
+    "analysis",
 }
 
 
@@ -144,7 +146,8 @@ def _print_group(model_type, model_id, group_entries):
 
         # Build footnote
         precision = entry.get("precision")
-        footnotes.append(_build_footnote(doc_label, components, precision))
+        analysis = entry.get("analysis")
+        footnotes.append(_build_footnote(doc_label, components, precision, analysis))
 
     # Calculate column widths
     metric_col_widths = []
@@ -206,8 +209,8 @@ def _print_group(model_type, model_id, group_entries):
         print(f"   {fn}")
 
 
-def _build_footnote(doc_label, components, precision=None):
-    """Build a footnote string describing recipe kwargs and precision for each component."""
+def _build_footnote(doc_label, components, precision=None, analysis=None):
+    """Build a footnote string describing recipe kwargs, precision, and any active analysis pass."""
     parts = []
     for comp_name, comp_stats in components.items():
         recipe = comp_stats.get("recipe", "?")
@@ -231,6 +234,12 @@ def _build_footnote(doc_label, components, precision=None):
 
     if precision:
         line += f"\n      Precision: {_format_precision(precision)}"
+
+    if analysis:
+        kwargs_str = ", ".join(
+            f"{k}={v}" for k, v in analysis.get("kwargs", {}).items()
+        )
+        line += f"\n      Analysis: {analysis['name']}({kwargs_str}) -> {analysis['report']}"
 
     return line
 

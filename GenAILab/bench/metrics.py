@@ -5,6 +5,7 @@
 
 import contextlib
 import gc
+import inspect
 import json
 import os
 import re
@@ -31,7 +32,7 @@ from transformers import (
 from transformers.processing_utils import ProcessorMixin
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 
-from GenAILab.bench.yaml_config_parser import YAMLConfigParser
+from GenAILab.bench.yaml_config_parser import YAMLConfigParser, ResolvedMetric
 from GenAILab.bench.eval_context import EvaluationContext
 from GenAILab.bench.utils.prompt_utils import load_text_prompts, thinking_kwargs
 from GenAILab.bench.utils.generation_utils import (
@@ -39,7 +40,7 @@ from GenAILab.bench.utils.generation_utils import (
     ContextLengthStoppingCriteria,
 )
 from GenAILab.qai_hub_lm.models.generator import Generator, VLM_Generator
-from GenAILab.bench.profiler import ScoredResult
+from GenAILab.bench.profiler import GPUMeter, MetricResult, ScoredResult
 from GenAILab.qai_hub_lm.scoring.grace.grace import (
     GRACE_VERSION,
     load_eval_prompts,
@@ -1915,7 +1916,7 @@ def _run_grader_subprocess(
     return json.loads(Path(summary_json).read_text(encoding="utf-8"))
 
 
-def _format_grader_summary(summary: dict, items: list[dict]) -> str:
+def format_grader_summary(summary: dict, items: list[dict]) -> str:
     """Render the grader summary dict as the human-readable report.
 
     ``items`` is the joined per-prompt record from
@@ -1924,6 +1925,9 @@ def _format_grader_summary(summary: dict, items: list[dict]) -> str:
     points, so a regression can be read off the log alone. Perfect items are
     listed only in the score, and ``num_forced`` is recorded in the stats file
     but not printed.
+
+    Also used by the analysis report, which passes ``MetricResult.details``
+    (the same summary dict, with the joined records under ``items``).
     """
     lines = [
         "=" * 60,
@@ -2201,7 +2205,7 @@ class Grace(TextEvaluationMetric):
         # copy that leaves the machine. Without them a dropped score can only
         # be explained by re-running, and generation is the expensive half.
         graded_with_text = detail_items(items, grader_summary["items"])
-        print(_format_grader_summary(grader_summary, graded_with_text))
+        print(format_grader_summary(grader_summary, graded_with_text))
         details = {
             key: grader_summary[key]
             for key in (
@@ -2477,3 +2481,77 @@ class CER(_ASRErrorRateBase):
     """Character error rate (%) on LibriSpeech, spaces included. Lower is better."""
 
     UNIT = "char"
+
+
+def run_metrics(
+    metrics: tuple[ResolvedMetric, ...],
+    generator: Generator,
+    tokenizer,
+    context_length: int,
+    eval_ctx: EvaluationContext,
+    *,
+    image_size=None,
+    audio_frames: int | None = None,
+    gpu_meter_kwargs: dict | None = None,
+    capture_intermediate_data: bool = False,
+    extra_kwargs: dict | None = None,
+) -> list[MetricResult]:
+    """Evaluate each resolved metric against one generator/tokenizer, in order.
+
+    The runner calls it once for the top-level metrics; an analysis pass calls
+    it once per condition for its metric subset.
+
+    ``extra_kwargs`` (e.g. a per-condition ``output_dir``) is injected only
+    for metrics whose ``evaluate`` explicitly declares that parameter name --
+    never relies on ``**kwargs`` absorbing it, since most metrics don't
+    accept arbitrary extra kwargs and would raise ``TypeError`` if it were
+    injected blindly. It overrides the same key in the metric's config
+    kwargs: each analysis condition must write to its own directory.
+    """
+    gpu_meter_kwargs = gpu_meter_kwargs or {}
+    results = []
+    with torch.no_grad():
+        for metric in metrics:
+            metric_cls = metric.metric_cls
+            with GPUMeter(
+                capture_intermediate_data=False, **gpu_meter_kwargs
+            ) as profiler:
+                extra_metric_kwargs = {}
+                if not issubclass(metric_cls, TextEvaluationMetric):
+                    extra_metric_kwargs["image_size"] = image_size
+                    extra_metric_kwargs["audio_frames"] = audio_frames
+                if extra_kwargs:
+                    declared = inspect.signature(metric_cls.evaluate).parameters
+                    extra_metric_kwargs.update(
+                        {k: v for k, v in extra_kwargs.items() if k in declared}
+                    )
+                tokenizer_arg = (
+                    tokenizer.tokenizer
+                    if isinstance(tokenizer, ProcessorMixin)
+                    and issubclass(metric_cls, TextEvaluationMetric)
+                    else tokenizer
+                )
+                result = metric_cls.evaluate(
+                    generator,
+                    tokenizer_arg,
+                    context_length,
+                    eval_ctx=eval_ctx,
+                    **{**metric.metric_kwargs, **extra_metric_kwargs},
+                )
+                # Unwrap so the log line and the stats row read the same
+                # whether or not the metric reported a breakdown.
+                details = None
+                if isinstance(result, ScoredResult):
+                    result, details = result.result, result.details
+                print(f"{metric_cls.__name__} result: {result}")
+
+            results.append(
+                MetricResult(
+                    metric_name=metric_cls.__name__,
+                    result=result,
+                    profiler=profiler if capture_intermediate_data else None,
+                    scoring_version=metric_cls.SCORING_VERSION,
+                    details=details,
+                )
+            )
+    return results

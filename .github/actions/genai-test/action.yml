@@ -225,9 +225,11 @@ runs:
         aws s3 cp GenAILab/artifacts/exports/ \
           s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}/${{ inputs.variant }}/ \
           --recursive --exclude "*" --include "*.zip" --no-progress
+        # *.md / *.html: analysis-pass reports and plots under results/analysis/.
         aws s3 cp GenAILab/artifacts/results/ \
           s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}/${{ inputs.variant }}/ \
-          --recursive --exclude "*" --include "*.json" --include "*.csv" --no-progress
+          --recursive --exclude "*" --include "*.json" --include "*.csv" \
+          --include "*.md" --include "*.html" --no-progress
         # Secondary ONNX results/exports under onnx/ prefix
         if [ -d GenAILab/artifacts/secondary_results ]; then
           aws s3 cp GenAILab/artifacts/secondary_results/ \

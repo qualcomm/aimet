@@ -1,18 +1,21 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Tests for metric computation logic (pure math, no model needed)."""
+"""Tests for metric computation logic and the ``run_metrics`` loop (no model needed)."""
 
 import pytest
 import torch
 
 from GenAILab.bench.metrics import (
     PPL,
+    TextEvaluationMetric,
+    run_metrics,
     _KLDivergenceCompute,
     _ReverseKLDivergenceCompute,
     _JSDivergenceCompute,
     _FlipsCompute,
 )
+from GenAILab.bench.yaml_config_parser import ResolvedMetric
 
 
 class TestPPLLoss:
@@ -96,3 +99,61 @@ class TestFlips:
         q_data = {"logits": torch.tensor(q_logits)}
         result = _FlipsCompute._compute(fp_data, q_data)
         assert result == pytest.approx(25.0, abs=0.1)
+
+
+class TestRunMetricsExtraKwargs:
+    """``extra_kwargs`` (the analysis pass's per-condition ``output_dir``) reach
+    only metrics whose ``evaluate`` declares them: most metrics are keyword-only
+    without ``**kwargs`` and would raise ``TypeError`` if passed one blindly."""
+
+    class DeclaresOutputDir(TextEvaluationMetric):
+        @classmethod
+        def evaluate(
+            cls,
+            model,
+            tokenizer,
+            context_length,
+            *,
+            eval_ctx,
+            output_dir=None,
+            **kwargs,
+        ):
+            return output_dir
+
+    class OnlyKwargs(TextEvaluationMetric):
+        @classmethod
+        def evaluate(cls, model, tokenizer, context_length, *, eval_ctx, **kwargs):
+            return sorted(kwargs)
+
+    @staticmethod
+    def _run(metric_cls, metric_kwargs=None):
+        [result] = run_metrics(
+            (
+                ResolvedMetric(
+                    name=metric_cls.__name__,
+                    metric_cls=metric_cls,
+                    metric_kwargs=metric_kwargs or {},
+                ),
+            ),
+            generator="gen",
+            tokenizer=object(),
+            context_length=128,
+            eval_ctx="ctx",
+            extra_kwargs={"output_dir": "analysis/trunc_bits8"},
+        )
+        return result.result
+
+    def test_injected_when_declared(self):
+        assert self._run(self.DeclaresOutputDir) == "analysis/trunc_bits8"
+
+    def test_omitted_when_only_absorbed_by_kwargs(self):
+        assert self._run(self.OnlyKwargs) == []
+
+    def test_overrides_same_key_in_metric_kwargs(self):
+        """An ``output_dir`` set on the metric in the config must not collide
+        with the per-condition one (``TypeError: multiple values``); the
+        condition's wins, so conditions don't overwrite each other's files."""
+        assert (
+            self._run(self.DeclaresOutputDir, {"output_dir": "user/dir"})
+            == "analysis/trunc_bits8"
+        )

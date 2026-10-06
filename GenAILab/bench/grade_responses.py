@@ -38,7 +38,7 @@ changes are easy to bring over. Deliberate divergences, all marked "AIMET-only" 
 
 * ``--metric-name`` and ``--device-map`` arguments, which upstream does not have.
 * No human-readable report is printed here. The parent process renders a richer
-  one from the summary JSON (see ``_format_grader_summary`` in
+  one from the summary JSON (see ``format_grader_summary`` in
   :mod:`GenAILab.bench.metrics`), so printing it here would only duplicate it.
 * ``build_summary`` therefore runs unconditionally, and the overall score is
   printed when no ``--output-json`` was given.

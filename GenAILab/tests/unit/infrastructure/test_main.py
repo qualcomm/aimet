@@ -3,6 +3,7 @@
 
 """Tests for the GenAILab CLI launcher (__main__.py)."""
 
+import os
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -166,3 +167,53 @@ class TestGitHelpers:
 
         with patch("GenAILab.__main__.subprocess.call", return_value=0):
             assert _has_uncommitted_changes() is False
+
+
+class TestDownloadAndMerge:
+    @staticmethod
+    def _fake_download(files):
+        """Stand-in for ``gh run download``: writes ``files`` into ``--dir``."""
+
+        def _call(cmd):
+            tmpdir = cmd[cmd.index("--dir") + 1]
+            for rel, text in files.items():
+                path = os.path.join(tmpdir, rel)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    f.write(text)
+            return 0
+
+        return _call
+
+    def test_analysis_dirs_copied_next_to_merged_results(self, tmp_path):
+        from GenAILab.__main__ import _download_and_merge
+
+        results = tmp_path / "results"
+        # A dir already present locally (an earlier download) is left as is.
+        (results / "analysis" / "run_b").mkdir(parents=True)
+        (results / "analysis" / "run_b" / "run_b.md").write_text("local")
+        files = {
+            "analysis/run_a/run_a.md": "report a",
+            "analysis/run_a/trunc_bits8/grader_summary.json": "{}",
+            "analysis/run_b/run_b.md": "remote",
+        }
+
+        with patch(
+            "GenAILab.__main__.subprocess.call", side_effect=self._fake_download(files)
+        ):
+            _download_and_merge("gh", 123, str(results), ["onnx"])
+
+        assert (results / "analysis/run_a/run_a.md").read_text() == "report a"
+        assert (results / "analysis/run_a/trunc_bits8/grader_summary.json").exists()
+        assert (results / "analysis/run_b/run_b.md").read_text() == "local"
+
+    def test_no_analysis_dir_in_artifact_creates_nothing(self, tmp_path):
+        from GenAILab.__main__ import _download_and_merge
+
+        results = tmp_path / "results"
+        with patch(
+            "GenAILab.__main__.subprocess.call", side_effect=self._fake_download({})
+        ):
+            _download_and_merge("gh", 123, str(results), ["onnx"])
+
+        assert not (results / "analysis").exists()
