@@ -530,6 +530,35 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:  # pylint: 
     )
 
 
+# Override the existing CumSum converters (versions 11/14).
+# Stock onnx2torch defaults reverse=1 when the attribute is absent from the
+# node, but the ONNX spec default is 0 (non-reversed). PyTorch's ONNX exporter
+# omits the attribute when reverse=False (the common case), so the stock
+# converter silently applies a reversed cumsum, producing wrong values.
+for _cumsum_version in (11, 14):
+    _cumsum_description = OperationDescription(
+        domain=defs.ONNX_DOMAIN,
+        operation_type="CumSum",
+        version=_cumsum_version,
+    )
+    if _cumsum_description in _CONVERTER_REGISTRY:
+        del _CONVERTER_REGISTRY[_cumsum_description]
+
+from onnx2torch.node_converters.cumsum import OnnxCumSum
+
+
+@add_converter(operation_type="CumSum", version=11)
+@add_converter(operation_type="CumSum", version=14)
+def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:  # pylint: disable=unused-argument
+    node_attributes = node.attributes
+    exclusive = bool(node_attributes.get("exclusive", 0))
+    reverse = bool(node_attributes.get("reverse", 0))  # ONNX spec default is 0, not 1
+    return OperationConverterResult(
+        torch_module=OnnxCumSum(exclusive=exclusive, reverse=reverse),
+        onnx_mapping=onnx_mapping_from_node(node=node),
+    )
+
+
 # Bulk-register missing op versions for opsets 18-21.
 # Many ops have unchanged schemas at newer versions but onnx2torch only registers
 # up to opset 13-17. We find the latest registered converter for each op and

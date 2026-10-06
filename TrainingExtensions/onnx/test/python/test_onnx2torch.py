@@ -230,6 +230,29 @@ def test_trilu(upper, k, dtype):
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float16])
+@pytest.mark.parametrize("exclusive", [0, 1])
+@pytest.mark.parametrize("reverse", [None, 0, 1])
+def test_cumsum(reverse, exclusive, dtype):
+    """CumSum matches ONNX Runtime, including when ``reverse`` is omitted.
+
+    The ONNX spec default for ``reverse`` is 0, but torch.onnx.export omits
+    the attribute entirely when reverse=False (the common case). Stock
+    onnx2torch defaults a missing ``reverse`` to 1, silently producing a
+    reversed cumsum; ``reverse=None`` here exercises that omitted-attribute
+    case.
+    """
+    node_kwargs = {"exclusive": exclusive}
+    if reverse is not None:
+        node_kwargs["reverse"] = reverse
+    node = helper.make_node("CumSum", ["x", "axis"], ["output"], **node_kwargs)
+    feed = {"x": np.random.randn(3, 4).astype(dtype)}
+    initializers = [helper.make_tensor("axis", TensorProto.INT64, [], [1])]
+    _assert_single_node_matches_ort(
+        node, feed, helper.np_dtype_to_tensor_dtype(feed["x"].dtype), initializers
+    )
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float16])
 @pytest.mark.parametrize(
     "min_val, max_val",
     [
