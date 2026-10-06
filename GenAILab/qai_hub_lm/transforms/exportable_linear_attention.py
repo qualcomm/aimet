@@ -519,10 +519,18 @@ def _patch_gated_delta_net_instances(
             "being exact (see the module docstring)."
         )
 
-    from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5GatedDeltaNet
+    from transformers.models.qwen3_5 import modeling_qwen3_5
+    from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
+
+    # Qwen3.5-MoE's GatedDeltaNet is Qwen3.5's apart from the class name, so the
+    # same exportable forward applies to both.
+    gdn_classes = (
+        modeling_qwen3_5.Qwen3_5GatedDeltaNet,
+        modeling_qwen3_5_moe.Qwen3_5MoeGatedDeltaNet,
+    )
 
     for module in model.modules():
-        if isinstance(module, Qwen3_5GatedDeltaNet):
+        if isinstance(module, gdn_classes):
             # One cap serves both entry points: the extent is derived as
             # ``min(seq_len, chunk_size)``, so the recurrent path no longer
             # needs its own hardcoded chunk_size=1 -- a seq_len=1 call reaches
@@ -547,13 +555,13 @@ def _patch_gated_delta_net_instances(
             )
             patched_any = True
 
-    import transformers.models.qwen3_5.modeling_qwen3_5 as qwen3_5_modeling
-
-    if hasattr(qwen3_5_modeling, "create_recurrent_attention_mask"):
-        qwen3_5_modeling.create_recurrent_attention_mask = (
-            _passthrough_recurrent_attn_mask
-        )
-        patched_any = True
+    # Patch the mask factory in both modeling namespaces: Qwen3.5-MoE has its own
+    # copy of ``create_recurrent_attention_mask``, and patching only Qwen3.5's
+    # would leave the MoE model's mask nulled (silently corrupting decode).
+    for namespace in (modeling_qwen3_5, modeling_qwen3_5_moe):
+        if hasattr(namespace, "create_recurrent_attention_mask"):
+            namespace.create_recurrent_attention_mask = _passthrough_recurrent_attn_mask
+            patched_any = True
 
     if not patched_any:
         raise RuntimeError(
@@ -564,9 +572,6 @@ def _patch_gated_delta_net_instances(
         )
 
 
-@YAMLConfigParser.register_adaptation(
-    "ExportableLinearAttention", model_type="qwen3_5", required_for_export=True
-)
 class Qwen3_5ExportableLinearAttentionAdaptation:
     """ExportableLinearAttention adaptation for Qwen 3.5 models.
 
@@ -858,3 +863,26 @@ class Qwen3_5ExportableLinearAttentionAdaptation:
 # matmuls (which read the same state and are memory-bound GEMVs at decode) into
 # one, and hardening an extra AR-N specialization for speculative decode, where
 # ``min(S, chunk_size) == S`` gives one chunk and amortises the state traffic.
+
+
+#: Model types whose decoder stacks contain GatedDeltaNet layers. Qwen3.5-MoE is
+#: registered under both its top-level (VLM) and text-config model types so the
+#: adaptation resolves whichever one the config reports.
+_LINEAR_ATTENTION_MODEL_TYPES = ("qwen3_5", "qwen3_5_moe", "qwen3_5_moe_text")
+
+
+def register_adaptations() -> None:
+    """Register ExportableLinearAttention for every linear-attention model type.
+
+    Called at import; also callable by tests, which run under an autouse fixture
+    that wipes ``adaptation_lookup`` before each test.
+    """
+    for model_type in _LINEAR_ATTENTION_MODEL_TYPES:
+        YAMLConfigParser.register_adaptation(
+            "ExportableLinearAttention",
+            model_type=model_type,
+            required_for_export=True,
+        )(Qwen3_5ExportableLinearAttentionAdaptation)
+
+
+register_adaptations()

@@ -4,7 +4,7 @@ This document describes the YAML config format consumed by the GenAILab harness.
 
 1. [**Guide**](#guide) — a walkthrough that builds a config from minimal to full-featured.
 2. [**Reference**](#reference) — exhaustive schema for every field.
-3. [**Currently registered values**](#currently-registered-values) — names you can use in `recipe`, `dataset`, `metrics`, `model.adaptations`. Snapshot as of **2026-05-20**; new entries are added by `@YAMLConfigParser.register_*` decorators, so keep this in mind when reading.
+3. [**Currently registered values**](#currently-registered-values) — names you can use in `recipe`, `dataset`, `metrics`, `model.adaptations`. Snapshot as of **2026-09-18**; new entries are added by `@YAMLConfigParser.register_*` decorators, so keep this in mind when reading.
 
 The schema is enforced by [yaml_config_parser.py](bench/yaml_config_parser.py) and [precision.py](bench/precision.py).
 
@@ -619,3 +619,6 @@ Listed under `model.adaptations` in the YAML.
 | `FastExportable`     | `qwen2_5_vl`, `qwen3_vl` | no        | yes                   | none.             |
 | `AttentionMaskScale` | `*` (all)              | no          | no                    | `layer_multipliers` (dict[int, float], e.g. `{0: 10.0, 5: 25.0}`). |
 | `AIHM`               | `*` (all)              | yes         | no                    | none (auto-routes to a supported `qai_hub_models` model). |
+| `ExportableLinearAttention` | `qwen3_5`, `qwen3_5_moe` | no   | yes                   | `chunk_size` (int, default 64). |
+| `ExportableMoE`      | `qwen3_moe`, `qwen3_5_moe` | no      | yes                   | `selection` (`routed` default \| `all`), `calibration_execution` (`dense` default \| `predicated`), `export_execution` (`predicated` default \| `dense`). |
+| `ExpertSubselection` | `qwen3_moe`, `qwen3_5_moe` | no      | no                    | `num_selected_experts` (int, required; `num_experts_per_tok` < S <= `num_experts`). Per prefill call, keeps the S experts with the highest peak routing probability and routes each token among them; decode is unchanged. Changes outputs, and makes them depend on the prefill chunk length (`sequence_length`). Requires `ExportableMoE`. |

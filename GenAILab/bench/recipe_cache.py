@@ -112,6 +112,23 @@ def _hash_aimet_sources() -> str:
     return _cached_aimet_source_hash
 
 
+def _adaptation_identity(adaptations: list) -> list:
+    """Canonical, order-insensitive identity for an authored adaptations list.
+
+    Handles both forms ``_normalize_adaptations`` accepts; a bare name hashes the
+    same as that name with empty kwargs.
+    """
+    canonical = []
+    for entry in adaptations:
+        if isinstance(entry, dict):
+            for name, kwargs in entry.items():
+                items = kwargs if isinstance(kwargs, dict) else {}
+                canonical.append([name, sorted((str(k), v) for k, v in items.items())])
+        else:
+            canonical.append([str(entry), []])
+    return sorted(canonical, key=lambda pair: pair[0])
+
+
 class RecipeCache:
     """Content-addressed cache for per-component recipe chain checkpoints."""
 
@@ -173,6 +190,7 @@ class RecipeCache:
         framework: str,
         component: str = "backbone",
         pre_sim: tuple[ResolvedStep, ...] | None = None,
+        adaptations: list | None = None,
     ) -> str:
         """Hash for a freshly-instantiated component (before any recipes).
 
@@ -186,6 +204,11 @@ class RecipeCache:
         R1/R2/R3 flags). When there are no pre-sim steps, NO pre-sim key is added
         -- the base hash is then byte-identical to the pre-pre-sim behavior, so
         existing cache entries for non-rotated runs stay valid.
+
+        ``adaptations`` is the authored ``model.adaptations`` list. It must be
+        keyed because adaptations live on the model *class* and never reach
+        ``model_kwargs``, so without it two runs differing only in an adaptation
+        share encodings. As with ``pre_sim``, an empty list adds no key.
         """
         identity = {
             "model_id": model_id,
@@ -199,6 +222,8 @@ class RecipeCache:
             ps_identity = {step.name: step.recipe_kwargs for step in pre_sim}
             # Key kept as "spinquant" for cache-key stability with prior runs.
             identity["spinquant"] = ps_identity
+        if adaptations:
+            identity["adaptations"] = _adaptation_identity(adaptations)
         return _stable_json_hash(identity)
 
     @staticmethod
@@ -228,6 +253,7 @@ class RecipeCache:
         framework: str,
         component: str = "backbone",
         pre_sim: tuple[ResolvedStep, ...] | None = None,
+        adaptations: list | None = None,
     ) -> tuple[int, list, list[str]]:
         """Compute hashes, find the longest cached prefix, load state, and log.
 
@@ -240,6 +266,7 @@ class RecipeCache:
             framework,
             component,
             pre_sim,
+            adaptations,
         )
         hashes = compute_chain_hashes(self, base, recipe_list)
         skip, chain = find_cache_hit(self, hashes)

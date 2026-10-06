@@ -38,6 +38,11 @@ except ImportError:
     pass
 
 try:
+    from .qwen3_5_moe import *
+except ImportError:
+    pass
+
+try:
     from .gemma4 import *
 except ImportError:
     pass

@@ -156,3 +156,68 @@ def test_qwen3_moe_topk_router(norm_topk_prob, tmp_path):
     (weight_encoding,) = encodings["param_encodings"]
     assert weight_encoding["enc_type"] == "PER_CHANNEL"
     assert len(weight_encoding["scale"]) == config.num_experts
+
+
+def _topk_router_classes():
+    """Top-k router classes available in the installed transformers."""
+    classes = []
+    try:
+        from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
+
+        classes.append(modeling_qwen3_5_moe.Qwen3_5MoeTopKRouter)
+    except (ImportError, AttributeError):
+        pass
+    return classes
+
+
+@pytest.mark.parametrize("router_cls", _topk_router_classes())
+def test_topk_router_quantsim(router_cls):
+    """
+    When: Create quantsim with a MoE top-k router
+    Then: The projection weight and the logits are quantized; the top-k scores
+          and integer indices are not.
+
+    Without a registered definition this raises UnknownModuleError.
+    """
+
+    class Config:
+        num_experts_per_tok = 2
+        num_experts = 8
+        hidden_size = 32
+        norm_topk_prob = True
+
+    class Wrapper(torch.nn.Module):
+        def __init__(self, router):
+            super().__init__()
+            self.router = router
+
+        def forward(self, x):
+            logits, scores, indices = self.router(x)
+            return logits, scores, indices
+
+    torch.manual_seed(0)
+    router = router_cls(Config())
+    with torch.no_grad():
+        router.weight.normal_(0, 0.05)
+
+    model = Wrapper(router)
+    x = torch.randn(4, Config.hidden_size)
+    sim = aimet_torch.QuantizationSimModel(model, x)
+
+    qrouter = sim.model.router
+    assert qrouter.param_quantizers["weight"] is not None
+    assert len(qrouter.output_quantizers) == 1
+
+    with aimet_torch.nn.compute_encodings(sim.model):
+        sim.model(x)
+
+    assert qrouter.param_quantizers["weight"].is_initialized()
+
+    logits, scores, indices = sim.model(x)
+    assert indices.dtype == torch.int64
+    assert torch.isfinite(logits).all()
+    assert torch.isfinite(scores).all()
+    _, ref_indices = torch.topk(
+        torch.softmax(router.weight @ x[0], dim=-1), Config.num_experts_per_tok
+    )
+    assert ref_indices.numel() == Config.num_experts_per_tok

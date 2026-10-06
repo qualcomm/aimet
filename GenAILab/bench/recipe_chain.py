@@ -15,6 +15,7 @@ from transformers.processing_utils import ProcessorMixin
 
 from GenAILab.bench.datasets import GeneratedDataset, Interleaved, TextDataset
 from GenAILab.bench.profiler import GPUMeter, RecipeStepStats
+from GenAILab.qai_hub_lm.transforms.exportable_moe import forced_expert_activation
 
 if TYPE_CHECKING:
     from GenAILab.bench.yaml_config_parser import ResolvedStep
@@ -37,6 +38,7 @@ def apply_quantization_chain(
     recipe_cache=None,
     pre_sim=None,
     topology=None,
+    adaptations=None,
 ):
     """Apply a chain of on-sim recipe steps, with automatic cache lookup and save.
 
@@ -67,6 +69,8 @@ def apply_quantization_chain(
             framework,
             component,
             pre_sim,
+            # Not in model_kwargs: adaptations live on the model class.
+            adaptations,
         )
 
     step_stats = list(cached_step_stats)
@@ -116,14 +120,19 @@ def apply_quantization_chain(
             **profiler_kwargs,
             capture_intermediate_data=profiler_capture_intermediate_data,
         ) as profiler:
-            recipe_cls.apply(
-                sim_component,
-                generator,
-                train_dataset,
-                component=component,
-                topology=topology,
-                **recipe_kwargs,
-            )
+            # MoE experts switch from their stock sparse path to an exportable
+            # one for the duration. Must wrap the whole apply(): SeqMSE and
+            # AdaScale hand off to aimet, and it is those internal per-layer
+            # forwards that decide what each expert observes. No-op otherwise.
+            with forced_expert_activation(sim_component):
+                recipe_cls.apply(
+                    sim_component,
+                    generator,
+                    train_dataset,
+                    component=component,
+                    topology=topology,
+                    **recipe_kwargs,
+                )
         step_stats.append(
             RecipeStepStats(
                 recipe_name=recipe_cls.__name__,

@@ -163,6 +163,7 @@ def test_llm_quantization(
                 model_kwargs=model_kwargs,
                 component="backbone",
                 recipe_cache=recipe_cache,
+                adaptations=config.model.adaptations,
                 pre_sim=config.recipe.pre_sim,
             )
 
@@ -191,6 +192,7 @@ def test_llm_quantization(
                     model_kwargs=model_kwargs,
                     component=_component,
                     recipe_cache=recipe_cache,
+                    adaptations=config.model.adaptations,
                     pre_sim=config.recipe.pre_sim,
                 )
 

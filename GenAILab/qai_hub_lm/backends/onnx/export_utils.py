@@ -15,6 +15,10 @@ import glob
 from transformers import AutoConfig
 from huggingface_hub import HfApi
 
+from GenAILab.qai_hub_lm.transforms.exportable_moe import (
+    forced_expert_activation,
+)
+
 ONNX_OPSET_VERSION = 18
 
 
@@ -418,7 +422,12 @@ def get_onnx_model(
         fp_backbone_model.to(torch.device("cpu"))
 
         fp_backbone_model.config.save_pretrained(checkpoint)
-        with torch.no_grad():
+        # The stock sparse expert path is not exportable (data-dependent
+        # shapes); export under the configured realizer. No-op for non-MoE.
+        with (
+            forced_expert_activation(fp_backbone_model, phase="export"),
+            torch.no_grad(),
+        ):
             os.makedirs(os.path.join(checkpoint, "backbone"), exist_ok=True)
             print(
                 "Backbone exporting..." + (" (dynamo)" if dynamo else " (torchscript)")
