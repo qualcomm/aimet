@@ -9806,6 +9806,31 @@ def test_set_param_type_by_op():
         set_param_type(sim, 8)
 
 
+def test_set_param_type_non_strict_skips_incompatible_qspec():
+    model = models_for_tests.conv_matmul_model()
+    sim = QuantizationSimModel(
+        model,
+        param_type=aimet_onnx.int8,
+        activation_type=aimet_onnx.int8,
+    )
+    spec = QSpec.lpbq(aimet_onnx.int4, block_size=64)
+
+    with pytest.raises(ValueError, match="not divisible by block size"):
+        set_param_type(sim, spec, op_types="Conv")
+
+    set_param_type(
+        sim,
+        spec,
+        op_types="Conv",
+        strict=False,
+    )
+
+    quantizer = sim.qc_quantize_op_dict["conv1_weight"]
+    assert quantizer.precision() == aimet_onnx.int8
+    assert quantizer.quant_info.blockSize == 0
+    assert quantizer._scale_quantizer is None
+
+
 @pytest.mark.parametrize(
     "spec",
     [

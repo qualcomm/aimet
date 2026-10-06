@@ -4899,6 +4899,7 @@ def set_param_type(
     *,
     op_types: Optional[Tuple[str] | str] = None,
     nodes_to_exclude: Optional[Set[str]] = None,
+    strict: bool = True,
     shift_zero_point: bool = False,
 ): ...
 
@@ -4909,6 +4910,7 @@ def set_param_type(
     param_type: QSpec | qtype | str,
     *,
     nodes_to_include: Optional[Set[str]] = None,
+    strict: bool = True,
     shift_zero_point: bool = False,
 ): ...
 
@@ -4923,21 +4925,23 @@ def set_param_type(
 
     This function is overloaded with the following signatures:
 
-    .. function:: set_param_type(sim, param_type, *, nodes_to_include=None, shift_zero_point=False)
+    .. function:: set_param_type(sim, param_type, *, nodes_to_include=None, strict=True, shift_zero_point=False)
         :noindex:
 
         :param QuantizationSimModel sim: Quantsim to set param type for
         :param QSpec | qtype | str param_type: Quantization data type to set for the parameters
         :param Set[str] nodes_to_include: Set of onnx node names for which to set parameter quantization data type. If None, all nodes are included
+        :param bool strict: If False, skip quantizers incompatible with ``param_type``.
         :param bool shift_zero_point: (Deprecated) Whether to shift the quantizer's zero point (only for int2 param type).
 
-    .. function:: set_param_type(sim, param_type, *, nodes_to_include=None, shift_zero_point=False)
+    .. function:: set_param_type(sim, param_type, *, nodes_to_include=None, strict=True, shift_zero_point=False)
         :noindex:
 
         :param QuantizationSimModel sim: Quantsim to set param type for
         :param QSpec | qtype | str param_type: Quantization data type to set for the parameters
         :param Set[str] op_types: Set of onnx op types for which to set parameter quantization data type. If None, all types are included
         :param Set[str] nodes_to_exclude: Set of onnx node names to exclude for setting parameter quantization data type
+        :param bool strict: If False, skip quantizers incompatible with ``param_type``.
         :param bool shift_zero_point: (Deprecated) Whether to shift the quantizer's zero point (only for int2 param type).
 
     Examples:
@@ -4962,6 +4966,7 @@ def set_param_type(
     nodes_to_exclude = kwargs.pop("nodes_to_exclude", None)
     nodes_to_include = kwargs.pop("nodes_to_include", None)
     op_types = kwargs.pop("op_types", None)
+    strict = kwargs.pop("strict", True)
     shift_zero_point = kwargs.pop("shift_zero_point", False)
 
     if kwargs:
@@ -5028,7 +5033,11 @@ def set_param_type(
 
         for quantizer in param_quantizers.values():
             if quantizer and quantizer.enabled:
-                quantizer.set_qspec(param_type)
+                try:
+                    quantizer.set_qspec(param_type)
+                except ValueError:
+                    if strict:
+                        raise
 
 
 # pylint: disable=protected-access
