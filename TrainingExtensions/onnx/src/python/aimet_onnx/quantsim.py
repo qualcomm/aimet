@@ -594,6 +594,7 @@ class QuantizationSimModel:
 
         # Always tie RNN hidden state quantizers regardless of _tie_qtzrs flag
         self._tie_rnn_hidden_state_quantizers()
+        self._tie_scan_quantizers()
 
         try:
             self._use_external_data = (
@@ -3373,6 +3374,64 @@ class QuantizationSimModel:
                     new_qc_quantize_op_dict[name] = new_qtzr
 
         self._set_quantizers(new_qc_quantize_op_dict, rebuild_session=False)
+
+    def _tie_scan_quantizers(self):
+        """
+        Tie the quantizers on the boundary of each Scan to the quantizers of its body outputs:
+
+        * initial state, carry-out and final state of a carry share the carry-out quantizer
+        * a scan output shares the quantizer of the body output stacked into it
+
+                init --> Q_co-+                  +--> Q_co --> final
+                  xs --> Q_xs-+--> Scan(body) ---+
+                                                 +--> Q_y  --> ys
+
+                body: ... --> Q_co --> carry-out
+                      ... --> Q_y  --> scan output
+
+        NOTE: Scan (opset >= 9) lists states before scanned tensors in its inputs, outputs and body alike.
+        Only applies with subgraph quantization, since bodies are not quantized otherwise.
+        """
+        if not self._quantize_subgraphs:
+            return
+
+        def effective_quantizer(tensor_name: str) -> Optional[QcQuantizeOp]:
+            path = self._get_path_to_effective_quantizer(tensor_name)
+            if not path:
+                return None
+            *_, qc_quantize_op_node = path
+            return self.qc_quantize_op_dict[qc_quantize_op_node.input[0]]
+
+        def tie(old_qtzr: Optional[QcQuantizeOp], new_qtzr: QcQuantizeOp):
+            # Replaced right away (not collected first), so that a quantizer shared by two Scans,
+            # e.g. the final state of one fed as the initial state of the next, joins both groups
+            if old_qtzr is None or old_qtzr is new_qtzr:
+                return
+            for name, qtzr in self.qc_quantize_op_dict.items():
+                if qtzr is old_qtzr:
+                    self.qc_quantize_op_dict[name] = new_qtzr
+
+        for graph in self._graphs_to_quantize():
+            for node in graph.node:
+                if node.op_type != "Scan":
+                    continue
+
+                body = utils.get_node_attribute(node, "body")
+                num_carries = len(node.input) - utils.get_node_attribute(
+                    node, "num_scan_inputs"
+                )
+
+                for i, body_output in enumerate(body.output):
+                    body_qtzr = effective_quantizer(body_output.name)
+                    if not body_qtzr:
+                        continue
+
+                    tie(self.qc_quantize_op_dict.get(node.output[i]), body_qtzr)
+                    if i < num_carries:
+                        tie(effective_quantizer(node.input[i]), body_qtzr)
+
+        # tie() only updates the dict; point the graph's quantize nodes at the shared quantizers
+        self._set_quantizers(self.qc_quantize_op_dict, rebuild_session=False)
 
     def _lstm_cell_state_quantizers(self) -> Iterable[Tuple[str, QcQuantizeOp]]:
         for node in self.model.model.graph.node:

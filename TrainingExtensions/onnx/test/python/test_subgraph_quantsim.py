@@ -265,6 +265,10 @@ class TestSubgraphQuantizerInsertion:
         )
         inputs = _inputs(scan_model)
         scan_sim, flat_sim = _sim(scan_model), _sim(flat_model)
+        # The Scan ties the carry to its initial state, so the flat model does the same
+        flat_sim._set_quantizers(
+            {"b_co": flat_sim.qc_quantize_op_dict["init"]}, rebuild_session=True
+        )
 
         """
         When: Both sims are calibrated on the same data
@@ -1000,3 +1004,63 @@ class TestSubgraphQuantizerConstraints:
         """
         assert sim.qc_quantize_op_dict["t"] is not sim.qc_quantize_op_dict["r"]
         assert sim.qc_quantize_op_dict["t"]._encoding_min_max_fixed_vals is None
+
+
+# Fixture, and the tensors sharing one quantizer once the Scan boundary is tied
+SCAN_TIES = [
+    (
+        lambda: models_for_tests.scan_model(num_carries=2, with_capture=True),
+        [
+            ["init0", "b_co0", "final0"],
+            ["init1", "b_co1", "final1"],
+            ["b_scaled", "ys"],
+        ],
+    ),
+    (
+        models_for_tests.wrapped_scan_model,
+        [["state_in", "b_sum", "state_out", "ys"]],
+    ),
+]
+
+
+class TestSubgraphScanTies:
+    @pytest.mark.parametrize("make_model, groups", SCAN_TIES)
+    def test_flag_off_no_scan_ties(self, make_model, groups):
+        """A model with Scan bodies"""
+        sim = _sim(make_model(), flag=False)
+        qtzrs = sim.qc_quantize_op_dict
+        top = [[name for name in group if name in qtzrs] for group in groups]
+        print(f"top-level tensors of each group: {top}")
+
+        """
+        When: QuantizationSimModel is created without subgraph quantization
+        Then: The initial states, final states and scan outputs keep separate quantizers
+        """
+        for group in top:
+            assert len({id(qtzrs[name]) for name in group}) == len(group)
+
+    @pytest.mark.parametrize("make_model, groups", SCAN_TIES)
+    def test_scan_boundary_tied(self, make_model, groups):
+        """A model with Scan bodies"""
+        sim = _sim(make_model())
+        qtzrs = sim.qc_quantize_op_dict
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: 1) Initial state, carry-out and final state of a carry share one quantizer
+              2) A scan output shares the quantizer of the body output stacked into it
+              3) Different groups keep different quantizers
+              4) After calibration, each group has one enabled encoding
+        """
+        # 1) and 2)
+        for group in groups:
+            assert all(qtzrs[name] is qtzrs[group[0]] for name in group)
+
+        # 3)
+        assert len({id(qtzrs[group[0]]) for group in groups}) == len(groups)
+
+        # 4)
+        sim.compute_encodings([_inputs(sim.model.model)])
+        for group in groups:
+            assert qtzrs[group[0]].enabled
+            assert qtzrs[group[0]].get_encodings()
