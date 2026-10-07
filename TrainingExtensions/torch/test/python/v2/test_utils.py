@@ -22,7 +22,7 @@ from aimet_torch.utils import (
     _decompose_prequantized_tensor,
     _DecompositionError,
 )
-from aimet_torch.v2.utils import (
+from aimet_torch.utils import (
     reduce,
     patch_attr,
     remove_all_quantizers,
@@ -30,6 +30,7 @@ from aimet_torch.v2.utils import (
     remove_input_quantizers,
     remove_output_quantizers,
     remove_param_quantizers,
+    _inference_mode,
 )
 from aimet_torch.quantization.affine import dequantize, QuantizeDequantize
 import aimet_torch
@@ -751,3 +752,25 @@ def test_decomposition_memory_overhead():
     torch.cuda.reset_peak_memory_stats()
 
     assert peak_memory_after_full_grid_search <= peak_memory_after_regular_calib * 2
+
+
+@pytest.mark.cuda
+def test_inference_mode_device_synchronization():
+    """
+    Given: In _inference_mode context
+    When: Move model parameters from CPU to GPU and back
+    Then: Model should run without device mismatch error
+    """
+    linear = torch.nn.Linear(3, 3)
+    x = torch.randn(3, 3)
+    sim = aimet_torch.QuantizationSimModel(linear, x)
+    sim.compute_encodings(lambda model: model(x))
+
+    with _inference_mode(sim.model, prequantize_parameters=False):
+        x = x.to("cuda")
+        sim.model.to("cuda")
+        _ = sim.model(x)
+
+        x = x.to("cpu")
+        sim.model.to("cpu")
+        _ = sim.model(x)

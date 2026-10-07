@@ -794,6 +794,9 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):  # pylint: disable=too-man
             enc = enc.to(dtype=dtype)
             enc.scale = torch.nn.Parameter(enc.scale, requires_grad=False)
             enc.offset = torch.nn.Parameter(enc.offset, requires_grad=False)
+            # Hacky optimization to precompute zero_point. This is to squeeze out
+            # the last bit of performance for LLM generation by saving
+            # offset -> zero_point conversion when calling torch.fake_quantize_per_tensor_affine
             setattr(enc.offset, "_precomputed_zero_point", -enc.offset.to(torch.int32))
 
         with self._set_encodings(enc):
