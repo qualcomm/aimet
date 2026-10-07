@@ -81,6 +81,7 @@ from torch._higher_order_ops.scan import scan
 from transformers import PreTrainedModel
 
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
+from GenAILab.qai_hub_lm.models.utils.compat import linear_attention_states
 
 
 def l2norm(x, dim=-1, eps=1e-6):
@@ -353,15 +354,17 @@ def exportable_gated_delta_net_forward(
     """
     import torch
     import torch.nn.functional as F
-    from transformers.models.qwen3_5.modeling_qwen3_5 import (
-        apply_mask_to_padding_states,
-    )
 
-    hidden_states = apply_mask_to_padding_states(hidden_states, attention_mask)
+    # No ``apply_mask_to_padding_states`` here: it expects a 2D mask, and the
+    # padding is handled below via ``mask2d`` (conv roll + kernel masking).
+    # Before transformers 5.15 it was a no-op on our 4D mask (it gated on
+    # ``mask.shape[1] > 1``); from 5.15 it multiplies unconditionally and the
+    # (B, S, H) * (B, 1, 1, S, KV) broadcast fails.
     batch_size, seq_len, _ = hidden_states.shape
 
-    conv_state = cache_params.layers[self.layer_idx].conv_states
-    recurrent_state = cache_params.layers[self.layer_idx].recurrent_states
+    conv_state, recurrent_state = linear_attention_states(
+        cache_params.layers[self.layer_idx]
+    )
 
     # Recover a 2D real-token mask [B, S] (1 = real) from whatever form the
     # model hands down. The generator feeds a 4D additive causal mask

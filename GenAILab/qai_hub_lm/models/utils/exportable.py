@@ -7,6 +7,7 @@ import torch
 from transformers import PreTrainedModel, DynamicCache
 
 from .compat import _patch_sdpa_mask  # noqa: F401 — triggers the patch on import
+from .compat import linear_attention_states
 from .layer_cache import (
     AttentionType,
     build_layer_cache_descriptors,
@@ -258,8 +259,7 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
             cache_layer = new_past_key_values.layers[layer_idx]
             if layer_types and layer_types[layer_idx] == "linear_attention":
                 # Linear attention: extract conv_state and recurrent_state.
-                flat_output_past_key_values.append(cache_layer.conv_states)
-                flat_output_past_key_values.append(cache_layer.recurrent_states)
+                flat_output_past_key_values.extend(linear_attention_states(cache_layer))
             else:
                 flat_output_past_key_values.append(cache_layer.keys)
                 flat_output_past_key_values.append(cache_layer.values)

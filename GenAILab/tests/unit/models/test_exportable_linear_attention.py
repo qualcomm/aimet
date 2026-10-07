@@ -525,3 +525,142 @@ class TestDerivedChunkExtent:
             out, out_state = sess.run(None, feeds)
             assert np.abs(out - ref_out.numpy()).max() < TOL, f"seq={seq}"
             assert np.abs(out_state - ref_state.numpy()).max() < TOL, f"seq={seq}"
+
+
+class TestPatchedModelForward:
+    """The patched model must run as exported: a tiny random Qwen 3.5 behind
+    ``ONNXExportableModuleWithCache``, fed the generator's left-padded 4D mask
+    and flattened cache states.
+
+    The kernel tests above call ``exportable_gated_delta_rule`` directly, so
+    they cannot see what changes around it in the model forward between
+    transformers versions (mask helpers, cache-layer layout).
+    """
+
+    S, CL, NPAD = 16, 32, 4
+    VOCAB = 128
+
+    @classmethod
+    def _model(cls):
+        from GenAILab.qai_hub_lm.transforms.exportable_linear_attention import (
+            _patch_gated_delta_net_instances,
+        )
+
+        torch.manual_seed(0)
+        config = modeling_qwen3_5.Qwen3_5TextConfig(
+            vocab_size=cls.VOCAB,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            linear_num_key_heads=2,
+            linear_num_value_heads=4,
+            linear_key_head_dim=16,
+            linear_value_head_dim=16,
+            linear_conv_kernel_dim=4,
+            layer_types=["linear_attention", "full_attention"],
+        )
+        model = modeling_qwen3_5.Qwen3_5ForCausalLM(config).eval()
+        _patch_gated_delta_net_instances(model)
+        return model
+
+    @classmethod
+    def _inputs(cls, input_names, descriptors):
+        """Sample inputs as the generator lays them out, keyed by input name."""
+        from GenAILab.qai_hub_lm.models.utils.attention_mask import (
+            convert_2d_attention_mask_to_4d,
+        )
+        from GenAILab.qai_hub_lm.models.utils.layer_cache import AttentionType
+
+        S, CL, NPAD = cls.S, cls.CL, cls.NPAD
+        # Empty KV cache, then NPAD left-pad tokens, then the real tokens.
+        mask2d = torch.cat([torch.zeros(1, CL - S + NPAD), torch.ones(1, S - NPAD)], -1)
+        inputs = {
+            "input_ids": torch.randint(0, cls.VOCAB, (1, S), dtype=torch.int32),
+            "attention_mask": convert_2d_attention_mask_to_4d(mask2d, S, CL).clip(
+                -100, 0
+            ),
+            "position_ids": torch.arange(S, dtype=torch.int32).unsqueeze(0),
+        }
+        for desc in descriptors:
+            i = desc.layer_idx
+            if desc.attention_type == AttentionType.LINEAR:
+                inputs[f"recurrent_state_k_{i}_in"] = torch.zeros(
+                    1, desc.conv_dim, desc.conv_kernel_size
+                )
+                inputs[f"recurrent_state_v_{i}_in"] = torch.zeros(
+                    1,
+                    desc.linear_num_v_heads,
+                    desc.linear_head_k_dim,
+                    desc.linear_head_v_dim,
+                )
+            else:
+                kv = torch.zeros(1, desc.num_kv_heads, CL - S, desc.head_dim)
+                inputs[f"past_key_{i}_in"] = kv
+                inputs[f"past_value_{i}_in"] = kv.clone()
+        return tuple(inputs[name] for name in input_names)
+
+    @classmethod
+    def _wrapped_model_and_inputs(cls):
+        from GenAILab.qai_hub_lm.models.base import LLM
+        from GenAILab.qai_hub_lm.models.utils.exportable import (
+            ONNXExportableModuleWithCache,
+        )
+        from GenAILab.qai_hub_lm.models.utils.layer_cache import (
+            build_layer_cache_descriptors,
+        )
+
+        model = cls._model()
+        descriptors = build_layer_cache_descriptors(model.config)
+        input_names = LLM.get_backbone_input_names(descriptors)
+        wrapped = ONNXExportableModuleWithCache(model, input_names=input_names).eval()
+        return wrapped, cls._inputs(input_names, descriptors)
+
+    def test_runs_with_left_padded_4d_mask(self):
+        """Regression: transformers 5.15's ``apply_mask_to_padding_states``
+        multiplies by any mask it is given and broke on our 4D one, and 5.14
+        turned the cache layer's conv/recurrent states into per-index dicts."""
+        wrapped, sample = self._wrapped_model_and_inputs()
+        with torch.no_grad():
+            logits, conv_state, recurrent_state, *kv = wrapped(*sample)
+
+        # The flattened outputs keep each input state's shape, so the generator
+        # can feed them straight back in at the next step.
+        assert logits.shape == (1, self.S, self.VOCAB)
+        assert conv_state.shape == sample[3].shape
+        assert recurrent_state.shape == sample[4].shape
+        assert torch.isfinite(logits).all()
+
+    def test_left_padding_does_not_change_real_positions(self):
+        """Pad tokens are fully masked out, so changing them must leave the
+        real positions' logits and the carried states untouched."""
+        wrapped, sample = self._wrapped_model_and_inputs()
+        input_ids = sample[0]
+        other_pad = input_ids.clone()
+        other_pad[:, : self.NPAD] = (input_ids[:, : self.NPAD] + 1) % self.VOCAB
+
+        with torch.no_grad():
+            out = wrapped(*sample)
+            out_other_pad = wrapped(other_pad, *sample[1:])
+
+        real = slice(self.NPAD, None)
+        assert _max_err(out[0][:, real], out_other_pad[0][:, real]) < TOL
+        for state, state_other_pad in zip(out[1:3], out_other_pad[1:3]):
+            assert _max_err(state, state_other_pad) < TOL
+
+    def test_dynamo_exports(self):
+        """The backbone exports with a dynamic sequence axis, as in the backend."""
+        wrapped, sample = self._wrapped_model_and_inputs()
+        seq_axis = {1: torch.export.Dim.AUTO}
+        mask_axis = {2: torch.export.Dim.AUTO}
+        dynamic = (seq_axis, mask_axis, seq_axis) + (None,) * (len(sample) - 3)
+        ep = torch.export.export(
+            wrapped, sample, dynamic_shapes={"args": dynamic}, strict=False
+        )
+        with torch.no_grad():
+            expected = wrapped(*sample)
+            actual = ep.module()(*sample)
+        for a, b in zip(actual, expected):
+            assert _max_err(a, b) < TOL

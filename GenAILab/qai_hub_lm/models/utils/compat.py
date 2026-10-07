@@ -47,6 +47,20 @@ def _patch_sdpa_mask():
 _patch_sdpa_mask()
 
 
+def linear_attention_states(cache_layer) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return a linear-attention cache layer's ``(conv_state, recurrent_state)``.
+
+    Since transformers 5.14 a layer can hold several states, so ``conv_states``
+    and ``recurrent_states`` are dicts keyed by state index; earlier versions
+    store one tensor each. Linear-attention models use a single state, index 0.
+    """
+    conv_states = cache_layer.conv_states
+    recurrent_states = cache_layer.recurrent_states
+    if isinstance(conv_states, dict):
+        return conv_states[0], recurrent_states[0]
+    return conv_states, recurrent_states
+
+
 class PositionIdContext:
     """Minimal stand-in for ``self`` when calling HF's unbound ``get_rope_index``.
 
