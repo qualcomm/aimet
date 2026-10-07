@@ -720,6 +720,78 @@ class TestOnnxExport:
         assert abs(got - expected.numpy()).max() < 1e-5
 
 
+class TestBackboneExport:
+    """The backbone export path: the whole model behind
+    ``ONNXExportableModuleWithCache``, captured by ``_dynamo_export``.
+
+    Each ``torch.export`` mode mis-captures the predicated experts' ``torch.cond``
+    on some torch releases, so this runs whichever ``STRICT_EXPORT`` selects.
+    """
+
+    def test_predicated_backbone_exports_and_matches(self, tmp_path):
+        ort = pytest.importorskip("onnxruntime")
+        onnx = pytest.importorskip("onnx")
+        from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
+            ONNX_OPSET_VERSION,
+            _dynamo_export,
+            dynamic_axes_to_dynamic_shapes,
+        )
+        from GenAILab.qai_hub_lm.models.base import LLM
+        from GenAILab.qai_hub_lm.models.generator import Generator
+        from GenAILab.qai_hub_lm.models.utils.exportable import (
+            ONNXExportableModuleWithCache,
+        )
+        from GenAILab.qai_hub_lm.models.utils.layer_cache import (
+            build_layer_cache_descriptors,
+        )
+
+        torch.manual_seed(0)
+        model = modeling_qwen3_moe.Qwen3MoeForCausalLM(_toy_config()).eval()
+        replace_fused_experts(model, export_execution="predicated")
+        descriptors = build_layer_cache_descriptors(model.config)
+        input_names = LLM.get_backbone_input_names(descriptors)
+        wrapped = ONNXExportableModuleWithCache(model, input_names=input_names).eval()
+        sample = Generator.prepare_inputs(
+            model=wrapped,
+            input_ids=torch.randint(0, 128, (1, 8)),
+            attention_mask=torch.ones(1, 8, dtype=torch.int32),
+            past_key_values=[],
+            sequence_length=8,
+            context_length=32,
+            pad_token=0,
+            attention_mask_min=-100,
+            inputs_embeds=None,
+            position_ids=None,
+            layer_cache_descriptors=descriptors,
+        )
+        args = tuple(sample.values())
+        dynamic_axes = LLM.get_backbone_dynamic_axes(descriptors)
+
+        path = str(tmp_path / "backbone.onnx")
+        with torch.no_grad(), forced_expert_activation(model, phase="export"):
+            _dynamo_export(
+                wrapped,
+                args,
+                path,
+                input_names=list(input_names),
+                output_names=list(LLM.get_backbone_output_names(descriptors)),
+                opset_version=ONNX_OPSET_VERSION,
+                dynamic_shapes=dynamic_axes_to_dynamic_shapes(
+                    input_names, dynamic_axes
+                ),
+            )
+            expected = wrapped(*args)
+
+        # One If per expert per layer: the predicated experts survived export
+        graph = onnx.load(path).graph
+        assert TestOnnxExport._count(graph, "If") == E * 2
+
+        session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        feeds = {i.name: sample[i.name].numpy() for i in session.get_inputs()}
+        for got, want in zip(session.run(None, feeds), expected):
+            assert abs(got - want.numpy()).max() < TOL
+
+
 class TestQwen35Moe:
     """Qwen3.5-MoE: adds an always-active ``shared_expert`` (left alone) and
     needs ExportableLinearAttention alongside, from its own namespace."""

@@ -16,6 +16,7 @@ from transformers import (
     PreTrainedModel,
     ProcessorMixin,
 )
+from transformers import masking_utils
 from huggingface_hub import hf_hub_download
 
 try:
@@ -78,6 +79,36 @@ class Gemma4VisionWrapper(torch.nn.Module):
         return self.embed_vision(inputs_embeds=vision_out.last_hidden_state)
 
 
+def _index_based_bidirectional_mask(
+    config, inputs_embeds, attention_mask, and_mask_function=None, **kwargs
+):
+    """``create_bidirectional_mask`` for the audio tower, built without ``vmap``.
+
+    Passing ``and_mask_function`` makes transformers build the mask under
+    ``vmap``, which strict ``torch.export`` cannot trace. Every mask function
+    here is a plain index comparison, so evaluate them on broadcast indices
+    instead; the result is identical.
+    """
+    batch_size, length = inputs_embeds.shape[:2]
+    device = inputs_embeds.device
+    indices = masking_utils._non_vmap_expansion_sdpa(
+        torch.arange(batch_size, device=device),
+        torch.arange(1, device=device),
+        torch.arange(length, device=device),
+        torch.arange(length, device=device),
+    )
+    mask = masking_utils.bidirectional_mask_function(*indices)
+    if and_mask_function is not None:
+        mask = mask & and_mask_function(*indices)
+    if attention_mask is not None:
+        mask = mask & attention_mask.bool()[:, None, None, :]
+    mask = mask.expand(batch_size, 1, length, length)
+    if config._attn_implementation == "eager":
+        min_dtype = torch.finfo(inputs_embeds.dtype).min
+        mask = torch.where(mask, 0.0, min_dtype).to(inputs_embeds.dtype)
+    return mask
+
+
 class Gemma4AudioWrapper(torch.nn.Module):
     """audio_tower + embed_audio projector as one traceable module.
 
@@ -100,7 +131,14 @@ class Gemma4AudioWrapper(torch.nn.Module):
         input_features: torch.Tensor,
         input_features_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        audio_out = self.audio_tower(input_features, input_features_mask)
+        # The vision tower also builds its mask with create_bidirectional_mask,
+        # so swap it only for the audio tower's call
+        stock = modeling_gemma4.create_bidirectional_mask
+        modeling_gemma4.create_bidirectional_mask = _index_based_bidirectional_mask
+        try:
+            audio_out = self.audio_tower(input_features, input_features_mask)
+        finally:
+            modeling_gemma4.create_bidirectional_mask = stock
         embeddings = self.embed_audio(inputs_embeds=audio_out.last_hidden_state)
         return embeddings, audio_out.attention_mask
 

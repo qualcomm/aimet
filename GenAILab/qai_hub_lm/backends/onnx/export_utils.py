@@ -6,9 +6,9 @@
 import contextlib
 import inspect
 import os
-import warnings
 from collections.abc import Sequence
 from pathlib import Path
+from packaging.version import Version
 import torch
 import onnx
 import glob
@@ -20,6 +20,14 @@ from GenAILab.qai_hub_lm.transforms.exportable_moe import (
 )
 
 ONNX_OPSET_VERSION = 18
+
+#: ``torch.export`` mode for ``_dynamo_export``. Each mode has a torch.cond bug in a
+#: different release range, so pick the one that is correct for the installed torch:
+#:   * torch < 2.11: non-strict fails on a cond in a loop over modules that share a
+#:     submodule ("... is already tracked for mutation"; pytorch#161053).
+#:   * torch >= 2.13: strict silently keeps the stale value of an attribute reassigned
+#:     after a cond (e.g. the KV cache's ``keys``), so attention sees the old length.
+STRICT_EXPORT = Version(torch.__version__).release < (2, 13)
 
 
 def is_huggingface_ckpt(model_id: str) -> bool:
@@ -300,15 +308,10 @@ def _dynamo_export(
     Produces an ExportedProgram, then hands it to ``torch.onnx.export`` which
     skips the capture step and goes straight to ONNX translation.
 
-    Capture prefers ``torch.export.export``, falling back to
-    ``torch.export.draft_export`` (which tolerates data-dependent branching) only
-    if that fails. ``draft_export`` used to be unconditional, but it cannot trace
-    a ``scan`` higher-order op: it makes shapes symbolic that plain export leaves
-    static (head dims included) and then dies with "Dynamo failed to run FX node
-    with fake tensors: call_function scan". Qwen 3.5's linear-attention kernel is
-    built on ``scan``, and plain export handles it -- with or without dynamic
-    shapes -- so try the stricter capture first and keep the tolerant one for the
-    models that need it.
+    Strict mode traces the forward with dynamo (TorchDynamo bytecode analysis);
+    non-strict runs it as ordinary Python and only traces tensor ops. One mode is
+    used per torch version, with no fallback (see ``STRICT_EXPORT``). Code either
+    mode cannot trace must be rewritten for it -- see Gemma4's audio mask.
 
     :param dynamic_shapes: Optional ``torch.export`` dynamic-shape spec,
         positionally aligned with ``sample_input``.  This is the dynamo-path
@@ -318,19 +321,9 @@ def _dynamo_export(
     """
     matched_shapes = _match_dynamic_shapes_to_signature(model, dynamic_shapes)
     sample_input = _materialize_view_inputs(sample_input)
-    try:
-        program = torch.export.export(
-            model, sample_input, dynamic_shapes=matched_shapes, strict=False
-        )
-    except Exception as exc:  # noqa: BLE001 - fall back to the tolerant capture
-        warnings.warn(
-            f"torch.export.export failed for {type(model).__name__} "
-            f"({type(exc).__name__}: {exc}); retrying with draft_export.",
-            stacklevel=2,
-        )
-        program = torch.export.draft_export(
-            model, sample_input, dynamic_shapes=matched_shapes, strict=False
-        )
+    program = torch.export.export(
+        model, sample_input, dynamic_shapes=matched_shapes, strict=STRICT_EXPORT
+    )
 
     with _unique_initializer_names():
         torch.onnx.export(
