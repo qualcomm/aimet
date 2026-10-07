@@ -60,6 +60,7 @@ from aimet_onnx.common.onnx._utils import (
     _derive_data_movement_op_encodings,
     _is_htp_interpolation_op,
     _get_all_constants,
+    _iterate_graph_nodes_recursive,
     _iterate_graphs_recursive,
     contains_tensor_type,
     to_array,
@@ -161,7 +162,6 @@ _tie_qtzrs = True
 _fuse_supergroups = True
 
 # Experimental: also quantize tensors inside Scan bodies.
-# NOTE: export() and to_onnx_qdq() are not supported yet with this flag.
 _quantize_subgraphs = False
 
 data_types_to_quantize = [np.float32, np.float16, np.dtype("bfloat16")]
@@ -1579,7 +1579,10 @@ class QuantizationSimModel:
             model = model.model
 
         all_quantizers = set(
-            node.name for node in model.graph.node if node.op_type == "QcQuantizeOp"
+            node.name
+            for graph in _iterate_graphs_recursive(model.graph)
+            for node in graph.node
+            if node.op_type == "QcQuantizeOp"
         )
         return cls._remove_quantizers(model, all_quantizers)
 
@@ -1589,38 +1592,39 @@ class QuantizationSimModel:
     ) -> ModelProto:
         to_be_removed = set(to_be_removed)
 
-        for node in model.graph.node:
-            if node.name in to_be_removed and node.op_type != "QcQuantizeOp":
-                raise RuntimeError(
-                    f"Node {node.name} is not a QcQuantizeOp, cannot be removed."
-                )
-
-        to_remain = [
-            node for node in model.graph.node if node.name not in to_be_removed
-        ]
-        tensor_name_map = {
-            node.output[0]: node.input[0]
-            for node in model.graph.node
-            if node.name in to_be_removed
-        }
-
-        model.graph.ClearField("node")
-        model.graph.node.extend(to_remain)
-
-        for node in model.graph.node:
-            for i, tensor in enumerate(node.input):
-                if tensor not in tensor_name_map:
+        # Control-flow bodies can hold quantizers and read quantized tensors of an enclosing graph
+        tensor_name_map = {}
+        for graph in _iterate_graphs_recursive(model.graph):
+            for node in graph.node:
+                if node.name not in to_be_removed:
                     continue
-                node.input[i] = tensor_name_map[tensor]
+                if node.op_type != "QcQuantizeOp":
+                    raise RuntimeError(
+                        f"Node {node.name} is not a QcQuantizeOp, cannot be removed."
+                    )
+                tensor_name_map[node.output[0]] = node.input[0]
 
-            for i, tensor in enumerate(node.output):
-                if tensor not in tensor_name_map:
-                    continue
-                node.output[i] = tensor_name_map[tensor]
+        # NOTE: Each graph is rebuilt before its nodes are walked for nested bodies, since
+        # rebuilding graph.node copies the bodies they hold.
+        for graph in _iterate_graphs_recursive(model.graph):
+            to_remain = [node for node in graph.node if node.name not in to_be_removed]
+            graph.ClearField("node")
+            graph.node.extend(to_remain)
 
-        for i, tensor in enumerate(model.graph.output):
-            if tensor.name in tensor_name_map:
-                model.graph.output[i].name = tensor_name_map[tensor.name]
+            for node in graph.node:
+                for i, tensor in enumerate(node.input):
+                    if tensor not in tensor_name_map:
+                        continue
+                    node.input[i] = tensor_name_map[tensor]
+
+                for i, tensor in enumerate(node.output):
+                    if tensor not in tensor_name_map:
+                        continue
+                    node.output[i] = tensor_name_map[tensor]
+
+            for i, tensor in enumerate(graph.output):
+                if tensor.name in tensor_name_map:
+                    graph.output[i].name = tensor_name_map[tensor.name]
 
         return model
 
@@ -1730,13 +1734,24 @@ class QuantizationSimModel:
                 continue
 
             if bias:
-                bias_proto = self.model.get_initializer(bias.name)
+                # Bias can be declared inside a Scan body
+                bias_proto = next(
+                    (
+                        init
+                        for graph in _iterate_graphs_recursive(self.model.graph())
+                        for init in graph.initializer
+                        if init.name == bias.name
+                    ),
+                    None,
+                )
 
                 if not bias_proto:
                     bias_proto = next(
                         (
                             attr.t
-                            for node in self.model.graph().node
+                            for node in _iterate_graph_nodes_recursive(
+                                self.model.graph()
+                            )
                             if bias.name in node.output
                             for attr in node.attribute
                             if attr.type == onnx.AttributeProto.TENSOR
@@ -2220,7 +2235,6 @@ class QuantizationSimModel:
         | Literal["signed"]
         | None = "unsigned",
     ):
-        self._raise_if_subgraphs_quantized("export()")
         encoding_version = encoding_version or quantsim.encoding_version
 
         if encoding_version not in quantsim.VALID_ENCODING_VERSIONS:
@@ -2365,16 +2379,6 @@ class QuantizationSimModel:
             path=self._path,
             save_as_external_data=self._use_external_data,
         )
-
-    def _raise_if_subgraphs_quantized(self, api: str):
-        if any(
-            node.op_type == "QcQuantizeOp"
-            for graph in self._graphs_to_quantize()[1:]
-            for node in graph.node
-        ):
-            raise NotImplementedError(
-                f"{api} is not supported yet for models with quantizers inside Scan bodies"
-            )
 
     def _sort_quantizer_nodes(self):
         """
@@ -2750,7 +2754,6 @@ class QuantizationSimModel:
         .. image:: ../../images/conv_qdq.onnx.svg
             :align: center
         """
-        self._raise_if_subgraphs_quantized("to_onnx_qdq()")
         with (
             self._concretize_int32_bias_quantizers()
             if export_int32_bias
@@ -2872,7 +2875,8 @@ class QuantizationSimModel:
 
         aimet_qc_quantize_nodes = [
             node
-            for node in model_copy.graph.node
+            for graph in _iterate_graphs_recursive(model_copy.graph)
+            for node in graph.node
             if node.op_type == "QcQuantizeOp"
             and node.domain in ("aimet.customop.cpu", "aimet.customop.cuda")
         ]
@@ -2962,8 +2966,6 @@ class QuantizationSimModel:
             prequantize_constants=prequantize_constants,
         )
 
-        ONNXModel(model_copy).topological_sort()
-
         # Add metadata property to indicate the model is exported by AIMET and its version
         prop = model_copy.metadata_props.add()
         prop.key = "producer"
@@ -3007,7 +3009,7 @@ class QuantizationSimModel:
         constants = _get_all_constants(self.model.model)
 
         qdq_parameters = {}
-        for node in self.model.model.graph.node:
+        for node in _iterate_graph_nodes_recursive(self.model.model.graph):
             if node.op_type != "QcQuantizeOp" or node.input[0] not in param_names:
                 continue
 
@@ -3037,14 +3039,16 @@ class QuantizationSimModel:
     def _overwrite_parameters(
         model: onnx.ModelProto, parameters: Dict[str, np.ndarray]
     ):
+        # Params can be declared inside Scan bodies
         initializers = [
             (init, parameters.pop(init.name))
-            for init in model.graph.initializer
+            for graph in _iterate_graphs_recursive(model.graph)
+            for init in graph.initializer
             if init.name in parameters
         ]
         constants = [
             (node, parameters.pop(node.output[0]))
-            for node in model.graph.node
+            for node in _iterate_graph_nodes_recursive(model.graph)
             if node.op_type == "Constant" and node.output[0] in parameters
         ]
 
@@ -3137,7 +3141,7 @@ class QuantizationSimModel:
         # session no longer runs quantize-dequantize for these params during inference.
         nodes_to_remove = {
             node.name
-            for node in self.model.model.graph.node
+            for node in _iterate_graph_nodes_recursive(self.model.model.graph)
             if node.op_type == "QcQuantizeOp" and node.input[0] in folded_param_names
         }
         self._remove_quantizers(self.model.model, nodes_to_remove)
@@ -4187,8 +4191,11 @@ def encodings_to_onnx_qdq(
     all_encodings, param_names = _flatten_encodings(encodings)
 
     constants = _get_all_constants(model)
-    producers = {out for node in model.graph.node for out in node.output}
-    graph_tensors = set(constants) | producers | {i.name for i in model.graph.input}
+    graphs = list(_iterate_graphs_recursive(model.graph))
+    producers = {out for graph in graphs for node in graph.node for out in node.output}
+    graph_tensors = (
+        set(constants) | producers | {i.name for graph in graphs for i in graph.input}
+    )
 
     # Recover the per-channel axis, which only version 2.0.0 stores. ConnectedGraph is built
     # only for tensors whose shape is inconclusive, since it is not free on large models.
@@ -4332,8 +4339,6 @@ def encodings_to_onnx_qdq(
             DeprecationWarning,
             stacklevel=2,
         )
-
-    ONNXModel(model).topological_sort()
 
     # onnx requires metadata_props keys to be unique, so overwrite rather than append when
     # converting a model that already carries a producer.

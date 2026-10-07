@@ -9,7 +9,7 @@
 from collections import deque, defaultdict
 import functools
 import itertools
-from typing import Iterable, Optional, Sequence, Dict, List, Union, Mapping
+from typing import Iterable, Optional, Sequence, Dict, List, Union, Mapping, Set
 import math
 
 import os
@@ -116,15 +116,27 @@ def _add_onnx_qdq_nodes(
         opset = opset25
 
     constants = _get_all_constants(model)
-    nodes_to_add = []
-    tensors_to_add = []
+    # New nodes and tensors, keyed by the index of the graph that defines their input
+    nodes_to_add = defaultdict(list)
+    tensors_to_add = defaultdict(list)
     tensors_to_remove = {}
     inputs_to_rename = {}
+    scope = {
+        name: i
+        for i, graph in enumerate(_iterate_graphs_recursive(model.graph))
+        for name in itertools.chain(
+            (inp.name for inp in graph.input),
+            (init.name for init in graph.initializer),
+            (out for node in graph.node for out in node.output),
+        )
+    }
 
     for input_name, output_name, node_name_prefix, encoding, float_type in zip(
         input_names, output_names, node_name_prefixes, encodings, float_types
     ):
         inputs_to_rename[input_name] = output_name
+        graph_idx = scope.get(input_name, 0)
+        nodes, tensors = nodes_to_add[graph_idx], tensors_to_add[graph_idx]
         output_dtype = encoding["output_dtype"]
         axis = encoding.get("axis", None)
 
@@ -147,7 +159,7 @@ def _add_onnx_qdq_nodes(
         if isinstance(y_scale, (list, float)):
             # Regular quantization encoding
             y_scale = np.array(y_scale).astype(float_type)
-            tensors_to_add.append(from_array(y_scale, name=f"{input_name}_scale"))
+            tensors.append(from_array(y_scale, name=f"{input_name}_scale"))
         else:
             # Double quantization encoding (e.g. LPBQ, NVFP4)
             #
@@ -162,14 +174,14 @@ def _add_onnx_qdq_nodes(
                 meta_block_size,
             ) = _parse_meta_encoding(y_scale, float_type=float_type)
 
-            tensors_to_add.extend(
+            tensors.extend(
                 [
                     from_array(scale_q, name=f"{input_name}_scale_q"),
                     from_array(meta_scale, name=f"{input_name}_meta_scale"),
                     from_array(meta_zero_point, name=f"{input_name}_meta_zero_point"),
                 ]
             )
-            nodes_to_add.append(
+            nodes.append(
                 opset.DequantizeLinear.make_node(
                     name=f"{node_name_prefix}_scale_dq",
                     inputs=[
@@ -201,7 +213,7 @@ def _add_onnx_qdq_nodes(
         else:
             y_zero_point = np.zeros(y_scale.shape, dtype=np.int64)
 
-        tensors_to_add.append(
+        tensors.append(
             opset.DequantizeLinear.make_zero_point(
                 y_zero_point, dtype=output_dtype, name=f"{input_name}_zero_point"
             )
@@ -225,7 +237,7 @@ def _add_onnx_qdq_nodes(
                 )
 
         if input_q:
-            nodes_to_add.append(
+            nodes.append(
                 opset.DequantizeLinear.make_node(
                     name=f"{node_name_prefix}_dq",
                     inputs=[
@@ -240,10 +252,10 @@ def _add_onnx_qdq_nodes(
                 )
             )
             tensors_to_remove[input_name] = True
-            tensors_to_add.append(input_q)
+            tensors.append(input_q)
 
         else:
-            nodes_to_add.extend(
+            nodes.extend(
                 [
                     opset.QuantizeLinear.make_node(
                         name=f"{node_name_prefix}_q",
@@ -272,9 +284,16 @@ def _add_onnx_qdq_nodes(
                 ]
             )
 
-    _finalize_graph_changes(
-        model, nodes_to_add, inputs_to_rename, tensors_to_add, tensors_to_remove
-    )
+    # Innermost bodies first: a parent's sort must see its bodies' final outer-scope reads
+    # (e.g. X -> X_qdq).
+    for i, graph in reversed(list(enumerate(_iterate_graphs_recursive(model.graph)))):
+        _finalize_graph_changes(
+            graph,
+            nodes_to_add[i],
+            inputs_to_rename,
+            tensors_to_add[i],
+            tensors_to_remove,
+        )
     _restore_graph_output_names(model)
 
 
@@ -591,7 +610,7 @@ def _broadcast(
 
 
 def _finalize_graph_changes(
-    model: ModelProto,
+    graph: onnx.GraphProto,
     nodes_to_add: Iterable,
     inputs_to_rename: Dict,
     tensors_to_add: List[TensorProto],
@@ -599,29 +618,27 @@ def _finalize_graph_changes(
 ):
     # Remove dangling tensors/nodes
     initializers = [
-        init
-        for init in model.graph.initializer
-        if not tensors_to_remove.pop(init.name, None)
+        init for init in graph.initializer if not tensors_to_remove.pop(init.name, None)
     ]
-    model.graph.ClearField("initializer")
-    model.graph.initializer.extend(initializers)
+    graph.ClearField("initializer")
+    graph.initializer.extend(initializers)
 
     nodes = [
         node
-        for node in model.graph.node
+        for node in graph.node
         if not (
             node.op_type == "Constant" and tensors_to_remove.pop(node.output[0], None)
         )
     ]
-    model.graph.ClearField("node")
-    model.graph.node.extend(nodes)
+    graph.ClearField("node")
+    graph.node.extend(nodes)
 
     # Redirect consumers that took the removed biases to take qdq bias instead
     # before:
     #     bias --------------------> consumer
     # after:
     #     bias_int32 --> DQ -------> consumer
-    for node in model.graph.node:
+    for node in graph.node:
         for i, old_name in enumerate(node.input):
             new_name = inputs_to_rename.get(old_name, None)
             if new_name is not None:
@@ -629,14 +646,14 @@ def _finalize_graph_changes(
 
     # Add new tensors
     for t in tensors_to_add:
-        model.graph.initializer.append(t)
+        graph.initializer.append(t)
 
     # Insert new nodes in a topologically order without duplicates
     nodes_to_add = list({node.name: node for node in nodes_to_add}.values())
-    model.graph.node.extend(nodes_to_add)
-    new_graph = from_proto(model.graph)
+    graph.node.extend(nodes_to_add)
+    new_graph = from_proto(graph)
     new_graph.sort()
-    model.graph.CopyFrom(to_proto(new_graph))
+    graph.CopyFrom(to_proto(new_graph))
 
 
 def _restore_graph_output_names(model: ModelProto):
@@ -660,18 +677,24 @@ def _restore_graph_output_names(model: ModelProto):
                             (out_updated)     (out_q)      (out)
 
     Called by :func:`_add_onnx_qdq_nodes` itself, so callers never observe the dangling state.
-    Graph outputs that were not quantized are left untouched.
+    Graph outputs that were not quantized are left untouched. Control-flow body outputs are restored too.
+    """
+    for graph in _iterate_graphs_recursive(model.graph):
+        _restore_output_names(graph)
+
+
+def _restore_output_names(graph: onnx.GraphProto):
+    """
+    Restore the output names of graph.
     """
     consumers = {
-        node.input[i]: node for node in model.graph.node for i in range(len(node.input))
+        node.input[i]: node for node in graph.node for i in range(len(node.input))
     }
     producers = {
-        node.output[i]: node
-        for node in model.graph.node
-        for i in range(len(node.output))
+        node.output[i]: node for node in graph.node for i in range(len(node.output))
     }
 
-    for graph_out in model.graph.output:
+    for graph_out in graph.output:
         last_node = producers.get(graph_out.name)
         q = consumers.get(graph_out.name)
 
@@ -686,8 +709,8 @@ def _restore_graph_output_names(model: ModelProto):
         i = list(last_node.output).index(graph_out.name)
         last_node.output[i], dq.output[0] = dq.output[0], last_node.output[i]
 
-        # Redirect "out" and "out_updated" to the right consumer
-        for node in model.graph.node:
+        # Redirect "out" and "out_updated" to the right consumer, including in nested bodies
+        for node in (node for g in _iterate_graphs_recursive(graph) for node in g.node):
             for j, inp in enumerate(node.input):
                 if inp == last_node.output[i]:
                     node.input[j] = dq.output[0]
@@ -1151,21 +1174,23 @@ def _remove_onnx_qdq_nodes(
     model: onnx.ModelProto,
     base_dir: str = "",
 ) -> List[Dict[str, Union[str, int, np.ndarray]]]:
+    graphs = list(_iterate_graphs_recursive(model.graph))
     initializers: Dict[str, TensorProto] = {
-        init.name: init for init in model.graph.initializer
+        init.name: init for graph in graphs for init in graph.initializer
     }
+    new_initializers: Dict[int, List[TensorProto]] = defaultdict(list)
     constants: Dict[str, TensorProto] = _get_all_constants(model)
     q_nodes: Dict[str, NodeProto] = {}
     dq_nodes: Dict[str, NodeProto] = {}
     producers: Dict[str, NodeProto] = {}
     consumers: Dict[str, Dict[str, NodeProto]] = defaultdict(dict)
-    graph_outputs = set(output.name for output in model.graph.output)
+    graph_outputs = set(output.name for graph in graphs for output in graph.output)
 
     _validate_model(model, constants, consumers, producers)
 
     to_encoding = functools.partial(
         _to_encoding,
-        model=model,
+        graph_outputs=graph_outputs,
         constants=constants,
         consumers=consumers,
         producers=producers,
@@ -1177,7 +1202,7 @@ def _remove_onnx_qdq_nodes(
         _get_qdq_nodes, producers=producers, consumers=consumers, constants=constants
     )
 
-    for node in model.graph.node:
+    for node in (node for graph in graphs for node in graph.node):
         if node.op_type == "QuantizeLinear":
             q_nodes[node.name] = node
         elif node.op_type == "DequantizeLinear":
@@ -1211,7 +1236,9 @@ def _remove_onnx_qdq_nodes(
     }
 
     # Reconnect nodes
-    for dq in model.graph.node:
+    for graph_idx, dq in (
+        (i, node) for i, graph in enumerate(graphs) for node in graph.node
+    ):
         if dq.op_type != "DequantizeLinear":
             continue
 
@@ -1256,7 +1283,7 @@ def _remove_onnx_qdq_nodes(
             if const and dq.name in encodings:
                 new_name = dq.output[0]
                 e = encodings[dq.name]
-                initializers[dq.output[0]] = _dequantize_const(
+                init = initializers[dq.output[0]] = _dequantize_const(
                     const,
                     name=new_name,
                     y_scale=e.get("y_scale", e.get("per_channel_float_scale")),
@@ -1267,6 +1294,7 @@ def _remove_onnx_qdq_nodes(
                     per_block_int_scale=e.get("per_block_int_scale"),
                     base_dir=base_dir,
                 )
+                new_initializers[graph_idx].append(init)
 
             continue
 
@@ -1309,32 +1337,53 @@ def _remove_onnx_qdq_nodes(
                 if out == q.input[0]:
                     producer.output[i] = new_name
 
-    included_nodes = set()
-    node = []
-    # Nodes may appear in producer.values() multiple times, only use the first appearance
-    for producer in producers.values():
-        if producer.name not in to_be_removed and producer.name not in included_nodes:
-            included_nodes.add(producer.name)
-            node.append(producer)
+    # NOTE: Each graph is rebuilt before its nodes are walked for nested bodies, since
+    # rebuilding graph.node copies the bodies they hold.
+    for i, graph in enumerate(_iterate_graphs_recursive(model.graph)):
+        included_nodes = set()
+        node = []
+        # Same nodes as rebuilding from producers.values(): skip nodes without outputs,
+        # and keep only the first node of each name.
+        for n in graph.node:
+            if (
+                n.output
+                and n.name not in to_be_removed
+                and n.name not in included_nodes
+            ):
+                included_nodes.add(n.name)
+                node.append(n)
 
-    model.graph.ClearField("node")
-    model.graph.node.extend(node)
+        graph.ClearField("node")
+        graph.node.extend(node)
 
-    # model.graph.ClearField("initializer")
-    # model.graph.initializer.extend(list(initializers.values()))
-    # `initializers` is purely additive: it starts from every existing graph
-    # initializer and only gains new dequantized-const entries (with DQ-output
-    # names that never collide with existing ones). Re-serializing the whole set
-    # via ClearField + extend would needlessly re-encode large tensors (e.g. a
-    # ~2 GiB tied lm_head weight) and overflow protobuf's 2 GiB message ceiling.
-    # Instead, leave existing initializers in place and append only the new ones.
-    existing_init_names = {init.name for init in model.graph.initializer}
-    model.graph.initializer.extend(
-        init for name, init in initializers.items() if name not in existing_init_names
-    )
-    from onnxruntime.quantization.onnx_quantizer import ONNXModel
+        # Existing initializers are left in place and only the new ones are appended.
+        # Re-serializing the whole set via ClearField + extend would needlessly re-encode
+        # large tensors (e.g. a ~2 GiB tied lm_head weight) and overflow protobuf's 2 GiB
+        # message ceiling.
+        graph.initializer.extend(new_initializers.get(i, []))
 
-    ONNXModel(model).remove_unused_constant()
+    # Remove unused constants (scale/zero_point). Unlike onnxruntime's ONNXModel.remove_unused_constant, this
+    # keeps top-level constants read only by a body.
+    used = graph_outputs | {
+        name
+        for node in _iterate_graph_nodes_recursive(model.graph)
+        for name in node.input
+    }
+    for graph in _iterate_graphs_recursive(model.graph):
+        unused_nodes = [
+            node
+            for node in graph.node
+            if node.op_type == "Constant" and node.output[0] not in used
+        ]
+        for node in unused_nodes:
+            graph.node.remove(node)
+
+        unused_inits = [init for init in graph.initializer if init.name not in used]
+        for init in unused_inits:
+            graph.initializer.remove(init)
+            for graph_input in graph.input:
+                if graph_input.name == init.name:
+                    graph.input.remove(graph_input)
 
     # Convert removed Q/DQ nodes to encoding
     return list(encodings.values())
@@ -1348,7 +1397,9 @@ def _validate_model(
 ) -> None:
     invalid_nodes = []
 
-    for node in model.graph.node:
+    for node in (
+        n for graph in _iterate_graphs_recursive(model.graph) for n in graph.node
+    ):
         if node.op_type == "QuantizeLinear":
             is_qdq = _is_q_dq_sequence(node, consumers)
         elif node.op_type == "DequantizeLinear":
@@ -1375,7 +1426,7 @@ def _validate_model(
 
 def _to_encoding(
     dq: NodeProto,
-    model: ModelProto,
+    graph_outputs: Set[str],
     constants: Dict[str, TensorProto],
     consumers: Dict[str, Dict[str, NodeProto]],
     producers: Dict[str, NodeProto],
@@ -1398,7 +1449,7 @@ def _to_encoding(
                 )
             return None
 
-    if any(dq.output[0] == graph_out.name for graph_out in model.graph.output):
+    if dq.output[0] in graph_outputs:
         input_name = dq.output[0]
     else:
         input_name = q.input[0] if q else dq.output[0]
@@ -1684,16 +1735,23 @@ def contains_tensor_type(model: ModelProto, tensor_type: int | List[int]):
     """
     if isinstance(tensor_type, int):
         tensor_type = [tensor_type]
+    # Control-flow bodies can compute in a different type than the top-level graph
+    graphs = list(_iterate_graphs_recursive(model.graph))
     if any(
         tensor.type.tensor_type.elem_type in tensor_type
-        for tensor in itertools.chain(model.graph.input, model.graph.output)
+        for graph in graphs
+        for tensor in itertools.chain(graph.input, graph.output)
     ):
         return True
 
-    if any(tensor.data_type in tensor_type for tensor in model.graph.initializer):
+    if any(
+        tensor.data_type in tensor_type
+        for graph in graphs
+        for tensor in graph.initializer
+    ):
         return True
 
-    for node in model.graph.node:
+    for node in (node for graph in graphs for node in graph.node):
         if node.op_type == "Cast":
             cast_type = _get_node_attribute(node, "to")
             if cast_type in tensor_type:
@@ -1811,7 +1869,8 @@ def _derive_data_movement_op_encodings(
 ) -> Dict[str, Dict]:
     data_movement_ops = [
         node
-        for node in model.graph.node
+        for graph in _iterate_graphs_recursive(model.graph)
+        for node in graph.node
         if _is_grid_equivariant_op(node.op_type, domain=node.domain)
         # Export-time encoding propagation is safe
         or (node.domain, node.op_type) in _CLIPPING_OPS
@@ -1823,9 +1882,10 @@ def _derive_data_movement_op_encodings(
     consumers: Mapping[str, List[onnx.NodeProto]] = defaultdict(list)
     constants: Mapping[str, onnx.TensorProto] = _get_all_constants(model)
 
-    for node in model.graph.node:
-        for inp in node.input:
-            consumers[inp].append(node)
+    for graph in _iterate_graphs_recursive(model.graph):
+        for node in graph.node:
+            for inp in node.input:
+                consumers[inp].append(node)
 
     def derive_encoding(node: onnx.NodeProto):
         derived_encodings = {}
