@@ -38,7 +38,10 @@ from aimet_onnx.common.quantsim_config.quantsim_config import (
     reformat_supported_kernels,
 )
 from aimet_onnx.common.utils import AimetLogger
-from aimet_onnx.common.onnx._utils import _is_grid_preserving_op
+from aimet_onnx.common.onnx._utils import (
+    _is_grid_preserving_op,
+    _iterate_graph_nodes_recursive,
+)
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE
 from aimet_onnx.utils import get_product_name_from_quantized_name
 from aimet_onnx.qc_quantize_op import OpMode, QcQuantizeOp
@@ -189,6 +192,9 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                     op_to_quantizers[node.name], output_product
                 )
             for name, _ in op.parameters.items():
+                # Params inside control-flow bodies have no quantizer without subgraph quantization
+                if name not in self._quant_ops_dict:
+                    continue
                 op_to_quantizers[node.name].parameter_quantizers.append(
                     (name, self._quant_ops_dict[name])
                 )
@@ -392,7 +398,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                     modified_quantize_ops,
                 )
 
-        for node in self._model.model.graph.node:
+        for node in _iterate_graph_nodes_recursive(self._model.model.graph):
             if node.op_type in CONSTANT_TYPE:
                 for activation_name in node.output:
                     if (
@@ -472,7 +478,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
         for activation_name in self._input_quantizers:
             self._quant_ops_dict[activation_name].enabled = False
 
-        for node in self._model.model.graph.node:
+        for node in _iterate_graph_nodes_recursive(self._model.model.graph):
             if node.op_type in CONSTANT_TYPE:
                 for activation_name in node.output:
                     if activation_name in self._quant_ops_dict:

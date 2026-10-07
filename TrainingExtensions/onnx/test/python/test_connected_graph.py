@@ -3,10 +3,8 @@
 
 
 import itertools
-import numpy as np
 import onnx
 import pytest
-from onnx import TensorProto, helper, numpy_helper
 from unittest.mock import MagicMock, patch
 import torch
 from aimet_onnx.common.connected_graph.connectedgraph_utils import (
@@ -19,264 +17,6 @@ from aimet_onnx.meta.connectedgraph import (
     _get_matmul_add_bias_idx,
 )
 from .models import models_for_tests
-
-DIM = 4
-TRIP = 3
-
-
-def _ti(name, shape, dtype=TensorProto.FLOAT):
-    return helper.make_tensor_value_info(name, dtype, shape)
-
-
-def _model(graph):
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
-    model.ir_version = 10
-    onnx.checker.check_model(model, full_check=True)
-    return model
-
-
-def _flat_model():
-    """No control flow at all: the shape every existing model in the suite has."""
-    weight = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w")
-    return _model(
-        helper.make_graph(
-            [
-                helper.make_node("MatMul", ["x", "w"], ["mm"], name="the_matmul"),
-                helper.make_node("Relu", ["mm"], ["y"], name="the_relu"),
-            ],
-            "flat",
-            inputs=[_ti("x", [DIM, DIM])],
-            outputs=[_ti("y", [DIM, DIM])],
-            initializer=[weight],
-        )
-    )
-
-
-def _scan_model(num_carries: int = 1, with_capture: bool = False):
-    """A Scan with num_carries carries and one scanned input."""
-    weight = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="bw")
-
-    nodes, body_inputs, body_outputs = [], [], []
-    for k in range(num_carries):
-        body_inputs.append(_ti(f"b_c{k}", [DIM, DIM]))
-        nodes.append(
-            helper.make_node("Add", [f"b_c{k}", "b_x"], [f"b_co{k}"], name=f"b_add{k}")
-        )
-        body_outputs.append(_ti(f"b_co{k}", [DIM, DIM]))
-    body_inputs.append(_ti("b_x", [DIM, DIM]))
-
-    last = f"b_co{num_carries - 1}" if num_carries else "b_x"
-    if with_capture:
-        # A weight owned by the enclosing graph but read only inside the body.
-        nodes.append(
-            helper.make_node("MatMul", [last, "bw"], ["b_scaled"], name="b_matmul")
-        )
-        last = "b_scaled"
-    nodes.append(helper.make_node("Identity", [last], ["b_y"], name="b_y_id"))
-    body_outputs.append(_ti("b_y", [DIM, DIM]))
-
-    body = helper.make_graph(nodes, "scan_body", body_inputs, body_outputs)
-
-    scan_inputs = [f"init{k}" for k in range(num_carries)] + ["xs"]
-    scan_outputs = [f"final{k}" for k in range(num_carries)] + ["ys"]
-    graph = helper.make_graph(
-        [
-            helper.make_node(
-                "Scan",
-                scan_inputs,
-                scan_outputs,
-                name="the_scan",
-                body=body,
-                num_scan_inputs=1,
-            )
-        ],
-        "outer",
-        inputs=[_ti(f"init{k}", [DIM, DIM]) for k in range(num_carries)]
-        + [_ti("xs", [TRIP, DIM, DIM])],
-        outputs=[_ti(f"final{k}", [DIM, DIM]) for k in range(num_carries)]
-        + [_ti("ys", [TRIP, DIM, DIM])],
-        initializer=[weight] if with_capture else [],
-    )
-    return _model(graph)
-
-
-def _captured_activation_scan_model():
-    """A Scan whose body reads a top-level activation by name."""
-    body = helper.make_graph(
-        [
-            helper.make_node("Relu", ["b_x"], ["b_pre"], name="b_first"),
-            helper.make_node("Add", ["b_pre", "captured"], ["b_co"], name="b_second"),
-        ],
-        "scan_body",
-        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
-        outputs=[_ti("b_co", [DIM, DIM])],
-    )
-    return _model(
-        helper.make_graph(
-            [
-                helper.make_node("Relu", ["x"], ["captured"], name="pre"),
-                helper.make_node("Relu", ["captured"], ["state_in"], name="pre2"),
-                helper.make_node(
-                    "Scan",
-                    ["state_in", "xs"],
-                    ["state_out"],
-                    name="the_scan",
-                    body=body,
-                    num_scan_inputs=1,
-                ),
-            ],
-            "outer",
-            inputs=[_ti("x", [DIM, DIM]), _ti("xs", [TRIP, DIM, DIM])],
-            outputs=[_ti("state_out", [DIM, DIM])],
-        )
-    )
-
-
-def _wrapped_scan_model():
-    """A Scan with top-level compute on both sides of it."""
-    pre = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w_pre")
-    post = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w_post")
-    body = helper.make_graph(
-        [
-            helper.make_node("Add", ["b_c", "b_x"], ["b_sum"], name="b_add"),
-            helper.make_node("Identity", ["b_sum"], ["b_y"], name="b_y_id"),
-        ],
-        "scan_body",
-        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
-        outputs=[_ti("b_sum", [DIM, DIM]), _ti("b_y", [DIM, DIM])],
-    )
-    return _model(
-        helper.make_graph(
-            [
-                helper.make_node("MatMul", ["x", "w_pre"], ["state_in"], name="pre"),
-                helper.make_node(
-                    "Scan",
-                    ["state_in", "xs"],
-                    ["state_out", "ys"],
-                    name="the_scan",
-                    body=body,
-                    num_scan_inputs=1,
-                ),
-                helper.make_node("MatMul", ["state_out", "w_post"], ["y"], name="post"),
-            ],
-            "outer",
-            inputs=[_ti("x", [DIM, DIM]), _ti("xs", [TRIP, DIM, DIM])],
-            outputs=[_ti("y", [DIM, DIM]), _ti("ys", [TRIP, DIM, DIM])],
-            initializer=[pre, post],
-        )
-    )
-
-
-def _nested_scan_model():
-    """A Scan whose body contains another Scan."""
-    inner_body = helper.make_graph(
-        [helper.make_node("Add", ["i_c", "i_x"], ["i_co"], name="inner_add")],
-        "inner_body",
-        inputs=[_ti("i_c", [DIM, DIM]), _ti("i_x", [DIM, DIM])],
-        outputs=[_ti("i_co", [DIM, DIM])],
-    )
-    outer_body = helper.make_graph(
-        [
-            helper.make_node(
-                "Scan",
-                ["o_c", "o_xs"],
-                ["o_inner_out"],
-                name="inner_scan",
-                body=inner_body,
-                num_scan_inputs=1,
-            ),
-            helper.make_node("Relu", ["o_inner_out"], ["o_co"], name="outer_relu"),
-        ],
-        "outer_body",
-        inputs=[_ti("o_c", [DIM, DIM]), _ti("o_xs", [TRIP, DIM, DIM])],
-        outputs=[_ti("o_co", [DIM, DIM])],
-    )
-    return _model(
-        helper.make_graph(
-            [
-                helper.make_node(
-                    "Scan",
-                    ["init", "xss"],
-                    ["final"],
-                    name="outer_scan",
-                    body=outer_body,
-                    num_scan_inputs=1,
-                )
-            ],
-            "top",
-            inputs=[_ti("init", [DIM, DIM]), _ti("xss", [TRIP, TRIP, DIM, DIM])],
-            outputs=[_ti("final", [DIM, DIM])],
-        )
-    )
-
-
-def _sibling_scans_model(collide: str = ""):
-    """Two Scan nodes side by side, so their bodies are sibling scopes."""
-
-    def scan(tag):
-        inner = "t" if collide == "tensor" else f"{tag}_t"
-        node_name = "add" if collide == "node" else f"{tag}_add"
-        body = helper.make_graph(
-            [
-                helper.make_node(
-                    "Add", [f"{tag}_c", f"{tag}_x"], [inner], name=node_name
-                )
-            ],
-            f"{tag}_body",
-            inputs=[_ti(f"{tag}_c", [DIM, DIM]), _ti(f"{tag}_x", [DIM, DIM])],
-            outputs=[_ti(inner, [DIM, DIM])],
-        )
-        return helper.make_node(
-            "Scan",
-            [f"init_{tag}", "xs"],
-            [f"final_{tag}"],
-            name=f"scan_{tag}",
-            body=body,
-            num_scan_inputs=1,
-        )
-
-    return _model(
-        helper.make_graph(
-            [scan("a"), scan("b")],
-            "outer",
-            inputs=[
-                _ti("init_a", [DIM, DIM]),
-                _ti("init_b", [DIM, DIM]),
-                _ti("xs", [TRIP, DIM, DIM]),
-            ],
-            outputs=[_ti("final_a", [DIM, DIM]), _ti("final_b", [DIM, DIM])],
-        )
-    )
-
-
-def _if_model():
-    """If model."""
-
-    def branch(name, op_type):
-        return helper.make_graph(
-            [helper.make_node(op_type, ["x"], [f"{name}_o"], name=f"{name}_op")],
-            name,
-            inputs=[],
-            outputs=[_ti(f"{name}_o", [DIM])],
-        )
-
-    return _model(
-        helper.make_graph(
-            [
-                helper.make_node(
-                    "If",
-                    ["cond"],
-                    ["y"],
-                    name="the_if",
-                    then_branch=branch("thn", "Relu"),
-                    else_branch=branch("els", "Neg"),
-                )
-            ],
-            "outer",
-            inputs=[_ti("x", [DIM]), _ti("cond", [1], TensorProto.BOOL)],
-            outputs=[_ti("y", [DIM])],
-        )
-    )
 
 
 def _all_nodes(model):
@@ -551,7 +291,7 @@ class TestConnectedGraph:
 
     def test_ops_and_products_match_the_nodes_and_tensors(self):
         """A model with no control flow"""
-        model = _flat_model()
+        model = models_for_tests.flat_matmul_relu_model()
         cg = ConnectedGraph(model)
 
         """
@@ -568,7 +308,7 @@ class TestConnectedGraph:
 class TestSubgraphOpsAreRepresented:
     def test_body_nodes_become_ops_held_by_the_op_running_them(self):
         """A model whose Scan body holds two nodes (Add, Identity)"""
-        model = _scan_model()
+        model = models_for_tests.scan_model()
         cg = ConnectedGraph(model)
         print(f"All ops: {cg.get_all_ops()}, Ordered ops: {cg.ordered_ops}")
 
@@ -583,7 +323,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_body_is_held_by_its_own_op_at_every_depth(self):
         """A model with a Scan nested inside another Scan's body"""
-        cg = ConnectedGraph(_nested_scan_model())
+        cg = ConnectedGraph(models_for_tests.nested_scan_model())
         ops = cg.get_all_ops()
 
         """
@@ -600,7 +340,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_connectivity_inside_a_body(self):
         """A model with compute either side of a Scan"""
-        cg = ConnectedGraph(_wrapped_scan_model())
+        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
 
         add = cg.get_all_ops()["b_add"]
         identity = cg.get_all_ops()["b_y_id"]
@@ -621,7 +361,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_carry_stays_a_separate_product_from_the_one_outside_the_body(self):
         """A Scan whose carry-in is produced by a top-level op"""
-        cg = ConnectedGraph(_wrapped_scan_model())
+        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
         products = cg.get_all_products()
         print(f"products: {products}")
 
@@ -646,20 +386,24 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_scanned_input_keeps_the_shape_the_body_sees(self):
         """A Scan with a scanned input, which it slices along its leading axis"""
-        cg = ConnectedGraph(_scan_model())
+        cg = ConnectedGraph(models_for_tests.scan_model())
         products = cg.get_all_products()
 
         """
         When: A ConnectedGraph is constructed for it
         Then: The slice stays a separate product a rank below the stacked tensor
         """
-        assert products["xs"].shape == [TRIP, DIM, DIM]
-        assert products["b_x"].shape == [DIM, DIM]
+        assert products["xs"].shape == [
+            models_for_tests.TRIP,
+            models_for_tests.DIM,
+            models_for_tests.DIM,
+        ]
+        assert products["b_x"].shape == [models_for_tests.DIM, models_for_tests.DIM]
         assert products["b_x"] is not products["xs"]
 
     def test_a_body_input_is_not_a_model_input(self):
         """A Scan whose body declares a scanned input, fed by the Scan rather than the caller"""
-        cg = ConnectedGraph(_scan_model(num_carries=0))
+        cg = ConnectedGraph(models_for_tests.scan_model(num_carries=0))
         products = cg.get_all_products()
 
         """
@@ -674,7 +418,7 @@ class TestSubgraphOpsAreRepresented:
     def test_a_capture_is_a_parameter_of_the_body_op_that_reads_it(self):
         """A weight defined outside a Scan body but consumed by a MatMul inside it"""
 
-        cg = ConnectedGraph(_scan_model(with_capture=True))
+        cg = ConnectedGraph(models_for_tests.scan_model(with_capture=True))
 
         """
         When: A ConnectedGraph is constructed for it
@@ -692,16 +436,16 @@ class TestOrderedOps:
     @pytest.mark.parametrize(
         "model",
         (
-            _flat_model(),
-            _scan_model(num_carries=0),
-            _scan_model(num_carries=1),
-            _scan_model(num_carries=2),
-            _scan_model(with_capture=True),
-            _captured_activation_scan_model(),
-            _wrapped_scan_model(),
-            _nested_scan_model(),
-            _sibling_scans_model(),
-            _if_model(),
+            models_for_tests.flat_matmul_relu_model(),
+            models_for_tests.scan_model(num_carries=0),
+            models_for_tests.scan_model(num_carries=1),
+            models_for_tests.scan_model(num_carries=2),
+            models_for_tests.scan_model(with_capture=True),
+            models_for_tests.captured_activation_scan_model(),
+            models_for_tests.wrapped_scan_model(),
+            models_for_tests.nested_scan_model(),
+            models_for_tests.sibling_scans_model(),
+            models_for_tests.if_model(),
         ),
     )
     def test_every_op_is_ordered(self, model):
@@ -718,7 +462,7 @@ class TestOrderedOps:
 
     def test_a_body_is_placed_by_the_op_that_runs_it_not_by_any_edge(self):
         """A model with compute either side of a Scan"""
-        cg = ConnectedGraph(_wrapped_scan_model())
+        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
         order = [op.name for op in cg.ordered_ops]
         body_op = cg.get_all_ops()["b_add"]
 
@@ -746,7 +490,7 @@ class TestOrderedOps:
 
     def test_a_capture_stays_tied_to_the_ops_reading_it(self):
         """A Scan whose body reads a top-level activation by name"""
-        cg = ConnectedGraph(_captured_activation_scan_model())
+        cg = ConnectedGraph(models_for_tests.captured_activation_scan_model())
 
         """
         When: A ConnectedGraph is constructed for it
@@ -759,7 +503,7 @@ class TestOrderedOps:
 
     def test_a_capture_does_not_unseat_the_op_running_the_body(self):
         """A Scan reading model inputs, whose body captures an outer-scope weight"""
-        cg = ConnectedGraph(_scan_model(with_capture=True))
+        cg = ConnectedGraph(models_for_tests.scan_model(with_capture=True))
 
         """
         When: A ConnectedGraph is constructed for it
@@ -774,14 +518,14 @@ class TestSubgraphOps:
     @pytest.mark.parametrize(
         "model",
         (
-            _flat_model(),
-            _scan_model(num_carries=1),
-            _scan_model(num_carries=2),
-            _scan_model(with_capture=True),
-            _captured_activation_scan_model(),
-            _wrapped_scan_model(),
-            _nested_scan_model(),
-            _sibling_scans_model(),
+            models_for_tests.flat_matmul_relu_model(),
+            models_for_tests.scan_model(num_carries=1),
+            models_for_tests.scan_model(num_carries=2),
+            models_for_tests.scan_model(with_capture=True),
+            models_for_tests.captured_activation_scan_model(),
+            models_for_tests.wrapped_scan_model(),
+            models_for_tests.nested_scan_model(),
+            models_for_tests.sibling_scans_model(),
         ),
     )
     def test_the_graph_holds_together_whatever_the_model(self, model):
@@ -820,7 +564,7 @@ class TestSubgraphOps:
 
     def test_a_scan_owns_its_body_ops_without_a_tensor_edge_to_them(self):
         """A model with compute either side of a Scan"""
-        cg = ConnectedGraph(_wrapped_scan_model())
+        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
         scan = cg.get_all_ops()["the_scan"]
 
         """
@@ -848,7 +592,7 @@ class TestSubgraphOps:
         Given: A Scan whose body reads a top-level activation by name, and does so in its
                *second* op, so the op the capture reaches is not the body's first
         """
-        model = _captured_activation_scan_model()
+        model = models_for_tests.captured_activation_scan_model()
 
         """
         When: A ConnectedGraph is constructed for it

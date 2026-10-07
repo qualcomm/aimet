@@ -273,11 +273,19 @@ class TestQuantSim:
         sim = QuantizationSimModel(model, path=tmp_dir)
         assert len(sim.model.nodes()) == 14
 
+        # Quantizers are placed right after their producers, keeping the graph topologically sorted
         node_ls = [node.op_type for node in sim.model.nodes()]
-        assert (
-            node_ls
-            == ["Conv", "Relu", "MaxPool", "Flatten", "Gemm"] + ["QcQuantizeOp"] * 9
-        )
+        assert node_ls == ["QcQuantizeOp"] * 5 + [
+            "Conv",
+            "QcQuantizeOp",
+            "Relu",
+            "QcQuantizeOp",
+            "MaxPool",
+            "QcQuantizeOp",
+            "Flatten",
+            "Gemm",
+            "QcQuantizeOp",
+        ]
 
         # Check if qc quantize op node is correctly connect to the corresponding onnx node
         assert (
@@ -292,6 +300,70 @@ class TestQuantSim:
             assert qc_quantize_op_dict[name].op_mode == OpMode.oneShotQuantizeDequantize
         for name in sim.activation_names:
             assert qc_quantize_op_dict[name].op_mode == OpMode.updateStats
+
+    def test_sort_quantizer_nodes(self, tmp_dir):
+        """A sim of a topologically sorted model"""
+        model = build_dummy_model()
+        sim = QuantizationSimModel(model, path=tmp_dir)
+        graph = sim.model.graph()
+        other_nodes = [node for node in graph.node if node.op_type != "QcQuantizeOp"]
+
+        # Flatten output "6" has no quantizer. The new quantizer is appended after its consumer Gemm
+        sim._insert_quantizer("6", is_param=False)
+        assert graph.node[-1].name == "QcQuantizeOp_6"
+        sim._rebuild_session()
+
+        """
+        When: A quantizer is inserted after construction and the session is rebuilt
+        Then: 1) The quantizer is moved right after the producer of its input
+              2) The other nodes are the same objects, in the same order
+        """
+        assert [node.name for node in graph.node[-4:]] == [
+            "flatten",
+            "QcQuantizeOp_6",
+            "fc",
+            "QcQuantizeOp_output",
+        ]
+        sorted_other_nodes = [
+            node for node in graph.node if node.op_type != "QcQuantizeOp"
+        ]
+        assert len(sorted_other_nodes) == len(other_nodes)
+        assert all(a is b for a, b in zip(sorted_other_nodes, other_nodes))
+        sim.session.run(
+            None, {"input": np.random.rand(1, 3, 32, 32).astype(np.float32)}
+        )
+
+    def test_sort_quantizer_nodes_keeps_connected_graph_nodes(self, tmp_dir):
+        """Given: Two sims of the same model"""
+        sim = QuantizationSimModel(build_dummy_model(), path=tmp_dir)
+        sim._sort_quantizer_nodes()
+        ort_sim = QuantizationSimModel(build_dummy_model(), path=tmp_dir)
+        ONNXModel(ort_sim.model.model).topological_sort()
+
+        """
+        When: One is sorted with _sort_quantizer_nodes, the other with ONNXModel.topological_sort
+        Then: 1) _sort_quantizer_nodes keeps the NodeProtos held by the connected graph in the model
+              2) ONNXModel.topological_sort (ClearField + extend) replaces them with copies, so a
+                 quantizer inserted afterwards is not wired to the consumers in the model
+        """
+
+        for s, expected in ((sim, True), (ort_sim, False)):
+            nodes = {id(node) for node in s.model.graph().node}
+            cg_nodes = [
+                op.get_module() for op in s.connected_graph.get_all_ops().values()
+            ]
+            assert all(id(node) in nodes for node in cg_nodes) == expected
+            assert any(id(node) in nodes for node in cg_nodes) == expected
+
+        # Flatten output "6" has no quantizer
+        for s, expected in ((sim, "6_updated"), (ort_sim, "6")):
+            # _insert_quantizer -> _replace_input_of_all_nodes finds consumers through CG
+            # When s is sorted using in-place, the CG's fc node is the one in the model
+            # When s is sorted using topological_sort, CG holds the old fc node, and model's
+            # fc node still reads "6" and not "6_updated"
+            s._insert_quantizer("6", is_param=False)
+            (fc,) = [node for node in s.model.graph().node if node.name == "fc"]
+            assert fc.input[0] == expected
 
     def test_create_quantsim_dynamic_batch_size(self, tmp_dir):
         """Test to insert qc quantize op to the graph"""

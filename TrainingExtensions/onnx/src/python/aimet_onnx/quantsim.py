@@ -60,6 +60,7 @@ from aimet_onnx.common.onnx._utils import (
     _derive_data_movement_op_encodings,
     _is_htp_interpolation_op,
     _get_all_constants,
+    _iterate_graphs_recursive,
     contains_tensor_type,
     to_array,
 )
@@ -158,6 +159,10 @@ op_types_to_tie_qtzrs = [
 _tie_qtzrs = True
 
 _fuse_supergroups = True
+
+# Experimental: also quantize tensors inside Scan bodies.
+# NOTE: export() and to_onnx_qdq() are not supported yet with this flag.
+_quantize_subgraphs = False
 
 data_types_to_quantize = [np.float32, np.float16, np.dtype("bfloat16")]
 
@@ -289,6 +294,20 @@ def _apply_constraints(flag: bool):
         _tie_qtzrs = orig_flag
 
 
+@contextlib.contextmanager
+def _quantize_subgraphs_enabled(flag: bool = True):
+    """
+    Quantize tensors inside Scan bodies in QuantizationSimModels created within this context.
+    """
+    global _quantize_subgraphs  # pylint: disable=global-statement
+    orig_flag = _quantize_subgraphs
+    try:
+        _quantize_subgraphs = flag
+        yield
+    finally:
+        _quantize_subgraphs = orig_flag
+
+
 class _NOT_SPECIFIED:
     pass
 
@@ -358,7 +377,11 @@ def _fill_missing_node_names(model: onnx.ModelProto):
     seen: Set[str] = set()
     idx_factory = defaultdict(int)
 
-    for node in model.graph.node:
+    # The top-level graph is walked first, so its nodes keep their names on a clash.
+    nodes = (
+        node for graph in _iterate_graphs_recursive(model.graph) for node in graph.node
+    )
+    for node in nodes:
         if node.name and node.name not in seen:
             seen.add(node.name)
             continue
@@ -514,6 +537,7 @@ class QuantizationSimModel:
             model = quantsim_configurator.apply_fusions(model)
 
         self.model = model
+        self._quantize_subgraphs = _quantize_subgraphs
         self.connected_graph = ConnectedGraph(self.model)
 
         if _has_unfolded_batchnorms(self.model.model, self.connected_graph):
@@ -529,7 +553,8 @@ class QuantizationSimModel:
         self._add_quantization_nodes()
         self._producers: dict[str, onnx.NodeProto] = {
             output: node
-            for node in self.model.model.graph.node
+            for graph in self._graphs_to_quantize()
+            for node in graph.node
             for output in node.output
         }
 
@@ -553,7 +578,11 @@ class QuantizationSimModel:
         self._apply_param_symmetry_to_inputs(quantsim_configurator)
         self._apply_exception_rules()
         if _tie_qtzrs:
-            op_types = {node.op_type for node in self.model.nodes()}
+            op_types = {
+                node.op_type
+                for graph in self._graphs_to_quantize()
+                for node in graph.node
+            }
             op_types_to_tie = op_types_to_tie_qtzrs + [
                 t
                 for t in op_types
@@ -573,6 +602,7 @@ class QuantizationSimModel:
         except google.protobuf.message.EncodeError:
             self._use_external_data = True
 
+        self._sort_quantizer_nodes()
         self.session = OrtInferenceSession(
             self.model.model,
             self.providers,
@@ -727,15 +757,40 @@ class QuantizationSimModel:
         """
         return self._supported_kernels
 
+    def _graphs_to_quantize(self) -> List[onnx.GraphProto]:
+        """
+        Returns the top-level graph, followed by the Scan bodies if subgraph quantization is enabled.
+
+        NOTE: Computed on every call since rebuilding graph.node (e.g. _remove_quantization_nodes)
+        copies the nodes, invalidating references to the bodies they hold.
+        """
+        if not self._quantize_subgraphs:
+            return [self.model.graph()]
+        return list(_iterate_graphs_recursive(self.model.graph()))
+
     def _get_param_names(self):
         """
         Get the names of params
+
+        NOTE: Unlike activations, which are only gathered from _graphs_to_quantize(), params come from
+        connected graph ops, which include body ops, so body params are excluded explicitly.
         """
+        # Without subgraph quantization, params declared inside a body are not quantized.
+        body_params = set()
+        if not self._quantize_subgraphs:
+            for graph in list(_iterate_graphs_recursive(self.model.graph()))[1:]:
+                body_params.update(init.name for init in graph.initializer)
+                body_params.update(name for node in graph.node for name in node.output)
+
         valid_ops = self._get_ops_with_parameter()
         for op in valid_ops:
             for param_info in op.parameters.values():
                 param, _ = param_info
-                if param.name and param.name not in self.param_names:
+                if (
+                    param.name
+                    and param.name not in self.param_names
+                    and param.name not in body_params
+                ):
                     self.param_names.append(param.name)
 
     def _get_ops_with_parameter(self) -> List[Op]:
@@ -760,11 +815,20 @@ class QuantizationSimModel:
                 dummy_input = make_dummy_input(self.model.model)
             self.activation_dtypes = self._observe_activation_dtypes(dummy_input)
 
-        self.input_name_to_nodes = self.model.input_name_to_nodes()
-        self.output_name_to_node = self.model.output_name_to_node()
+        graphs = self._graphs_to_quantize()
+        self.input_name_to_nodes = defaultdict(list)
+        self.output_name_to_node = {}
+        for graph in graphs:
+            for node in graph.node:
+                for name in node.input:
+                    if name:
+                        self.input_name_to_nodes[name].append(node)
+                for name in node.output:
+                    if name:
+                        self.output_name_to_node[name] = node
 
-        # Capture model inputs
-        for node in self.model.graph().input:
+        # Capture model inputs and body inputs
+        for node in (node for graph in graphs for node in graph.input):
             name = node.name
             if (
                 name not in self.activation_names
@@ -774,7 +838,7 @@ class QuantizationSimModel:
                 self.activation_names.append(name)
 
         # Capture intermediate activations and model outputs
-        for node in self.model.nodes():
+        for node in (node for graph in graphs for node in graph.node):
             for name in node.input:
                 if (
                     name not in self.activation_names
@@ -793,9 +857,10 @@ class QuantizationSimModel:
                     self.activation_names.append(name)
 
         # Rename model output node
-        for node in self.model.graph().output:
-            if node.name in self.activation_names:
-                node.name += "_updated"
+        for graph in graphs:
+            for node in graph.output:
+                if node.name in self.activation_names:
+                    node.name += "_updated"
 
     def _is_quantizable_dtype(self, name: str) -> bool:
         if name in self.activation_dtypes:
@@ -913,8 +978,11 @@ class QuantizationSimModel:
         """
         Insert quantization node for each param tensor
         """
+        body_of = self._get_body_of_tensors()
         for name in self.param_names:
-            self._insert_quantizer(name, is_param=True)
+            self._insert_quantizer(
+                name, is_param=True, graph=body_of.get(name, self.model.graph())
+            )
 
     def _create_tensor_quantizer_params(self, param_name: str):
         """
@@ -969,14 +1037,36 @@ class QuantizationSimModel:
         """
         Insert quantization node for each activation tensor
         """
+        body_of = self._get_body_of_tensors()
         for name in self.activation_names:
-            self._insert_quantizer(name, is_param=False)
+            self._insert_quantizer(
+                name, is_param=False, graph=body_of.get(name, self.model.graph())
+            )
 
-    def _insert_quantizer(self, input_name: str, is_param: bool):
+    def _get_body_of_tensors(self) -> Dict[str, onnx.GraphProto]:
+        """
+        Map each tensor defined in a body (input, initializer or node output) to that body, so
+        quantizers can be placed without searching all graphs per quantizer.
+        """
+        body_of = {}
+        for graph in self._graphs_to_quantize()[1:]:
+            body_of.update({inp.name: graph for inp in graph.input})
+            body_of.update({init.name: graph for init in graph.initializer})
+            body_of.update({name: graph for node in graph.node for name in node.output})
+
+        return body_of
+
+    def _insert_quantizer(
+        self, input_name: str, is_param: bool, graph: Optional[onnx.GraphProto] = None
+    ):
         """
         Inserts a quantizer for tensor `input_name` in the graph and adds it to `self.qc_quantize_op_dict`
 
         self.session must be rebuilt after calling this for changes to take effect.
+
+        :param input_name: Name of the tensor to quantize
+        :param is_param: True if the tensor is a parameter, False if it is an activation
+        :param graph: Graph which defines `input_name`. Searched for if not given.
         """
         if input_name in self.qc_quantize_op_dict:
             raise RuntimeError(f"Quantizer already exists for tensor {input_name}")
@@ -1005,7 +1095,19 @@ class QuantizationSimModel:
             op_name=input_name,
             quant_info=libpymo.PtrToInt64(quant_info),
         )
-        self.model.add_node(custom_node)
+        # Add the quantizer to the graph which defines the tensor
+        if graph is None:
+            graph = next(
+                (
+                    graph
+                    for graph in self._graphs_to_quantize()[1:]
+                    if any(input_name in node.output for node in graph.node)
+                    or any(input_name == init.name for init in graph.initializer)
+                    or any(input_name == inp.name for inp in graph.input)
+                ),
+                self.model.graph(),
+            )
+        graph.node.append(custom_node)
         self.qc_quantize_op_dict[input_name] = QcQuantizeOp(
             quant_info=quant_info,
             quant_scheme=self._quant_scheme,
@@ -2118,6 +2220,7 @@ class QuantizationSimModel:
         | Literal["signed"]
         | None = "unsigned",
     ):
+        self._raise_if_subgraphs_quantized("export()")
         encoding_version = encoding_version or quantsim.encoding_version
 
         if encoding_version not in quantsim.VALID_ENCODING_VERSIONS:
@@ -2253,6 +2356,7 @@ class QuantizationSimModel:
         """
         Rebuilds `self.session` object to reflect any changes in the source model.
         """
+        self._sort_quantizer_nodes()
         self.session = None
         self.session = OrtInferenceSession(
             self.model.model,
@@ -2261,6 +2365,48 @@ class QuantizationSimModel:
             path=self._path,
             save_as_external_data=self._use_external_data,
         )
+
+    def _raise_if_subgraphs_quantized(self, api: str):
+        if any(
+            node.op_type == "QcQuantizeOp"
+            for graph in self._graphs_to_quantize()[1:]
+            for node in graph.node
+        ):
+            raise NotImplementedError(
+                f"{api} is not supported yet for models with quantizers inside Scan bodies"
+            )
+
+    def _sort_quantizer_nodes(self):
+        """
+        Moves every QcQuantizeOp right after the producer of its input, so that a topologically
+        sorted source model stays sorted.
+
+        NOTE: Sort graph.node in place.
+        """
+        for graph in self._graphs_to_quantize():
+            quantizers = defaultdict(list)
+            other_nodes = []
+            for node in graph.node:
+                if node.op_type == "QcQuantizeOp":
+                    quantizers[node.input[0]].append(node)
+                else:
+                    other_nodes.append(node)
+
+            # Quantizers of graph inputs and initializers come first
+            produced = {name for node in other_nodes for name in node.output}
+            order = [
+                qtzr
+                for name, qtzrs in quantizers.items()
+                if name not in produced
+                for qtzr in qtzrs
+            ]
+            for node in other_nodes:
+                order.append(node)
+                for name in node.output:
+                    order.extend(quantizers.get(name, []))
+
+            position = {id(node): i for i, node in enumerate(order)}
+            graph.node.sort(key=lambda node: position[id(node)])  # pylint: disable=cell-var-from-loop
 
     def set_quantizers(self, quantizer_dict: Dict[str, QcQuantizeOp]):
         """
@@ -2281,11 +2427,12 @@ class QuantizationSimModel:
 
         # Walk the graph and create a node input to op map, only for QcQuantizeOp nodes
         node_input_map = {}
-        for node in self.model.graph().node:
-            if node.op_type != "QcQuantizeOp":
-                continue
-            for input_name in node.input:
-                node_input_map[input_name] = node
+        for graph in self._graphs_to_quantize():
+            for node in graph.node:
+                if node.op_type != "QcQuantizeOp":
+                    continue
+                for input_name in node.input:
+                    node_input_map[input_name] = node
 
         for tensor, quantizer in quantizer_dict.items():
             self._set_quantizer(tensor, node_input_map, quantizer)
@@ -2341,11 +2488,12 @@ class QuantizationSimModel:
         op_types_to_tie = set(op_types_to_tie)
         # Walk the graph and create a node input to op map, only for QcQuantizeOp nodes
         node_input_map = {}
-        for node in self.model.graph().node:
-            if node.op_type != "QcQuantizeOp":
-                continue
-            for input_name in node.input:
-                node_input_map[input_name] = node
+        for graph in self._graphs_to_quantize():
+            for node in graph.node:
+                if node.op_type != "QcQuantizeOp":
+                    continue
+                for input_name in node.input:
+                    node_input_map[input_name] = node
 
         op_types_to_propagate_backward = {
             op_type
@@ -2486,9 +2634,10 @@ class QuantizationSimModel:
         """
         # pylint: disable=protected-access
         n_consumers: dict[str, int] = defaultdict(int)
-        for node in self.model.model.graph.node:
-            for inp in node.input:
-                n_consumers[inp] += 1
+        for graph in self._graphs_to_quantize():
+            for node in graph.node:
+                for inp in node.input:
+                    n_consumers[inp] += 1
 
         for op in self.connected_graph.ordered_ops:
             if op.type not in op_types_to_tie:
@@ -2601,6 +2750,7 @@ class QuantizationSimModel:
         .. image:: ../../images/conv_qdq.onnx.svg
             :align: center
         """
+        self._raise_if_subgraphs_quantized("to_onnx_qdq()")
         with (
             self._concretize_int32_bias_quantizers()
             if export_int32_bias
@@ -2739,7 +2889,8 @@ class QuantizationSimModel:
             product.name
             for op in self.connected_graph.get_all_ops().values()
             for product, _ in op.parameters.values()
-            if self.qc_quantize_op_dict[product.name].bitwidth <= 32
+            if product.name in self.qc_quantize_op_dict
+            and self.qc_quantize_op_dict[product.name].bitwidth <= 32
         }
 
         for aimet_node in aimet_qc_quantize_nodes:
@@ -2846,7 +2997,8 @@ class QuantizationSimModel:
             product.name
             for op in self.connected_graph.get_all_ops().values()
             for product, _ in op.parameters.values()
-            if self.qc_quantize_op_dict[product.name].bitwidth <= 32
+            if product.name in self.qc_quantize_op_dict
+            and self.qc_quantize_op_dict[product.name].bitwidth <= 32
         }
 
         # Map every static value (initializer / Constant node) to its TensorProto once, so
@@ -4436,6 +4588,7 @@ def _add_missing_quantizers(
     # Insert any missing activation quantizers as disabled act quantizers
     for tensor_name in activation_names:
         if tensor_name not in sim.qc_quantize_op_dict:
+            # No graph given: searched per call, fine for the few quantizers missing in the sim
             sim._insert_quantizer(tensor_name, is_param=False)
             sim.qc_quantize_op_dict[tensor_name].enabled = False
             sim.activation_names.append(tensor_name)
@@ -4444,6 +4597,7 @@ def _add_missing_quantizers(
     # Insert any missing param quantizers as disabled param quantizers
     for tensor_name in param_names:
         if tensor_name not in sim.qc_quantize_op_dict:
+            # No graph given: searched per call, fine for the few quantizers missing in the sim
             sim._insert_quantizer(tensor_name, is_param=True)
             sim.qc_quantize_op_dict[tensor_name].enabled = False
             sim.param_names.append(tensor_name)

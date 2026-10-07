@@ -5633,3 +5633,371 @@ def model_with_zero_pad():
     model = make_model(graph)
     onnx.checker.check_model(model)
     return model
+
+
+# Control-flow models shared by the ConnectedGraph and subgraph QuantizationSimModel tests
+DIM = 4
+TRIP = 3
+
+
+def _ti(name, shape, dtype=TensorProto.FLOAT):
+    return helper.make_tensor_value_info(name, dtype, shape)
+
+
+def _control_flow_model(graph):
+    """Opset 18 model, checked"""
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+    model.ir_version = 10
+    onnx.checker.check_model(model, full_check=True)
+    return model
+
+
+def flat_matmul_relu_model():
+    """No control flow at all: the shape every existing model in the suite has."""
+    weight = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w")
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w"], ["mm"], name="the_matmul"),
+                helper.make_node("Relu", ["mm"], ["y"], name="the_relu"),
+            ],
+            "flat",
+            inputs=[_ti("x", [DIM, DIM])],
+            outputs=[_ti("y", [DIM, DIM])],
+            initializer=[weight],
+        )
+    )
+
+
+def scan_model(num_carries: int = 1, with_capture: bool = False):
+    """A Scan with num_carries carries and one scanned input."""
+    weight = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="bw")
+
+    nodes, body_inputs, body_outputs = [], [], []
+    for k in range(num_carries):
+        body_inputs.append(_ti(f"b_c{k}", [DIM, DIM]))
+        nodes.append(
+            helper.make_node("Add", [f"b_c{k}", "b_x"], [f"b_co{k}"], name=f"b_add{k}")
+        )
+        body_outputs.append(_ti(f"b_co{k}", [DIM, DIM]))
+    body_inputs.append(_ti("b_x", [DIM, DIM]))
+
+    last = f"b_co{num_carries - 1}" if num_carries else "b_x"
+    if with_capture:
+        # A weight owned by the enclosing graph but read only inside the body.
+        nodes.append(
+            helper.make_node("MatMul", [last, "bw"], ["b_scaled"], name="b_matmul")
+        )
+        last = "b_scaled"
+    nodes.append(helper.make_node("Identity", [last], ["b_y"], name="b_y_id"))
+    body_outputs.append(_ti("b_y", [DIM, DIM]))
+
+    body = helper.make_graph(nodes, "scan_body", body_inputs, body_outputs)
+
+    scan_inputs = [f"init{k}" for k in range(num_carries)] + ["xs"]
+    scan_outputs = [f"final{k}" for k in range(num_carries)] + ["ys"]
+    graph = helper.make_graph(
+        [
+            helper.make_node(
+                "Scan",
+                scan_inputs,
+                scan_outputs,
+                name="the_scan",
+                body=body,
+                num_scan_inputs=1,
+            )
+        ],
+        "outer",
+        inputs=[_ti(f"init{k}", [DIM, DIM]) for k in range(num_carries)]
+        + [_ti("xs", [TRIP, DIM, DIM])],
+        outputs=[_ti(f"final{k}", [DIM, DIM]) for k in range(num_carries)]
+        + [_ti("ys", [TRIP, DIM, DIM])],
+        initializer=[weight] if with_capture else [],
+    )
+    return _control_flow_model(graph)
+
+
+def captured_activation_scan_model():
+    """A Scan whose body reads a top-level activation by name."""
+    body = helper.make_graph(
+        [
+            helper.make_node("Relu", ["b_x"], ["b_pre"], name="b_first"),
+            helper.make_node("Add", ["b_pre", "captured"], ["b_co"], name="b_second"),
+        ],
+        "scan_body",
+        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
+        outputs=[_ti("b_co", [DIM, DIM])],
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("Relu", ["x"], ["captured"], name="pre"),
+                helper.make_node("Relu", ["captured"], ["state_in"], name="pre2"),
+                helper.make_node(
+                    "Scan",
+                    ["state_in", "xs"],
+                    ["state_out"],
+                    name="the_scan",
+                    body=body,
+                    num_scan_inputs=1,
+                ),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM]), _ti("xs", [TRIP, DIM, DIM])],
+            outputs=[_ti("state_out", [DIM, DIM])],
+        )
+    )
+
+
+def wrapped_scan_model():
+    """A Scan with top-level compute on both sides of it."""
+    pre = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w_pre")
+    post = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w_post")
+    body = helper.make_graph(
+        [
+            helper.make_node("Add", ["b_c", "b_x"], ["b_sum"], name="b_add"),
+            helper.make_node("Identity", ["b_sum"], ["b_y"], name="b_y_id"),
+        ],
+        "scan_body",
+        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
+        outputs=[_ti("b_sum", [DIM, DIM]), _ti("b_y", [DIM, DIM])],
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w_pre"], ["state_in"], name="pre"),
+                helper.make_node(
+                    "Scan",
+                    ["state_in", "xs"],
+                    ["state_out", "ys"],
+                    name="the_scan",
+                    body=body,
+                    num_scan_inputs=1,
+                ),
+                helper.make_node("MatMul", ["state_out", "w_post"], ["y"], name="post"),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM]), _ti("xs", [TRIP, DIM, DIM])],
+            outputs=[_ti("y", [DIM, DIM]), _ti("ys", [TRIP, DIM, DIM])],
+            initializer=[pre, post],
+        )
+    )
+
+
+def nested_scan_model():
+    """A Scan whose body contains another Scan."""
+    inner_body = helper.make_graph(
+        [helper.make_node("Add", ["i_c", "i_x"], ["i_co"], name="inner_add")],
+        "inner_body",
+        inputs=[_ti("i_c", [DIM, DIM]), _ti("i_x", [DIM, DIM])],
+        outputs=[_ti("i_co", [DIM, DIM])],
+    )
+    outer_body = helper.make_graph(
+        [
+            helper.make_node(
+                "Scan",
+                ["o_c", "o_xs"],
+                ["o_inner_out"],
+                name="inner_scan",
+                body=inner_body,
+                num_scan_inputs=1,
+            ),
+            helper.make_node("Relu", ["o_inner_out"], ["o_co"], name="outer_relu"),
+        ],
+        "outer_body",
+        inputs=[_ti("o_c", [DIM, DIM]), _ti("o_xs", [TRIP, DIM, DIM])],
+        outputs=[_ti("o_co", [DIM, DIM])],
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "Scan",
+                    ["init", "xss"],
+                    ["final"],
+                    name="outer_scan",
+                    body=outer_body,
+                    num_scan_inputs=1,
+                )
+            ],
+            "top",
+            inputs=[_ti("init", [DIM, DIM]), _ti("xss", [TRIP, TRIP, DIM, DIM])],
+            outputs=[_ti("final", [DIM, DIM])],
+        )
+    )
+
+
+def sibling_scans_model(collide: str = ""):
+    """Two Scan nodes side by side, so their bodies are sibling scopes."""
+
+    def scan(tag):
+        inner = "t" if collide == "tensor" else f"{tag}_t"
+        node_name = "add" if collide == "node" else f"{tag}_add"
+        body = helper.make_graph(
+            [
+                helper.make_node(
+                    "Add", [f"{tag}_c", f"{tag}_x"], [inner], name=node_name
+                )
+            ],
+            f"{tag}_body",
+            inputs=[_ti(f"{tag}_c", [DIM, DIM]), _ti(f"{tag}_x", [DIM, DIM])],
+            outputs=[_ti(inner, [DIM, DIM])],
+        )
+        return helper.make_node(
+            "Scan",
+            [f"init_{tag}", "xs"],
+            [f"final_{tag}"],
+            name=f"scan_{tag}",
+            body=body,
+            num_scan_inputs=1,
+        )
+
+    return _control_flow_model(
+        helper.make_graph(
+            [scan("a"), scan("b")],
+            "outer",
+            inputs=[
+                _ti("init_a", [DIM, DIM]),
+                _ti("init_b", [DIM, DIM]),
+                _ti("xs", [TRIP, DIM, DIM]),
+            ],
+            outputs=[_ti("final_a", [DIM, DIM]), _ti("final_b", [DIM, DIM])],
+        )
+    )
+
+
+def if_model():
+    """If model."""
+
+    def branch(name, op_type):
+        return helper.make_graph(
+            [helper.make_node(op_type, ["x"], [f"{name}_o"], name=f"{name}_op")],
+            name,
+            inputs=[],
+            outputs=[_ti(f"{name}_o", [DIM])],
+        )
+
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "If",
+                    ["cond"],
+                    ["y"],
+                    name="the_if",
+                    then_branch=branch("thn", "Relu"),
+                    else_branch=branch("els", "Neg"),
+                )
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM]), _ti("cond", [1], TensorProto.BOOL)],
+            outputs=[_ti("y", [DIM])],
+        )
+    )
+
+
+def body_scan_model(body_nodes, body_initializer=(), top_nodes=(), top_outputs=()):
+    """A Scan over xs with one carry. The body reads b_c (carry), b_x (slice) and writes b_co."""
+    body = helper.make_graph(
+        list(body_nodes),
+        "scan_body",
+        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
+        outputs=[_ti("b_co", [DIM, DIM])],
+        initializer=list(body_initializer),
+    )
+    scan = helper.make_node(
+        "Scan", ["init", "xs"], ["final"], name="the_scan", body=body, num_scan_inputs=1
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            list(top_nodes) + [scan],
+            "outer",
+            inputs=[
+                _ti("init", [DIM, DIM]),
+                _ti("xs", [TRIP, DIM, DIM]),
+                _ti("x", [DIM, DIM]),
+            ],
+            outputs=[_ti("final", [DIM, DIM])]
+            + [_ti(name, [DIM, DIM]) for name in top_outputs],
+        )
+    )
+
+
+def body_static_tensor_scan_model(kind, consumer):
+    """A body reading a static tensor b_s defined in the body as an Add operand or MatMul weight."""
+    value = np.random.default_rng(0).standard_normal((DIM, DIM)).astype(np.float32)
+    nodes, initializer = [], []
+    if kind == "initializer":
+        initializer = [numpy_helper.from_array(value, "b_s")]
+    else:
+        nodes = [
+            helper.make_node(
+                "Constant",
+                [],
+                ["b_s"],
+                name="b_const",
+                value=numpy_helper.from_array(value),
+            )
+        ]
+    nodes += [
+        helper.make_node(consumer, ["b_x", "b_s"], ["b_y"], name="b_consumer"),
+        helper.make_node("Add", ["b_c", "b_y"], ["b_co"], name="b_add"),
+    ]
+    return body_scan_model(nodes, body_initializer=initializer)
+
+
+def single_iteration_scan_and_flat_models():
+    """A Scan running once, and the same model with the Scan replaced by its body"""
+    w = numpy_helper.from_array(
+        np.random.default_rng(1).standard_normal((DIM, DIM)).astype(np.float32), "w"
+    )
+    axes = numpy_helper.from_array(np.array([0], np.int64), "axes")
+    inputs = [_ti("init", [DIM, DIM]), _ti("xs", [1, DIM, DIM])]
+    outputs = [_ti("y", [DIM, DIM]), _ti("ys", [1, DIM, DIM])]
+    body_nodes = [
+        helper.make_node("Mul", ["b_c", "b_x"], ["b_m"], name="b_mul"),
+        helper.make_node("Add", ["b_m", "b_c"], ["b_co"], name="b_add"),
+    ]
+    body = helper.make_graph(
+        body_nodes,
+        "scan_body",
+        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
+        outputs=[_ti("b_co", [DIM, DIM]), _ti("b_m", [DIM, DIM])],
+    )
+    scan = _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "Scan",
+                    ["init", "xs"],
+                    ["final", "ys"],
+                    name="the_scan",
+                    body=body,
+                    num_scan_inputs=1,
+                ),
+                helper.make_node("MatMul", ["final", "w"], ["y"], name="post"),
+            ],
+            "outer",
+            inputs=inputs,
+            outputs=outputs,
+            initializer=[w],
+        )
+    )
+    flat = _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("Identity", ["init"], ["b_c"]),
+                helper.make_node("Squeeze", ["xs", "axes"], ["b_x"]),
+            ]
+            + body_nodes
+            + [
+                helper.make_node("Unsqueeze", ["b_m", "axes"], ["ys"]),
+                helper.make_node("MatMul", ["b_co", "w"], ["y"], name="post"),
+            ],
+            "flat",
+            inputs=inputs,
+            outputs=outputs,
+            initializer=[w, axes],
+        )
+    )
+    return scan, flat
