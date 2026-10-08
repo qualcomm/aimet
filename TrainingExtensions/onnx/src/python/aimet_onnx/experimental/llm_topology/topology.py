@@ -64,9 +64,10 @@ from aimet_onnx.experimental.llm_topology.norm_detection import (
     find_active_norms_in_ir,
 )
 from aimet_onnx.experimental.llm_topology.topology_types import (
-    BlockTopology,
+    AttentionBlockTopology,
     LinearGroup,
     LlmTopology,
+    MambaBlockTopology,
 )
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LlmTopology)
@@ -229,7 +230,7 @@ def get_llm_topology(
             topo_index,
         )
 
-        block = BlockTopology(
+        block = AttentionBlockTopology(
             qkv=qkv,
             o_proj=ir_analysis.node_names(o_proj_candidates),
             gate_up=gate_up,
@@ -524,8 +525,10 @@ def _build_named_topology(
         return norm
 
     input_norms = [active_norm(block.input_norm) for block in match.blocks]
+    # None for a Mamba block, whose only norm is its input norm.
     post_attention_norms = [
-        active_norm(block.post_attention_norm) for block in match.blocks
+        active_norm(block.post_attention_norm) if block.post_attention_norm else None
+        for block in match.blocks
     ]
     final_norm = active_norm(match.final_norm) if match.final_norm else None
 
@@ -546,6 +549,21 @@ def _build_named_topology(
     for i, block in enumerate(match.blocks):
         input_norm, post_attention_norm = input_norms[i], post_attention_norms[i]
         label = f"Block {i} (layer {block.layer_id})"
+
+        if post_attention_norm is None:
+            mamba_block, mamba_problems = _build_mamba_block(
+                block,
+                label,
+                input_norm,
+                residual_starts[i],
+                residual_starts[i + 1],
+                node_by_name,
+                node_by_output,
+                topo_index,
+            )
+            problems += mamba_problems
+            result.blocks.append(mamba_block)
+            continue
 
         qkv = _named_group(block, _QKV_ROLES, topo_index, node_by_name)
         gate_up = _named_group(block, _GATE_UP_ROLES, topo_index, node_by_name)
@@ -604,7 +622,7 @@ def _build_named_topology(
             )
 
         result.blocks.append(
-            BlockTopology(
+            AttentionBlockTopology(
                 qkv=qkv,
                 o_proj=list(o_proj),
                 gate_up=gate_up,
@@ -655,6 +673,52 @@ def _build_named_topology(
         ir_model.graph.outputs, _PAST_VALUE_OUTPUT_NAME_PATTERN
     )
     return result
+
+
+def _build_mamba_block(
+    block: BlockMatch,
+    label: str,
+    input_norm: ActiveNorm,
+    residual_input: str,
+    residual_output: str,
+    node_by_name: Dict[str, onnx_ir.Node],
+    node_by_output: Dict[str, onnx_ir.Node],
+    topo_index: Dict[onnx_ir.Node, int],
+) -> Tuple[MambaBlockTopology, List[str]]:
+    """Build one :attr:`~.topology_types.BlockKind.MAMBA` block and cross-check it against the graph.
+
+    A Mamba block reads the residual stream through its one norm into the mixer's
+    ``in_proj`` and writes it back through ``out_proj``, with the selective scan in
+    between. It has no attention, so no Q·Kᵀ / softmax·V MatMuls are searched for.
+
+    :return: The block, and every problem found.
+    """
+    mixer = _named_group(block, (LinearRole.MIXER_IN_PROJ,), topo_index, node_by_name)
+    mixer_out_proj = block.linears[LinearRole.MIXER_OUT_PROJ]
+    writers = _find_nearest_upstream_linears(
+        residual_output, input_norm.input_tensor, node_by_output, topo_index
+    )
+    problems = _compare(
+        f"{label}: mixer in_proj",
+        mixer.linears,
+        "norm consumers",
+        input_norm.downstream_linears,
+    )
+    problems += _compare(
+        f"{label}: mixer out_proj",
+        mixer_out_proj,
+        "mixer residual writers",
+        ir_analysis.node_names(writers),
+    )
+    return (
+        MambaBlockTopology(
+            mixer=mixer,
+            mixer_out_proj=list(mixer_out_proj),
+            residual_input=residual_input,
+            residual_output=residual_output,
+        ),
+        problems,
+    )
 
 
 #: Roles of the attention read group, and of the MLP read group. A block has
@@ -834,8 +898,8 @@ def _infer_hidden_size(ir_model: onnx_ir.Model, role_map: LlmTopology) -> int:
     """Infer the model hidden size from embed_tokens, lm_head, or q/k/v_proj weights.
 
     Tries ``embed_tokens`` first (Gather table ``[vocab, hidden]``, last dim = hidden).
-    Falls back to ``lm_head``, then to each block's ``qkv`` group, for backbones
-    exported with ``use_inputs_embeds=True`` that have no Gather op.
+    Falls back to ``lm_head``, then to each block's input read group, for
+    backbones exported with ``use_inputs_embeds=True`` that have no Gather op.
 
     Takes the analysis IR rather than a ``ModelProto`` so the weight layout is
     derived by the one implementation that already knows it,
@@ -860,10 +924,15 @@ def _infer_hidden_size(ir_model: onnx_ir.Model, role_map: LlmTopology) -> int:
     # Gemm transB=1 stores W [vocab, hidden] -> hidden = shape[-1].
     # MatMul stores W [hidden, vocab]        -> hidden = shape[0].
     # Conv 1x1 stores W [vocab, hidden, 1, 1] -> hidden = shape[1].
-    for linear_name in [
-        *role_map.lm_head,
-        *(name for block in role_map.blocks for name in block.qkv.linears),
-    ]:
+    candidates = list(role_map.lm_head)
+    for block in role_map.blocks:
+        if isinstance(block, AttentionBlockTopology):
+            candidates.extend(block.qkv.linears)
+        elif isinstance(block, MambaBlockTopology):
+            candidates.extend(block.mixer.linears)
+        else:
+            raise TypeError(f"Unsupported block topology: {type(block).__name__}")
+    for linear_name in candidates:
         node = node_by_name.get(linear_name)
         if node is None:
             continue
@@ -876,7 +945,7 @@ def _infer_hidden_size(ir_model: onnx_ir.Model, role_map: LlmTopology) -> int:
         return int(shape[-1] if is_transposed else shape[0])
 
     raise ValueError(
-        "Cannot infer hidden_size: no embed_tokens, lm_head or qkv_proj static weight found in role_map"
+        "Cannot infer hidden_size: no embed_tokens, lm_head or block input projection static weight found in role_map"
     )
 
 

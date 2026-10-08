@@ -37,6 +37,8 @@ class LinearRole(Enum):
     DOWN_PROJ = "down_proj"
     FUSED_QKV = "fused_qkv"
     FUSED_GATE_UP = "fused_gate_up"
+    MIXER_IN_PROJ = "mixer_in_proj"
+    MIXER_OUT_PROJ = "mixer_out_proj"
     UNKNOWN = "unknown"
 
 

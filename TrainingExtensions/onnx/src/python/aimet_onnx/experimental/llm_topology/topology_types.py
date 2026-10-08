@@ -15,7 +15,8 @@ counterparts in :mod:`~.ir_adapter`.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Pattern
+from enum import Enum
+from typing import ClassVar, Dict, List, Optional, Pattern, Union
 
 from aimet_onnx.common.utils import AimetLogger
 
@@ -67,9 +68,31 @@ class LinearGroup:
         return self.by_role.get(role, [])
 
 
+class BlockKind(Enum):
+    """What a decoder block computes between its residual-stream read and write."""
+
+    #: Attention followed by an MLP (Llama, Qwen, Gemma, Phi, ...).
+    ATTENTION = "attention"
+    #: A selective state-space mixer (Mamba2): one norm, ``in_proj`` reads the
+    #: residual stream, the scan, ``out_proj`` writes it back. No MLP.
+    MAMBA = "mamba"
+
+
 @dataclass
 class BlockTopology:
-    """Topology of a single decoder block: weighted projections + dynamic MatMuls.
+    """Residual-stream boundaries shared by every decoder block kind.
+
+    :param residual_input: Name of the residual-stream tensor entering the block.
+    :param residual_output: Name of the residual-stream tensor leaving the block.
+    """
+
+    residual_input: Optional[str] = None
+    residual_output: Optional[str] = None
+
+
+@dataclass
+class AttentionBlockTopology(BlockTopology):
+    """Attention and MLP projections, plus dynamic attention MatMuls.
 
     The two weighted read groups are :class:`LinearGroup` values — each
     exposes both its coarse ``linears`` list and the fine-grained role split (see
@@ -88,10 +111,9 @@ class BlockTopology:
         nothing about these nodes beyond their identity is needed.
     :param attn_v_matmul: Node names of the dynamic (non-weighted) softmax·V
         MatMul(s).
-    :param residual_input: Name of the residual-stream tensor entering the
-        block's input norm.
-    :param residual_output: Name of the residual-stream tensor leaving the block.
     """
+
+    kind: ClassVar[BlockKind] = BlockKind.ATTENTION
 
     qkv: LinearGroup = field(default_factory=LinearGroup)
     o_proj: List[str] = field(default_factory=list)
@@ -100,9 +122,6 @@ class BlockTopology:
 
     qk_matmul: List[str] = field(default_factory=list)
     attn_v_matmul: List[str] = field(default_factory=list)
-
-    residual_input: Optional[str] = None
-    residual_output: Optional[str] = None
 
     @property
     def q_proj(self) -> List[str]:
@@ -128,6 +147,19 @@ class BlockTopology:
     def up_proj(self) -> List[str]:
         """Up projection(s), split from ``gate_up`` by module name."""
         return self.gate_up.role(LinearRole.UP_PROJ)
+
+
+@dataclass
+class MambaBlockTopology(BlockTopology):
+    """Mamba mixer projections around the selective scan.
+
+    :param mixer: Read group — the mixer's ``in_proj`` through the block's norm.
+    :param mixer_out_proj: Name(s) of the mixer's ``out_proj`` writing to the residual.
+    """
+
+    kind: ClassVar[BlockKind] = BlockKind.MAMBA
+    mixer: LinearGroup = field(default_factory=LinearGroup)
+    mixer_out_proj: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -157,7 +189,9 @@ class LlmTopology:
 
     embed_tokens: List[str] = field(default_factory=list)
     lm_head: List[str] = field(default_factory=list)
-    blocks: List[BlockTopology] = field(default_factory=list)
+    blocks: List[Union[AttentionBlockTopology, MambaBlockTopology]] = field(
+        default_factory=list
+    )
     past_key_input_names: List[str] = field(default_factory=list)
     past_key_output_names: List[str] = field(default_factory=list)
     past_value_input_names: List[str] = field(default_factory=list)
@@ -194,8 +228,11 @@ def split_by_role(
 
 
 __all__ = [
+    "AttentionBlockTopology",
+    "BlockKind",
     "BlockTopology",
     "LinearGroup",
     "LlmTopology",
+    "MambaBlockTopology",
     "split_by_role",
 ]

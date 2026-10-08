@@ -22,7 +22,10 @@ from aimet_onnx.experimental.llm_topology.ir_analysis import build_analysis_ir
 from aimet_onnx.experimental.llm_topology.topology import (
     analyze_llm_topology_by_norm_count,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import LlmTopology
+from aimet_onnx.experimental.llm_topology.topology_types import (
+    BlockKind,
+    LlmTopology,
+)
 from aimet_onnx.experimental.spinquant.model_analysis import (
     find_merger_linear2,
 )
@@ -245,6 +248,16 @@ def _validate_topology(topology: LlmTopology) -> None:
             "topology contains no decoder blocks, so there is nothing for SpinQuant to "
             "rotate. Verify that analyze_llm_topology() was run on the model "
             "being rotated."
+        )
+
+    # The passes read only the attention/MLP fields, which a Mamba block leaves
+    # empty: rotating around them would silently skip its mixer projections.
+    mamba = [
+        i for i, block in enumerate(topology.blocks) if block.kind is BlockKind.MAMBA
+    ]
+    if mamba:
+        raise ValueError(
+            f"topology has Mamba blocks {mamba}, which SpinQuant does not support yet."
         )
 
     if topology.hidden_size is None:

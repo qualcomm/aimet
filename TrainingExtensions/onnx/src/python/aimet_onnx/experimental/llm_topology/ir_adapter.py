@@ -31,15 +31,18 @@ here.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import ClassVar, Dict, List, Optional, Union
 
 import onnx_ir
 
 from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
 from aimet_onnx.experimental.llm_topology.norm_detection import ActiveNorm
 from aimet_onnx.experimental.llm_topology.topology_types import (
+    AttentionBlockTopology,
+    BlockKind,
     LinearGroup,
     LlmTopology,
+    MambaBlockTopology,
 )
 
 
@@ -98,7 +101,19 @@ class IrLinearGroup:
 
 @dataclass
 class IrBlockTopology:
-    """Topology of a single decoder block: weighted projections + dynamic MatMuls.
+    """Residual-stream boundaries shared by every IR decoder block kind.
+
+    :param residual_input: Residual-stream tensor entering the block.
+    :param residual_output: Residual-stream tensor leaving the block.
+    """
+
+    residual_input: Optional[onnx_ir.Value] = None
+    residual_output: Optional[onnx_ir.Value] = None
+
+
+@dataclass
+class IrAttentionBlockTopology(IrBlockTopology):
+    """Attention and MLP projections, plus dynamic attention MatMuls.
 
     The two weighted read groups are :class:`IrLinearGroup` values — each exposes
     both its coarse ``nodes`` list and the fine-grained role split (see
@@ -115,9 +130,9 @@ class IrBlockTopology:
     :param qk_matmul: The dynamic (non-weighted) Q·Kᵀ attention MatMul node(s) —
         one per query head in SHA exports.
     :param attn_v_matmul: The dynamic (non-weighted) softmax·V MatMul node(s).
-    :param residual_input: Residual-stream tensor entering the block's input norm.
-    :param residual_output: Residual-stream tensor leaving the block.
     """
+
+    kind: ClassVar[BlockKind] = BlockKind.ATTENTION
 
     qkv: IrLinearGroup = field(default_factory=IrLinearGroup)
     o_proj: List[onnx_ir.Node] = field(default_factory=list)
@@ -126,9 +141,6 @@ class IrBlockTopology:
 
     qk_matmul: List[onnx_ir.Node] = field(default_factory=list)
     attn_v_matmul: List[onnx_ir.Node] = field(default_factory=list)
-
-    residual_input: Optional[onnx_ir.Value] = None
-    residual_output: Optional[onnx_ir.Value] = None
 
     @property
     def q_proj(self) -> List[onnx_ir.Node]:
@@ -157,6 +169,19 @@ class IrBlockTopology:
 
 
 @dataclass
+class IrMambaBlockTopology(IrBlockTopology):
+    """Mamba mixer projections around the selective scan.
+
+    :param mixer: Read group — the mixer's ``in_proj`` node(s).
+    :param mixer_out_proj: Mixer ``out_proj`` node(s) writing to the residual.
+    """
+
+    kind: ClassVar[BlockKind] = BlockKind.MAMBA
+    mixer: IrLinearGroup = field(default_factory=IrLinearGroup)
+    mixer_out_proj: List[onnx_ir.Node] = field(default_factory=list)
+
+
+@dataclass
 class IrLlmTopology:
     """Topology of an ONNX decoder-stack model: blocks + backbone-level roles + dims.
 
@@ -182,7 +207,9 @@ class IrLlmTopology:
 
     embed_tokens: List[onnx_ir.Node] = field(default_factory=list)
     lm_head: List[onnx_ir.Node] = field(default_factory=list)
-    blocks: List[IrBlockTopology] = field(default_factory=list)
+    blocks: List[Union[IrAttentionBlockTopology, IrMambaBlockTopology]] = field(
+        default_factory=list
+    )
     past_key_input_names: List[str] = field(default_factory=list)
     past_key_output_names: List[str] = field(default_factory=list)
     past_value_input_names: List[str] = field(default_factory=list)
@@ -224,18 +251,29 @@ def resolve_topology(
         head_dim=topology.head_dim,
     )
     for block in topology.blocks:
-        resolved.blocks.append(
-            IrBlockTopology(
+        residual_input = _resolve_value(block.residual_input, values)
+        residual_output = _resolve_value(block.residual_output, values)
+        if isinstance(block, AttentionBlockTopology):
+            resolved_block = IrAttentionBlockTopology(
                 qkv=_resolve_group(block.qkv, nodes),
                 o_proj=_resolve_nodes(block.o_proj, nodes),
                 gate_up=_resolve_group(block.gate_up, nodes),
                 down_proj=_resolve_nodes(block.down_proj, nodes),
                 qk_matmul=_resolve_nodes(block.qk_matmul, nodes),
                 attn_v_matmul=_resolve_nodes(block.attn_v_matmul, nodes),
-                residual_input=_resolve_value(block.residual_input, values),
-                residual_output=_resolve_value(block.residual_output, values),
+                residual_input=residual_input,
+                residual_output=residual_output,
             )
-        )
+        elif isinstance(block, MambaBlockTopology):
+            resolved_block = IrMambaBlockTopology(
+                mixer=_resolve_group(block.mixer, nodes),
+                mixer_out_proj=_resolve_nodes(block.mixer_out_proj, nodes),
+                residual_input=residual_input,
+                residual_output=residual_output,
+            )
+        else:
+            raise TypeError(f"Unsupported block topology: {type(block).__name__}")
+        resolved.blocks.append(resolved_block)
     return resolved
 
 
@@ -327,9 +365,11 @@ def _resolve_value(
 
 __all__ = [
     "IrActiveNorm",
+    "IrAttentionBlockTopology",
     "IrBlockTopology",
     "IrLinearGroup",
     "IrLlmTopology",
+    "IrMambaBlockTopology",
     "resolve_active_norms",
     "resolve_topology",
 ]

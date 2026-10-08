@@ -28,6 +28,9 @@ rest by name. The by-name analysis on top of the matches:
   one-per-field, so only the structural checks can catch them.
 * :class:`TestExportVariants` — KV-cache, headless, ``inputs_embeds`` and
   QuantizationSimModel graphs, under both analyses.
+* :class:`TestMamba2Patterns` / :class:`TestAnalyzeMamba2` — Mamba2, whose blocks
+  are :attr:`~.topology_types.BlockKind.MAMBA` state-space mixers rather than
+  attention + MLP.
 """
 
 import copy
@@ -74,6 +77,21 @@ from aimet_onnx.experimental.llm_topology.hf_patterns import (
     module_path_of,
 )
 from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
+from aimet_onnx.experimental.llm_topology.ir_adapter import (
+    IrMambaBlockTopology,
+    resolve_topology,
+)
+from aimet_onnx.experimental.llm_topology.topology_types import (
+    AttentionBlockTopology,
+    BlockKind,
+    MambaBlockTopology,
+)
+from aimet_onnx.experimental.spinquant.spinquant import (
+    _validate_topology as spinquant_validate_topology,
+)
+from aimet_onnx.experimental.adascale.adascale_optimizer import (
+    _block_boundaries_from_topology as adascale_block_boundaries,
+)
 
 from .models.transformer_blocks import qwen3_causal_lm
 
@@ -1054,6 +1072,8 @@ class TestAnalyzeLlmTopology:
 
         assert len(topology.blocks) == model.config.get_text_config().num_hidden_layers
         for i, block in enumerate(topology.blocks):
+            assert isinstance(block, AttentionBlockTopology)
+            assert block.kind is BlockKind.ATTENTION
             by_role = {
                 **{role: names for role, names in block.qkv.by_role.items() if names},
                 **{
@@ -1389,3 +1409,227 @@ class TestExportVariants:
         assert sim_topology.active_norms == float_topology.active_norms
         assert sim_topology.lm_head == float_topology.lm_head
         assert sim_topology.embed_tokens == float_topology.embed_tokens
+
+
+# ---------------------------------------------------------------------------
+# Mamba2 (state-space mixer blocks)
+# ---------------------------------------------------------------------------
+#: Tiny Mamba2 shaped like state-spaces/mamba2-2.7b (expand=2, one B/C group).
+_TINY_MAMBA2_CONFIG = dict(
+    num_hidden_layers=_NUM_LAYERS,
+    hidden_size=64,
+    state_size=16,
+    expand=2,
+    head_dim=16,
+    num_heads=8,
+    n_groups=1,
+    vocab_size=128,
+    chunk_size=8,
+    tie_word_embeddings=False,
+)
+
+#: Module paths of one Mamba2 layer, relative to ``backbone.layers.<N>``.
+_MAMBA2_LAYER_MODULES = {
+    "norm": "norm",
+    "in_proj": "mixer.in_proj",
+    "out_proj": "mixer.out_proj",
+}
+
+
+class _Mamba2LogitsWrapper(nn.Module):
+    """``input_ids -> logits`` for export (Mamba2 takes no attention mask)."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids):
+        return self.model(input_ids=input_ids, use_cache=False).logits
+
+
+def _build_mamba2(**overrides):
+    """Tiny random ``Mamba2ForCausalLM``, norm gammas randomized as elsewhere."""
+    torch.manual_seed(0)
+    cfg = _config("Mamba2Config", **{**_TINY_MAMBA2_CONFIG, **overrides})
+    model = transformers.Mamba2ForCausalLM(cfg).eval()
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if name.endswith(("norm.weight", "norm_f.weight")):
+                param.copy_(torch.rand_like(param) + 0.5)
+    return model
+
+
+def _onnxscript_supports_mamba2_dynamo():
+    """Dynamo export of Mamba2 needs onnxscript's repeat_interleave(output_size=)."""
+    import inspect  # pylint: disable=import-outside-toplevel
+
+    from onnxscript.function_libs.torch_lib.ops import core  # pylint: disable=import-outside-toplevel
+
+    return (
+        "output_size"
+        in inspect.signature(core.aten_repeat_interleave_self_int).parameters
+    )
+
+
+@pytest.fixture(scope="module", params=_BACKENDS)
+def mamba2_onnx(request):
+    """``(torch model, ONNX export)`` of a tiny Mamba2, under each exporter."""
+    if request.param == "dynamo" and not _onnxscript_supports_mamba2_dynamo():
+        pytest.skip("dynamo export of Mamba2 needs onnxscript >= 0.7")
+    model = _build_mamba2()
+    input_ids = torch.randint(0, model.config.vocab_size, (1, _SEQ))
+    onnx_model = _export_to_onnx(
+        _Mamba2LogitsWrapper(model),
+        (input_ids,),
+        input_names=["input_ids"],
+        opset_version=18,
+        dynamo=request.param == "dynamo",
+    )
+    if request.param == "dynamo":
+        onnx_model = fix_node_names_pass(onnx_model)
+    return model, onnx_model
+
+
+class TestMamba2Patterns:
+    """The mamba2 table against the real transformers module tree."""
+
+    def test_causal_lm_matches(self):
+        cfg = _config("Mamba2Config", **_TINY_MAMBA2_CONFIG)
+        match = match_module_nodes(
+            _module_nodes(_meta_model("AutoModelForCausalLM", cfg)),
+            get_hf_model_patterns("mamba2"),
+        )
+
+        assert match.decoder_prefix == "backbone"
+        assert [b.layer_id for b in match.blocks] == list(range(_NUM_LAYERS))
+        for block in match.blocks:
+            layer = f"backbone.layers.{block.layer_id}"
+            assert block.input_norm == f"/{layer}.norm/Op"
+            assert block.post_attention_norm is None
+            assert block.linears == {
+                LinearRole.MIXER_IN_PROJ: [f"/{layer}.mixer.in_proj/Op"],
+                LinearRole.MIXER_OUT_PROJ: [f"/{layer}.mixer.out_proj/Op"],
+            }
+        assert match.embed_tokens == "/backbone.embeddings/Op"
+        assert match.final_norm == "/backbone.norm_f/Op"
+        assert match.lm_head == "/lm_head/Op"
+
+    def test_mamba2_is_rejected_by_llama_patterns(self):
+        """No Llama module name occurs in a Mamba2 layer, so nothing matches."""
+        cfg = _config("Mamba2Config", **_TINY_MAMBA2_CONFIG)
+        with pytest.raises(NamedLayerMatchError):
+            match_module_nodes(
+                _module_nodes(_meta_model("AutoModelForCausalLM", cfg)),
+                get_hf_model_patterns("llama"),
+            )
+
+    def test_llama_is_rejected_by_mamba2_patterns(self):
+        cfg = _config("LlamaConfig", **_TINY_TEXT_CONFIG)
+        with pytest.raises(NamedLayerMatchError):
+            match_module_nodes(
+                _module_nodes(_meta_model("AutoModelForCausalLM", cfg)),
+                get_hf_model_patterns("mamba2"),
+            )
+
+    def test_registered_model_type_is_the_hf_config_model_type(self):
+        assert _config("Mamba2Config").model_type == "mamba2"
+
+
+@pytest.mark.skip_on_windows_amd64("torch.onnx export is not supported on Windows")
+class TestAnalyzeMamba2:
+    """analyze_llm_topology on tiny real Mamba2 exports, under both exporters."""
+
+    @pytest.fixture(scope="class")
+    def topology(self, mamba2_onnx):
+        _, onnx_model = mamba2_onnx
+        return analyze_llm_topology(onnx_model, "mamba2")
+
+    def test_every_block_is_a_mamba_block(self, mamba2_onnx, topology):
+        model, _ = mamba2_onnx
+        assert len(topology.blocks) == model.config.num_hidden_layers
+        for i, block in enumerate(topology.blocks):
+            layer = f"backbone.layers.{i}"
+            assert isinstance(block, MambaBlockTopology)
+            assert block.kind is BlockKind.MAMBA
+            assert block.mixer.linears == [
+                _node_prefix(f"{layer}.mixer.in_proj") + "/MatMul"
+            ]
+            assert block.mixer.role(LinearRole.MIXER_IN_PROJ) == block.mixer.linears
+            assert block.mixer_out_proj == [
+                _node_prefix(f"{layer}.mixer.out_proj") + "/MatMul"
+            ]
+
+    def test_attention_fields_are_not_part_of_mamba_blocks(self, topology):
+        for block in topology.blocks:
+            assert not hasattr(block, "qkv")
+            assert not hasattr(block, "gate_up")
+            assert not hasattr(block, "qk_matmul")
+
+    def test_model_level_roles_and_dims(self, mamba2_onnx, topology):
+        model, _ = mamba2_onnx
+        assert topology.embed_tokens == [
+            _node_prefix("backbone.embeddings") + "/Gather"
+        ]
+        assert topology.lm_head == [_node_prefix("lm_head") + "/MatMul"]
+        assert topology.hidden_size == model.config.hidden_size
+        assert topology.head_dim is None  # no KV cache
+
+    def test_active_norms_are_each_blocks_norm_then_norm_f(self, topology):
+        """The mixer's internal gated RMSNorm is not an active norm."""
+        expected = [
+            f"backbone.layers.{i}.norm" for i in range(len(topology.blocks))
+        ] + ["backbone.norm_f"]
+        assert [n.norm for n in topology.active_norms] == [
+            _norm_node(path) for path in expected
+        ]
+        for norm, block in zip(topology.active_norms, topology.blocks):
+            assert norm.downstream_linears == block.mixer.linears
+        assert topology.active_norms[-1].downstream_linears == topology.lm_head
+
+    def test_residual_stream_chains_through_the_blocks(self, topology):
+        norm_input = {n.norm: n.input_tensor for n in topology.active_norms}
+        for i, block in enumerate(topology.blocks):
+            assert (
+                block.residual_input
+                == norm_input[_norm_node(f"backbone.layers.{i}.norm")]
+            )
+            if i + 1 < len(topology.blocks):
+                assert block.residual_output == topology.blocks[i + 1].residual_input
+        assert (
+            topology.blocks[-1].residual_output
+            == norm_input[_norm_node("backbone.norm_f")]
+        )
+
+    def test_ir_resolution_keeps_kind_and_mixer(self, mamba2_onnx, topology):
+        _, onnx_model = mamba2_onnx
+        ir_topology = resolve_topology(topology, onnx_ir.from_proto(onnx_model))
+        for block, ir_block in zip(topology.blocks, ir_topology.blocks):
+            assert isinstance(ir_block, IrMambaBlockTopology)
+            assert ir_block.kind is BlockKind.MAMBA
+            assert [n.name for n in ir_block.mixer.nodes] == block.mixer.linears
+            assert [n.name for n in ir_block.mixer_out_proj] == block.mixer_out_proj
+            assert not hasattr(ir_block, "qkv")
+
+    def test_swapped_mixer_projections_are_rejected(self, mamba2_onnx):
+        """in_proj and out_proj swapped by name: only the cross-checks catch it."""
+        _, onnx_model = mamba2_onnx
+        swapped = _swap_node_names(
+            onnx_model,
+            _node_prefix("backbone.layers.0.mixer.in_proj") + "/MatMul",
+            _node_prefix("backbone.layers.0.mixer.out_proj") + "/MatMul",
+        )
+        with pytest.raises(
+            ValueError, match=r"mixer in_proj by name .* != norm consumers"
+        ):
+            analyze_llm_topology(swapped, "mamba2")
+
+    def test_spinquant_and_adascale_reject_mamba_blocks(self, topology):
+        """Their passes read only attention/MLP fields; a Mamba block must not pass silently."""
+        with pytest.raises(
+            ValueError, match=r"Mamba blocks .* SpinQuant does not support"
+        ):
+            spinquant_validate_topology(topology)
+        with pytest.raises(
+            ValueError, match=r"Mamba blocks .* AdaScale does not support"
+        ):
+            adascale_block_boundaries(topology)

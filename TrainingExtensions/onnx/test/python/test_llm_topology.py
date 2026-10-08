@@ -20,6 +20,7 @@ Broader coverage across real HuggingFace architectures lives in
 """
 
 import copy
+import dataclasses
 import re
 
 import numpy as np
@@ -36,7 +37,11 @@ from aimet_onnx.experimental.llm_topology.block_boundaries import (
     get_decoder_block_boundaries_in_ir,
     resolve_residual_tensor_name,
 )
-from aimet_onnx.experimental.llm_topology.ir_adapter import resolve_topology
+from aimet_onnx.experimental.llm_topology.ir_adapter import (
+    IrAttentionBlockTopology,
+    IrMambaBlockTopology,
+    resolve_topology,
+)
 from aimet_onnx.experimental.llm_topology.layer_roles import (
     LinearRole,
     classify_linear_role,
@@ -56,6 +61,11 @@ from aimet_onnx.experimental.llm_topology.topology import (
     _infer_hidden_size,
     analyze_llm_topology_by_norm_count,
     get_llm_topology,
+)
+from aimet_onnx.experimental.llm_topology.topology_types import (
+    AttentionBlockTopology,
+    BlockKind,
+    MambaBlockTopology,
 )
 
 from .models.test_models import RMSNorm
@@ -86,6 +96,23 @@ _DECODERS = [
     pytest.param(Phi3StyleDecoder, id="phi3"),
     pytest.param(Gemma3StyleDecoder, id="gemma3"),
 ]
+
+
+def test_block_topologies_separate_common_and_kind_specific_fields():
+    for attention_type, mamba_type in (
+        (AttentionBlockTopology, MambaBlockTopology),
+        (IrAttentionBlockTopology, IrMambaBlockTopology),
+    ):
+        common = {"residual_input", "residual_output"}
+        attention = {field.name for field in dataclasses.fields(attention_type)}
+        mamba = {field.name for field in dataclasses.fields(mamba_type)}
+        assert attention & mamba == common
+        assert {"qkv", "gate_up", "o_proj", "down_proj"} <= attention
+        assert {"mixer", "mixer_out_proj"} <= mamba
+        assert attention_type().kind is BlockKind.ATTENTION
+        assert mamba_type().kind is BlockKind.MAMBA
+        with pytest.raises(TypeError, match="kind"):
+            mamba_type(kind=BlockKind.ATTENTION)
 
 
 def _name_topology(model, **kwargs):
@@ -819,6 +846,9 @@ class TestAnalyzeLlmTopology:
         ]
         assert len(by_name.blocks) == len(resolved.blocks)
         for name_block, ir_block in zip(by_name.blocks, resolved.blocks):
+            assert isinstance(name_block, AttentionBlockTopology)
+            assert isinstance(ir_block, IrAttentionBlockTopology)
+            assert not hasattr(ir_block, "mixer")
             assert name_block.qkv.linears == [n.name for n in ir_block.qkv.nodes]
             assert name_block.gate_up.linears == [
                 n.name for n in ir_block.gate_up.nodes

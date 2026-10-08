@@ -33,7 +33,10 @@ from aimet_onnx.experimental.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
     resolve_residual_tensor_name,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import LlmTopology
+from aimet_onnx.experimental.llm_topology.topology_types import (
+    BlockKind,
+    LlmTopology,
+)
 
 from aimet_onnx.experimental.adascale.quantizer import (
     add_qlinear_layers,
@@ -146,6 +149,14 @@ def _block_boundaries_from_topology(topology: LlmTopology) -> List[Tuple[str, st
         raise ValueError(
             "topology contains no decoder blocks, so there is nothing for AdaScale to optimize. "
             "Verify that analyze_llm_topology() was run on the model being optimized."
+        )
+
+    mamba = [
+        i for i, block in enumerate(topology.blocks) if block.kind is BlockKind.MAMBA
+    ]
+    if mamba:
+        raise ValueError(
+            f"topology has Mamba blocks {mamba}, which AdaScale does not support yet."
         )
 
     boundaries = []

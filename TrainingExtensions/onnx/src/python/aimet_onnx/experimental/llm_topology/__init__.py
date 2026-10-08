@@ -25,9 +25,11 @@ from aimet_onnx.experimental.llm_topology.block_boundaries import (
 )
 from aimet_onnx.experimental.llm_topology.ir_adapter import (
     IrActiveNorm,
+    IrAttentionBlockTopology,
     IrBlockTopology,
     IrLinearGroup,
     IrLlmTopology,
+    IrMambaBlockTopology,
     resolve_active_norms,
     resolve_topology,
 )
@@ -46,22 +48,30 @@ from aimet_onnx.experimental.llm_topology.topology import (
     get_llm_topology,
 )
 from aimet_onnx.experimental.llm_topology.topology_types import (
+    AttentionBlockTopology,
+    BlockKind,
     BlockTopology,
     LinearGroup,
     LlmTopology,
+    MambaBlockTopology,
 )
 
 __all__ = [
     "ACTIVE_NORM_MODEL_TYPES",
     "ActiveNorm",
+    "AttentionBlockTopology",
+    "BlockKind",
     "BlockTopology",
     "IrActiveNorm",
+    "IrAttentionBlockTopology",
     "IrBlockTopology",
     "IrLinearGroup",
     "IrLlmTopology",
+    "IrMambaBlockTopology",
     "LinearGroup",
     "LinearRole",
     "LlmTopology",
+    "MambaBlockTopology",
     "analyze_llm_topology",
     "analyze_llm_topology_by_norm_count",
     "classify_linear_role",

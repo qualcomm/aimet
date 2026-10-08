@@ -78,6 +78,7 @@ from aimet_onnx.ir_utils import is_static
 
 from aimet_onnx.experimental.llm_topology import ir_analysis
 from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
+from aimet_onnx.experimental.llm_topology.topology_types import BlockKind
 
 #: Offending nodes listed per problem in an error message.
 _MAX_LISTED = 5
@@ -149,6 +150,13 @@ class HfModelPatterns:
     :param embed_tokens: Token embedding.
     :param final_norm: Norm after the last decoder layer.
     :param lm_head: Vocabulary projection.
+    :param block_kind: What every decoder layer computes. For
+        :attr:`~.topology_types.BlockKind.MAMBA` the attention and MLP fields are
+        unused, and a layer is one ``input_norm`` (the block's only norm) feeding
+        ``mixer_in_proj``, with ``mixer_out_proj`` writing the residual;
+        ``post_attention_norm`` is unused.
+    :param mixer_in_proj: Per-layer Mamba mixer input projection.
+    :param mixer_out_proj: Per-layer Mamba mixer output projection.
     :param language_model: Attribute a VLM keeps its language backbone under
         (``<outer>.language_model``). When the decoder stack sits under it, the
         outer model calls ``embed_tokens`` itself, so an exporter may name that
@@ -175,6 +183,9 @@ class HfModelPatterns:
     final_norm: str = "norm"
     lm_head: str = "lm_head"
     language_model: str = "language_model"
+    block_kind: BlockKind = BlockKind.ATTENTION
+    mixer_in_proj: str = "mixer.in_proj"
+    mixer_out_proj: str = "mixer.out_proj"
 
     def __post_init__(self):
         self._check_fused_excludes_split("qkv_proj", ("q_proj", "k_proj", "v_proj"))
@@ -198,8 +209,23 @@ class HfModelPatterns:
             )
 
     @property
+    def norms(self) -> Dict[str, str]:
+        """Per-layer norm paths, by :class:`BlockMatch` field."""
+        if self.block_kind is BlockKind.MAMBA:
+            return {"input_norm": self.input_norm}
+        return {
+            "input_norm": self.input_norm,
+            "post_attention_norm": self.post_attention_norm,
+        }
+
+    @property
     def linears(self) -> Dict[LinearRole, str]:
         """Per-layer projection paths, by role."""
+        if self.block_kind is BlockKind.MAMBA:
+            return {
+                LinearRole.MIXER_IN_PROJ: self.mixer_in_proj,
+                LinearRole.MIXER_OUT_PROJ: self.mixer_out_proj,
+            }
         if self.qkv_proj is not None:
             attention = {LinearRole.FUSED_QKV: self.qkv_proj}
         else:
@@ -229,14 +255,15 @@ class BlockMatch:
 
     :param layer_id: Decoder layer index read off the module path.
     :param linears: Node(s) of each projection role, in topological order.
-    :param input_norm: The pre-attention norm node.
-    :param post_attention_norm: The pre-MLP norm node.
+    :param input_norm: The block's first norm: pre-attention, or a Mamba block's
+        only norm.
+    :param post_attention_norm: The pre-MLP norm node; ``None`` for a Mamba block.
     """
 
     layer_id: int
     linears: Dict[LinearRole, List[str]]
     input_norm: str
-    post_attention_norm: str
+    post_attention_norm: Optional[str] = None
 
 
 @dataclass
@@ -297,6 +324,18 @@ _PHI3_PATTERNS = HfModelPatterns(
     gate_up_proj="mlp.gate_up_proj",
 )
 
+_MAMBA2_PATTERNS = HfModelPatterns(
+    block_kind=BlockKind.MAMBA,
+    # Mamba2ForCausalLM keeps its stack under ``backbone`` and names the embedding
+    # and final norm ``embeddings`` / ``norm_f``. Each layer's only decoder norm is
+    # ``norm``; the mixer's own gated RMSNorm is internal to the scan, and the
+    # depthwise ``conv1d`` is a weighted Conv that belongs to no topology field.
+    input_norm="norm",
+    embed_tokens="embeddings",
+    final_norm="norm_f",
+    ignored=("mixer.conv1d", "mixer.norm"),
+)
+
 #: Built-in patterns, keyed by HF ``PretrainedConfig.model_type``. For a VLM, key
 #: on the text config's ``model_type``.
 _HF_MODEL_PATTERNS: Dict[str, HfModelPatterns] = {
@@ -304,6 +343,10 @@ _HF_MODEL_PATTERNS: Dict[str, HfModelPatterns] = {
     # Gemma 3 text models, and the text backbone of Gemma 3 VLMs.
     "gemma3_text": _GEMMA3_PATTERNS,
     "llama": _LLAMA_PATTERNS,
+    # Mamba2 in transformers format (Mamba2ForCausalLM), e.g. Mamba-Codestral.
+    # Original mamba_ssm checkpoints (e.g. state-spaces/mamba2-*) must be
+    # converted to this format first.
+    "mamba2": _MAMBA2_PATTERNS,
     # Phi-3, Phi-3.5 and Phi-4 (incl. -mini) text models.
     "phi3": _PHI3_PATTERNS,
     # Qwen2 and Qwen2.5. The q/k/v bias is a separate Add, which is not matched.
@@ -433,10 +476,7 @@ def match_module_nodes(
     )
     per_layer_fields = {
         ModuleKind.LINEAR: {path: role for role, path in patterns.linears.items()},
-        ModuleKind.NORM: {
-            patterns.input_norm: "input_norm",
-            patterns.post_attention_norm: "post_attention_norm",
-        },
+        ModuleKind.NORM: {path: key for key, path in patterns.norms.items()},
     }
 
     # decoder prefix -> layer id -> field -> node names
@@ -509,7 +549,7 @@ def match_module_nodes(
                 layer_id=layer_id,
                 linears={role: fields[role] for role in patterns.linears},
                 input_norm=fields["input_norm"][0],
-                post_attention_norm=fields["post_attention_norm"][0],
+                post_attention_norm=fields.get("post_attention_norm", [None])[0],
             )
         )
     return result
@@ -607,8 +647,7 @@ def _validate_layers(
 
     expected = {
         **{role: role.value for role in patterns.linears},
-        "input_norm": patterns.input_norm,
-        "post_attention_norm": patterns.post_attention_norm,
+        **patterns.norms,
     }
     for layer_id in ids:
         for key, label in expected.items():
@@ -624,11 +663,7 @@ def _leaf_names(patterns: HfModelPatterns, kind: ModuleKind) -> set:
     """Last path component of every table entry of ``kind``."""
     paths = {
         ModuleKind.LINEAR: [*patterns.linears.values(), patterns.lm_head],
-        ModuleKind.NORM: [
-            patterns.input_norm,
-            patterns.post_attention_norm,
-            patterns.final_norm,
-        ],
+        ModuleKind.NORM: [*patterns.norms.values(), patterns.final_norm],
         ModuleKind.EMBEDDING: [patterns.embed_tokens],
     }[kind]
     return {path.rsplit(".", 1)[-1] for path in paths}
