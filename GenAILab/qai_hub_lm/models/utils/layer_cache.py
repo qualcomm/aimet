@@ -250,10 +250,8 @@ def cache_state_names(
     for desc in layer_cache_descriptors:
         i = desc.layer_idx
         if desc.attention_type == AttentionType.LINEAR:
-            names += [
-                f"recurrent_state_k_{i}_{suffix}",
-                f"recurrent_state_v_{i}_{suffix}",
-            ]
+            # Genie finds linear-attention state by these exact prefixes.
+            names += [f"conv_state_{i}_{suffix}", f"recurrent_state_{i}_{suffix}"]
         else:
             names += [f"past_key_{i}_{suffix}", f"past_value_{i}_{suffix}"]
     return names

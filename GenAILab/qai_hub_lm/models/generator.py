@@ -633,10 +633,8 @@ class Generator(GenerationMixin, torch.nn.Module):
         for i, desc in enumerate(layer_cache_descriptors):
             li = desc.layer_idx
             if desc.attention_type == AttentionType.LINEAR:
-                prepared[f"recurrent_state_k_{li}_in"] = padded_past_key_values[i * 2]
-                prepared[f"recurrent_state_v_{li}_in"] = padded_past_key_values[
-                    i * 2 + 1
-                ]
+                prepared[f"conv_state_{li}_in"] = padded_past_key_values[i * 2]
+                prepared[f"recurrent_state_{li}_in"] = padded_past_key_values[i * 2 + 1]
             else:
                 prepared[f"past_key_{li}_in"] = padded_past_key_values[i * 2]
                 prepared[f"past_value_{li}_in"] = padded_past_key_values[i * 2 + 1]
@@ -655,7 +653,7 @@ class Generator(GenerationMixin, torch.nn.Module):
         for desc in layer_cache_descriptors:
             i = desc.layer_idx
             if desc.attention_type == AttentionType.LINEAR:
-                names += [f"recurrent_state_k_{i}_out", f"recurrent_state_v_{i}_out"]
+                names += [f"conv_state_{i}_out", f"recurrent_state_{i}_out"]
             else:
                 names += [f"past_key_{i}_out", f"past_value_{i}_out"]
         return names

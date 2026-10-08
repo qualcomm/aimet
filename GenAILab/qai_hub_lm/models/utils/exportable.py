@@ -28,6 +28,7 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
         "position_ids",
         "past_key_",
         "past_value_",
+        "conv_state_",
         "recurrent_state_",
     )
 
@@ -211,7 +212,9 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
         kv_pairs = [
             v
             for k, v in inputs.items()
-            if k.startswith(("past_key_", "past_value_", "recurrent_state_"))
+            if k.startswith(
+                ("past_key_", "past_value_", "conv_state_", "recurrent_state_")
+            )
         ]
         extra_kwargs = {k: v for k, v in inputs.items() if k in self.extra_input_names}
         extra_kwargs = self._collect_indexed_extras(extra_kwargs)

@@ -587,10 +587,10 @@ class TestPatchedModelForward:
         for desc in descriptors:
             i = desc.layer_idx
             if desc.attention_type == AttentionType.LINEAR:
-                inputs[f"recurrent_state_k_{i}_in"] = torch.zeros(
+                inputs[f"conv_state_{i}_in"] = torch.zeros(
                     1, desc.conv_dim, desc.conv_kernel_size
                 )
-                inputs[f"recurrent_state_v_{i}_in"] = torch.zeros(
+                inputs[f"recurrent_state_{i}_in"] = torch.zeros(
                     1,
                     desc.linear_num_v_heads,
                     desc.linear_head_k_dim,
