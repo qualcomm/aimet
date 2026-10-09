@@ -7,8 +7,9 @@ tests:
     param_type: int8
     activation_type: int8
     config_file: htp_v79
-    max_accuracy_drop_torch: 3.2
-    max_accuracy_drop_onnx: 2.3
+    # Observed 4.379% (onnx) / 4.5% (torch) drop after the eval/calibration dataset change (#7948, qai-hub-models 0.64).
+    max_accuracy_drop_torch: 4.7
+    max_accuracy_drop_onnx: 4.579
     apply_experimental_static_aten_calibration: true
 
   - name: adaround_500

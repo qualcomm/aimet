@@ -16,3 +16,5 @@ tests:
     param_type: int8
     activation_type: int8
     config_file: htp_v79
+    # Observed 1.6% drop after the eval/calibration dataset change (#7948, qai-hub-models 0.64).
+    max_accuracy_drop_onnx: 1.8

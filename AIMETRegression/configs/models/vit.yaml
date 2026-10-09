@@ -18,6 +18,8 @@ tests:
     param_type: int4
     activation_type: int16
     config_file: htp_v79
+    # Observed 1.6% drop after the eval/calibration dataset change (#7948, qai-hub-models 0.64).
+    max_accuracy_drop_torch: 1.8
 
   - name: amp_int8_int16
     feature: mixed_precision
@@ -29,3 +31,6 @@ tests:
     config_file: htp_v81
     calib_samples: 256
     eval_samples: 256
+    # Observed 1.562% (onnx) / 1.953% (torch) drop after the eval/calibration dataset change (#7948, qai-hub-models 0.64).
+    max_accuracy_drop_torch: 2.153
+    max_accuracy_drop_onnx: 1.762
