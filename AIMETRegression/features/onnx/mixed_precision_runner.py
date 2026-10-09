@@ -52,6 +52,7 @@ from aimet_onnx.mixed_precision import choose_mixed_precision
 from aimet_onnx.common.amp.utils import AMPSearchAlgo
 from aimet_onnx.common.defs import CallbackFunc, QuantizationDataType
 
+from AIMETRegression.evaluation.calibration import run_onnx_calibration
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.onnx._common import (
     build_quantsim,
@@ -145,6 +146,7 @@ def run_mixed_precision(
     fp32_onnx_path: str,
     model: Any,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Optional[Path] = None,
 ) -> Tuple[str, float, Dict[str, str], str]:
@@ -259,7 +261,9 @@ def run_mixed_precision(
 
     def calibration_callback(sess: ort.InferenceSession, _unused=None):
         """Forward pass callback for AIMET calibration."""
-        evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=calib_samples)
+        run_onnx_calibration(
+            sess, model, calib_dataset_cls or dataset_cls, calib_samples
+        )
 
     sim.compute_encodings(forward_pass_callback=calibration_callback)
 
@@ -299,7 +303,9 @@ def run_mixed_precision(
 
     def forward_pass_callback(sess: ort.InferenceSession, _unused=None):
         """Forward pass callback for AIMET mixed precision calibration."""
-        evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=calib_samples)
+        run_onnx_calibration(
+            sess, model, calib_dataset_cls or dataset_cls, calib_samples
+        )
 
     forward_pass_cb = CallbackFunc(forward_pass_callback, func_callback_args=None)
 

@@ -50,6 +50,7 @@ from qai_hub_models.datasets import BaseDataset
 from qai_hub_models.utils.evaluate.helpers import evaluate_session_on_dataset
 import aimet_onnx  # For top-level AdaRound API (AIMET 2.15+)
 
+from AIMETRegression.evaluation.calibration import run_onnx_calibration
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.onnx._common import (
     build_quantsim,
@@ -116,7 +117,7 @@ def _capture_unlabeled_feeds(
 
     try:
         # Run evaluation to trigger data capture
-        evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=num_samples)
+        run_onnx_calibration(sess, model, dataset_cls, num_samples)
     finally:
         # Always restore original method
         sess.run = original_run
@@ -129,6 +130,7 @@ def run_adaround(
     fp32_onnx_path: str,
     model: Any,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Optional[Path] = None,
 ) -> Tuple[str, float, Dict[str, str], str]:
@@ -238,7 +240,9 @@ def run_adaround(
 
     def calibration_callback(sess: ort.InferenceSession, _unused=None):
         """Forward pass for encodings calibration."""
-        evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=calib_samples)
+        run_onnx_calibration(
+            sess, model, calib_dataset_cls or dataset_cls, calib_samples
+        )
 
     # Compute initial encodings (before AdaRound)
     sim.compute_encodings(forward_pass_callback=calibration_callback)
@@ -249,7 +253,10 @@ def run_adaround(
     # Capture real input feeds for AdaRound optimization
     # These are unlabeled - AdaRound only needs inputs, not labels
     unlabeled_feeds = _capture_unlabeled_feeds(
-        sim.session, model, dataset_cls, num_samples=adaround_samples
+        sim.session,
+        model,
+        calib_dataset_cls or dataset_cls,
+        num_samples=adaround_samples,
     )
 
     print(f"[AdaRound] Captured {len(unlabeled_feeds)} input feeds")

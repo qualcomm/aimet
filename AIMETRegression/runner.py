@@ -43,7 +43,12 @@ from qai_hub import Device
 from qai_hub_models.utils.input_spec import make_torch_inputs
 from tabulate import tabulate
 
-from AIMETRegression.models.ai_hub_loader import load_model_data, resolve_dataset_cls
+from AIMETRegression.models.ai_hub_loader import (
+    load_model_data,
+    resolve_calibration_dataset_cls,
+    resolve_eval_dataset_cls,
+)
+from AIMETRegression.evaluation.calibration import instantiate_calibration_dataset
 from AIMETRegression.evaluation.eval_onnx import eval_onnx_model
 from AIMETRegression.evaluation.eval_torch import eval_pytorch_model
 from AIMETRegression.evaluation.eval_qnn import (
@@ -408,24 +413,30 @@ def run_single_config(
 
     print(f"\n[Step 1] Loading model and dataset from QAI Hub Models...")
     model, _dataset, input_spec, _ = load_model_data(model_name)
-    dataset_cls = resolve_dataset_cls(model)
-    print(f"Dataset: {dataset_cls.dataset_name()}")
+    dataset_cls = resolve_eval_dataset_cls(model)
+    calib_dataset_cls = resolve_calibration_dataset_cls(model)
+    print(f"Eval dataset: {dataset_cls.dataset_name()}")
+    print(f"Calibration dataset: {calib_dataset_cls.dataset_name()}")
 
     # Clamp sample counts to dataset size so profiles with large values
     # (e.g., weekly eval_samples=3925) don't crash on smaller datasets
     # (e.g., pascal_voc=1449, ade20k=2000).
-    dataset_len = len(_dataset)
-    _SAMPLE_KEYS = [
-        "eval_samples",
-        "calib_samples",
-        "metrics_samples",
-        "qnn_eval_samples",
-    ]
-    for key in _SAMPLE_KEYS:
+    eval_len = len(_dataset)
+    if calib_dataset_cls is dataset_cls:
+        calib_len = eval_len
+    else:
+        calib_len = len(instantiate_calibration_dataset(model, calib_dataset_cls))
+    _SAMPLE_KEYS = {
+        "eval_samples": eval_len,
+        "calib_samples": calib_len,
+        "metrics_samples": eval_len,
+        "qnn_eval_samples": eval_len,
+    }
+    for key, limit in _SAMPLE_KEYS.items():
         val = int(config.get(key, 0))
-        if val > dataset_len:
-            print(f"[Config] Clamping {key} from {val} to {dataset_len} (dataset size)")
-            config[key] = dataset_len
+        if val > limit:
+            print(f"[Config] Clamping {key} from {val} to {limit} (dataset size)")
+            config[key] = limit
 
     config["_export_dir"] = str(model_artifacts_dir)
 
@@ -451,6 +462,7 @@ def run_single_config(
             fp32_onnx_path=str(fp32_path),
             model=model,
             dataset_cls=dataset_cls,
+            calib_dataset_cls=calib_dataset_cls,
             config=config,
         )
 
@@ -467,6 +479,7 @@ def run_single_config(
             model=model,
             input_spec=input_spec,
             dataset_cls=dataset_cls,
+            calib_dataset_cls=calib_dataset_cls,
             config=config,
         )
         static_aten_acc = stats.pop("static_aten_acc", None)

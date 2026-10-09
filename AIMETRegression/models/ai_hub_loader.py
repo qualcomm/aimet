@@ -92,46 +92,38 @@ def _pick_model_cls(module) -> type:
     )
 
 
-def resolve_dataset_cls(model: BaseModel) -> type[BaseDataset]:
+def resolve_eval_dataset_cls(model: BaseModel) -> type[BaseDataset]:
     """
-    Resolve the dataset class a model should be quantized and evaluated on.
+    Resolve the labeled dataset class used to measure model accuracy.
 
-    QAI Hub Models expose their datasets as classes (QAIHM v0.55+):
-    - get_calibration_dataset_cls(): dataset class for quantization calibration
-    - get_eval_dataset_classes(): dataset classes the model can be evaluated on
-
-    Args:
-        model: QAI Hub model instance
-
-    Returns:
-        Dataset class (subclass of BaseDataset)
+    Uses the first entry of get_eval_dataset_classes() (QAIHM v0.55+). The
+    calibration dataset is deliberately not considered: it may be unlabeled
+    (e.g. OpenImagesV7Dataset) and does not support the VAL split.
 
     Raises:
-        RuntimeError: If the model declares neither a calibration nor an
-            evaluation dataset class.
-
-    Resolution Order:
-        1. Calibration dataset class (most specific to quantization)
-        2. First entry in the eval dataset classes
-        3. Raise error if neither is declared
+        RuntimeError: If the model declares no evaluation dataset class.
     """
-    # First choice: the calibration dataset class, the dataset the model
-    # author designated for quantization. May be None.
-    calibration_cls = model.get_calibration_dataset_cls()
-    if calibration_cls is not None:
-        return calibration_cls
-
-    # Fallback: the first evaluation dataset class, for models that declare
-    # only evaluation datasets and no calibration-specific one.
     eval_classes = model.get_eval_dataset_classes()
     if eval_classes:
         return eval_classes[0]
 
     raise RuntimeError(
-        f"Unable to resolve a dataset class from model {type(model).__name__}. "
-        f"Model must declare either 'get_calibration_dataset_cls' or "
-        f"'get_eval_dataset_classes'."
+        f"Unable to resolve an eval dataset class from model {type(model).__name__}. "
+        f"Model must declare 'get_eval_dataset_classes'."
     )
+
+
+def resolve_calibration_dataset_cls(model: BaseModel) -> type[BaseDataset]:
+    """
+    Resolve the dataset class used to calibrate quantization encodings.
+
+    Uses get_calibration_dataset_cls() when the model declares one, otherwise
+    falls back to the eval dataset class.
+    """
+    calibration_cls = model.get_calibration_dataset_cls()
+    if calibration_cls is not None:
+        return calibration_cls
+    return resolve_eval_dataset_cls(model)
 
 
 # ==================== Main API ====================
@@ -198,7 +190,7 @@ def load_model_data(model_name: str) -> Tuple[BaseModel, Any, dict, Any]:
         model: BaseModel = model_cls.from_pretrained()
 
         # ============ Step 4: Resolve Dataset ============
-        dataset_cls = resolve_dataset_cls(model)
+        dataset_cls = resolve_eval_dataset_cls(model)
 
         # ============ Step 5: Get Input Specification ============
         # Input spec defines the expected input format (shape, dtype, etc.).

@@ -37,6 +37,7 @@ from aimet_onnx import analyze_per_layer_sensitivity, int4, int8, int16, float16
 from aimet_onnx.lite_mp import flip_layers_to_higher_precision
 from aimet_onnx.utils import make_psnr_eval_fn
 
+from AIMETRegression.evaluation.calibration import run_onnx_calibration
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.onnx._common import (
     build_quantsim,
@@ -60,7 +61,7 @@ def _collect_inputs(
         return run(output_names, input_feed, *args, **kwargs)
 
     sess.run = wrapper
-    evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=num_samples)
+    run_onnx_calibration(sess, model, dataset_cls, num_samples)
     sess.run = run
     return inputs
 
@@ -121,6 +122,7 @@ def run_lite_mp(
     fp32_onnx_path: str,
     model: Any,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Optional[Path] = None,
 ) -> Tuple[str, float, Dict[str, str], str]:
@@ -249,7 +251,9 @@ def run_lite_mp(
 
     def calibration_callback(sess: ort.InferenceSession, _unused=None):
         """Forward pass callback for AIMET calibration."""
-        evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=calib_samples)
+        run_onnx_calibration(
+            sess, model, calib_dataset_cls or dataset_cls, calib_samples
+        )
 
     # Compute initial encodings for INT8 quantization
     sim.compute_encodings(forward_pass_callback=calibration_callback)
@@ -257,7 +261,10 @@ def run_lite_mp(
     # ============ Step 3: Sensitivity Analysis ============
     print(f"[Lite-MP] Analyzing per-layer sensitivity...")
     inputs = _collect_inputs(
-        sim.session, model, dataset_cls, num_samples=lite_mp_samples
+        sim.session,
+        model,
+        calib_dataset_cls or dataset_cls,
+        num_samples=lite_mp_samples,
     )
     accuracy_evaluator = make_psnr_eval_fn(fp32_sess, inputs, output_indices=None)
 

@@ -39,6 +39,10 @@ from aimet_torch.adaround.adaround_weight import Adaround, AdaroundParameters
 from aimet_torch.batch_norm_fold import fold_all_batch_norms
 from aimet_torch.model_preparer import prepare_model
 
+from AIMETRegression.evaluation.calibration import (
+    get_calibration_dataloader,
+    run_torch_calibration,
+)
 from AIMETRegression.evaluation.eval_torch import eval_pytorch_model, load_torch_dataset
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.torch._common import (
@@ -60,6 +64,7 @@ def run_adaround(
     model: Any,
     input_spec: Dict,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Optional[Path] = None,
 ) -> Tuple[Path, float, Dict[str, str], str]:
@@ -183,7 +188,7 @@ def run_adaround(
 
     adaround_dataloader = create_calibration_dataloader(
         model,
-        dataset_cls,
+        calib_dataset_cls or dataset_cls,
         num_samples=adaround_samples,
         batch_size=1,
     )
@@ -287,17 +292,14 @@ def run_adaround(
     _dataset = load_torch_dataset(model, dataset_cls)
 
     # Compute activation encodings (and param encodings if not loaded)
+    calib_loader_for_encodings = get_calibration_dataloader(
+        model, calib_dataset_cls or dataset_cls, calib_samples
+    )
+
     def calibration_callback(model_to_calibrate: torch.nn.Module, args):
         """Forward pass callback for encoding calibration."""
         model_to_calibrate.eval()
-        with torch.no_grad():
-            eval_pytorch_model(
-                model_to_calibrate,
-                model,
-                dataset_cls,
-                num_samples=args,
-                dataset=_dataset,
-            )
+        run_torch_calibration(model_to_calibrate, calib_loader_for_encodings)
 
     sim.model.eval()
     sim.compute_encodings(

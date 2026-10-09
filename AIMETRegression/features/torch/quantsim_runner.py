@@ -18,6 +18,10 @@ import torch
 from torch.export import ExportedProgram
 from qai_hub_models.datasets import BaseDataset
 
+from AIMETRegression.evaluation.calibration import (
+    get_calibration_dataloader,
+    run_torch_calibration,
+)
 from AIMETRegression.evaluation.eval_torch import eval_pytorch_model, load_torch_dataset
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.torch._common import (
@@ -39,6 +43,7 @@ def run_quantsim(
     model: Any,
     input_spec: Dict,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Path = None,
 ) -> Tuple[Path, float, Dict[str, str], str]:
@@ -132,6 +137,10 @@ def run_quantsim(
         f"[AIMET Torch QuantSim] Calibrating encodings with {calib_samples} samples..."
     )
 
+    calib_loader = get_calibration_dataloader(
+        model, calib_dataset_cls or dataset_cls, calib_samples
+    )
+
     def calibration_callback(model_to_calibrate: torch.nn.Module):
         """Forward pass callback for encoding calibration."""
         try:
@@ -141,14 +150,7 @@ def run_quantsim(
             # doesn't support .eval() method yet
             pass
 
-        with torch.no_grad():
-            eval_pytorch_model(
-                model_to_calibrate,
-                model,
-                dataset_cls,
-                num_samples=calib_samples,
-                dataset=_dataset,
-            )
+        run_torch_calibration(model_to_calibrate, calib_loader)
 
     sim.model.eval()
     sim.compute_encodings(calibration_callback)

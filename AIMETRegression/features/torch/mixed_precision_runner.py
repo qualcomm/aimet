@@ -40,6 +40,10 @@ import torch
 import torch.nn as nn
 from qai_hub_models.datasets import BaseDataset
 
+from AIMETRegression.evaluation.calibration import (
+    get_calibration_dataloader,
+    run_torch_calibration,
+)
 from AIMETRegression.evaluation.eval_torch import eval_pytorch_model, load_torch_dataset
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.torch._common import (
@@ -326,6 +330,7 @@ def run_mixed_precision(
     model: Any,
     input_spec: Dict,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Path = None,
 ) -> Tuple[Path, float, Dict[str, str], str]:
@@ -425,7 +430,7 @@ def run_mixed_precision(
         f"[AIMET Torch MP] Building calibration dataloader ({calib_samples} samples)..."
     )
     calib_loader = create_calibration_dataloader(
-        model, dataset_cls, calib_samples, batch_size
+        model, calib_dataset_cls or dataset_cls, calib_samples, batch_size
     )
 
     # Load dataset once — reused by calibration, eval, and metrics calls
@@ -434,17 +439,14 @@ def run_mixed_precision(
     # ============ Initial Calibration ============
     print(f"[AIMET Torch MP] Calibrating encodings with {calib_samples} samples...")
 
+    calib_loader_for_encodings = get_calibration_dataloader(
+        model, calib_dataset_cls or dataset_cls, calib_samples
+    )
+
     def calibration_callback(model_to_calibrate: torch.nn.Module, args):
         """Forward pass callback for encoding calibration."""
         model_to_calibrate.eval()
-        with torch.no_grad():
-            eval_pytorch_model(
-                model_to_calibrate,
-                model,
-                dataset_cls,
-                num_samples=args,
-                dataset=_dataset,
-            )
+        run_torch_calibration(model_to_calibrate, calib_loader_for_encodings)
 
     sim.model.eval()
     sim.compute_encodings(

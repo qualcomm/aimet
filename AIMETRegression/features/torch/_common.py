@@ -40,7 +40,8 @@ from aimet_torch.model_preparer import prepare_model
 from aimet_torch.batch_norm_fold import fold_all_batch_norms
 import aimet_torch
 from torch.utils.data import DataLoader
-from qai_hub_models.datasets import BaseDataset, DatasetSplit, instantiate_dataset
+from qai_hub_models.datasets import BaseDataset
+from AIMETRegression.evaluation.calibration import instantiate_calibration_dataset
 from qai_hub_models.utils.evaluate.helpers import get_deterministic_sample
 from aimet_torch.nn import QuantizationMixin
 
@@ -498,7 +499,8 @@ def create_calibration_dataloader(
     Returns:
             DataLoader yielding (input_tensor, label) tuples
     """
-    dataset = instantiate_dataset(dataset_cls, DatasetSplit.VAL)
+    dataset = instantiate_calibration_dataset(qai_hub_model, dataset_cls)
+    num_samples = min(num_samples, len(dataset))
 
     sampler = get_deterministic_sample(
         dataset, num_samples=num_samples, samples_per_job=1

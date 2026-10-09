@@ -27,6 +27,7 @@ import onnxruntime as ort
 from qai_hub_models.datasets import BaseDataset
 from qai_hub_models.utils.evaluate.helpers import evaluate_session_on_dataset
 
+from AIMETRegression.evaluation.calibration import run_onnx_calibration
 from AIMETRegression.evaluation.metrics_utils import measure_inference_metrics
 from AIMETRegression.features.onnx._common import (
     build_quantsim,
@@ -45,6 +46,7 @@ def run_quantsim(
     fp32_onnx_path: str,
     model: Any,
     dataset_cls: type[BaseDataset],
+    calib_dataset_cls: type[BaseDataset] | None = None,
     config: Dict[str, Any],
     export_dir: Optional[Path] = None,
 ) -> Tuple[str, float, Dict[str, str], str]:
@@ -136,7 +138,9 @@ def run_quantsim(
         Runs representative data through the model to determine optimal
         quantization parameters (scale/zero-point) for each layer.
         """
-        evaluate_session_on_dataset(sess, model, dataset_cls, num_samples=calib_samples)
+        run_onnx_calibration(
+            sess, model, calib_dataset_cls or dataset_cls, calib_samples
+        )
 
     # Compute optimal quantization encodings
     sim.compute_encodings(forward_pass_callback=calibration_callback)
