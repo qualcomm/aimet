@@ -13,8 +13,8 @@ from typing import Iterable, List
 
 import onnx_ir
 
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology.norm_detection import is_affine_rms_norm
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology.norm_detection import is_affine_rms_norm
 
 
 def find_post_writing_norms(

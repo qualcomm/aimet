@@ -1,6 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""llm configurator subpackage"""
+"""Deprecated alias of :mod:`aimet_onnx.llm_configurator`, to be removed in AIMET 2.45"""
 
-from .llm_configurator import _apply_int8_kv_cache_tying_and_lm_head
+import sys
+
+from .._deprecation import _alias_deprecated_package
+
+sys.modules[__name__] = _alias_deprecated_package(
+    __name__, "aimet_onnx.llm_configurator", removal_version="2.45"
+)

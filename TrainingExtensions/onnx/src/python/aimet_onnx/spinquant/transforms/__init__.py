@@ -7,13 +7,13 @@ These helpers are agnostic of which rotation (R1/R2/R3) is being applied — the
 take an arbitrary ``R`` matrix and the storage metadata for an op and rotate
 the corresponding initializer in-place. Pass-specific logic (which ops to
 rotate, what hidden dim to use, validation) lives in
-:mod:`aimet_onnx.experimental.spinquant.passes`.
+:mod:`aimet_onnx.spinquant.passes`.
 """
 
-from aimet_onnx.experimental.spinquant.transforms.norm_fusion import (
+from aimet_onnx.spinquant.transforms.norm_fusion import (
     fuse_norm_layers_into_linears,
 )
-from aimet_onnx.experimental.spinquant.transforms.rotation_primitives import (
+from aimet_onnx.spinquant.transforms.rotation_primitives import (
     apply_transform,
     block_diag_repeat,
     hadamard_rotation_matrix,

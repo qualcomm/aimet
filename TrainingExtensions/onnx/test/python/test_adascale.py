@@ -16,12 +16,12 @@ import pytest
 
 import aimet_onnx
 from aimet_onnx import QuantizationSimModel
-from aimet_onnx.experimental.adascale.adascale_optimizer import (
+from aimet_onnx.adascale.adascale_optimizer import (
     AdaScale,
     adascale_model_config_dict,
 )
 
-from aimet_onnx.experimental.adascale.quantizer import (
+from aimet_onnx.adascale.quantizer import (
     add_qlinear_layers,
     QuantizedLinear,
     AdaScaleLinearWeightQdq,
@@ -31,11 +31,11 @@ from aimet_onnx.experimental.adascale.quantizer import (
     replace_with_adascale_quantizers,
     QuantizedConv2d,
 )
-from aimet_onnx.experimental.llm_topology import (
+from aimet_onnx.llm_topology import (
     analyze_llm_topology,
     LlmTopology,
 )
-from aimet_onnx.experimental.adascale.model_converter import (
+from aimet_onnx.adascale.model_converter import (
     required_extra_block_inputs,
     _retarget_fp16_casts_to_bf16,
     upcast_fp16_block_to_bf16,
@@ -817,7 +817,7 @@ class TestAdascaleQuantizer:
     @pytest.mark.parametrize("seq_len", [8, 32, 2048])
     def test_mse_loss_fn(self, seq_len):
         """lp_loss equals MSE scaled by the sequence length S (dim 1)."""
-        from aimet_onnx.experimental.adascale import adascale_optimizer as opt
+        from aimet_onnx.adascale import adascale_optimizer as opt
 
         torch.manual_seed(0)
         fp_out = torch.rand(4, seq_len, 16)  # [B, S, H]
@@ -832,7 +832,7 @@ class TestAdascaleQuantizer:
     def test_block_level_adascale_early_stopping(self):
         """Integration test for the _EARLY_STOPPING flag using the real factory and
         _EarlyStopping."""
-        from aimet_onnx.experimental.adascale import adascale_optimizer as opt
+        from aimet_onnx.adascale import adascale_optimizer as opt
         from aimet_onnx.common.early_stopping import _EarlyStoppingConfig
 
         model = ModelWithConsecutiveLinearBlocks().eval()
@@ -1391,7 +1391,7 @@ def test_adascale_e2e_fp16_qwen3_bf16_upcast(
         get_model_checkpoint_path,
     )
     import random
-    from aimet_onnx.experimental.adascale import (
+    from aimet_onnx.adascale import (
         adascale_optimizer as adascale_optimizer_module,
     )
 
@@ -1522,7 +1522,7 @@ def test_qwen_adascale_e2e_ppl(add_genai_tests_path, small_model=False):
     from unittest.mock import patch
 
     with patch(
-        "aimet_onnx.experimental.adascale.adascale_optimizer._DEBUG_NUM_PARTIAL_ITERATIONS",
+        "aimet_onnx.adascale.adascale_optimizer._DEBUG_NUM_PARTIAL_ITERATIONS",
         new=2,
     ):
         from transformers import AutoConfig

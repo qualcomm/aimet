@@ -7,7 +7,7 @@ import math
 
 import torch
 from aimet_onnx.common.quantsim import _get_minimum_scale
-from aimet_onnx.experimental.adascale.utils import (
+from aimet_onnx.adascale.utils import (
     derive_symmetric_qmin_qmax,
     validate_arguments,
     is_numerically_stable,

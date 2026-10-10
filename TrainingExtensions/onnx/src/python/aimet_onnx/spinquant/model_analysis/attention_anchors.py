@@ -40,7 +40,7 @@ from aimet_onnx.common.onnx._utils import _is_grid_preserving_op
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.ir_utils import static_tensor
 
-from aimet_onnx.experimental.llm_topology.ir_adapter import (
+from aimet_onnx.llm_topology.ir_adapter import (
     IrLlmTopology,
 )
 

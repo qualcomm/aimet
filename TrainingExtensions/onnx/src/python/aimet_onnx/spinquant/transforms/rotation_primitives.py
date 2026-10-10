@@ -30,7 +30,7 @@ from aimet_onnx.common.hadamard import get_hadamard_matrix
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.ir_utils import set_static_tensor, static_tensor
 
-from aimet_onnx.experimental.llm_topology.ir_analysis import (
+from aimet_onnx.llm_topology.ir_analysis import (
     get_bias_value,
     get_weight_value,
 )

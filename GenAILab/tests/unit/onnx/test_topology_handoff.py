@@ -99,7 +99,7 @@ class TestRecipesConsumeSuppliedTopology:
         generator.config.model_type = "llama"
 
         with patch(
-            "aimet_onnx.experimental.llm_topology.topology.analyze_llm_topology"
+            "aimet_onnx.llm_topology.topology.analyze_llm_topology"
         ) as mock_analyze:
             with patch("GenAILab.bench.onnx.quant_recipes.apply_spinquant"):
                 SpinQuant.apply(float_model, enable_r1=True, topology=topology)

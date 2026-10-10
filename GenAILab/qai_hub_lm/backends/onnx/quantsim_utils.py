@@ -14,7 +14,7 @@ from aimet_onnx.quantsim import (
     set_lpbq_for_params,
 )
 
-from aimet_onnx.experimental.llm_configurator.llm_configurator import (
+from aimet_onnx.llm_configurator.llm_configurator import (
     _tie_quantizers_for_kv_cache,
 )
 

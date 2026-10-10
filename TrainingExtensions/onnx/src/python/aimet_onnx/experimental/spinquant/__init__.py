@@ -1,20 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from aimet_onnx.experimental.spinquant.passes import (
-    R1RotationPass,
-    R2RotationPass,
-    RotationPass,
-    SpinquantContext,
-)
-from aimet_onnx.experimental.spinquant.spinquant import apply_spinquant
-from aimet_onnx.experimental.spinquant.transforms import is_online_rotation_op
+"""Deprecated alias of :mod:`aimet_onnx.spinquant`, to be removed in AIMET 2.45"""
 
-__all__ = [
-    "R1RotationPass",
-    "R2RotationPass",
-    "RotationPass",
-    "SpinquantContext",
-    "apply_spinquant",
-    "is_online_rotation_op",
-]
+import sys
+
+from .._deprecation import _alias_deprecated_package
+
+sys.modules[__name__] = _alias_deprecated_package(
+    __name__, "aimet_onnx.spinquant", removal_version="2.45"
+)

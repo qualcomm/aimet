@@ -4,7 +4,7 @@
 from onnx.utils import extract_model
 import onnxruntime as ort
 
-from aimet_onnx.experimental.adascale.model_converter import (
+from aimet_onnx.adascale.model_converter import (
     get_pt_block,
     copy_pt_weights_to_onnx,
 )
@@ -19,7 +19,7 @@ import numpy as np
 from dataclasses import dataclass
 import copy
 from aimet_onnx.common.utils import compute_psnr
-from aimet_onnx.experimental.llm_topology.block_boundaries import (
+from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
 )
 from aimet_onnx.common.utils import AimetLogger

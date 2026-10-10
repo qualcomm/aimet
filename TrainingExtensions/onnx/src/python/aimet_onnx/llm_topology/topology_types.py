@@ -20,11 +20,11 @@ from typing import ClassVar, Dict, List, Optional, Pattern, Union
 
 from aimet_onnx.common.utils import AimetLogger
 
-from aimet_onnx.experimental.llm_topology.layer_roles import (
+from aimet_onnx.llm_topology.layer_roles import (
     LinearRole,
     classify_linear_role,
 )
-from aimet_onnx.experimental.llm_topology.norm_detection import ActiveNorm
+from aimet_onnx.llm_topology.norm_detection import ActiveNorm
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LlmTopology)
 

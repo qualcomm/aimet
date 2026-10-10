@@ -19,8 +19,8 @@ import onnx_ir
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.utils import ModelProto
 
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology.norm_detection import (
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology.norm_detection import (
     ActiveNorm,
     find_active_norms_in_ir,
 )

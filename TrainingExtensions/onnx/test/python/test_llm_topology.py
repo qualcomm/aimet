@@ -1,7 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Unit tests for the ``aimet_onnx.experimental.llm_topology`` package.
+"""Unit tests for the ``aimet_onnx.llm_topology`` package.
 
 Three groups:
 
@@ -31,28 +31,28 @@ import torch.nn as nn
 
 from aimet_onnx.quantsim import QuantizationSimModel
 
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology.block_boundaries import (
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
     get_decoder_block_boundaries_in_ir,
     resolve_residual_tensor_name,
 )
-from aimet_onnx.experimental.llm_topology.ir_adapter import (
+from aimet_onnx.llm_topology.ir_adapter import (
     IrAttentionBlockTopology,
     IrMambaBlockTopology,
     resolve_topology,
 )
-from aimet_onnx.experimental.llm_topology.layer_roles import (
+from aimet_onnx.llm_topology.layer_roles import (
     LinearRole,
     classify_linear_role,
     module_name_of,
 )
-from aimet_onnx.experimental.llm_topology.norm_detection import (
+from aimet_onnx.llm_topology.norm_detection import (
     find_active_norms,
     find_active_norms_in_ir,
     get_last_norm_input_tensor,
 )
-from aimet_onnx.experimental.llm_topology.topology import (
+from aimet_onnx.llm_topology.topology import (
     _PAST_KEY_INPUT_NAME_PATTERN,
     _PAST_KEY_OUTPUT_NAME_PATTERN,
     _PAST_VALUE_INPUT_NAME_PATTERN,
@@ -62,7 +62,7 @@ from aimet_onnx.experimental.llm_topology.topology import (
     analyze_llm_topology_by_norm_count,
     get_llm_topology,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import (
+from aimet_onnx.llm_topology.topology_types import (
     AttentionBlockTopology,
     BlockKind,
     MambaBlockTopology,

@@ -1,7 +1,7 @@
 .. _apiref-onnx-spinquant:
 
 ##########################################
-aimet_onnx.experimental.spinquant
+aimet_onnx.spinquant
 ##########################################
 
 ..
@@ -9,7 +9,7 @@ aimet_onnx.experimental.spinquant
 
 **Top level APIs**
 
-.. autofunction:: aimet_onnx.experimental.spinquant.apply_spinquant
+.. autofunction:: aimet_onnx.spinquant.apply_spinquant
 
 **Model topology**
 
@@ -22,9 +22,9 @@ result as ``topology``::
     apply_spinquant(onnx_model, topology=topology)
     sim = QuantizationSimModel(onnx_model, ...)   # built on the rotated graph
 
-.. autofunction:: aimet_onnx.experimental.llm_topology.analyze_llm_topology
+.. autofunction:: aimet_onnx.llm_topology.analyze_llm_topology
 
-.. autoclass:: aimet_onnx.experimental.llm_topology.LlmTopology
+.. autoclass:: aimet_onnx.llm_topology.LlmTopology
     :members:
 
 ..

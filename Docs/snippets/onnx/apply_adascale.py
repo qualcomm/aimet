@@ -26,7 +26,7 @@ import os
 import tempfile
 import onnx
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.llm_topology import analyze_llm_topology
 from GenAILab.qai_hub_lm.models.base import LLM
 from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descriptors
 from GenAILab.qai_hub_lm.models.generator import Generator
@@ -88,7 +88,7 @@ generator = Generator(
 # End of [create-sim]
 
 # [adascale-apply]
-from aimet_onnx.experimental.adascale.adascale_optimizer import (
+from aimet_onnx.adascale.adascale_optimizer import (
     AdaScale,
     adascale_model_config_dict,
 )

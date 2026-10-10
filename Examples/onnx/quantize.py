@@ -13,7 +13,7 @@ import tempfile
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.llm_topology import analyze_llm_topology
 
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import (
     TorchONNXInterface,
@@ -96,7 +96,7 @@ def apply_spinquant_if_needed(onnx_model: onnx.ModelProto, recipe: str, topology
     if recipe != "pcq_spinquant_adascale":
         return
 
-    from aimet_onnx.experimental.spinquant import apply_spinquant
+    from aimet_onnx.spinquant import apply_spinquant
 
     # Rotates the float graph in place; where each rotation goes comes from the
     # topology analysis rather than from SpinQuant itself.
@@ -130,7 +130,7 @@ def apply_recipe_lpbq_seqmse(quantsim, prefilled_inputs):
 def apply_recipe_pcq_spinquant_adascale(
     quantsim, prefilled_inputs, adascale_num_iterations: int, topology
 ):
-    from aimet_onnx.experimental.adascale.adascale_optimizer import (
+    from aimet_onnx.adascale.adascale_optimizer import (
         AdaScale,
         adascale_model_config_dict,
     )

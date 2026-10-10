@@ -13,11 +13,11 @@ from torch.utils.data import DataLoader
 
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.sequential_mse.seq_mse import SeqMseParams, SequentialMse
-from aimet_onnx.experimental.adascale.adascale_optimizer import (
+from aimet_onnx.adascale.adascale_optimizer import (
     apply_adascale,
     adascale_model_config_dict,
 )
-from aimet_onnx.experimental.spinquant import apply_spinquant
+from aimet_onnx.spinquant import apply_spinquant
 
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
 from GenAILab.qai_hub_lm.schema import (

@@ -1,7 +1,7 @@
 .. _apiref-onnx-adascale:
 
 ##########################################
-aimet_onnx.experimental.adascale
+aimet_onnx.adascale
 ##########################################
 
 ..
@@ -9,9 +9,9 @@ aimet_onnx.experimental.adascale
 
 **Top level APIs**
 
-.. autofunction:: aimet_onnx.experimental.adascale.adascale_optimizer.apply_adascale
+.. autofunction:: aimet_onnx.adascale.adascale_optimizer.apply_adascale
 
-.. autoclass:: aimet_onnx.experimental.adascale.adascale_optimizer.AdaScaleModelConfig
+.. autoclass:: aimet_onnx.adascale.adascale_optimizer.AdaScaleModelConfig
     :members:
 
 **Model topology**
@@ -24,9 +24,9 @@ before creating the sim, then pass the result as ``topology``::
     sim = QuantizationSimModel(onnx_model, ...)
     apply_adascale(sim, inputs, adascale_model_config, topology=topology)
 
-.. autofunction:: aimet_onnx.experimental.llm_topology.analyze_llm_topology
+.. autofunction:: aimet_onnx.llm_topology.analyze_llm_topology
 
-.. autoclass:: aimet_onnx.experimental.llm_topology.LlmTopology
+.. autoclass:: aimet_onnx.llm_topology.LlmTopology
     :members:
 
 ..

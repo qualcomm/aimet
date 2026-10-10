@@ -11,7 +11,7 @@ import torch
 from onnx import TensorProto, helper
 from torch import nn as nn
 
-from aimet_onnx.experimental.adascale.model_converter import get_pt_block
+from aimet_onnx.adascale.model_converter import get_pt_block
 
 # Importing onnx2torch_ext (done transitively by model_converter) registers the
 # custom converters (ScatterElements, Flatten, NonZero, OneHot, Trilu, Clip)

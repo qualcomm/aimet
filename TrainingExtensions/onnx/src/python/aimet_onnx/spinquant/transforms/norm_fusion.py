@@ -9,8 +9,8 @@ import numpy as np
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.ir_utils import set_static_tensor, static_tensor
 
-from aimet_onnx.experimental.llm_topology.ir_adapter import IrActiveNorm
-from aimet_onnx.experimental.llm_topology.ir_analysis import get_weight_value
+from aimet_onnx.llm_topology.ir_adapter import IrActiveNorm
+from aimet_onnx.llm_topology.ir_analysis import get_weight_value
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SpinQuant)
 

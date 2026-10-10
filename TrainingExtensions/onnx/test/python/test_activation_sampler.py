@@ -15,7 +15,7 @@ from aimet_onnx.adaround.activation_sampler import (
 )
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import CachedDataset
-from aimet_onnx.experimental.adascale.activation_sampler import (
+from aimet_onnx.adascale.activation_sampler import (
     ActivationSampler as AdascaleActivationSampler,
 )
 

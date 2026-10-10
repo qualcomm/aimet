@@ -13,8 +13,8 @@ from onnx2torch.onnx_graph import OnnxGraph
 
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.common.quantsim import calculate_delta_offset
-from aimet_onnx.experimental.adascale.quantizer import QuantizedLinear, QuantizedConv2d
-from aimet_onnx.experimental.adascale.onnx2torch_ext import *  # pylint: disable=wildcard-import, unused-wildcard-import
+from aimet_onnx.adascale.quantizer import QuantizedLinear, QuantizedConv2d
+from aimet_onnx.adascale.onnx2torch_ext import *  # pylint: disable=wildcard-import, unused-wildcard-import
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx import ir_utils
 from aimet_onnx.graph_passes.fusions import inline_all_supergroups

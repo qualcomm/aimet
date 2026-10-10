@@ -10,8 +10,8 @@ aimet_onnx API
     aimet_onnx.quantsim <quantsim>
     aimet_onnx.apply_adaround <adaround>
     aimet_onnx.apply_seq_mse <seq_mse>
-    aimet_onnx.experimental.adascale <adascale>
-    aimet_onnx.experimental.spinquant <spinquant>
+    aimet_onnx.adascale <adascale>
+    aimet_onnx.spinquant <spinquant>
     aimet_onnx.quantsim.set_grouped_blockwise_quantization_for_weights <lpbq>
     aimet_onnx.batch_norm_fold <bnf>
     aimet_onnx.cross_layer_equalization <cle>
@@ -30,8 +30,8 @@ AIMET quantization for ONNX models provides the following functionality.
 - :ref:`aimet_onnx.quantsim <apiref-onnx-quantsim>`
 - :ref:`aimet_onnx.apply_adaround <apiref-onnx-adaround>`
 - :ref:`aimet_onnx.apply_seq_mse <apiref-onnx-seq-mse>`
-- :ref:`aimet_onnx.experimental.adascale <apiref-onnx-adascale>`
-- :ref:`aimet_onnx.experimental.spinquant <apiref-onnx-spinquant>`
+- :ref:`aimet_onnx.adascale <apiref-onnx-adascale>`
+- :ref:`aimet_onnx.spinquant <apiref-onnx-spinquant>`
 - :ref:`aimet_onnx.quantsim.set_lpbq_for_params <apiref-onnx-lpbq>`
 - :ref:`aimet_onnx.batch_norm_fold <apiref-onnx-bnf>`
 - :ref:`aimet_onnx.cross_layer_equalization <apiref-onnx-cle>`

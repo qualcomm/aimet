@@ -14,13 +14,13 @@ Add new rotations (R2, R3, ...) by subclassing :class:`RotationPass` in a new
 module under this package and exporting them here.
 """
 
-from aimet_onnx.experimental.spinquant.passes.base import (
+from aimet_onnx.spinquant.passes.base import (
     RotationPass,
     SpinquantContext,
 )
-from aimet_onnx.experimental.spinquant.passes.r1 import R1RotationPass
-from aimet_onnx.experimental.spinquant.passes.r2 import R2RotationPass
-from aimet_onnx.experimental.spinquant.passes.r3 import (
+from aimet_onnx.spinquant.passes.r1 import R1RotationPass
+from aimet_onnx.spinquant.passes.r2 import R2RotationPass
+from aimet_onnx.spinquant.passes.r3 import (
     R3RotationPass,
 )
 

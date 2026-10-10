@@ -57,16 +57,16 @@ from aimet_onnx.prepare_passes.fix_node_names_in_dynamo_exported_onnx import (
 from aimet_onnx.graph_passes.fusions import fuse_supergroups
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import make_dummy_input
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology import topology as topology_module
-from aimet_onnx.experimental.llm_topology.topology import (
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology import topology as topology_module
+from aimet_onnx.llm_topology.topology import (
     ACTIVE_NORM_MODEL_TYPES,
     _analyze_llm_topology_by_name,
     analyze_llm_topology,
     analyze_llm_topology_by_norm_count,
 )
-from aimet_onnx.experimental.llm_topology import hf_patterns
-from aimet_onnx.experimental.llm_topology.hf_patterns import (
+from aimet_onnx.llm_topology import hf_patterns
+from aimet_onnx.llm_topology.hf_patterns import (
     HfModelPatterns,
     ModuleKind,
     ModuleNode,
@@ -76,20 +76,20 @@ from aimet_onnx.experimental.llm_topology.hf_patterns import (
     match_named_layers,
     module_path_of,
 )
-from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
-from aimet_onnx.experimental.llm_topology.ir_adapter import (
+from aimet_onnx.llm_topology.layer_roles import LinearRole
+from aimet_onnx.llm_topology.ir_adapter import (
     IrMambaBlockTopology,
     resolve_topology,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import (
+from aimet_onnx.llm_topology.topology_types import (
     AttentionBlockTopology,
     BlockKind,
     MambaBlockTopology,
 )
-from aimet_onnx.experimental.spinquant.spinquant import (
+from aimet_onnx.spinquant.spinquant import (
     _validate_topology as spinquant_validate_topology,
 )
-from aimet_onnx.experimental.adascale.adascale_optimizer import (
+from aimet_onnx.adascale.adascale_optimizer import (
     _block_boundaries_from_topology as adascale_block_boundaries,
 )
 

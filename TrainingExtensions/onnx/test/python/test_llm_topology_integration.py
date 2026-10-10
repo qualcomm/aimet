@@ -1,7 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Integration tests for ``aimet_onnx.experimental.llm_topology`` on real models.
+"""Integration tests for ``aimet_onnx.llm_topology`` on real models.
 
 Exports real HuggingFace decoder / VLM architectures through the actual
 transformers -> ONNX pipeline (both torchscript and dynamo backends) and asserts
@@ -29,16 +29,16 @@ from transformers import AutoModelForCausalLM
 import transformers.masking_utils as mu
 
 from aimet_onnx.ir_utils import static_tensor
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology.block_boundaries import (
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
     get_decoder_block_boundaries_in_ir,
 )
-from aimet_onnx.experimental.llm_topology.norm_detection import (
+from aimet_onnx.llm_topology.norm_detection import (
     find_active_norms_in_ir,
 )
-from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
-from aimet_onnx.experimental.llm_topology.topology import get_llm_topology
+from aimet_onnx.llm_topology.layer_roles import LinearRole
+from aimet_onnx.llm_topology.topology import get_llm_topology
 from .utils import add_genai_tests_path, force_random_weight_init
 
 _NUM_LAYERS = 2

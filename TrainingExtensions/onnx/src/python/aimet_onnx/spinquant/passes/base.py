@@ -10,7 +10,7 @@ from typing import List, Optional
 import onnx_ir
 import torch
 
-from aimet_onnx.experimental.llm_topology.ir_adapter import (
+from aimet_onnx.llm_topology.ir_adapter import (
     IrActiveNorm,
     IrLlmTopology,
 )

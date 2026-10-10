@@ -47,15 +47,15 @@ from typing import List
 
 from aimet_onnx.common.utils import AimetLogger
 
-from aimet_onnx.experimental.spinquant.model_analysis import (
+from aimet_onnx.spinquant.model_analysis import (
     BlockR3Anchors,
     find_r3_anchors,
 )
-from aimet_onnx.experimental.spinquant.passes.base import (
+from aimet_onnx.spinquant.passes.base import (
     RotationPass,
     SpinquantContext,
 )
-from aimet_onnx.experimental.spinquant.transforms import (
+from aimet_onnx.spinquant.transforms import (
     insert_online_hadamard_node,
     hadamard_rotation_matrix,
 )

@@ -25,7 +25,7 @@ traceable_model = ONNXExportableModuleWithCache(hf_model)
 import os
 import tempfile
 import onnx
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.llm_topology import analyze_llm_topology
 from GenAILab.qai_hub_lm.models.base import LLM
 from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descriptors
 from GenAILab.qai_hub_lm.models.generator import Generator
@@ -61,7 +61,7 @@ topology = analyze_llm_topology(onnx_model, hf_model.config.model_type)
 # End of [export-onnx]
 
 # [spinquant-apply]
-from aimet_onnx.experimental.spinquant import apply_spinquant
+from aimet_onnx.spinquant import apply_spinquant
 
 # apply_spinquant rotates onnx_model in-place. Must be called on the float model,
 # BEFORE the sim is created: R3 inserts new ops that only a sim built afterward can

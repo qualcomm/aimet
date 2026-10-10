@@ -44,26 +44,26 @@ from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.ir_utils import static_tensor
 from aimet_onnx.utils import ModelProto
 
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology.block_boundaries import (
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries_in_ir,
     headless_block_end,
 )
-from aimet_onnx.experimental.llm_topology.hf_patterns import (
+from aimet_onnx.llm_topology.hf_patterns import (
     BlockMatch,
     NamedLayerMatch,
     get_hf_model_patterns,
     match_named_layers,
 )
-from aimet_onnx.experimental.llm_topology.layer_roles import (
+from aimet_onnx.llm_topology.layer_roles import (
     LinearRole,
 )
-from aimet_onnx.experimental.llm_topology.norm_detection import (
+from aimet_onnx.llm_topology.norm_detection import (
     ActiveNorm,
     get_active_norm,
     find_active_norms_in_ir,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import (
+from aimet_onnx.llm_topology.topology_types import (
     AttentionBlockTopology,
     LinearGroup,
     LlmTopology,

@@ -9,7 +9,7 @@ import onnx_ir
 
 from aimet_onnx.common.utils import AimetLogger
 
-from aimet_onnx.experimental.llm_topology.ir_analysis import is_weighted_linear
+from aimet_onnx.llm_topology.ir_analysis import is_weighted_linear
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SpinQuant)
 

@@ -12,14 +12,14 @@ import those directly from there. R2 reads V/O directly off the topology
 (``block.v_proj`` / ``block.o_proj``) and needs no analysis here.
 """
 
-from aimet_onnx.experimental.spinquant.model_analysis.attention_anchors import (
+from aimet_onnx.spinquant.model_analysis.attention_anchors import (
     BlockR3Anchors,
     find_r3_anchors,
 )
-from aimet_onnx.experimental.spinquant.model_analysis.norm_detection import (
+from aimet_onnx.spinquant.model_analysis.norm_detection import (
     find_post_writing_norms,
 )
-from aimet_onnx.experimental.spinquant.model_analysis.visual_merger import (
+from aimet_onnx.spinquant.model_analysis.visual_merger import (
     find_merger_linear2,
 )
 

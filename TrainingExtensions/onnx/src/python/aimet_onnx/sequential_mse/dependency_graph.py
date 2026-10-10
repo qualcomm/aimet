@@ -15,7 +15,7 @@ from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, WEIGHT_INDEX
 from aimet_onnx.utils import create_input_dict, ParamUtils
 from aimet_onnx.meta.operations import Op
-from aimet_onnx.experimental.spinquant import is_online_rotation_op
+from aimet_onnx.spinquant import is_online_rotation_op
 
 # The following modules with weights are supported
 SUPPORTED_MODULES = ("Conv", "Gemm", "MatMul")

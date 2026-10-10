@@ -21,8 +21,8 @@ from aimet_onnx.utils import make_dummy_input
 from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.quantsim import QuantizationSimModel
 
-from aimet_onnx.experimental.llm_configurator import llm_configurator
-from aimet_onnx.experimental.llm_configurator.llm_configurator import (
+from aimet_onnx.llm_configurator import llm_configurator
+from aimet_onnx.llm_configurator.llm_configurator import (
     _apply_int8_kv_cache_tying_and_lm_head,
     _collect_all_projections,
     _set_matmul_second_input_to_8b,
@@ -30,7 +30,7 @@ from aimet_onnx.experimental.llm_configurator.llm_configurator import (
     _tie_quantizers_for_kv_cache,
     configure_llm,
 )
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.llm_topology import analyze_llm_topology
 from aimet_onnx.graph_passes.fusions import fuse_supergroups
 from aimet_onnx.defs import QSpec
 import aimet_onnx

@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from aimet_onnx.quantsim import load_encodings_to_sim
-from aimet_onnx.experimental.llm_topology import analyze_llm_topology
+from aimet_onnx.llm_topology import analyze_llm_topology
 
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
 from GenAILab.bench.analysis import run_analysis

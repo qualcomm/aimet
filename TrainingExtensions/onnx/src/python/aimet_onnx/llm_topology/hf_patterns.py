@@ -76,9 +76,9 @@ import onnx_ir
 from aimet_onnx.graph_passes.fusions import is_fused_supergroup
 from aimet_onnx.ir_utils import is_static
 
-from aimet_onnx.experimental.llm_topology import ir_analysis
-from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
-from aimet_onnx.experimental.llm_topology.topology_types import BlockKind
+from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology.layer_roles import LinearRole
+from aimet_onnx.llm_topology.topology_types import BlockKind
 
 #: Offending nodes listed per problem in an error message.
 _MAX_LISTED = 5

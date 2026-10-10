@@ -19,7 +19,7 @@ from aimet_onnx.common.early_stopping import (  # pylint: disable=import-error
     _create_early_stopping,
 )
 from aimet_onnx.common.progress import progress_bar  # pylint: disable=import-error
-from aimet_onnx.experimental.adascale.utils import (
+from aimet_onnx.adascale.utils import (
     convert_to_torch,
     change_tensor_device_placement,
 )
@@ -29,23 +29,23 @@ from aimet_onnx.utils import (
 )
 from aimet_onnx import ir_utils
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.experimental.llm_topology.block_boundaries import (
+from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
     resolve_residual_tensor_name,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import (
+from aimet_onnx.llm_topology.topology_types import (
     BlockKind,
     LlmTopology,
 )
 
-from aimet_onnx.experimental.adascale.quantizer import (
+from aimet_onnx.adascale.quantizer import (
     add_qlinear_layers,
     get_adascale_trainable_params,
     replace_with_adascale_quantizers,
 )
 
-from aimet_onnx.experimental.adascale.activation_sampler import ActivationSampler
-from aimet_onnx.experimental.adascale.model_converter import (
+from aimet_onnx.adascale.activation_sampler import ActivationSampler
+from aimet_onnx.adascale.model_converter import (
     get_pt_block,
     copy_pt_weights_to_onnx,
     copy_pt_encodings_to_sim,
@@ -236,7 +236,7 @@ class AdaScale:
                                       Llama, Qwen2, Mistral, Qwen3, Phi3. For other models use AdaScaleModelConfig
         :param num_iterations: Number of iterations to optimize for during AdaScale
         :param topology: Decoder-stack topology of the model held by ``sim``, from
-            :func:`~aimet_onnx.experimental.llm_topology.analyze_llm_topology`.
+            :func:`~aimet_onnx.llm_topology.analyze_llm_topology`.
             AdaScale optimizes one decoder block at a time and takes the block boundaries from
             it — structure discovery belongs to ``llm_topology``, not to AdaScale. Analyze the
             **float** model before building the sim:
@@ -274,7 +274,7 @@ class AdaScale:
             warnings.warn(
                 "apply_adascale() was called without 'topology', so the decoder-block "
                 "structure is being discovered internally from the sim. Prefer building it "
-                "with aimet_onnx.experimental.llm_topology."
+                "with aimet_onnx.llm_topology."
                 "analyze_llm_topology(model, model_type) on the float model and passing "
                 "topology=...; this argument may become required in a future release.",
                 UserWarning,

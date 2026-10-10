@@ -35,9 +35,9 @@ from typing import ClassVar, Dict, List, Optional, Union
 
 import onnx_ir
 
-from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
-from aimet_onnx.experimental.llm_topology.norm_detection import ActiveNorm
-from aimet_onnx.experimental.llm_topology.topology_types import (
+from aimet_onnx.llm_topology.layer_roles import LinearRole
+from aimet_onnx.llm_topology.norm_detection import ActiveNorm
+from aimet_onnx.llm_topology.topology_types import (
     AttentionBlockTopology,
     BlockKind,
     LinearGroup,

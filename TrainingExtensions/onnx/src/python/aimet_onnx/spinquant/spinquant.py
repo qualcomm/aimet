@@ -17,19 +17,19 @@ import torch
 
 from aimet_onnx.common.utils import AimetLogger
 
-from aimet_onnx.experimental.llm_topology.ir_adapter import resolve_topology
-from aimet_onnx.experimental.llm_topology.ir_analysis import build_analysis_ir
-from aimet_onnx.experimental.llm_topology.topology import (
+from aimet_onnx.llm_topology.ir_adapter import resolve_topology
+from aimet_onnx.llm_topology.ir_analysis import build_analysis_ir
+from aimet_onnx.llm_topology.topology import (
     analyze_llm_topology_by_norm_count,
 )
-from aimet_onnx.experimental.llm_topology.topology_types import (
+from aimet_onnx.llm_topology.topology_types import (
     BlockKind,
     LlmTopology,
 )
-from aimet_onnx.experimental.spinquant.model_analysis import (
+from aimet_onnx.spinquant.model_analysis import (
     find_merger_linear2,
 )
-from aimet_onnx.experimental.spinquant.passes import (
+from aimet_onnx.spinquant.passes import (
     R1RotationPass,
     R2RotationPass,
     R3RotationPass,
@@ -92,7 +92,7 @@ def apply_spinquant(
         the KV cache are already rotated; the model's ``present_key`` output then
         carries rotated K (cache convention is self-consistent across steps).
     :param topology: Decoder-stack topology of ``model``, from
-        :func:`~aimet_onnx.experimental.llm_topology.analyze_llm_topology`.
+        :func:`~aimet_onnx.llm_topology.analyze_llm_topology`.
         Every rotation is placed by it — which linears read from and write to the
         residual stream (R1), which are the V/O projections (R2), which are the Q/K edges
         into QKᵀ (R3) — because discovering model structure belongs to ``llm_topology``,
@@ -182,7 +182,7 @@ def _build_context(
         warnings.warn(
             "apply_spinquant() was called without 'topology', so the decoder-stack "
             "structure is being analyzed internally. Prefer building it with "
-            "aimet_onnx.experimental.llm_topology.analyze_llm_topology(model, model_type) "
+            "aimet_onnx.llm_topology.analyze_llm_topology(model, model_type) "
             "and passing topology=...; this argument may become required in a future release.",
             UserWarning,
             stacklevel=3,

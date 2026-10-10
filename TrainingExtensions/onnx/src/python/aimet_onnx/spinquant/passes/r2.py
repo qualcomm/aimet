@@ -23,13 +23,13 @@ import onnx_ir
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.ir_utils import static_tensor
 
-from aimet_onnx.experimental.llm_topology.layer_roles import LinearRole
-from aimet_onnx.experimental.llm_topology.ir_analysis import get_weight_value
-from aimet_onnx.experimental.spinquant.passes.base import (
+from aimet_onnx.llm_topology.layer_roles import LinearRole
+from aimet_onnx.llm_topology.ir_analysis import get_weight_value
+from aimet_onnx.spinquant.passes.base import (
     RotationPass,
     SpinquantContext,
 )
-from aimet_onnx.experimental.spinquant.transforms import (
+from aimet_onnx.spinquant.transforms import (
     block_diag_repeat,
     hadamard_rotation_matrix,
     rotate_linear_weight,

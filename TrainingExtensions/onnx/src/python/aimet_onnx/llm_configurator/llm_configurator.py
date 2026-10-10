@@ -8,7 +8,7 @@ from aimet_onnx.quantsim import (
     set_param_type,
 )
 from aimet_onnx.defs import QSpec, qtype
-from aimet_onnx.experimental.llm_topology import LlmTopology
+from aimet_onnx.llm_topology import LlmTopology
 from aimet_onnx.common.onnx._utils import _is_grid_preserving_op
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.qc_quantize_op import QcQuantizeOp

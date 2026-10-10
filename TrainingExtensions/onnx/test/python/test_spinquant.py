@@ -52,40 +52,40 @@ from aimet_onnx.common.hadamard import get_hadamard_matrix
 from aimet_onnx.ir_utils import static_tensor
 from aimet_onnx.utils import ParamUtils, make_dummy_input
 
-from aimet_onnx.experimental.llm_topology.topology import analyze_llm_topology
-from aimet_onnx.experimental.llm_topology.topology_types import LlmTopology
-from aimet_onnx.experimental.llm_topology.ir_adapter import (
+from aimet_onnx.llm_topology.topology import analyze_llm_topology
+from aimet_onnx.llm_topology.topology_types import LlmTopology
+from aimet_onnx.llm_topology.ir_adapter import (
     IrLlmTopology,
     resolve_active_norms as _resolve_active_norms,
     resolve_topology,
 )
-from aimet_onnx.experimental.llm_topology.ir_analysis import (
+from aimet_onnx.llm_topology.ir_analysis import (
     get_bias_value as _get_bias_value,
     get_weight_value as _get_weight_value,
 )
-from aimet_onnx.experimental.llm_topology.norm_detection import (
+from aimet_onnx.llm_topology.norm_detection import (
     find_active_norms,
 )
-from aimet_onnx.experimental.spinquant.model_analysis import (
+from aimet_onnx.spinquant.model_analysis import (
     find_merger_linear2,
     find_r3_anchors,
 )
-from aimet_onnx.experimental.spinquant.transforms import (
+from aimet_onnx.spinquant.transforms import (
     apply_transform as _apply_transform,
     fuse_norm_layers_into_linears,
     left_multiply as _left_multiply,
     right_multiply as _right_multiply,
 )
-from aimet_onnx.experimental.spinquant.passes.r1 import (
+from aimet_onnx.spinquant.passes.r1 import (
     _rotate_backbone,
     _rotate_merger_linear2,
     _validate_merger_linear2,
 )
-from aimet_onnx.experimental.spinquant.transforms.rotation_primitives import (
+from aimet_onnx.spinquant.transforms.rotation_primitives import (
     hadamard_rotation_matrix,
 )
-from aimet_onnx.experimental.spinquant import apply_spinquant
-from aimet_onnx.experimental.spinquant import is_online_rotation_op
+from aimet_onnx.spinquant import apply_spinquant
+from aimet_onnx.spinquant import is_online_rotation_op
 
 from aimet_onnx.prepare_passes.fix_node_names_in_dynamo_exported_onnx import (
     fix_node_names_pass,
@@ -1211,7 +1211,7 @@ class TestApplyR3Rotation:
             ``past_key_input_name == "past_key_{i}"``, its ``k_concat_node`` is a
             Concat, and its ``qk_matmul_node`` is a MatMul.
         """
-        from aimet_onnx.experimental.spinquant.model_analysis import (
+        from aimet_onnx.spinquant.model_analysis import (
             find_r3_anchors,
         )
 
@@ -2244,7 +2244,7 @@ class TestTopologySurvivesRotation:
             optimized") against a rotated graph, rather than re-implementing it.
         Pass criteria: no error from the boundary validation after rotation.
         """
-        from aimet_onnx.experimental.adascale.adascale_optimizer import (
+        from aimet_onnx.adascale.adascale_optimizer import (
             _block_boundaries_from_topology,
             _validate_boundaries_in_graph,
         )
@@ -2284,8 +2284,8 @@ class TestNoConnectedGraphDependency:
     }
 
     PACKAGES = (
-        "aimet_onnx.experimental.spinquant",
-        "aimet_onnx.experimental.llm_topology",
+        "aimet_onnx.spinquant",
+        "aimet_onnx.llm_topology",
     )
 
     @pytest.mark.parametrize("package_name", PACKAGES)

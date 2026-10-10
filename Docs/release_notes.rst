@@ -6,6 +6,13 @@
 Release notes
 #############
 
+2.42.0
+======
+
+* Deprecations
+    * ONNX
+        * Move ``adascale``, ``spinquant``, ``llm_topology`` and ``llm_configurator`` out of ``aimet_onnx.experimental`` into top-level ``aimet_onnx``. The old ``aimet_onnx.experimental.*`` import paths still work but emit a deprecation warning, and will be removed in AIMET 2.45
+
 2.41.0
 ======
 

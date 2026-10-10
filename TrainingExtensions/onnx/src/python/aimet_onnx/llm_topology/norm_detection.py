@@ -9,7 +9,7 @@ Internal norms (e.g. Qwen3 q_norm/k_norm) whose outputs feed into attention ops
 before reaching any linear weight are excluded automatically.
 
 Detection runs on the analysis IR (see
-:mod:`aimet_onnx.experimental.llm_topology.ir_analysis`), where every decomposed
+:mod:`aimet_onnx.llm_topology.ir_analysis`), where every decomposed
 RMSNorm has already been fused into a single ``RMSNormalization`` supergroup
 node. Finding norms is therefore a node-type lookup rather than a multi-op
 pattern match, and needs no ConnectedGraph.
@@ -24,7 +24,7 @@ from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.ir_utils import is_static
 from aimet_onnx.utils import ModelProto
 
-from aimet_onnx.experimental.llm_topology import ir_analysis
+from aimet_onnx.llm_topology import ir_analysis
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LlmTopology)
 
