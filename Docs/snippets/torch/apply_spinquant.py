@@ -49,7 +49,7 @@ generator = Generator(quantsim.model, tokenizer, SEQUENCE_LENGTH, CONTEXT_LENGTH
 # End of [create-sim]
 
 # [spinquant-apply]
-from aimet_torch.experimental.spinquant import apply_spinquant
+from aimet_torch.spinquant import apply_spinquant
 
 # apply_spinquant modifies the model in-place. Must be called BEFORE compute_encodings.
 apply_spinquant(model=quantsim.model)

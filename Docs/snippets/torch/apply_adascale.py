@@ -50,7 +50,7 @@ generator = Generator(quantsim.model, tokenizer, SEQUENCE_LENGTH, CONTEXT_LENGTH
 # End of [create-sim]
 
 # [adascale-apply]
-from aimet_torch.experimental.adascale.adascale_optimizer import apply_adascale
+from aimet_torch.adascale.adascale_optimizer import apply_adascale
 from GenAILab.bench.datasets import Wikitext
 from GenAILab.bench.torch.quant_recipes import _prefill_inputs
 

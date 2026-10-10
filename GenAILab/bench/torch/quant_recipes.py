@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from aimet_torch import QuantizationSimModel
-from aimet_torch.experimental.adascale.adascale_optimizer import apply_adascale
+from aimet_torch.adascale.adascale_optimizer import apply_adascale
 from aimet_torch.v2.seq_mse import apply_seq_mse
 from aimet_torch.v2.nn import compute_encodings
 from aimet_torch.v2.utils import remove_all_quantizers

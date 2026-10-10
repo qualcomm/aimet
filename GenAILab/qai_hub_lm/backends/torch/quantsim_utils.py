@@ -56,7 +56,7 @@ def apply_spinquant_pre_sim(model, spinquant_config: dict | None) -> None:
 
     # Imported lazily so the (experimental) SpinQuant dependency is only
     # required when a config actually requests it.
-    from aimet_torch.experimental.spinquant.spinquant_optimizer import (
+    from aimet_torch.spinquant.spinquant_optimizer import (
         SpinQuant as SpinQuantOptimizer,
     )
 

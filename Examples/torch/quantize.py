@@ -89,7 +89,7 @@ def apply_spinquant_if_needed(hf_model: torch.nn.Module, recipe: str):
     if recipe != "pcq_spinquant_adascale":
         return
 
-    from aimet_torch.experimental.spinquant import apply_spinquant
+    from aimet_torch.spinquant import apply_spinquant
 
     # Embedding layer and lm_head need to be separated for SpinQuant to be applied
     old_weight = hf_model.lm_head.weight
@@ -141,7 +141,7 @@ def apply_recipe_pcq_spinquant_adascale(
     quantsim, prefilled_inputs, adascale_num_iterations: int
 ):
     """Apply quantization recipe: PCQ + SpinQuant + AdaScale"""
-    from aimet_torch.experimental.adascale.adascale_optimizer import apply_adascale
+    from aimet_torch.adascale.adascale_optimizer import apply_adascale
 
     apply_adascale(
         qsim=quantsim,

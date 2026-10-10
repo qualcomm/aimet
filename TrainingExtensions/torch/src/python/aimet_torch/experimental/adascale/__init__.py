@@ -1,7 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+"""Deprecated alias of :mod:`aimet_torch.adascale`, to be removed in AIMET 2.45"""
 
-"""adascale subpackage"""
+import sys
 
-from .adascale_optimizer import apply_adascale
+from .._deprecation import _alias_deprecated_package
+
+sys.modules[__name__] = _alias_deprecated_package(
+    __name__, "aimet_torch.adascale", removal_version="2.45"
+)

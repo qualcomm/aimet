@@ -1,7 +1,7 @@
 .. _apiref-torch-adascale:
 
 ##################################
-aimet_torch.experimental.adascale
+aimet_torch.adascale
 ##################################
 
 ..
@@ -9,7 +9,7 @@ aimet_torch.experimental.adascale
 
 **Top level APIs**
 
-.. autofunction:: aimet_torch.experimental.adascale.apply_adascale
+.. autofunction:: aimet_torch.adascale.apply_adascale
 
 ..
   # end-before

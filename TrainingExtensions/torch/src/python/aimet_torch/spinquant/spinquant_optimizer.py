@@ -48,7 +48,7 @@ except ImportError:
     Qwen3_5TextModel = Qwen3_5DecoderLayer = Qwen3_5RMSNorm = None
 
 
-from aimet_torch.experimental.spinquant.hadamard_utils import get_hadamard_matrix
+from aimet_torch.spinquant.hadamard_utils import get_hadamard_matrix
 from aimet_torch.experimental.transforms.transformed_layers import TransformationMixin
 from aimet_torch.experimental.transforms.transform_ops import (
     MatrixTransformOp,
@@ -185,7 +185,7 @@ class SpinQuant:
 
         Example:
             >>> from transformers import AutoModelForCausalLM
-            >>> from aimet_torch.experimental.spinquant import apply_spinquant
+            >>> from aimet_torch.spinquant import apply_spinquant
             >>> model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
             >>> # Untie embedding and lm_head weights if they are tied
             >>> old_weight = model.lm_head.weight

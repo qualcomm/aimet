@@ -1,7 +1,7 @@
 .. _apiref-torch-spinquant:
 
 ##################################
-aimet_torch.experimental.spinquant
+aimet_torch.spinquant
 ##################################
 
 ..
@@ -9,7 +9,7 @@ aimet_torch.experimental.spinquant
 
 **Top level APIs**
 
-.. autofunction:: aimet_torch.experimental.spinquant.apply_spinquant
+.. autofunction:: aimet_torch.spinquant.apply_spinquant
 
 ..
   # end-before

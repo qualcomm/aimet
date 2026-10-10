@@ -17,8 +17,8 @@ from transformers.models.qwen3_5.modeling_qwen3_5 import (
     Qwen3_5ForCausalLM,
     Qwen3_5TextConfig,
 )
-from aimet_torch.experimental.spinquant.hadamard_utils import get_hadamard_matrix
-from aimet_torch.experimental.spinquant.spinquant_optimizer import SpinQuant
+from aimet_torch.spinquant.hadamard_utils import get_hadamard_matrix
+from aimet_torch.spinquant.spinquant_optimizer import SpinQuant
 from aimet_torch.experimental.transforms.transformed_layers import TransformationMixin
 from aimet_torch.experimental.transforms.transform_ops import (
     MatrixTransformOp,

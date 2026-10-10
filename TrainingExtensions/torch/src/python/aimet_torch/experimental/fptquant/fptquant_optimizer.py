@@ -10,7 +10,7 @@ from aimet_torch.common.progress import progress_bar
 
 from transformers import PretrainedConfig
 
-from aimet_torch.experimental.spinquant.hadamard_utils import get_hadamard_matrix
+from aimet_torch.spinquant.hadamard_utils import get_hadamard_matrix
 from aimet_torch.experimental.transforms.transformed_layers import TransformationMixin
 from aimet_torch.experimental.transforms.transform_config import (
     BlockInterface,

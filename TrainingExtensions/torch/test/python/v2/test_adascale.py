@@ -30,7 +30,7 @@ from transformers.models.llama.modeling_llama import LlamaModel
 from transformers import set_seed
 
 from aimet_torch import QuantizationSimModel
-from aimet_torch.experimental.adascale.adascale_optimizer import (
+from aimet_torch.adascale.adascale_optimizer import (
     AdaScale,
     AdaScaleModelConfig,
     adascale_model_config_dict,
@@ -38,7 +38,7 @@ from aimet_torch.experimental.adascale.adascale_optimizer import (
     PerBlockCheckpointManager,
     _mse_loss_fn,
 )
-from aimet_torch.experimental.adascale.adascale_quantizer import (
+from aimet_torch.adascale.adascale_quantizer import (
     AdaScaleQuantizeDequantize,
     AdaScaleLinearQuantizeDequantize,
     AdaScaleConv2dQuantizeDequantize,
@@ -791,7 +791,7 @@ class TestAdascale:
     def test_block_level_adascale_early_stopping(self):
         """Integration test for the _EARLY_STOPPING flag using the real factory and
         _EarlyStopping."""
-        from aimet_torch.experimental.adascale import adascale_optimizer as opt
+        from aimet_torch.adascale import adascale_optimizer as opt
         from aimet_torch.common.early_stopping import _EarlyStoppingConfig
 
         def make_block():

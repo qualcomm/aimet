@@ -75,7 +75,7 @@ from aimet_torch.utils import (
     remove_activation_quantizers,
 )
 from aimet_torch.quantization.affine import QuantizeDequantize
-from aimet_torch.experimental.adascale.adascale_quantizer import (
+from aimet_torch.adascale.adascale_quantizer import (
     AdaScaleQuantizeDequantize,
     AdaScaleLinearQuantizeDequantize,
     AdaScaleConv2dQuantizeDequantize,

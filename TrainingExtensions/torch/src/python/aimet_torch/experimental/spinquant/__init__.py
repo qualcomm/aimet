@@ -1,6 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# pylint: disable=missing-docstring
+"""Deprecated alias of :mod:`aimet_torch.spinquant`, to be removed in AIMET 2.45"""
 
-from .spinquant_optimizer import apply_spinquant
+import sys
+
+from .._deprecation import _alias_deprecated_package
+
+sys.modules[__name__] = _alias_deprecated_package(
+    __name__, "aimet_torch.spinquant", removal_version="2.45"
+)

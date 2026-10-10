@@ -14,7 +14,7 @@ aimet_torch API
     aimet_torch.utils <utils>
     aimet_torch.adaround <adaround>
     aimet_torch.seq_mse <seq_mse>
-    aimet_torch.experimental.adascale <adascale>
+    aimet_torch.adascale <adascale>
     aimet_torch.quantsim.config_utils <lpbq>
     aimet_torch.manual_mixed_precision <mmp>
     aimet_torch.batch_norm_fold <bnf>
@@ -29,7 +29,7 @@ aimet_torch API
     aimet_torch.peft <peft_lora>
     aimet_torch.compress <compress>
     aimet_torch.experimental.omniquant <omniquant>
-    aimet_torch.experimental.spinquant <spinquant>
+    aimet_torch.spinquant <spinquant>
 
 ..
   # start-after
@@ -46,7 +46,7 @@ AIMET quantization for PyTorch models provides the following functionality.
 - :ref:`aimet_torch.utils <apiref-torch-utils>`
 - :ref:`aimet_torch.adaround <apiref-torch-adaround>`
 - :ref:`aimet_torch.seq_mse <apiref-torch-seq-mse>`
-- :ref:`aimet_torch.experimental.adascale <apiref-torch-adascale>`
+- :ref:`aimet_torch.adascale <apiref-torch-adascale>`
 - :ref:`aimet_torch.quantsim.config_utils <apiref-torch-lpbq>`
 - :ref:`aimet_torch.batch_norm_fold <apiref-torch-bnf>`
 - :ref:`aimet_torch.cross_layer_equalization <apiref-torch-cle>`
@@ -60,7 +60,7 @@ AIMET quantization for PyTorch models provides the following functionality.
 - :ref:`aimet_torch.peft <apiref-torch-peft-lora>`
 - :ref:`aimet_torch.compress <apiref-torch-compress>`
 - :ref:`aimet_torch.experimental.omniquant <apiref-torch-omniquant>`
-- :ref:`aimet_torch.experimental.spinquant <apiref-torch-spinquant>`
+- :ref:`aimet_torch.spinquant <apiref-torch-spinquant>`
 
 
 ..
