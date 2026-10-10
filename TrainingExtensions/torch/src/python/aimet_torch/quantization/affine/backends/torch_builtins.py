@@ -789,10 +789,13 @@ class QuantDequantFunc(torch.autograd.Function):
             del x_scaled
 
             if ctx.scale_requires_grad:
+                x_rounded.clamp_(offset + qmin, offset + qmax)
+                if zero_point_shift != 0.0:
+                    x_rounded.add_(zero_point_shift)
                 scale_grad = grad * torch.where(
                     mask,
                     rounding_err,
-                    x_rounded.clamp_(offset + qmin, offset + qmax),
+                    x_rounded,
                 )
 
             del x_rounded
