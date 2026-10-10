@@ -386,7 +386,7 @@ try:
             rounding_err = rounded - scaled
 
             if scale_grad_ptr is not None:
-                clamped = tl.clamp(rounded, qmin, qmax) + offset
+                clamped = tl.clamp(rounded, qmin, qmax) + offset + zero_point_shift
                 scale_grad = output_grad * tl.where(
                     is_within_clamping_boundary,
                     rounding_err,
@@ -452,7 +452,7 @@ try:
             rounding_err = rounded - scaled
 
             if scale_grad_ptr is not None:
-                clamped = tl.clamp(rounded, qmin, qmax) + offset
+                clamped = tl.clamp(rounded, qmin, qmax) + offset + zero_point_shift
                 scale_grad = output_grad * tl.where(
                     is_within_clamping_boundary,
                     rounding_err,
@@ -527,7 +527,7 @@ try:
             rounding_err = rounded - scaled
 
             if scale_grad_ptr is not None:
-                clamped = tl.clamp(rounded, qmin, qmax) + offset
+                clamped = tl.clamp(rounded, qmin, qmax) + offset + zero_point_shift
                 scale_grad = output_grad * tl.where(
                     is_within_clamping_boundary,
                     rounding_err,

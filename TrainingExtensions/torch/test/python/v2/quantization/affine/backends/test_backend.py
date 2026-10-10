@@ -810,6 +810,59 @@ class TestQuantizationBackends:
         assert torch.allclose(scale.grad, expected_scale_grad, rtol=1e-3)
         assert torch.allclose(offset.grad, expected_offset_grad, rtol=1e-3)
 
+    @pytest.mark.parametrize("zero_point_shift", [0.0, 0.5])
+    @pytest.mark.parametrize("input_value, bound", [(-10.0, 0), (10.0, 3)])
+    @pytest.mark.parametrize(
+        "input_shape, scale_shape, block_size",
+        [
+            ((2, 4), (1, 1), None),
+            ((2, 4), (2, 1), None),
+            ((4, 4), (2, 2), (2, 2)),
+        ],
+        ids=["per_tensor", "per_channel", "per_block"],
+    )
+    def test_qdq_clipped_scale_gradient(
+        self,
+        backend_module,
+        input_shape,
+        scale_shape,
+        block_size,
+        input_value,
+        bound,
+        zero_point_shift,
+        use_compiled_impl,
+    ):
+        device = "cuda" if backend_module is _triton else "cpu"
+        x = torch.full(input_shape, input_value, device=device, requires_grad=True)
+        scale = torch.ones(scale_shape, device=device, requires_grad=True)
+        offset = torch.full(scale_shape, -1.0, device=device, requires_grad=True)
+
+        def qdq(s):
+            return backend_module.quantize_dequantize(
+                x, s, offset, 0, 3, block_size, zero_point_shift=zero_point_shift
+            )
+
+        output = qdq(scale)
+        if backend_module is _triton:
+            assert type(output.grad_fn).__name__ == "TritonQuantizeDequantizeBackward"
+
+        # Give each scale a total upstream gradient of 5, independent of layout.
+        grad = torch.full_like(x, 5.0 * scale.numel() / x.numel())
+        output.backward(grad)
+        expected = bound - 1.0 + zero_point_shift
+        torch.testing.assert_close(output, torch.full_like(output, expected))
+        torch.testing.assert_close(scale.grad, torch.full_like(scale, 5.0 * expected))
+        torch.testing.assert_close(x.grad, torch.zeros_like(x))
+        torch.testing.assert_close(offset.grad, torch.full_like(offset, 5.0))
+
+        # Inputs stay strictly clipped under both perturbations, so the forward
+        # finite difference is the true derivative, without a rounding STE.
+        eps = 2**-10
+        finite_difference = ((qdq(scale + eps) - qdq(scale - eps)) * grad).sum() / (
+            2 * eps
+        )
+        torch.testing.assert_close(scale.grad.sum(), finite_difference)
+
     def test_block_size(self, backend_module):
         scale = torch.randn(4, 3, 8, 1)
         offset = torch.randint(low=-128, high=127, size=(4, 3, 8, 1)).to(
