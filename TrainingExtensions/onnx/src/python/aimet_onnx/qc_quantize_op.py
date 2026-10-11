@@ -125,9 +125,6 @@ class QcQuantizeOp:
         """
         Enables per channel quantization for qc_quantize_op
         """
-        if self.quant_info.usePerChannelMode == enable:
-            return
-
         if enable:
             if self.tensor_quantizer_params is None:
                 raise RuntimeError(
@@ -135,24 +132,32 @@ class QcQuantizeOp:
                 )
             if self.tensor_quantizer_params.channel_axis is None:
                 raise RuntimeError("Cannot determine correct channel axis for PCQ")
-            self.quant_info.usePerChannelMode = enable
             channel_axis = self.tensor_quantizer_params.channel_axis
-            self.quant_info.channelAxis = (
+            channel_axis = (
                 channel_axis
                 if channel_axis >= 0
                 else channel_axis + len(self.tensor_quantizer_params.tensor_shape)
             )
+            if (
+                self.quant_info.usePerChannelMode
+                and self.quant_info.channelAxis == channel_axis
+            ):
+                return
+            self.quant_info.usePerChannelMode = True
+            self.quant_info.channelAxis = channel_axis
         else:
+            if not self.quant_info.usePerChannelMode:
+                return
             self.quant_info.usePerChannelMode = False
 
         self._tensor_quantizer = self._build_tensor_quantizer()
 
     def _enable_blockwise_quantization(self, block_size: int | None):
         block_size = block_size or 0
-        if block_size == self.quant_info.blockSize:
-            return
         # Disable block quantization
         if block_size == 0:
+            if self.quant_info.blockSize == 0:
+                return
             self.quant_info.blockSize = block_size
             self._tensor_quantizer = self._build_tensor_quantizer()
             return
@@ -174,13 +179,20 @@ class QcQuantizeOp:
                 f"Input shape {tensor_shape} not divisible by block size {block_size} at axis {block_axis}"
             )
 
-        self.quant_info.usePerChannelMode = True
-        self.quant_info.channelAxis = (
+        channel_axis = (
             channel_axis if channel_axis >= 0 else channel_axis + len(tensor_shape)
         )
-        self.quant_info.blockAxis = (
-            block_axis if block_axis >= 0 else block_axis + len(tensor_shape)
-        )
+        block_axis = block_axis if block_axis >= 0 else block_axis + len(tensor_shape)
+        if (
+            self.quant_info.usePerChannelMode
+            and self.quant_info.blockSize == block_size
+            and self.quant_info.channelAxis == channel_axis
+            and self.quant_info.blockAxis == block_axis
+        ):
+            return
+        self.quant_info.usePerChannelMode = True
+        self.quant_info.channelAxis = channel_axis
+        self.quant_info.blockAxis = block_axis
         self.quant_info.blockSize = block_size
         self._tensor_quantizer = self._build_tensor_quantizer()
 
