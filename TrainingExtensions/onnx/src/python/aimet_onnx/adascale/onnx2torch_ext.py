@@ -135,13 +135,14 @@ class OnnxReduceMean(nn.Module, OnnxToTorchModule):
         self.keepdims = bool(keepdims)
         self.noop_with_empty_axes = noop_with_empty_axes
 
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        if self.axes is None or len(self.axes) == 0:
+    def forward(
+        self, input_tensor: torch.Tensor, axes: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        axes = self.axes if axes is None else axes.tolist()
+        if axes is None or len(axes) == 0:
             if self.noop_with_empty_axes:
                 return input_tensor
             axes = list(range(input_tensor.dim()))
-        else:
-            axes = self.axes
         return torch.mean(input_tensor, dim=axes, keepdim=self.keepdims)
 
 
@@ -151,12 +152,13 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
     noop_with_empty_axes: int = node.attributes.get("noop_with_empty_axes", 0)
 
     axes = None
+    inputs = (node.input_values[0],)
     if len(node.input_values) == 2:
         try:
             axes = cast(torch.Tensor, get_const_value(node.input_values[1], graph))
             axes = axes.tolist()
         except KeyError:
-            pass
+            inputs = _non_empty_inputs(node)
 
     return OperationConverterResult(
         torch_module=OnnxReduceMean(
@@ -165,7 +167,7 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
             noop_with_empty_axes=noop_with_empty_axes,
         ),
         onnx_mapping=OnnxMapping(
-            inputs=(node.input_values[0],),
+            inputs=inputs,
             outputs=node.output_values,
         ),
     )
@@ -191,13 +193,14 @@ class OnnxReduceL2(nn.Module, OnnxToTorchModule):
         self.keepdims = bool(keepdims)
         self.noop_with_empty_axes = noop_with_empty_axes
 
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        if self.axes is None or len(self.axes) == 0:
+    def forward(
+        self, input_tensor: torch.Tensor, axes: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        axes = self.axes if axes is None else axes.tolist()
+        if axes is None or len(axes) == 0:
             if self.noop_with_empty_axes:
-                return input_tensor
+                return input_tensor.abs()
             axes = list(range(input_tensor.dim()))
-        else:
-            axes = self.axes
         return torch.linalg.vector_norm(
             input_tensor, ord=2, dim=axes, keepdim=self.keepdims
         )
@@ -209,12 +212,13 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
     noop_with_empty_axes: int = node.attributes.get("noop_with_empty_axes", 0)
 
     axes = None
+    inputs = (node.input_values[0],)
     if len(node.input_values) == 2:
         try:
             axes = cast(torch.Tensor, get_const_value(node.input_values[1], graph))
             axes = axes.tolist()
         except KeyError:
-            pass
+            inputs = _non_empty_inputs(node)
 
     return OperationConverterResult(
         torch_module=OnnxReduceL2(
@@ -223,7 +227,7 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
             noop_with_empty_axes=noop_with_empty_axes,
         ),
         onnx_mapping=OnnxMapping(
-            inputs=(node.input_values[0],),
+            inputs=inputs,
             outputs=node.output_values,
         ),
     )
