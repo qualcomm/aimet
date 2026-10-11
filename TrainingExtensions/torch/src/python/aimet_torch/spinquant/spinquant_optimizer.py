@@ -780,7 +780,7 @@ class SpinQuant:
                 )
                 new_mlp0_weight = (
                     new_mlp0_weight
-                    @ patch_embed_hadamard_rotation.T.to(
+                    @ patch_embed_hadamard_rotation.to(
                         device=device, dtype=torch.float64
                     )
                 ).to(dtype=torch.float32)
