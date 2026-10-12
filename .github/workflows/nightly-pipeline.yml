@@ -166,15 +166,46 @@ jobs:
       include_windows_tests: true
     secrets: inherit
 
-  notify_failure:
-    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && github.event_name == 'schedule' && github.run_attempt == '1' }}
-    name: Notify failure on slack
-    needs: [ call-build-wheels, call-unit-acceptance-tests ]
+  notify_slack:
+    # Post on pass and on failure so a missing message means the run is stuck.
+    # Scheduled runs only, first attempt only, to avoid spamming re-runs.
+    if: ${{ always() && github.event_name == 'schedule' && github.run_attempt == '1' }}
+    name: Notify result on slack
+    needs: [ pre-commit-check, set_vars, variants, call-build-wheels, call-unit-acceptance-tests ]
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     steps:
+    - name: Generate Slack message
+      id: slack_msg
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RUN_FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+      run: |
+        TITLE="[${{ github.ref_name }}] Nightly Build & Tests - for Release"
+        if [ "$RUN_FAILED" = "true" ]; then
+          MSG="*⚠️ $TITLE failed*"
+          # List failed/cancelled jobs, trimming matrix args down to the variant id,
+          # e.g. "onnx-cpu / Windows (X64)". Cancelled usually means a runner never
+          # picked the job up, so keep it separate from real failures.
+          JOBS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100&filter=latest" \
+                   --paginate --jq '.jobs[]' | jq -rs '
+            def short: sub("\\((?<id>[^,)]+)[^)]*\\)"; "(\(.id))")
+                     | sub("^Run unit and acceptance tests \\((?<id>[^)]*)\\) / Run AIMET unit and acceptance tests on "; "\(.id) / ");
+            (map(select(.conclusion == "failure")   | .name | short) | select(length > 0) | "Failed: " + join(", ")),
+            (map(select(.conclusion == "cancelled") | .name | short) | select(length > 0) | "Cancelled: " + join(", "))')
+          [ -n "$JOBS" ] && MSG="$MSG"$'\n'"$JOBS"
+        else
+          MSG="*✅ $TITLE passed*"
+        fi
+        MSG="$MSG"$'\n'"Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        echo "message<<EOF" >> $GITHUB_OUTPUT
+        echo "$MSG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
     - uses: slackapi/slack-github-action@v1.25.0
       with:
         channel-id: C0898PQVA31
-        slack-message: "AIMET Nightly Failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}"
+        slack-message: ${{ steps.slack_msg.outputs.message }}
       env:
         SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}

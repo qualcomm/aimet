@@ -174,7 +174,9 @@ def generate_slack_summary(
 
     failed, outcome = slack_outcome(onnx, torch_data, failed_stage)
     emoji = outcome_emoji(branch, failed)
-    print(f"*{emoji} {branch_label(branch)}{suite.title()} Regression {outcome}*")
+    print(
+        f"*{emoji} {branch_label(branch)}{suite.title()} Model Accuracy Regression {outcome}*"
+    )
     if run_url:
         print(f"Workflow: {run_url}")
 
