@@ -2960,7 +2960,7 @@ class QuantizationSimModel:
         if onnx_opset_version < desired_onnx_opset_version:
             model_copy = _convert_version(model_copy, desired_onnx_opset_version)
 
-        _add_onnx_qdq_nodes(
+        model_copy = _add_onnx_qdq_nodes(
             model_copy,
             **qdq_node_info,
             onnx_opset=desired_onnx_opset_version,
@@ -4381,7 +4381,7 @@ def encodings_to_onnx_qdq(
         for name in qdq_node_info["input_names"]
     ]
 
-    _add_onnx_qdq_nodes(
+    model = _add_onnx_qdq_nodes(
         model,
         **qdq_node_info,
         onnx_opset=model_opset,

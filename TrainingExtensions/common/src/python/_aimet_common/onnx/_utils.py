@@ -9,7 +9,7 @@
 from collections import deque, defaultdict
 import functools
 import itertools
-from typing import Iterable, Optional, Sequence, Dict, List, Union, Mapping, Set
+from typing import Iterable, Optional, Sequence, Dict, List, Tuple, Union, Mapping, Set
 import math
 
 import os
@@ -25,7 +25,8 @@ from onnx.external_data_helper import (
     _get_all_tensors,
 )
 from onnx.defs import OpSchema
-from onnx_ir import from_proto, to_proto
+import onnx_ir
+from onnx_ir import serde
 
 from . import opset10, opset13, opset19, opset21, opset23, opset25
 from ..utils import AimetLogger
@@ -58,7 +59,7 @@ def _add_onnx_qdq_node(
     (bias_q)                             (bias_qdq)
 
     """
-    _add_onnx_qdq_nodes(
+    return _add_onnx_qdq_nodes(
         model,
         [input_name],
         [output_name],
@@ -72,7 +73,7 @@ def _add_onnx_qdq_node(
 
 
 def _add_onnx_qdq_nodes(
-    model: ModelProto,
+    model: onnx.ModelProto,
     input_names: Iterable[str],
     output_names: Iterable[str],
     node_name_prefixes: Iterable[str],
@@ -96,6 +97,7 @@ def _add_onnx_qdq_nodes(
     (bias_q)                             (bias_qdq)
 
     """
+
     if onnx_opset < 10:
         raise RuntimeError(
             "ONNX opset {} cannot represent QuantizeLinear and DequantizeLinear nodes."
@@ -119,8 +121,8 @@ def _add_onnx_qdq_nodes(
     # New nodes and tensors, keyed by the index of the graph that defines their input
     nodes_to_add = defaultdict(list)
     tensors_to_add = defaultdict(list)
-    tensors_to_remove = {}
-    inputs_to_rename = {}
+    tensors_to_remove = defaultdict(dict)
+    inputs_to_rename = defaultdict(dict)
     scope = {
         name: i
         for i, graph in enumerate(_iterate_graphs_recursive(model.graph))
@@ -134,8 +136,8 @@ def _add_onnx_qdq_nodes(
     for input_name, output_name, node_name_prefix, encoding, float_type in zip(
         input_names, output_names, node_name_prefixes, encodings, float_types
     ):
-        inputs_to_rename[input_name] = output_name
         graph_idx = scope.get(input_name, 0)
+        inputs_to_rename[graph_idx][input_name] = output_name
         nodes, tensors = nodes_to_add[graph_idx], tensors_to_add[graph_idx]
         output_dtype = encoding["output_dtype"]
         axis = encoding.get("axis", None)
@@ -251,7 +253,7 @@ def _add_onnx_qdq_nodes(
                     block_size=block_size,
                 )
             )
-            tensors_to_remove[input_name] = True
+            tensors_to_remove[graph_idx][input_name] = True
             tensors.append(input_q)
 
         else:
@@ -284,17 +286,41 @@ def _add_onnx_qdq_nodes(
                 ]
             )
 
+    ir_model = onnx_ir.from_proto(model)
+
     # Innermost bodies first: a parent's sort must see its bodies' final outer-scope reads
     # (e.g. X -> X_qdq).
-    for i, graph in reversed(list(enumerate(_iterate_graphs_recursive(model.graph)))):
-        _finalize_graph_changes(
-            graph,
-            nodes_to_add[i],
-            inputs_to_rename,
-            tensors_to_add[i],
-            tensors_to_remove,
+    for i, graph in reversed(
+        list(enumerate(_iterate_ir_graphs_recursive(ir_model.graph)))
+    ):
+        original_values = onnx_ir.convenience.create_value_mapping(
+            graph, include_subgraphs=False
         )
-    _restore_graph_output_names(model)
+        value_map = dict(original_values)
+
+        ir_tensors = _to_ir_values(tensors_to_add[i])
+        for value in ir_tensors:
+            value_map[value.name] = value
+
+        ir_nodes = _to_ir_nodes(nodes_to_add[i], value_map)
+
+        input_replacements = [
+            (original_values[old_name], value_map[new_name])
+            for old_name, new_name in inputs_to_rename[i].items()
+        ]
+
+        # Must run before the RemoveUnusedNodesPass call below: a QDQ chain
+        # targeting a graph output has no consumers until this swaps it onto
+        # the output slot.
+        _restore_graph_output_names(graph)
+        _finalize_graph_changes(
+            graph, ir_nodes, input_replacements, ir_tensors, tensors_to_remove[i]
+        )
+    # Remove unused constant nodes. Initializers removed separately above as RemoveUnusedNodesPass doesn't
+    # remove initializers in subgraphs.
+    onnx_ir.passes.common.RemoveUnusedNodesPass()(ir_model)
+
+    return onnx_ir.to_proto(ir_model)
 
 
 def _convert_200_to_210(encoding: dict, input_shape: Sequence[int] | None):
@@ -609,54 +635,101 @@ def _broadcast(
     return x
 
 
-def _finalize_graph_changes(
-    graph: onnx.GraphProto,
-    nodes_to_add: Iterable,
-    inputs_to_rename: Dict,
-    tensors_to_add: List[TensorProto],
-    tensors_to_remove: Dict,
-):
-    # Remove dangling tensors/nodes
-    initializers = [
-        init for init in graph.initializer if not tensors_to_remove.pop(init.name, None)
-    ]
-    graph.ClearField("initializer")
-    graph.initializer.extend(initializers)
-
-    nodes = [
-        node
-        for node in graph.node
-        if not (
-            node.op_type == "Constant" and tensors_to_remove.pop(node.output[0], None)
+def _to_ir_values(tensors_to_add: Iterable[TensorProto]) -> List[onnx_ir.Value]:
+    """Build onnx_ir.Value objects (with const_value set) from TensorProto. Does not touch a graph."""
+    return [
+        onnx_ir.Value(
+            name=tensor_proto.name,
+            const_value=serde.deserialize_tensor(tensor_proto),
         )
+        for tensor_proto in tensors_to_add
     ]
-    graph.ClearField("node")
-    graph.node.extend(nodes)
-
-    # Redirect consumers that took the removed biases to take qdq bias instead
-    # before:
-    #     bias --------------------> consumer
-    # after:
-    #     bias_int32 --> DQ -------> consumer
-    for node in graph.node:
-        for i, old_name in enumerate(node.input):
-            new_name = inputs_to_rename.get(old_name, None)
-            if new_name is not None:
-                node.input[i] = new_name
-
-    # Add new tensors
-    for t in tensors_to_add:
-        graph.initializer.append(t)
-
-    # Insert new nodes in a topologically order without duplicates
-    nodes_to_add = list({node.name: node for node in nodes_to_add}.values())
-    graph.node.extend(nodes_to_add)
-    new_graph = from_proto(graph)
-    new_graph.sort()
-    graph.CopyFrom(to_proto(new_graph))
 
 
-def _restore_graph_output_names(model: ModelProto):
+def _to_ir_nodes(
+    nodes_to_add: Iterable[NodeProto], value_map: Dict[str, onnx_ir.Value]
+) -> List[onnx_ir.Node]:
+    """
+    Build onnx_ir.Node objects from NodeProto, deduplicated by name. Resolves each
+    node's string inputs against ``value_map``, which is also updated in place with
+    each node's output Values so later nodes in the same batch can reference them.
+    """
+    deduped_nodes = list({node.name: node for node in nodes_to_add}.values())
+    new_nodes = []
+    for node_proto in deduped_nodes:
+        resolved_inputs = []
+        for input_name in node_proto.input:
+            if input_name == "":
+                resolved_inputs.append(None)
+                continue
+            value = value_map.get(input_name)
+            if value is None:
+                # A missing producer is reported by onnx.checker downstream
+                value = onnx_ir.Value(name=input_name)
+                value_map[input_name] = value
+            resolved_inputs.append(value)
+        attrs = {
+            attr.name: serde.deserialize_attribute(attr)
+            for attr in node_proto.attribute
+        }
+        # Reuse a producer-less Value already consumed under the same name (by an
+        # existing node or a new node listed earlier) so its consumers are wired
+        # to this node and sorted after it.
+        out_names = [o for o in node_proto.output if o]
+        outputs = []
+        for out_name in out_names:
+            value = value_map.get(out_name)
+            if (
+                value is None
+                or value.producer() is not None
+                or value.is_graph_input()
+                or value.is_initializer()
+            ):
+                value = onnx_ir.Value(name=out_name)
+            outputs.append(value)
+        new_node = onnx_ir.node(
+            node_proto.op_type,
+            resolved_inputs,
+            attributes=attrs,
+            domain=node_proto.domain,
+            outputs=outputs,
+            name=node_proto.name,
+        )
+        for out_name, out_value in zip(out_names, new_node.outputs):
+            value_map[out_name] = out_value
+        new_nodes.append(new_node)
+    return new_nodes
+
+
+def _finalize_graph_changes(
+    graph: onnx_ir.Graph,
+    nodes_to_add: List[onnx_ir.Node],
+    inputs_to_replace: Iterable[Tuple[onnx_ir.Value, onnx_ir.Value]],
+    tensors_to_add: List[onnx_ir.Value],
+    tensors_to_remove: Dict[str, bool],
+) -> None:
+    """Insert nodes and initializers, redirect inputs, and remove unused objects."""
+    inserted_node_ids = {id(node) for node in nodes_to_add}
+
+    for name in tensors_to_remove:
+        if name in graph.initializers:
+            del graph.initializers[name]
+
+    for value in tensors_to_add:
+        graph.register_initializer(value)
+
+    for node in nodes_to_add:
+        graph.append(node)
+
+    # Redirect existing consumers while preserving inserted-node inputs.
+    for old_value, new_value in inputs_to_replace:
+        for consumer, index in list(old_value.uses()):
+            if id(consumer) not in inserted_node_ids:
+                consumer.replace_input_with(index, new_value)
+    graph.sort()
+
+
+def _restore_graph_output_names(graph: onnx_ir.Graph) -> None:
     """
     Give the original graph-output names back to the tensors that now carry those values.
 
@@ -679,43 +752,45 @@ def _restore_graph_output_names(model: ModelProto):
     Called by :func:`_add_onnx_qdq_nodes` itself, so callers never observe the dangling state.
     Graph outputs that were not quantized are left untouched. Control-flow body outputs are restored too.
     """
-    for graph in _iterate_graphs_recursive(model.graph):
-        _restore_output_names(graph)
 
-
-def _restore_output_names(graph: onnx.GraphProto):
-    """
-    Restore the output names of graph.
-    """
-    consumers = {
-        node.input[i]: node for node in graph.node for i in range(len(node.input))
-    }
-    producers = {
-        node.output[i]: node for node in graph.node for i in range(len(node.output))
-    }
-
-    for graph_out in graph.output:
-        last_node = producers.get(graph_out.name)
-        q = consumers.get(graph_out.name)
-
-        if last_node is None or not (q and q.op_type == "QuantizeLinear"):
+    for graph_output in list(graph.outputs):
+        last_node = graph_output.producer()
+        if last_node is None:
             continue
 
-        dq = consumers.get(q.output[0])
-
-        if not (dq and dq.op_type == "DequantizeLinear"):
+        q_node = None
+        for use_node, _use_idx in graph_output.uses():
+            if use_node.op_type == "QuantizeLinear":
+                q_node = use_node
+                break
+        if q_node is None:
             continue
 
-        i = list(last_node.output).index(graph_out.name)
-        last_node.output[i], dq.output[0] = dq.output[0], last_node.output[i]
+        q_out = q_node.outputs[0]
+        dq_node = None
+        for use_node, _use_idx in q_out.uses():
+            if use_node.op_type == "DequantizeLinear":
+                dq_node = use_node
+                break
+        if dq_node is None:
+            continue
 
-        # Redirect "out" and "out_updated" to the right consumer, including in nested bodies
-        for node in (node for g in _iterate_graphs_recursive(graph) for node in g.node):
-            for j, inp in enumerate(node.input):
-                if inp == last_node.output[i]:
-                    node.input[j] = dq.output[0]
-                elif inp == dq.output[0]:
-                    node.input[j] = last_node.output[i]
+        dq_out = dq_node.outputs[0]
+
+        if dq_out.type is None:
+            dq_out.type = graph_output.type
+        if dq_out.shape is None:
+            dq_out.shape = graph_output.shape
+
+        old_output_name = graph_output.name
+        old_dq_name = dq_out.name
+        onnx_ir.convenience.rename_values(
+            [graph_output, dq_out], [old_dq_name, old_output_name]
+        )
+
+        # Transfer graph-output membership to dq_out's Value.
+        out_idx = list(graph.outputs).index(graph_output)
+        graph.outputs[out_idx] = dq_out
 
 
 class _ParamUtils:
@@ -1569,6 +1644,25 @@ def _iterate_graphs_recursive(graph: onnx.GraphProto) -> Iterable[onnx.GraphProt
         for attr in node.attribute:
             if attr.name == "body":
                 yield from _iterate_graphs_recursive(attr.g)
+
+
+def _iterate_ir_graphs_recursive(graph: onnx_ir.Graph) -> Iterable[onnx_ir.Graph]:
+    """
+    Yield ``graph`` followed by every Control-flow body nested inside it, depth first.
+
+    Control-flow ops carry their bodies as graph-valued attributes rather than as nodes, so a
+    plain walk over ``graph.node`` never sees them.
+
+    NOTE: ``If`` and ``Loop`` bodies are deliberately not yielded.
+
+    :param graph: Graph to walk
+    :return: Iterator over ``graph`` and the ``Scan`` bodies within it
+    """
+    yield graph
+
+    for node in graph:
+        if node.op_type == "Scan":
+            yield from _iterate_ir_graphs_recursive(node.attributes["body"].as_graph())
 
 
 def _get_all_constants(

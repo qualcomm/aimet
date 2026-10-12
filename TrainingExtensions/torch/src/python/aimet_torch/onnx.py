@@ -1340,7 +1340,7 @@ def _to_onnx_qdq(
     float_types = [np.float32 for _ in range(len(qnn_encodings))]
 
     # Add onnx QDQ nodes in batch
-    _add_onnx_qdq_nodes(
+    onnx_model = _add_onnx_qdq_nodes(
         onnx_model,
         input_names=qnn_encodings.keys(),
         output_names=qdq_tensor_names.values(),
