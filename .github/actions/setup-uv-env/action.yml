@@ -55,7 +55,12 @@ runs:
           $pyExe = Join-Path $pyDir "tools\python.exe"
           uv venv --python "$pyExe" "${{ inputs.ENV_NAME }}"
         } else {
-          uv venv --python "${{ inputs.VER_PYTHON }}" "${{ inputs.ENV_NAME }}"
+          # Force a uv-managed CPython (latest patch release) instead of the
+          # runner's system install, which is 3.10.0 for 3.10 -- a patch
+          # release whose typing.ForwardRef lacks `is_class` and breaks
+          # libraries like pydantic 2.14.0. --native-tls matches the other
+          # uv calls on these runners, which need the Windows cert store.
+          uv venv --managed-python --native-tls --python "${{ inputs.VER_PYTHON }}" "${{ inputs.ENV_NAME }}"
         }
         .\"${{ inputs.ENV_NAME }}"\Scripts\Activate.ps1
     - name: Install uv (Linux)
