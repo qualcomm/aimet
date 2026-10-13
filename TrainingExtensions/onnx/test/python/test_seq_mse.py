@@ -3,8 +3,6 @@
 
 # /usr/bin/env python
 
-import gc
-import psutil
 import time
 import pytest
 from unittest.mock import MagicMock
@@ -17,8 +15,6 @@ import copy
 import json
 import numpy as np
 import os
-import itertools
-from onnx.utils import Extractor
 import logging
 
 from aimet_onnx.common import libquant_info
@@ -44,10 +40,11 @@ from aimet_onnx.sequential_mse.transform import (
 from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.quantsim import (
     QuantizationSimModel,
+    _quantize_subgraphs_enabled,
     set_blockwise_quantization_for_weights,
     set_grouped_blockwise_quantization_for_weights,
 )
-from aimet_onnx.utils import make_dummy_input, _add_value_info
+from aimet_onnx.utils import make_dummy_input
 from aimet_onnx.qc_quantize_op import (
     QcQuantizeOp,
     OpMode,
@@ -118,33 +115,6 @@ def _get_config_file(
         json.dump(beq_per_channel_config, f)
 
     return file_name
-
-
-def _create_input_dict(input_names, cached_data):
-    input_dict = {}
-
-    if not input_names:
-        return cached_data
-    for input_name in input_names:
-        input_dict[input_name] = cached_data[input_name]
-    return input_dict
-
-
-def _build_session(model):
-    """
-    Build and return onnxruntime inference session
-    :param providers: providers to execute onnxruntime
-    """
-    from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
-
-    sess_options = SessionOptions()
-    sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-    session = InferenceSession(
-        path_or_bytes=model.SerializeToString(),
-        sess_options=sess_options,
-        providers=["CPUExecutionProvider"],
-    )
-    return session
 
 
 def data_loader(dummy_input):
@@ -270,11 +240,6 @@ def _timed_run(fn, *args, runs=5):
         fn(*args)
         times.append(time.time() - start)
     return sum(times) / len(times)
-
-
-def _get_rss_mb():
-    """Get current CPU RAM RSS in MB."""
-    return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
 
 
 def _weightless_matmul_model():
@@ -787,42 +752,37 @@ def test_disable_subgraph_quantizers():
 
     assert enabled == {q for q in sim.qc_quantize_op_dict.values() if q.enabled}
 
-    subgraph_path = seq_mse._split_onnx_graph(seq_mse._extractor, ["4"], ["output"])
+    subgraph_path = seq_mse._split_onnx_graph(["4"], ["output"])
     subgraph = onnx.load_model(subgraph_path, load_external_data=False)
     with seq_mse._disable_subgraph_quantizers(subgraph):
         assert not sim.qc_quantize_op_dict["fc_w"].enabled
         assert not sim.qc_quantize_op_dict["4"].enabled
 
 
-def test_add_value_info():
-    model = models_for_tests.single_residual_model().model
-    sim = QuantizationSimModel(
-        model=model,
-        providers=["CPUExecutionProvider"],
-        default_param_bw=4,
-    )
-    orig_value_info = sim.model.model.graph.value_info
-    with _add_value_info(sim.model.model):
-        updated_value_info = copy.deepcopy(sim.model.model.graph.value_info)
+@pytest.mark.parametrize("quantize_subgraphs", [False, True])
+def test_scan_reading_outer_activation(quantize_subgraphs):
+    model = models_for_tests.scan_reading_outer_activation_model()
+    with _quantize_subgraphs_enabled(quantize_subgraphs):
+        sim = QuantizationSimModel(
+            model=model,
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=["CPUExecutionProvider"],
+            default_param_bw=4,
+        )
+    inputs = [make_dummy_input(model) for _ in range(2)]
+    seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=2), inputs)
 
-    # Check that the original value info is restored
-    assert sim.model.model.graph.value_info == orig_value_info
+    """
+    When: The Scan body reads a top-level activation that is not an input of the Scan node
+    Then: The split graph includes its producer, and SeqMSE optimizes the weights around the Scan
+    """
+    subgraph_path = seq_mse._split_onnx_graph(["state_in", "xs"], ["state_out"])
+    subgraph = onnx.load_model(subgraph_path, load_external_data=False)
+    assert "the_trilu" in {node.name for node in subgraph.graph.node}
 
-    tensors_with_info = {info.name for info in updated_value_info}
-
-    io_tensors = {
-        tensor.name
-        for tensor in itertools.chain(sim.model.graph().input, sim.model.graph().output)
-    }
-    initializers = {tensor.name for tensor in sim.model.initializer()}
-    all_tensors = {
-        name
-        for node in sim.model.nodes()
-        for name in itertools.chain(node.input, node.output)
-    }
-
-    expected = all_tensors - (io_tensors | initializers)
-    assert expected.issubset(tensors_with_info)
+    apply_seq_mse(sim, inputs, num_candidates=4)
+    assert sim.qc_quantize_op_dict["w_pre"].is_encoding_frozen()
+    assert sim.qc_quantize_op_dict["w_post"].is_encoding_frozen()
 
 
 def test_nodes_to_exclude():
@@ -1395,84 +1355,6 @@ def test_bq_lpbq_functional(swap_quantizer_func, model_factory, block_size):
             assert quantizer.is_encoding_frozen()
 
 
-def test_add_value_info_no_memory_leak():
-    """
-    Test that _add_value_info does not cause memory growth.
-
-    The fix ensures that when we copy the model and clear raw_data from initializers,
-    we operate on a copy rather than temporarily modifying the original model.
-    This prevents memory leaks caused by protobuf not releasing memory when fields are cleared.
-    """
-
-    def _create_dummy_model(weight_size_mb: int = 100):
-        """
-        Create an ONNX model with large matmul weight
-        """
-        num_floats = (weight_size_mb * 1024 * 1024) // 4
-        dim = int(np.sqrt(num_floats))
-        weight = np.random.randn(dim, dim).astype(np.float32)
-
-        input_tensor = onnx.helper.make_tensor_value_info(
-            "input", onnx.TensorProto.FLOAT, [1, dim]
-        )
-        output_tensor = onnx.helper.make_tensor_value_info(
-            "output", onnx.TensorProto.FLOAT, [1, dim]
-        )
-        weight_initializer = onnx.numpy_helper.from_array(weight, name="weight")
-        matmul_node = onnx.helper.make_node(
-            "MatMul",
-            inputs=["input", "weight"],
-            outputs=["output"],
-            name="matmul",
-        )
-        graph = onnx.helper.make_graph(
-            [matmul_node],
-            "matmul_graph",
-            inputs=[input_tensor],
-            outputs=[output_tensor],
-            initializer=[weight_initializer],
-        )
-        model = onnx.helper.make_model(
-            graph, ir_version=10, opset_imports=[onnx.helper.make_opsetid("", 20)]
-        )
-        return model
-
-    weight_size_mb = 100
-    model = _create_dummy_model(weight_size_mb)
-
-    sim = QuantizationSimModel(
-        model=model,
-        providers=["CPUExecutionProvider"],
-        default_param_bw=4,
-    )
-
-    # Warm up
-    gc.collect()
-    with _add_value_info(sim.model.model):
-        pass
-    gc.collect()
-
-    rss_before = _get_rss_mb()
-
-    # Run multiple iterations to amplify any memory leak
-    num_iterations = 5
-    for _ in range(num_iterations):
-        with _add_value_info(sim.model.model):
-            pass
-        gc.collect()
-
-    rss_after = _get_rss_mb()
-
-    # If there was a leak, we expect growth of weight_size_mb * num_iterations
-    memory_growth = rss_after - rss_before
-    max_allowed_growth_mb = 20  # Allow small fluctuations
-
-    print(
-        f"RSS before: {rss_before:.1f} MB, RSS after: {rss_after:.1f} MB, Growth: {memory_growth:.1f} MB"
-    )
-    assert memory_growth < max_allowed_growth_mb
-
-
 def test_rechunk_seq_inputs_shapes():
     """test _rechunk_seq_inputs shapes"""
     num_blocks, seq_len, block_size = 4, 100, 8
@@ -1641,37 +1523,39 @@ class TestDependencyGraph:
     )
     def test_dependency_graph(self, model, cached_data):
         """Compare the one-shot and iterative outputs"""
-        dl = [cached_data]
-        dep_graph = DependencyGraph(ConnectedGraph(model), dl)
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=["CPUExecutionProvider"],
+        )
+        for quantizer in sim.qc_quantize_op_dict.values():
+            quantizer.enabled = False
+        seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=1), [cached_data])
+        dep_graph = seq_mse.dependency_graph
 
-        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
-        model_outputs = [node.name for node in model.model.graph.output]
-
-        session = _build_session(model.model)
-        one_shot_output = session.run(None, input_feed=cached_data)[0]
+        one_shot_output = sim.session.run(None, cached_data)[0]
 
         # Iterate over the topologically sorted nodes to gather intermediate outputs and
         # provide them as inputs to the subsequent subgraph.
-        with _add_value_info(model.model):
-            extractor = Extractor(model.model)
+        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
         for i in range(1, len(sorted_nodes)):
             subgraph_inp_names, subgraph_out_names = (
                 dep_graph.get_subgraph_inp_out_names(sorted_nodes[i])
             )
-            model_ = extractor.extract_model(subgraph_inp_names, subgraph_out_names)
-            session = _build_session(model_)
-            input_dict = _create_input_dict(subgraph_inp_names, cached_data)
-            cached_data[subgraph_out_names[0]] = session.run(
-                None, input_feed=input_dict
-            )[0]
+            path = seq_mse._split_onnx_graph(subgraph_inp_names, subgraph_out_names)
+            with seq_mse._create_session(path) as session:
+                outputs = session.run(
+                    None, {name: cached_data[name] for name in subgraph_inp_names}
+                )
+            cached_data.update(zip(subgraph_out_names, outputs))
 
         # Final subgraph extraction and session run
-        subgraph_inp_names = subgraph_out_names
-        subgraph_out_names = model_outputs
-        model_ = extractor.extract_model(subgraph_inp_names, subgraph_out_names)
-        session = _build_session(model_)
-        input_dict = _create_input_dict(subgraph_inp_names, cached_data)
-        iterative_output = session.run(None, input_feed=input_dict)[0]
+        model_outputs = [output.name for output in sim.model.model.graph.output]
+        path = seq_mse._split_onnx_graph(subgraph_out_names, model_outputs)
+        with seq_mse._create_session(path) as session:
+            iterative_output = session.run(
+                None, {name: cached_data[name] for name in subgraph_out_names}
+            )[0]
 
         assert np.all(iterative_output == one_shot_output)
 

@@ -5784,6 +5784,53 @@ def wrapped_scan_model():
     )
 
 
+def scan_reading_outer_activation_model():
+    """
+    wrapped_scan_model whose body also reads a top-level Trilu output by name
+    """
+    rng = np.random.default_rng(0)
+    pre, post = (
+        numpy_helper.from_array(
+            rng.standard_normal((DIM, DIM)).astype(np.float32), name=name
+        )
+        for name in ("w_pre", "w_post")
+    )
+    ones = numpy_helper.from_array(np.ones((DIM, DIM), dtype=np.float32), name="ones")
+    body = helper.make_graph(
+        [
+            helper.make_node("Add", ["b_c", "b_x"], ["b_sum"], name="b_add"),
+            helper.make_node("Mul", ["b_sum", "tril"], ["b_co"], name="b_mul"),
+            helper.make_node("Identity", ["b_co"], ["b_y"], name="b_y_id"),
+        ],
+        "scan_body",
+        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
+        outputs=[_ti("b_co", [DIM, DIM]), _ti("b_y", [DIM, DIM])],
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w_pre"], ["state_in"], name="pre"),
+                helper.make_node(
+                    "Trilu", ["ones"], ["tril"], name="the_trilu", upper=0
+                ),
+                helper.make_node(
+                    "Scan",
+                    ["state_in", "xs"],
+                    ["state_out", "ys"],
+                    name="the_scan",
+                    body=body,
+                    num_scan_inputs=1,
+                ),
+                helper.make_node("MatMul", ["state_out", "w_post"], ["y"], name="post"),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM]), _ti("xs", [TRIP, DIM, DIM])],
+            outputs=[_ti("y", [DIM, DIM]), _ti("ys", [TRIP, DIM, DIM])],
+            initializer=[pre, post, ones],
+        )
+    )
+
+
 def nested_scan_model():
     """A Scan whose body contains another Scan."""
     inner_body = helper.make_graph(

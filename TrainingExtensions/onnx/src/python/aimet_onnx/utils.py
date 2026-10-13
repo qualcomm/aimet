@@ -18,10 +18,8 @@ import numpy as np
 import torch
 import onnx
 from onnx import helper, numpy_helper
-from onnx.utils import Extractor
 from onnxruntime import SessionOptions, InferenceSession
 import shutil
-from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from aimet_onnx.common import libquant_info
 from aimet_onnx.common import libpymo
 from aimet_onnx.common.quantsim import compute_min_max_given_delta_offset
@@ -631,7 +629,9 @@ class OrtInferenceSession(InferenceSession):
                 path = self.model_dir
             model_path = os.path.join(path, "model.onnx")
             # Use a deep copy to avoid memory accumulation in the original model.
-            # See LazyExtractor.__init__ for detailed explanation of protobuf memory behavior.
+            # Protobuf doesn't release memory when fields are cleared - it allocates new memory on reload.
+            # This causes the ModelProto to grow by the weight size on each call. By operating on a
+            # disposable copy, we take a temporary memory hit but avoid permanent growth in the original.
             model_copy = copy.deepcopy(model)
             onnx.save_model(
                 model_copy,
@@ -688,74 +688,6 @@ def build_session(
     return OrtInferenceSession(
         model, providers, session_options=sess_options, path=path
     )
-
-
-class LazyExtractor(Extractor):
-    """
-    Wrapper Extractor to handle models with external data
-
-    Keeps data on disk during extraction and returns a subgraph path referencing the same
-    external data.
-    """
-
-    def __init__(self, model: onnx.ModelProto):
-        """
-        :param model: ONNX model to set up extractor for
-        """
-        self.model_dir = tempfile.mkdtemp()
-        model_path = os.path.join(self.model_dir, "model.onnx")
-
-        # Use a deep copy to avoid memory accumulation in the original model.
-        # Protobuf doesn't release memory when fields are cleared - it allocates new memory on reload.
-        # This causes the ModelProto to grow by the weight size on each call. By operating on a
-        # disposable copy, we take a temporary memory hit but avoid permanent growth in the original.
-        model_copy = copy.deepcopy(model)
-        onnx.save_model(
-            model_copy,
-            model_path,
-            location=Path(model_path).name + ".data",
-            # Prevents Split's split_sizes input from being externalized
-            size_threshold=1024**2,
-            all_tensors_to_one_file=False,
-            convert_attribute=True,
-            save_as_external_data=True,
-        )
-        del model_copy
-
-        # Load model without external data for extraction
-        self.model_with_no_data = onnx.load_model(model_path, load_external_data=False)
-        super().__init__(self.model_with_no_data)
-
-    def extract_model(self, input_names: List[str], output_names: List[str]) -> str:
-        """
-        Extracts a sub-model from the original model given input and output names.
-
-        :param input_names: input names of split graph
-        :param output_names: output names of split graph
-        :return: path to the extracted subgraph
-        """
-        model = super().extract_model(input_names, output_names)
-        # Get a temporary (closed) file
-        with tempfile.NamedTemporaryFile(
-            suffix=".onnx", dir=self.model_dir, delete=False
-        ) as f:
-            subgraph_path = f.name
-        onnx.save_model(model, subgraph_path)
-        return subgraph_path
-
-    def __del__(self):
-        """
-        Clean up temp directory created to store model with external data
-        """
-        if self.model_dir is None:
-            return
-
-        try:
-            shutil.rmtree(self.model_dir)
-        except Exception as e:  # pylint: disable=broad-except
-            logger.warning(
-                "Error while cleaning up temp dir at %s: %s", self.model_dir, e
-            )
 
 
 class ModuleData:
@@ -927,57 +859,6 @@ def map_torch_dtype_to_np(torch_dtype: torch.dtype) -> np.dtype:
         return dtype_map[torch_dtype]
     except KeyError as exc:
         raise ValueError(f"Unsupported torch dtype: {torch_dtype}") from exc
-
-
-@contextmanager
-def _add_value_info(model: onnx.ModelProto):
-    """
-    Context manager that temporarily populates the model's value_info via shape inference.
-
-    Shape inference requires stripping weight data (models > 2GB fail otherwise) and replacing
-    custom quantizer ops with Identity. We perform these modifications on a copy rather than
-    the original model to avoid memory accumulation: protobuf doesn't release memory when
-    fields are cleared, so clearing and restoring raw_data on the original would cause the
-    ModelProto to grow by the total weight size on each call.
-
-    :param model: The ONNX model to temporarily add value info to.
-    """
-    initial_value_info = model.graph.value_info
-
-    # Remove weight data to allow shape inference (fails for models > 2GB)
-    model_copy = onnx.ModelProto()
-    model_copy.CopyFrom(model)
-
-    # Store and clear raw_data from initializers
-    for initializer in model_copy.graph.initializer:
-        if initializer.HasField("raw_data"):
-            initializer.ClearField("raw_data")
-
-    # Replace quantizers with Identity ops to allow shape inference
-    for node in model_copy.graph.node:
-        if node.op_type != "QcQuantizeOp":
-            continue
-
-        node.op_type = "Identity"
-        node.ClearField("attribute")
-        node.ClearField("domain")
-
-    # Model must be topologically sorted prior to shape inference
-    ONNXModel(model_copy).topological_sort()
-    inferred_model = onnx.shape_inference.infer_shapes(model_copy)
-
-    value_info = inferred_model.graph.value_info
-    del model_copy, inferred_model
-
-    try:
-        # Update model's value info
-        model.graph.ClearField("value_info")
-        model.graph.value_info.extend(value_info)
-        yield
-    finally:
-        # Restore original value info
-        model.graph.ClearField("value_info")
-        model.graph.value_info.extend(initial_value_info)
 
 
 def _get_qdq_pair_initializers(graph: GraphProto) -> Set[str]:

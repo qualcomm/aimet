@@ -12,9 +12,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from contextlib import contextmanager
 import itertools
+import os
+import tempfile
 import numpy as np
 from aimet_onnx.common.progress import progress_bar  # pylint: disable=import-error
 import onnx
+import onnx_ir
 import onnxruntime
 import torch
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
@@ -22,14 +25,13 @@ from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from aimet_onnx.common.libpymo import TensorQuantizerOpMode
 from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.common.utils import AimetLogger, deprecated
+from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import (
     disable_quantizers,
     OrtInferenceSession,
     get_torch_device,
     map_np_dtype_to_torch,
-    LazyExtractor,
-    _add_value_info,
 )
 from aimet_onnx.sequential_mse.dependency_graph import DependencyNode, DependencyGraph
 from aimet_onnx.sequential_mse.transform import (
@@ -113,11 +115,19 @@ class SequentialMse:
         self.params = params
 
         data_loader = itertools.islice(data_loader, params.num_batches)
-        # As of onnx 1.18, value info must be populated prior to instantiating Extractor
-        with _add_value_info(sim.model.model):
-            # For onnx < 1.18, must disable shape inference or it will fail due to custom ops
-            with _disable_onnx_shape_inference():
-                self._extractor = LazyExtractor(sim.model.model)
+
+        # Save the model once with external data and load it lazily, so that subgraphs can be
+        # extracted without loading weights.
+        self._model_dir = tempfile.TemporaryDirectory()
+        model_path = os.path.join(self._model_dir.name, "model.onnx")
+
+        # onnx_ir.save leaves sim.model.model unchanged.
+        onnx_ir.save(
+            onnx_ir.from_proto(sim.model.model),
+            model_path,
+            external_data="model.onnx.data",
+        )
+        self._ir_model = onnx_ir.load(model_path)
 
         self.dependency_graph = DependencyGraph(
             sim.connected_graph, data_loader, nodes_to_exclude
@@ -205,8 +215,17 @@ class SequentialMse:
 
     @contextmanager
     def _disable_subgraph_quantizers(self, model: onnx.ModelProto):
+        """
+        Temporarily disables the quantizers of the given subgraph, including the ones inside
+        control-flow bodies, to run it in full precision. Restores them on exit.
+
+        :param model: Model containing subgraph
+        """
         quantizer_keys = [
-            node.input[0] for node in model.graph.node if node.op_type == "QcQuantizeOp"
+            node.input[0]
+            for graph in _iterate_graphs_recursive(model.graph)
+            for node in graph.node
+            if node.op_type == "QcQuantizeOp"
         ]
         enabled = {
             name: self.sim.qc_quantize_op_dict[name].enabled for name in quantizer_keys
@@ -493,9 +512,7 @@ class SequentialMse:
         )
         sim_inputs = self.dependency_graph.get_sim_data(dep_nodes_to_parallelize)
 
-        subgraph_path = self._split_onnx_graph(
-            self._extractor, subgraph_inp_names, subgraph_outs_names
-        )
+        subgraph_path = self._split_onnx_graph(subgraph_inp_names, subgraph_outs_names)
         subgraph_model = onnx.load_model(subgraph_path, load_external_data=False)
 
         # Transform graph for bq/lpbq quantizers
@@ -701,18 +718,41 @@ class SequentialMse:
 
         return all_out_shapes, all_out_dtypes
 
-    @staticmethod
-    def _split_onnx_graph(
-        extractor: LazyExtractor, input_names: List[str], output_names: List[str]
-    ) -> str:
+    def _split_onnx_graph(self, input_names: List[str], output_names: List[str]) -> str:
         """
-        Splits the onnx graph from input names to output names using extractor
+        Splits the onnx graph from input names to output names. The subgraph references the
+        external data of the saved model.
+
+        NOTE: Unlike onnx.utils.Extractor, onnx_ir also keeps the producers of values that
+        subgraph attributes (e.g. Scan bodies) read from the outer scope.
 
         :param input_names: input names of split graph
         :param output_names: output names of split graph
         :return: path to the subgraph
         """
-        return extractor.extract_model(list(input_names), list(output_names))
+        graph = onnx_ir.convenience.extract(
+            self._ir_model.graph, list(input_names), list(output_names)
+        )
+        # ORT requires every graph input and output to have a type.
+        for value in itertools.chain(graph.inputs, graph.outputs):
+            if value.dtype is None:
+                value.dtype = onnx_ir.DataType.from_numpy(
+                    self.sim.activation_dtypes[value.name]
+                )
+        model = onnx_ir.Model(
+            graph,
+            ir_version=self._ir_model.ir_version,
+            functions=list(self._ir_model.functions.values()),
+        )
+        with tempfile.NamedTemporaryFile(
+            suffix=".onnx", dir=self._model_dir.name, delete=False
+        ) as f:
+            subgraph_path = f.name
+
+        # self._ir_model's initializers reference model.onnx.data, so saving without
+        # external_data= writes only those references; keep splits in this directory.
+        onnx_ir.save(model, subgraph_path)
+        return subgraph_path
 
     def _run_onnx_graph(
         self, session: onnxruntime.InferenceSession, inputs: Dict
@@ -762,9 +802,7 @@ class SequentialMse:
         _logger.debug(
             f"Subgraph input names: {subgraph_inp_names}, Subgraph output names: {subgraph_out_names}"
         )
-        sim_split_path = self._split_onnx_graph(
-            self._extractor, subgraph_inp_names, subgraph_out_names
-        )
+        sim_split_path = self._split_onnx_graph(subgraph_inp_names, subgraph_out_names)
         with self._create_session(sim_split_path) as session:
             subgraph_outs = self._run_onnx_graph(session, subgraph_inps)
         self.dependency_graph.update_sim_data(subgraph_out_names, subgraph_outs)
@@ -927,16 +965,6 @@ def _remove_session(sim: QuantizationSimModel):
         yield
     finally:
         sim._rebuild_session()  # pylint:disable = protected-access
-
-
-@contextmanager
-def _disable_onnx_shape_inference():
-    infer_shapes = onnx.shape_inference.infer_shapes
-    try:
-        onnx.shape_inference.infer_shapes = lambda model, *args, **kwargs: model
-        yield
-    finally:
-        onnx.shape_inference.infer_shapes = infer_shapes
 
 
 @contextmanager

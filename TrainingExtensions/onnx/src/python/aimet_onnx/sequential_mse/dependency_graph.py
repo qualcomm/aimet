@@ -110,6 +110,10 @@ class DependencyGraph:
         # Tracks the cg op name to the number of incoming edges to the op.
         self._in_degree_map = self._fill_in_degree_map(self.conn_graph)
 
+        # NOTE: The traversal starts at top-level ops and visits only top-level ops, so the ops
+        # inside control-flow bodies (e.g. Scan) are not added, and their weights are not
+        # optimized. A body runs as a whole inside its op, so its per-iteration inputs can't be
+        # cached, and the body can't be split into subgraphs like the top-level graph.
         for start_op in self.conn_graph.starting_ops:
             self._fill_dependency_graph(start_op)
 
