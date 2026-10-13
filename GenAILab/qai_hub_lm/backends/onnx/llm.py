@@ -153,6 +153,8 @@ class LLM_ONNX(LLM):
 
         with (
             AttributePatch(quantsim, "op_types_to_tie_qtzrs", ["Concat"]),
+            # Temporary until subgraph quantization is enabled by default in aimet_onnx.
+            AttributePatch(quantsim, "_quantize_subgraphs", True),
             AttributePatch(
                 quantsim,
                 "op_outputs_to_ignore",
