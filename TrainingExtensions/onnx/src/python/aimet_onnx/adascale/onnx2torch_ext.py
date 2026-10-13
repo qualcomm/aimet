@@ -1,14 +1,24 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import json
 import math
 from typing import List, Optional, cast
 
 import torch
+from torch import fx
 from torch import nn
 from torch.nn import functional as F
-from onnx import defs
-from onnx import TensorProto
+from onnx import (
+    defs,
+    helper,
+    GraphProto,
+    ModelProto,
+    OperatorSetIdProto,
+    StringStringEntryProto,
+    TensorProto,
+)
+from onnx2torch import convert
 from onnx2torch.node_converters.registry import add_converter
 from onnx2torch.onnx_graph import OnnxGraph
 from onnx2torch.onnx_node import OnnxNode
@@ -21,6 +31,33 @@ from onnx2torch.node_converters.registry import (
     OperationDescription,
     _CONVERTER_REGISTRY,
 )
+
+# onnx2torch passes converters only (node, graph), not the model's opset imports, which
+# converters that build a sub-model (e.g. Scan body) need. convert_model() records them
+# in the graph's metadata_props under this key.
+# TODO: Remove once AdaScale no longer relies on onnx2torch.
+_OPSET_IMPORTS_KEY = "aimet_onnx.opset_imports"
+
+
+def convert_model(model: ModelProto) -> fx.GraphModule:
+    """onnx2torch.convert that makes the model's opset imports readable by converters.
+
+    Modifies model.graph in place.
+    """
+    opset_imports = {opset.domain: opset.version for opset in model.opset_import}
+    model.graph.metadata_props.append(
+        StringStringEntryProto(key=_OPSET_IMPORTS_KEY, value=json.dumps(opset_imports))
+    )
+    return convert(model)
+
+
+def _opset_imports(graph: OnnxGraph) -> List[OperatorSetIdProto]:
+    metadata_props = {prop.key: prop.value for prop in graph.proto.metadata_props}
+    opset_imports = json.loads(metadata_props[_OPSET_IMPORTS_KEY])
+    return [
+        helper.make_opsetid(domain, version)
+        for domain, version in opset_imports.items()
+    ]
 
 
 class OnnxMatmul(nn.Module, OnnxToTorchModule):  # pylint: disable=missing-class-docstring
@@ -556,6 +593,97 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:  # pylint: 
     return OperationConverterResult(
         torch_module=OnnxCumSum(exclusive=exclusive, reverse=reverse),
         onnx_mapping=onnx_mapping_from_node(node=node),
+    )
+
+
+class OnnxScan(nn.Module, OnnxToTorchModule):
+    """ONNX Scan over axis 0 in the forward direction: runs the converted body once per slice.
+
+    Inputs: [carries, scanned inputs, outer-scope tensors read by the body]
+    outputs: [final carries, stacked scan outputs]
+    """
+
+    def __init__(self, body: nn.Module, num_carries: int, num_scan_inputs: int):
+        super().__init__()
+        self.body = body
+        self.num_carries = num_carries
+        self.num_scan_inputs = num_scan_inputs
+
+    def forward(self, *inputs: torch.Tensor):  # pylint: disable=missing-function-docstring
+        n, m = self.num_carries, self.num_scan_inputs
+        carries, scanned, outer = list(inputs[:n]), inputs[n : n + m], inputs[n + m :]
+        scan_outputs = []
+        for t in range(scanned[0].shape[0]):
+            outputs = self.body(*carries, *(x[t] for x in scanned), *outer)
+            carries = list(outputs[:n])
+            scan_outputs.append(outputs[n:])
+        return tuple(carries + [torch.stack(ys) for ys in zip(*scan_outputs)])
+
+
+def _outer_scope_inputs(body: GraphProto) -> List[str]:
+    """Names the Scan body reads from the enclosing graph, in first-use order."""
+    local = {value.name for value in body.input} | {
+        init.name for init in body.initializer
+    }
+    local |= {name for node in body.node for name in node.output}
+    names = []
+    for node in body.node:
+        for name in node.input:
+            if name and name not in local and name not in names:
+                names.append(name)
+    return names
+
+
+@add_converter(operation_type="Scan", version=16)
+def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
+    attributes = {attr.name: attr for attr in node.proto.attribute}
+
+    # Only scanning along axis 0 in the forward direction (the defaults) is supported
+    for name in (
+        "scan_input_axes",
+        "scan_output_axes",
+        "scan_input_directions",
+        "scan_output_directions",
+    ):
+        if name in attributes and any(attributes[name].ints):
+            raise NotImplementedError(
+                f"Scan with {name}={list(attributes[name].ints)} is not supported"
+            )
+
+    # Pass the tensors the body reads from the enclosing graph as extra trailing inputs,
+    # so the body converts as a standalone model
+    body = attributes["body"].g
+    outer_inputs = _outer_scope_inputs(body)
+    outer_value_infos = []
+    for name in outer_inputs:
+        if name in graph.initializers:
+            tensor = graph.initializers[name].proto
+            outer_value_infos.append(
+                helper.make_tensor_value_info(name, tensor.data_type, list(tensor.dims))
+            )
+        else:
+            outer_value_infos.append(graph.value_info[name])
+
+    body_graph = helper.make_graph(
+        list(body.node),
+        body.name,
+        list(body.input) + outer_value_infos,
+        list(body.output),
+        list(body.initializer),
+    )
+    body_model = helper.make_model(body_graph, opset_imports=_opset_imports(graph))
+
+    num_scan_inputs = attributes["num_scan_inputs"].i
+    return OperationConverterResult(
+        torch_module=OnnxScan(
+            body=convert_model(body_model),
+            num_carries=len(node.input_values) - num_scan_inputs,
+            num_scan_inputs=num_scan_inputs,
+        ),
+        onnx_mapping=OnnxMapping(
+            inputs=tuple(node.input_values) + tuple(outer_inputs),
+            outputs=node.output_values,
+        ),
     )
 
 

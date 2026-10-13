@@ -277,3 +277,77 @@ def test_clip(min_val, max_val, dtype):
     node = helper.make_node("Clip", inputs, ["output"])
     feed = {"x": np.random.randn(3, 4).astype(dtype)}
     _assert_single_node_matches_ort(node, feed, tensor_type, initializers)
+
+
+def _scan_model(
+    body, scan_inputs, scan_outputs, opset, initializers=(), nodes=(), **attrs
+):
+    """Model running body over scan_inputs with one Scan, after nodes."""
+    scan = helper.make_node(
+        "Scan",
+        [info.name for info in scan_inputs],
+        [info.name for info in scan_outputs],
+        body=body,
+        **attrs,
+    )
+    graph = helper.make_graph(
+        [*nodes, scan], "g", scan_inputs, scan_outputs, list(initializers)
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+    model.ir_version = 10
+    return model
+
+
+def _assert_scan_matches_ort(model, feed):
+    onnx_outs = ort.InferenceSession(model.SerializeToString()).run(None, feed)
+    output_names = [output.name for output in model.graph.output]
+    pt_block, _ = get_pt_block(onnx_ir.from_proto(model), (list(feed), output_names))
+    converted_outs = pt_block(*(torch.from_numpy(arr) for arr in feed.values()))
+    for onnx_out, converted_out in zip(onnx_outs, converted_outs):
+        assert np.allclose(
+            onnx_out, converted_out.detach().numpy(), rtol=1e-5, atol=1e-6
+        )
+
+
+def _float_info(name, shape):
+    return helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
+
+
+def test_scan():
+    """An opset 18 Scan whose body reads an initializer and a node output of the enclosing
+    graph, and contains Transpose, which has no converter at the latest opset"""
+    trip_count = 32
+    body = helper.make_graph(
+        [
+            helper.make_node("MatMul", ["x", "w2"], ["m"]),
+            helper.make_node("Transpose", ["m"], ["t"], perm=[1, 0]),
+            helper.make_node("Add", ["t", "w"], ["u"]),
+            helper.make_node("Add", ["c", "u"], ["s"]),
+            helper.make_node("Tanh", ["s"], ["c_out"]),
+            helper.make_node("Mul", ["c_out", "x"], ["y"]),
+        ],
+        "body",
+        [_float_info("c", [4, 4]), _float_info("x", [4, 4])],
+        [_float_info("c_out", [4, 4]), _float_info("y", [4, 4])],
+    )
+    model = _scan_model(
+        body,
+        [_float_info("c0", [4, 4]), _float_info("xs", [trip_count, 4, 4])],
+        [_float_info("c_final", [4, 4]), _float_info("ys", [trip_count, 4, 4])],
+        opset=18,
+        initializers=[
+            helper.make_tensor("w", TensorProto.FLOAT, [4, 4], np.random.randn(16))
+        ],
+        nodes=[helper.make_node("Add", ["w", "w"], ["w2"])],
+        num_scan_inputs=1,
+    )
+    feed = {
+        "c0": np.random.randn(4, 4).astype(np.float32),
+        "xs": np.random.randn(trip_count, 4, 4).astype(np.float32),
+    }
+
+    """
+    When: The model is converted to torch
+    Then: The converted model matches ORT, as the body converts with the model's opset
+    """
+    _assert_scan_matches_ort(model, feed)

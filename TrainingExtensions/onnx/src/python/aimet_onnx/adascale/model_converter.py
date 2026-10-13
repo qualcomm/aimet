@@ -8,13 +8,12 @@ import torch
 import onnx
 import onnx_ir
 from onnx.utils import Extractor
-from onnx2torch import convert
 from onnx2torch.onnx_graph import OnnxGraph
 
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.common.quantsim import calculate_delta_offset
 from aimet_onnx.adascale.quantizer import QuantizedLinear, QuantizedConv2d
-from aimet_onnx.adascale.onnx2torch_ext import *  # pylint: disable=wildcard-import, unused-wildcard-import
+from aimet_onnx.adascale.onnx2torch_ext import convert_model
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx import ir_utils
 from aimet_onnx.graph_passes.fusions import inline_all_supergroups
@@ -170,7 +169,7 @@ def get_pt_block(
     onnx_ir.external_data.load_to_model(subgraph_model)
     param_map = _get_onnx_block_info(subgraph_model)
     with _retarget_fp16_casts_to_bf16(subgraph_model):
-        pt_block = convert(onnx_ir.to_proto(subgraph_model))
+        pt_block = convert_model(onnx_ir.to_proto(subgraph_model))
     return pt_block, param_map
 
 
