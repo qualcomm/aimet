@@ -36,7 +36,6 @@ from onnx import helper
 import onnxruntime as ort
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from packaging import version
-import google.protobuf.message
 
 from aimet_onnx.common import libpymo, quantsim
 from aimet_onnx.common import libquant_info
@@ -596,12 +595,7 @@ class QuantizationSimModel:
         self._tie_rnn_hidden_state_quantizers()
         self._tie_scan_quantizers()
 
-        try:
-            self._use_external_data = (
-                self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF
-            )
-        except google.protobuf.message.EncodeError:
-            self._use_external_data = True
+        self._use_external_data = True
 
         self._sort_quantizer_nodes()
         self.session = OrtInferenceSession(
