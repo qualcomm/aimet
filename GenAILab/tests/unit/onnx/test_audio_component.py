@@ -227,12 +227,12 @@ _VLM_MODULE = "GenAILab.qai_hub_lm.backends.onnx.vlm"
 
 
 def _run_instantiate_quantsim(model_cls, entry, precision):
+    topology = MagicMock(name="topology")
     patches = {
         f"{_VLM_MODULE}.QuantizationSimModel": MagicMock(),
-        f"{_VLM_MODULE}._set_lm_head_precision": MagicMock(),
-        f"{_VLM_MODULE}._resolve_kv_cache_quantization": MagicMock(),
-        f"{_VLM_MODULE}._apply_block_granularity_to_decoder_stack": MagicMock(),
-        f"{_VLM_MODULE}._remove_activation_quantizers": MagicMock(),
+        f"{_VLM_MODULE}.configure_llm": MagicMock(),
+        f"{_VLM_MODULE}.weight_precision_to_qspec": MagicMock(),
+        f"{_VLM_MODULE}._disable_float_quantizers": MagicMock(),
         f"{_VLM_MODULE}.get_ort_providers": MagicMock(
             return_value=["CPUExecutionProvider"]
         ),
@@ -242,7 +242,12 @@ def _run_instantiate_quantsim(model_cls, entry, precision):
     started = {key: patch(key, value) for key, value in patches.items()}
     mocks = {key: p.start() for key, p in started.items()}
     try:
-        return model_cls.instantiate_quantsim(entry, precision=precision), mocks
+        collection = model_cls.instantiate_quantsim(
+            entry,
+            precision=precision,
+            topology=topology,
+        )
+        return collection, mocks, topology
     finally:
         for p in started.values():
             p.stop()
@@ -268,12 +273,14 @@ class TestAudioOnlyQuantsimGating:
         )
         precision = PrecisionConfig()
 
-        collection, mocks = _run_instantiate_quantsim(
+        collection, mocks, topology = _run_instantiate_quantsim(
             self._audio_only_cls(), entry, precision
         )
 
         # One sim for the backbone, one for audio -- nothing for vision.
         assert mocks[f"{_VLM_MODULE}.QuantizationSimModel"].call_count == 2
+        assert mocks[f"{_VLM_MODULE}.configure_llm"].call_args.args[1] is topology
+        assert mocks[f"{_VLM_MODULE}._disable_float_quantizers"].call_count == 2
         assert collection.has("audio")
         assert collection.visual is None
         assert collection.present_components() == ("audio",)
@@ -299,9 +306,10 @@ class TestAudioOnlyQuantsimGating:
         """A checkpoint exported before the component existed must not crash."""
         entry = ModelCacheEntry(backbone=MagicMock(), config=MagicMock())
 
-        collection, mocks = _run_instantiate_quantsim(
+        collection, mocks, _ = _run_instantiate_quantsim(
             self._audio_only_cls(), entry, PrecisionConfig()
         )
 
         assert mocks[f"{_VLM_MODULE}.QuantizationSimModel"].call_count == 1
+        assert mocks[f"{_VLM_MODULE}._disable_float_quantizers"].call_count == 1
         assert collection.present_components() == ()

@@ -149,6 +149,7 @@ def test_llm_quantization(
 
     sim_collection = model_cls.instantiate_quantsim(
         entry,
+        topology=topology,
         precision=precision,
         image_size=image_size,
         audio_frames=audio_frames,

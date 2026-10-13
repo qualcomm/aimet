@@ -29,7 +29,7 @@ from transformers import AutoModelForCausalLM
 import transformers.masking_utils as mu
 
 from aimet_onnx.ir_utils import static_tensor
-from aimet_onnx.llm_topology import ir_analysis
+from aimet_onnx.llm_topology import analyze_llm_topology, ir_analysis
 from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
     get_decoder_block_boundaries_in_ir,
@@ -703,7 +703,8 @@ def test_get_decoder_blocks(add_genai_tests_path):
     try:
         with force_random_weight_init(vocab_size=1024):
             entry = LLM_ONNX.instantiate_float_model(model_id, 32, 16, small_model=True)
-        collection = LLM_ONNX.instantiate_quantsim(entry)
+        topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
+        collection = LLM_ONNX.instantiate_quantsim(entry, topology=topology)
         verify_find_blocks(collection.backbone)
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
@@ -720,7 +721,8 @@ def test_get_decoder_blocks_qwen3(add_genai_tests_path):
     try:
         with force_random_weight_init(vocab_size=1024):
             entry = LLM_ONNX.instantiate_float_model(model_id, 32, 16, small_model=True)
-        collection = LLM_ONNX.instantiate_quantsim(entry)
+        topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
+        collection = LLM_ONNX.instantiate_quantsim(entry, topology=topology)
         verify_find_blocks(collection.backbone)
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
@@ -746,7 +748,8 @@ def test_get_decoder_blocks_qwen3_5(add_genai_tests_path):
             entry = model_cls.instantiate_float_model(
                 model_id, 32, 16, small_model=True
             )
-        collection = model_cls.instantiate_quantsim(entry)
+        topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
+        collection = model_cls.instantiate_quantsim(entry, topology=topology)
 
         blocks, active_norms, ir_model, _ = _detect_from_onnx(
             collection.backbone.model.model, {}

@@ -19,6 +19,7 @@ import numpy as np
 from dataclasses import dataclass
 import copy
 from aimet_onnx.common.utils import compute_psnr
+from aimet_onnx.llm_topology import analyze_llm_topology
 from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
 )
@@ -93,7 +94,8 @@ def test_model_round_trip_with_qwen(add_genai_tests_path, tmp_dir):
         entry = LLM_ONNX.instantiate_float_model(
             model_id, context_length, sequence_length, small_model=small_model
         )
-    collection = LLM_ONNX.instantiate_quantsim(entry)
+    topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
+    collection = LLM_ONNX.instantiate_quantsim(entry, topology=topology)
     sim = collection.backbone
     llm_config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
     if small_model:
@@ -233,7 +235,8 @@ def test_model_round_trip_with_qwen_dynamo(
             model_id, context_length, sequence_length, small_model=small_model
         )
 
-    collection = LLM_ONNX.instantiate_quantsim(entry)
+    topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
+    collection = LLM_ONNX.instantiate_quantsim(entry, topology=topology)
     sim = collection.backbone
     llm_config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
     if small_model:

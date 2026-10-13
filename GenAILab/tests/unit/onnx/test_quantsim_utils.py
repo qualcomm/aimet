@@ -3,10 +3,84 @@
 
 """Tests for ONNX quantsim utility functions."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import torch
+
+from aimet_onnx.common.defs import float16, float32, int4
+from aimet_onnx.defs import QSpec
+from GenAILab.bench.precision import Granularity, WeightPrecision
+
+
+class TestWeightPrecisionToQSpec:
+    @pytest.mark.parametrize(
+        "precision, expected",
+        [
+            (WeightPrecision(qtype=float16), QSpec.per_tensor(float16)),
+            (WeightPrecision(qtype=float32), QSpec.per_tensor(float32)),
+            (
+                WeightPrecision(qtype=int4, granularity=Granularity.PCQ),
+                QSpec.per_channel(int4),
+            ),
+            (
+                WeightPrecision(
+                    qtype=int4,
+                    granularity=Granularity.BQ,
+                    block_size=64,
+                ),
+                QSpec.blockwise(int4, block_size=64, symmetric=True),
+            ),
+            (
+                WeightPrecision(
+                    qtype=int4,
+                    granularity=Granularity.LPBQ,
+                    block_size=32,
+                ),
+                QSpec.lpbq(int4, block_size=32),
+            ),
+        ],
+    )
+    def test_conversion(self, precision, expected):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
+            weight_precision_to_qspec,
+        )
+
+        assert weight_precision_to_qspec(precision) == expected
+
+
+class TestDisableFloatQuantizers:
+    @pytest.mark.parametrize("precision", ["float16", "float32"])
+    def test_disables_float_quantizers(self, precision):
+        from aimet_onnx.defs import qtype
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
+            _disable_float_quantizers,
+        )
+
+        quantizer = MagicMock()
+        quantizer.precision.return_value = qtype.from_string(precision)
+        sim = MagicMock()
+        sim.qc_quantize_op_dict = {"tensor": quantizer}
+
+        _disable_float_quantizers(sim)
+
+        assert quantizer.enabled is False
+
+    def test_leaves_integer_quantizers_enabled(self):
+        from aimet_onnx.common.defs import int8
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
+            _disable_float_quantizers,
+        )
+
+        quantizer = MagicMock()
+        quantizer.precision.return_value = int8
+        quantizer.enabled = True
+        sim = MagicMock()
+        sim.qc_quantize_op_dict = {"tensor": quantizer}
+
+        _disable_float_quantizers(sim)
+
+        assert quantizer.enabled is True
 
 
 class TestGetOrtProviders:
@@ -68,55 +142,6 @@ class TestAttributePatch:
         assert obj.z == "original"
 
 
-class TestTieQuantizersForKvCache:
-    def test_ties_past_key_value_quantizers(self, tmp_path):
-        import onnx
-        from aimet_onnx.quantsim import QuantizationSimModel
-        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-            _tie_quantizers_for_kv_cache,
-        )
-
-        class KVCacheModel(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.linear = torch.nn.Linear(4, 4)
-
-            def forward(self, x, past_key_0_in):
-                curr = self.linear(x)
-                past_key_0_out = torch.cat([past_key_0_in, curr], dim=1)
-                output = self.linear(past_key_0_out)
-                return output, past_key_0_out
-
-        model = KVCacheModel().eval()
-        x = torch.randn(1, 2, 4)
-        past = torch.randn(1, 3, 4)
-        onnx_path = tmp_path / "kv_model.onnx"
-        torch.onnx.export(
-            model,
-            (x, past),
-            str(onnx_path),
-            input_names=["x", "past_key_0_in"],
-            output_names=["output", "past_key_0_out"],
-            dynamic_axes={
-                "x": {1: "curr_seq"},
-                "past_key_0_in": {1: "past_seq"},
-                "past_key_0_out": {1: "total_seq"},
-                "output": {1: "total_seq"},
-            },
-            opset_version=17,
-        )
-
-        onnx_model = onnx.load(str(onnx_path))
-        dummy_input = {"x": x.numpy(), "past_key_0_in": past.numpy()}
-        sim = QuantizationSimModel(onnx_model, dummy_input=dummy_input)
-
-        _tie_quantizers_for_kv_cache(sim, {"past_key_0_in": "past_key_0_out"})
-
-        in_q = sim.qc_quantize_op_dict["past_key_0_in"]
-        out_q = sim.qc_quantize_op_dict["past_key_0_out"]
-        assert in_q is out_q
-
-
 class TestRemoveActivationQuantizers:
     def test_disables_activation_quantizers(self):
         from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
@@ -137,34 +162,3 @@ class TestRemoveActivationQuantizers:
         act_op.reset_encoding_stats.assert_called_once()
         assert act_op.enabled is False
         weight_op.reset_encoding_stats.assert_not_called()
-
-
-class TestResolveKvCacheQuantization:
-    def test_float_precision_skips_tying(self):
-        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-            _resolve_kv_cache_quantization,
-        )
-        from aimet_onnx.common.defs import float16
-
-        mock_qsim = MagicMock()
-        # Should not raise or call tie
-        _resolve_kv_cache_quantization(mock_qsim, float16)
-        mock_qsim.set_quantizers.assert_not_called()
-
-    def test_int_precision_ties_and_sets_symmetric(self):
-        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-            _resolve_kv_cache_quantization,
-            _tie_quantizers_for_kv_cache,
-        )
-        from aimet_onnx.common.defs import qtype
-
-        mock_qsim = MagicMock()
-        mock_graph = MagicMock()
-        mock_graph.input = []
-        mock_graph.output = []
-        mock_qsim.model.graph.return_value = mock_graph
-
-        int8 = qtype.int(8)
-        _resolve_kv_cache_quantization(mock_qsim, int8)
-        # Should have called set_quantizers (from _tie_quantizers_for_kv_cache)
-        mock_qsim.set_quantizers.assert_called()

@@ -641,6 +641,7 @@ class TestParseDocument:
         from GenAILab.qai_hub_lm.schema.recipe import (
             RemoveQuantizationSpec,
             CalibrationSpec,
+            SpinQuantSpec,
         )
         from GenAILab.qai_hub_lm.schema.dataset import C4Spec
 
@@ -654,6 +655,19 @@ class TestParseDocument:
         class Calibration:
             @staticmethod
             def apply(quantsim, generator, dataloader, num_iterations=20, **kwargs):
+                pass
+
+        @YAMLConfigParser.register_recipe(SpinQuantSpec)
+        class SpinQuant:
+            @staticmethod
+            def apply(
+                float_model,
+                *,
+                enable_r1=False,
+                enable_r2=False,
+                enable_r3=False,
+                **kwargs,
+            ):
                 pass
 
         @YAMLConfigParser.register_metric

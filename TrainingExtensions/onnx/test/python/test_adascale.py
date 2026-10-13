@@ -1297,7 +1297,7 @@ def test_adascale_e2e(add_genai_tests_path, dtype, small_model: bool = True):
         # Analyze the float model, before it is quantized: the decoder-stack
         # structure is a property of the model itself, not of the sim.
         topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
-        collection = model_cls.instantiate_quantsim(entry)
+        collection = model_cls.instantiate_quantsim(entry, topology=topology)
         sim = collection.backbone
 
         onnx_weights_min_max = {}
@@ -1426,7 +1426,7 @@ def test_adascale_e2e_fp16_qwen3_bf16_upcast(
         # Analyze the float model, before it is quantized: the decoder-stack
         # structure is a property of the model itself, not of the sim.
         topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
-        collection = model_cls.instantiate_quantsim(entry)
+        collection = model_cls.instantiate_quantsim(entry, topology=topology)
         sim = collection.backbone
         adascale_model_config_dict["qwen3"].model_config = llm_config
 
@@ -1550,7 +1550,7 @@ def test_qwen_adascale_e2e_ppl(add_genai_tests_path, small_model=False):
         # Analyze the float model, before it is quantized: the decoder-stack
         # structure is a property of the model itself, not of the sim.
         topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
-        collection = model_cls.instantiate_quantsim(entry)
+        collection = model_cls.instantiate_quantsim(entry, topology=topology)
         sim = collection.backbone
 
         tokenizer = LLM_ONNX.instantiate_tokenizer(model_id)

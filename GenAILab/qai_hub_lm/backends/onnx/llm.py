@@ -15,14 +15,14 @@ from aimet_onnx.quantsim import (
     QuantizationSimModel,
 )
 from aimet_onnx.utils import duplicate_shared_initializers
+from aimet_onnx.llm_topology import LlmTopology
+from aimet_onnx.llm_configurator import configure_llm
 
 from GenAILab.qai_hub_lm.backends import QUANTSIM_CONFIG
 from GenAILab.bench.model_cache import DiskBackedModelCache, ModelCacheEntry
 from GenAILab.bench.precision import (
     PrecisionConfig,
     float16,
-    float32,
-    int8,
     int16,
 )
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
@@ -37,11 +37,8 @@ from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
     is_huggingface_ckpt,
 )
 from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-    _resolve_kv_cache_quantization,
-    _set_lm_head_precision,
-    _apply_block_granularity_to_decoder_stack,
-    _remove_activation_quantizers,
-    _remove_decoder_block_weight_quantizers,
+    _disable_float_quantizers,
+    weight_precision_to_qspec,
     get_ort_providers,
     AttributePatch,
 )
@@ -139,6 +136,7 @@ class LLM_ONNX(LLM):
         entry: ModelCacheEntry,
         precision: PrecisionConfig | None = None,
         *args,
+        topology: LlmTopology,
         **kwargs,
     ) -> SimCollection:
         if precision is None:
@@ -148,15 +146,13 @@ class LLM_ONNX(LLM):
         config = entry.config
 
         block_prec = precision.blocks["default"]
-        # default_param_qtype must be int for the quantsim wiring; when block
-        # weights are FP we strip those weight quantizers below, so int8 here
-        # is just a placeholder.
-        default_param_qtype = int8 if block_prec.is_float else block_prec.qtype
+        # Float defaults apply to every parameter unless a more specific
+        # precision (for example, lm_head) overrides them below.
+        default_param_qtype = float16 if block_prec.is_float else block_prec.qtype
         default_activation_qtype = precision.activations
 
         with (
             AttributePatch(quantsim, "op_types_to_tie_qtzrs", ["Concat"]),
-            AttributePatch(quantsim, "_tie_qtzrs", True),
             AttributePatch(
                 quantsim,
                 "op_outputs_to_ignore",
@@ -176,19 +172,18 @@ class LLM_ONNX(LLM):
                 ),
             )
 
-        # Setting the LM head weights
-        _set_lm_head_precision(quant_sim, precision.lm_head)
-        # Tie KV cache, and set quantization type
-        _resolve_kv_cache_quantization(quant_sim, precision.resolve_kv_cache_qtype())
-        # If block weights are FP, drop their weight quantizers entirely.
-        # Otherwise, apply block-level granularity (LPBQ/BQ) if configured.
-        if block_prec.is_float:
-            _remove_decoder_block_weight_quantizers(quant_sim)
-        else:
-            _apply_block_granularity_to_decoder_stack(quant_sim, precision)
+        kv_cache_type = precision.resolve_kv_cache_qtype()
+        block_weight_spec = weight_precision_to_qspec(precision.blocks["default"])
+        lm_head_spec = weight_precision_to_qspec(precision.lm_head)
 
-        if default_activation_qtype in (float16, float32):
-            _remove_activation_quantizers(quant_sim)
+        configure_llm(
+            quant_sim,
+            topology,
+            kv_cache_type=kv_cache_type,
+            backbone_weight_type=block_weight_spec,
+            lm_head_weight_type=lm_head_spec,
+        )
+        _disable_float_quantizers(quant_sim)
 
         # Plain (non-VLM) LLMs do not wire embed_tokens into SimCollection,
         # so the runner's quantize_embedding_weights() call is always

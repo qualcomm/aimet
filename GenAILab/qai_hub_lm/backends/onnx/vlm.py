@@ -16,10 +16,12 @@ from transformers import AutoConfig
 from aimet_onnx import quantsim
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import duplicate_shared_initializers
+from aimet_onnx.llm_topology import LlmTopology
+from aimet_onnx.llm_configurator import configure_llm
 
 from GenAILab.qai_hub_lm.backends import QUANTSIM_CONFIG
 from GenAILab.bench.model_cache import DiskBackedModelCache, ModelCacheEntry
-from GenAILab.bench.precision import PrecisionConfig, float16, float32
+from GenAILab.bench.precision import PrecisionConfig, float16
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
 from GenAILab.qai_hub_lm.models.base import SimCollection
 from GenAILab.qai_hub_lm.models.components import model_components, spec
@@ -40,10 +42,8 @@ from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
     is_huggingface_ckpt,
 )
 from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-    _resolve_kv_cache_quantization,
-    _set_lm_head_precision,
-    _apply_block_granularity_to_decoder_stack,
-    _remove_activation_quantizers,
+    _disable_float_quantizers,
+    weight_precision_to_qspec,
     get_ort_providers,
     AttributePatch,
 )
@@ -186,6 +186,7 @@ class VLM_ONNX:
         entry: ModelCacheEntry,
         precision: PrecisionConfig | None = None,
         *args,
+        topology: LlmTopology,
         **kwargs,
     ) -> SimCollection:
         if precision is None:
@@ -201,7 +202,8 @@ class VLM_ONNX:
         config = entry.config
         extras = entry.extras or {}
 
-        default_param_qtype = precision.blocks["default"].qtype
+        block_prec = precision.blocks["default"]
+        default_param_qtype = float16 if block_prec.is_float else block_prec.qtype
         default_activation_qtype = precision.activations
         providers = get_ort_providers(
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -209,7 +211,6 @@ class VLM_ONNX:
 
         with (
             AttributePatch(quantsim, "op_types_to_tie_qtzrs", ["Concat"]),
-            AttributePatch(quantsim, "_tie_qtzrs", True),
             AttributePatch(
                 quantsim,
                 "op_outputs_to_ignore",
@@ -241,20 +242,20 @@ class VLM_ONNX:
                     providers=providers,
                 )
 
-        # Setting the LM head weights
-        _set_lm_head_precision(backbone_quantsim, precision.lm_head)
-        # Tie KV cache, and set quantization type
-        _resolve_kv_cache_quantization(
-            backbone_quantsim, precision.resolve_kv_cache_qtype()
-        )
-        # Apply block-level granularity (LPBQ/BQ) if configured
-        _apply_block_granularity_to_decoder_stack(backbone_quantsim, precision)
+        kv_cache_type = precision.resolve_kv_cache_qtype()
+        block_weight_spec = weight_precision_to_qspec(block_prec)
+        lm_head_spec = weight_precision_to_qspec(precision.lm_head)
 
-        if default_activation_qtype in (float16, float32):
-            _remove_activation_quantizers(backbone_quantsim)
-        for name, component_sim in component_sims.items():
-            if precision.component_activations(name) in (float16, float32):
-                _remove_activation_quantizers(component_sim)
+        configure_llm(
+            backbone_quantsim,
+            topology,
+            kv_cache_type=kv_cache_type,
+            backbone_weight_type=block_weight_spec,
+            lm_head_weight_type=lm_head_spec,
+        )
+        _disable_float_quantizers(backbone_quantsim)
+        for component_sim in component_sims.values():
+            _disable_float_quantizers(component_sim)
 
         # Note: embedding quantization is deferred to after recipe application
         # (in the test runner) to allow recipes like SpinQuant to rotate weights first.

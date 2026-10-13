@@ -1054,13 +1054,14 @@ def test_genailab_quantsim_matches_configure_llm(
         blocks={"default": block_precision},
         lm_head=lm_head_precision,
     )
+    topology = analyze_llm_topology(onnx_model, model_type)
 
     genailab_sim = LLM_ONNX.instantiate_quantsim(
         ModelCacheEntry(backbone=copy.deepcopy(onnx_model)),
         precision=precision,
+        topology=topology,
     ).backbone
 
-    topology = analyze_llm_topology(onnx_model, model_type)
     # NOTE: These are the patches added during GenAI lab instantiation
     with (
         AttributePatch(quantsim, "op_types_to_tie_qtzrs", ["Concat"]),
