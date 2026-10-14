@@ -169,7 +169,7 @@ jobs:
   notify_slack:
     # Post on pass and on failure so a missing message means the run is stuck.
     # Scheduled runs only, first attempt only, to avoid spamming re-runs.
-    if: ${{ always() && github.event_name == 'schedule' && github.run_attempt == '1' }}
+    if: ${{ always() && github.repository_owner != 'qualcomm' && github.event_name == 'schedule' && github.run_attempt == '1' }}
     name: Notify result on slack
     needs: [ pre-commit-check, set_vars, variants, call-build-wheels, call-unit-acceptance-tests ]
     runs-on: ubuntu-latest
