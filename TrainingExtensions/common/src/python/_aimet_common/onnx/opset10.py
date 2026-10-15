@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Iterable, Mapping, Optional
 import numpy as np
 import onnx
-from onnx import helper, numpy_helper, TensorProto
+import onnx_ir
 
 
 def pack_int8_to_int4x2(arr: np.ndarray) -> np.ndarray:
@@ -89,19 +89,19 @@ def unpack_int4x2_to_int8(arr: np.ndarray, dtype) -> np.ndarray:
 
 class _QdqNodeFactory(ABC):
     OPSET: int
-    SUPPORTED_DTYPES: Mapping[str, "TensorProto.DataType"]
+    SUPPORTED_DTYPES: Mapping[str, onnx_ir.DataType]
 
     @classmethod
     @abstractmethod
     def make_node(
         cls,
         name: str,
-        inputs: Iterable[str],
-        output: str,
+        inputs: Iterable[onnx_ir.Value],
+        output: onnx_ir.Value,
         dtype: str,
         axis: Optional[int] = None,
         block_size: Optional[int] = None,
-    ): ...
+    ) -> onnx_ir.Node: ...
 
     @classmethod
     def _check_dtype(cls, dtype: str):
@@ -114,9 +114,13 @@ class _QdqNodeFactory(ABC):
         )
 
     @classmethod
+    def _ir_dtype(cls, dtype: str) -> onnx_ir.DataType:
+        return cls.SUPPORTED_DTYPES[dtype]
+
+    @classmethod
     def make_zero_point(
         cls, zero_point: np.ndarray, dtype: str, name: str
-    ) -> TensorProto:
+    ) -> onnx_ir.Value:
         cls._check_dtype(dtype)
 
         if (dtype == "int32" or dtype.startswith("float")) and not np.all(
@@ -133,7 +137,7 @@ class _QdqNodeFactory(ABC):
         return cls.make_arr(zero_point, dtype, name)
 
     @classmethod
-    def make_arr(cls, arr: np.ndarray, dtype: str, name: str) -> TensorProto:
+    def make_arr(cls, arr: np.ndarray, dtype: str, name: str) -> onnx_ir.Value:
         cls._check_dtype(dtype)
 
         if dtype.startswith("float"):
@@ -142,7 +146,7 @@ class _QdqNodeFactory(ABC):
         return cls.make_int_arr(arr, dtype, name)
 
     @classmethod
-    def make_float_arr(cls, arr: np.ndarray, dtype: str, name: str) -> TensorProto:
+    def make_float_arr(cls, arr: np.ndarray, dtype: str, name: str) -> onnx_ir.Value:
         if parse(onnx.__version__) < parse("1.19.0"):
             raise RuntimeError(
                 f"{cls.__name__}.make_float_arr requires onnx>=1.19.0; got {onnx.__version__}"
@@ -150,69 +154,69 @@ class _QdqNodeFactory(ABC):
 
         cls._check_dtype(dtype)
 
-        onnx_dtype = cls.SUPPORTED_DTYPES[dtype]
-        np_dtype = helper.tensor_dtype_to_np_dtype(onnx_dtype)
-        return numpy_helper.from_array(arr.astype(np_dtype), name=name)
+        ir_dtype = cls._ir_dtype(dtype)
+        np_dtype = ir_dtype.numpy()
+        tensor = onnx_ir.tensor(arr.astype(np_dtype), dtype=ir_dtype, name=name)
+        return onnx_ir.Value(name=name, const_value=tensor)
 
     @classmethod
-    def _make_float_zeros(cls, arr: np.ndarray, dtype: str, name: str) -> TensorProto:
+    def _make_float_zeros(cls, arr: np.ndarray, dtype: str, name: str) -> onnx_ir.Value:
         cls._check_dtype(dtype)
 
+        ir_dtype = cls._ir_dtype(dtype)
+
         if not dtype.startswith("float4"):
-            arr = np.zeros(arr.shape, dtype=np.uint8)
-            tensor = numpy_helper.from_array(arr, name=name)
-            tensor.data_type = cls.SUPPORTED_DTYPES[dtype]
-            return tensor
+            tensor = onnx_ir.tensor(
+                np.zeros(arr.shape, dtype=np.uint8), dtype=ir_dtype, name=name
+            )
+            return onnx_ir.Value(name=name, const_value=tensor)
 
         target_shape = arr.shape
         arr_float4x2 = pack_int8_to_int4x2(np.zeros(arr.size, dtype=np.uint8))
-        tensor = numpy_helper.from_array(arr_float4x2, name=name)
-        tensor.data_type = cls.SUPPORTED_DTYPES[dtype]
-        tensor.ClearField("dims")
-        tensor.dims.extend(target_shape)
-        return tensor
+        tensor = onnx_ir.PackedTensor(
+            arr_float4x2, ir_dtype, shape=target_shape, name=name
+        )
+        return onnx_ir.Value(name=name, const_value=tensor)
 
     @classmethod
-    def make_int_arr(cls, arr: np.ndarray, dtype: str, name: str) -> TensorProto:
+    def make_int_arr(cls, arr: np.ndarray, dtype: str, name: str) -> onnx_ir.Value:
         cls._check_dtype(dtype)
+
+        ir_dtype = cls._ir_dtype(dtype)
 
         if dtype not in ("int2", "uint2", "int4", "uint4"):
             arr = arr.astype(dtype)
-            return numpy_helper.from_array(arr, name=name)
+            tensor = onnx_ir.tensor(arr, dtype=ir_dtype, name=name)
+            return onnx_ir.Value(name=name, const_value=tensor)
 
         target_shape = arr.shape
         arr = arr.flatten().astype(np.int8 if dtype in ("int2", "int4") else np.uint8)
-        tensor = numpy_helper.from_array(
+        packed = (
             pack_int8_to_int4x2(arr)
             if dtype in ("int4", "uint4")
-            else pack_int8_to_int2x4(arr),
-            name=name,
+            else pack_int8_to_int2x4(arr)
         )
-        # Restore data_type to INT2/INT4
-        tensor.data_type = cls.SUPPORTED_DTYPES[dtype]
-        tensor.ClearField("dims")
-        tensor.dims.extend(target_shape)
-
-        return tensor
+        tensor = onnx_ir.PackedTensor(packed, ir_dtype, shape=target_shape, name=name)
+        return onnx_ir.Value(name=name, const_value=tensor)
 
 
 class QuantizeLinear(_QdqNodeFactory):
     OPSET = 10
     SUPPORTED_DTYPES = {
-        "int8": TensorProto.INT8,
-        "uint8": TensorProto.UINT8,
+        "int8": onnx_ir.DataType.INT8,
+        "uint8": onnx_ir.DataType.UINT8,
     }
 
     @classmethod
     def make_node(
         cls,
         name: str,
-        inputs: Iterable[str],
-        output: str,
+        inputs: Iterable[onnx_ir.Value],
+        output: onnx_ir.Value,
         dtype: str,
         axis: Optional[int] = None,
         block_size: Optional[int] = None,
-    ):
+    ) -> onnx_ir.Node:
         if axis is not None:
             raise RuntimeError(
                 f"Per-channel quantization is not supported in opset {cls.OPSET}"
@@ -225,7 +229,7 @@ class QuantizeLinear(_QdqNodeFactory):
 
         cls._check_dtype(dtype)
 
-        return helper.make_node(
+        return onnx_ir.node(
             "QuantizeLinear", name=name, inputs=list(inputs), outputs=[output]
         )
 
@@ -233,21 +237,21 @@ class QuantizeLinear(_QdqNodeFactory):
 class DequantizeLinear(_QdqNodeFactory):
     OPSET = 10
     SUPPORTED_DTYPES = {
-        "int8": TensorProto.INT8,
-        "uint8": TensorProto.UINT8,
-        "int32": TensorProto.INT32,
+        "int8": onnx_ir.DataType.INT8,
+        "uint8": onnx_ir.DataType.UINT8,
+        "int32": onnx_ir.DataType.INT32,
     }
 
     @classmethod
     def make_node(
         cls,
         name: str,
-        inputs: Iterable[str],
-        output: str,
+        inputs: Iterable[onnx_ir.Value],
+        output: onnx_ir.Value,
         dtype: str,
         axis: Optional[int] = None,
         block_size: Optional[int] = None,
-    ):
+    ) -> onnx_ir.Node:
         if axis is not None:
             raise RuntimeError(
                 f"Per-channel quantization is not supported in opset {cls.OPSET}"
@@ -260,6 +264,6 @@ class DequantizeLinear(_QdqNodeFactory):
 
         cls._check_dtype(dtype)
 
-        return helper.make_node(
+        return onnx_ir.node(
             "DequantizeLinear", name=name, inputs=list(inputs), outputs=[output]
         )

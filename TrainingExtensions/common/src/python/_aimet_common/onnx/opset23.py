@@ -5,7 +5,7 @@
 # pylint: disable=no-member
 from packaging.version import parse
 import onnx
-from onnx import TensorProto
+import onnx_ir
 from . import opset21
 
 
@@ -16,7 +16,7 @@ class QuantizeLinear(opset21.QuantizeLinear):
     }
 
     if parse(onnx.__version__) >= parse("1.18.0"):
-        SUPPORTED_DTYPES.update({"float4e2m1": TensorProto.FLOAT4E2M1})
+        SUPPORTED_DTYPES.update({"float4e2m1": onnx_ir.DataType.FLOAT4E2M1})
 
 
 class DequantizeLinear(opset21.DequantizeLinear):
@@ -26,4 +26,4 @@ class DequantizeLinear(opset21.DequantizeLinear):
     }
 
     if parse(onnx.__version__) >= parse("1.18.0"):
-        SUPPORTED_DTYPES.update({"float4e2m1": TensorProto.FLOAT4E2M1})
+        SUPPORTED_DTYPES.update({"float4e2m1": onnx_ir.DataType.FLOAT4E2M1})

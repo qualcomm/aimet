@@ -26,7 +26,6 @@ from onnx.external_data_helper import (
 )
 from onnx.defs import OpSchema
 import onnx_ir
-from onnx_ir import serde
 
 from . import opset10, opset13, opset19, opset21, opset23, opset25
 from ..utils import AimetLogger
@@ -98,6 +97,38 @@ def _add_onnx_qdq_nodes(
 
     """
 
+    ir_model = onnx_ir.from_proto(model)
+    if base_dir:
+        onnx_ir.external_data.set_base_dir(ir_model.graph, base_dir)
+
+    ir_model = _add_onnx_qdq_nodes_ir(
+        ir_model,
+        input_names,
+        output_names,
+        node_name_prefixes,
+        encodings,
+        float_types,
+        onnx_opset,
+        prequantize_constants,
+    )
+
+    return onnx_ir.to_proto(ir_model)
+
+
+def _add_onnx_qdq_nodes_ir(
+    ir_model: onnx_ir.Model,
+    input_names: Iterable[str],
+    output_names: Iterable[str],
+    node_name_prefixes: Iterable[str],
+    encodings: Iterable[dict],
+    float_types: Iterable[np.dtype],
+    onnx_opset: int,
+    prequantize_constants: bool,
+) -> onnx_ir.Model:
+    """
+    IR-native core of :func:`_add_onnx_qdq_nodes`. Accepts, mutates, and returns an
+    ``onnx_ir.Model``.
+    """
     if onnx_opset < 10:
         raise RuntimeError(
             "ONNX opset {} cannot represent QuantizeLinear and DequantizeLinear nodes."
@@ -117,21 +148,26 @@ def _add_onnx_qdq_nodes(
     else:
         opset = opset25
 
-    constants = _get_all_constants(model)
+    constants = _get_all_constants_ir(ir_model.graph)
     # New nodes and tensors, keyed by the index of the graph that defines their input
     nodes_to_add = defaultdict(list)
     tensors_to_add = defaultdict(list)
     tensors_to_remove = defaultdict(dict)
     inputs_to_rename = defaultdict(dict)
+    graphs = list(_iterate_graphs_recursive_ir(ir_model.graph))
     scope = {
         name: i
-        for i, graph in enumerate(_iterate_graphs_recursive(model.graph))
+        for i, graph in enumerate(graphs)
         for name in itertools.chain(
-            (inp.name for inp in graph.input),
-            (init.name for init in graph.initializer),
-            (out for node in graph.node for out in node.output),
+            (inp.name for inp in graph.inputs),
+            (name for name in graph.initializers),
+            (out.name for node in graph for out in node.outputs),
         )
     }
+    value_maps = [
+        onnx_ir.convenience.create_value_mapping(graph, include_subgraphs=False)
+        for graph in graphs
+    ]
 
     for input_name, output_name, node_name_prefix, encoding, float_type in zip(
         input_names, output_names, node_name_prefixes, encodings, float_types
@@ -139,11 +175,16 @@ def _add_onnx_qdq_nodes(
         graph_idx = scope.get(input_name, 0)
         inputs_to_rename[graph_idx][input_name] = output_name
         nodes, tensors = nodes_to_add[graph_idx], tensors_to_add[graph_idx]
+        value_map = value_maps[graph_idx]
         output_dtype = encoding["output_dtype"]
         axis = encoding.get("axis", None)
 
         if input_name in constants:
-            input_shape = constants[input_name].dims
+            const_value = constants[input_name]
+            shape = const_value.shape
+            if shape is None and const_value.const_value is not None:
+                shape = const_value.const_value.shape
+            input_shape = list(shape) if shape is not None else None
         else:
             input_shape = None
 
@@ -161,7 +202,12 @@ def _add_onnx_qdq_nodes(
         if isinstance(y_scale, (list, float)):
             # Regular quantization encoding
             y_scale = np.array(y_scale).astype(float_type)
-            tensors.append(from_array(y_scale, name=f"{input_name}_scale"))
+            scale_value = onnx_ir.Value(
+                name=f"{input_name}_scale",
+                const_value=onnx_ir.tensor(y_scale, name=f"{input_name}_scale"),
+            )
+            tensors.append(scale_value)
+            value_map[scale_value.name] = scale_value
         else:
             # Double quantization encoding (e.g. LPBQ, NVFP4)
             #
@@ -176,30 +222,43 @@ def _add_onnx_qdq_nodes(
                 meta_block_size,
             ) = _parse_meta_encoding(y_scale, float_type=float_type)
 
-            tensors.extend(
-                [
-                    from_array(scale_q, name=f"{input_name}_scale_q"),
-                    from_array(meta_scale, name=f"{input_name}_meta_scale"),
-                    from_array(meta_zero_point, name=f"{input_name}_meta_zero_point"),
-                ]
+            scale_q_value = onnx_ir.Value(
+                name=f"{input_name}_scale_q",
+                const_value=onnx_ir.tensor(scale_q, name=f"{input_name}_scale_q"),
             )
+            meta_scale_value = onnx_ir.Value(
+                name=f"{input_name}_meta_scale",
+                const_value=onnx_ir.tensor(meta_scale, name=f"{input_name}_meta_scale"),
+            )
+            meta_zero_point_value = onnx_ir.Value(
+                name=f"{input_name}_meta_zero_point",
+                const_value=onnx_ir.tensor(
+                    meta_zero_point, name=f"{input_name}_meta_zero_point"
+                ),
+            )
+            tensors.extend([scale_q_value, meta_scale_value, meta_zero_point_value])
+            for value in (scale_q_value, meta_scale_value, meta_zero_point_value):
+                value_map[value.name] = value
+
+            scale_value = onnx_ir.Value(name=f"{input_name}_scale")
             nodes.append(
                 opset.DequantizeLinear.make_node(
                     name=f"{node_name_prefix}_scale_dq",
                     inputs=[
-                        f"{input_name}_scale_q",
-                        f"{input_name}_meta_scale",
-                        f"{input_name}_meta_zero_point",
+                        scale_q_value,
+                        meta_scale_value,
+                        meta_zero_point_value,
                     ],
-                    output=f"{input_name}_scale",
+                    output=scale_value,
                     dtype=_np_dtype_to_str(scale_q.dtype),
                     axis=meta_axis,
                     block_size=meta_block_size,
                 )
             )
-            y_scale = to_array(
-                _dequantize_const(
-                    from_array(scale_q),
+            value_map[scale_value.name] = scale_value
+            y_scale = to_array_ir(
+                _dequantize_const_ir(
+                    scale_q_value,
                     "",
                     meta_scale,
                     meta_zero_point,
@@ -215,16 +274,16 @@ def _add_onnx_qdq_nodes(
         else:
             y_zero_point = np.zeros(y_scale.shape, dtype=np.int64)
 
-        tensors.append(
-            opset.DequantizeLinear.make_zero_point(
-                y_zero_point, dtype=output_dtype, name=f"{input_name}_zero_point"
-            )
+        zero_point_value = opset.DequantizeLinear.make_zero_point(
+            y_zero_point, dtype=output_dtype, name=f"{input_name}_zero_point"
         )
+        tensors.append(zero_point_value)
+        value_map[zero_point_value.name] = zero_point_value
 
         input_q = None
         if prequantize_constants or output_dtype in ("int32", "uint32"):
             const = constants.get(input_name)
-            if const:
+            if const is not None:
                 input_q = _quantize_const(
                     const,
                     f"{input_name}_q",
@@ -235,19 +294,19 @@ def _add_onnx_qdq_nodes(
                     output_dtype,
                     per_block_int_scale=None,
                     opset=opset,
-                    base_dir=base_dir,
                 )
 
-        if input_q:
+        if input_q is not None:
+            output_value = onnx_ir.Value(name=output_name)
             nodes.append(
                 opset.DequantizeLinear.make_node(
                     name=f"{node_name_prefix}_dq",
                     inputs=[
-                        input_q.name,
-                        f"{input_name}_scale",
-                        f"{input_name}_zero_point",
+                        input_q,
+                        scale_value,
+                        zero_point_value,
                     ],
-                    output=output_name,
+                    output=output_value,
                     dtype=output_dtype,
                     axis=axis,
                     block_size=block_size,
@@ -255,18 +314,26 @@ def _add_onnx_qdq_nodes(
             )
             tensors_to_remove[graph_idx][input_name] = True
             tensors.append(input_q)
+            value_map[input_q.name] = input_q
+            value_map[output_value.name] = output_value
 
         else:
+            input_value = value_map.get(input_name)
+            if input_value is None:
+                input_value = onnx_ir.Value(name=input_name)
+                value_map[input_name] = input_value
+            input_q_value = onnx_ir.Value(name=f"{input_name}_q")
+            output_value = onnx_ir.Value(name=output_name)
             nodes.extend(
                 [
                     opset.QuantizeLinear.make_node(
                         name=f"{node_name_prefix}_q",
                         inputs=[
-                            input_name,
-                            f"{input_name}_scale",
-                            f"{input_name}_zero_point",
+                            input_value,
+                            scale_value,
+                            zero_point_value,
                         ],
-                        output=f"{input_name}_q",
+                        output=input_q_value,
                         dtype=output_dtype,
                         axis=axis,
                         block_size=block_size,
@@ -274,35 +341,30 @@ def _add_onnx_qdq_nodes(
                     opset.DequantizeLinear.make_node(
                         name=f"{node_name_prefix}_dq",
                         inputs=[
-                            f"{input_name}_q",
-                            f"{input_name}_scale",
-                            f"{input_name}_zero_point",
+                            input_q_value,
+                            scale_value,
+                            zero_point_value,
                         ],
-                        output=output_name,
+                        output=output_value,
                         dtype=output_dtype,
                         axis=axis,
                         block_size=block_size,
                     ),
                 ]
             )
-
-    ir_model = onnx_ir.from_proto(model)
+            value_map[input_q_value.name] = input_q_value
+            value_map[output_value.name] = output_value
 
     # Innermost bodies first: a parent's sort must see its bodies' final outer-scope reads
     # (e.g. X -> X_qdq).
-    for i, graph in reversed(
-        list(enumerate(_iterate_ir_graphs_recursive(ir_model.graph)))
-    ):
+    for i, graph in reversed(list(enumerate(graphs))):
         original_values = onnx_ir.convenience.create_value_mapping(
             graph, include_subgraphs=False
         )
-        value_map = dict(original_values)
+        value_map = value_maps[i]
 
-        ir_tensors = _to_ir_values(tensors_to_add[i])
-        for value in ir_tensors:
-            value_map[value.name] = value
-
-        ir_nodes = _to_ir_nodes(nodes_to_add[i], value_map)
+        ir_tensors = tensors_to_add[i]
+        ir_nodes = nodes_to_add[i]
 
         input_replacements = [
             (original_values[old_name], value_map[new_name])
@@ -320,7 +382,7 @@ def _add_onnx_qdq_nodes(
     # remove initializers in subgraphs.
     onnx_ir.passes.common.RemoveUnusedNodesPass()(ir_model)
 
-    return onnx_ir.to_proto(ir_model)
+    return ir_model
 
 
 def _convert_200_to_210(encoding: dict, input_shape: Sequence[int] | None):
@@ -379,7 +441,7 @@ def _str_to_np_dtype(dtype_str: str) -> np.dtype:
     """
     Convert dtype string to np.dtype
     """
-    supported_dtypes: Mapping[str, onnx.TensorProto.DataType]
+    supported_dtypes: Mapping[str, onnx_ir.DataType]
     supported_dtypes = opset25.DequantizeLinear.SUPPORTED_DTYPES
 
     try:
@@ -390,15 +452,15 @@ def _str_to_np_dtype(dtype_str: str) -> np.dtype:
             f"Supported dtypes: {list(supported_dtypes.keys())}"
         ) from e
 
-    if _is_onnx_118_or_lower() and int(tensor_dtype) in (
-        int(TensorProto.BFLOAT16),
-        int(TensorProto.FLOAT8E4M3FN),
-        int(TensorProto.FLOAT8E4M3FNUZ),
-        int(TensorProto.FLOAT8E5M2),
-        int(TensorProto.FLOAT8E5M2FNUZ),
-        int(TensorProto.UINT4),
-        int(TensorProto.INT4),
-        int(TensorProto.FLOAT4E2M1),
+    if _is_onnx_118_or_lower() and tensor_dtype in (
+        onnx_ir.DataType.BFLOAT16,
+        onnx_ir.DataType.FLOAT8E4M3FN,
+        onnx_ir.DataType.FLOAT8E4M3FNUZ,
+        onnx_ir.DataType.FLOAT8E5M2,
+        onnx_ir.DataType.FLOAT8E5M2FNUZ,
+        onnx_ir.DataType.UINT4,
+        onnx_ir.DataType.INT4,
+        onnx_ir.DataType.FLOAT4E2M1,
     ):
         raise RuntimeError(
             f"Expected onnx>=1.19.0, but got onnx=={onnx.__version__}. "
@@ -517,7 +579,7 @@ def _parse_meta_encoding(
 
 
 def _quantize_const(
-    const: TensorProto,
+    const: onnx_ir.Value,
     name: str,
     y_scale: np.ndarray,
     y_zero_point: np.ndarray,
@@ -526,9 +588,8 @@ def _quantize_const(
     output_dtype: str,
     per_block_int_scale: Optional[np.ndarray],
     opset,
-    base_dir: str = "",
-) -> TensorProto:
-    const = to_array(const, base_dir=base_dir).astype(np.float32)
+) -> onnx_ir.Value:
+    const = to_array_ir(const).astype(np.float32)
     # Always quantize in float32
     y_scale = y_scale.astype(np.float32)
 
@@ -615,6 +676,47 @@ def _dequantize_const(
     return from_array(const_dq.astype(output_dtype), name=name)
 
 
+def _dequantize_const_ir(
+    const_q: onnx_ir.Value,
+    name: str,
+    y_scale: np.ndarray,
+    y_zero_point: np.ndarray,
+    axis: Optional[int],
+    block_size: Optional[int],
+    output_dtype: str,
+    per_block_int_scale: Optional[np.ndarray],
+) -> onnx_ir.Value:
+    if output_dtype == "bfloat16":
+        raise RuntimeError("Unsupported data type: {}")
+
+    const_q = to_array_ir(const_q)
+    # Always dequantize in float32
+    y_scale = y_scale.astype(np.float32)
+
+    if per_block_int_scale is not None:
+        block_axis = axis
+        channel_axis = 0 if block_axis in (1, -1) else 1
+        y_scale = y_scale.reshape(
+            *(-1 if axis == channel_axis else 1 for axis in range(const_q.ndim))
+        )
+        y_scale = (y_scale * per_block_int_scale).astype(np.float32)
+
+    y_scale = _broadcast(y_scale, const_q.ndim, axis=axis, block_size=block_size)
+    y_zero_point = (
+        _broadcast(y_zero_point, const_q.ndim, axis=axis, block_size=block_size)
+        if y_zero_point is not None
+        else np.zeros(y_scale.shape, dtype=np.int32)
+    )
+
+    const_q = const_q.astype(np.int64)
+    y_scale = y_scale.astype(np.float32)
+    y_zero_point = y_zero_point.astype(np.int64)
+
+    const_dq = (const_q - y_zero_point) * y_scale
+    tensor = onnx_ir.tensor(const_dq.astype(output_dtype), name=name)
+    return onnx_ir.Value(name=name, const_value=tensor)
+
+
 def _broadcast(
     x: np.ndarray, ndim: int, axis: Optional[int], block_size: Optional[int]
 ) -> np.ndarray:
@@ -633,72 +735,6 @@ def _broadcast(
         x = x.repeat(block_size, axis=block_axis)
 
     return x
-
-
-def _to_ir_values(tensors_to_add: Iterable[TensorProto]) -> List[onnx_ir.Value]:
-    """Build onnx_ir.Value objects (with const_value set) from TensorProto. Does not touch a graph."""
-    return [
-        onnx_ir.Value(
-            name=tensor_proto.name,
-            const_value=serde.deserialize_tensor(tensor_proto),
-        )
-        for tensor_proto in tensors_to_add
-    ]
-
-
-def _to_ir_nodes(
-    nodes_to_add: Iterable[NodeProto], value_map: Dict[str, onnx_ir.Value]
-) -> List[onnx_ir.Node]:
-    """
-    Build onnx_ir.Node objects from NodeProto, deduplicated by name. Resolves each
-    node's string inputs against ``value_map``, which is also updated in place with
-    each node's output Values so later nodes in the same batch can reference them.
-    """
-    deduped_nodes = list({node.name: node for node in nodes_to_add}.values())
-    new_nodes = []
-    for node_proto in deduped_nodes:
-        resolved_inputs = []
-        for input_name in node_proto.input:
-            if input_name == "":
-                resolved_inputs.append(None)
-                continue
-            value = value_map.get(input_name)
-            if value is None:
-                # A missing producer is reported by onnx.checker downstream
-                value = onnx_ir.Value(name=input_name)
-                value_map[input_name] = value
-            resolved_inputs.append(value)
-        attrs = {
-            attr.name: serde.deserialize_attribute(attr)
-            for attr in node_proto.attribute
-        }
-        # Reuse a producer-less Value already consumed under the same name (by an
-        # existing node or a new node listed earlier) so its consumers are wired
-        # to this node and sorted after it.
-        out_names = [o for o in node_proto.output if o]
-        outputs = []
-        for out_name in out_names:
-            value = value_map.get(out_name)
-            if (
-                value is None
-                or value.producer() is not None
-                or value.is_graph_input()
-                or value.is_initializer()
-            ):
-                value = onnx_ir.Value(name=out_name)
-            outputs.append(value)
-        new_node = onnx_ir.node(
-            node_proto.op_type,
-            resolved_inputs,
-            attributes=attrs,
-            domain=node_proto.domain,
-            outputs=outputs,
-            name=node_proto.name,
-        )
-        for out_name, out_value in zip(out_names, new_node.outputs):
-            value_map[out_name] = out_value
-        new_nodes.append(new_node)
-    return new_nodes
 
 
 def _finalize_graph_changes(
@@ -1646,23 +1682,34 @@ def _iterate_graphs_recursive(graph: onnx.GraphProto) -> Iterable[onnx.GraphProt
                 yield from _iterate_graphs_recursive(attr.g)
 
 
-def _iterate_ir_graphs_recursive(graph: onnx_ir.Graph) -> Iterable[onnx_ir.Graph]:
+def _iterate_graphs_recursive_ir(
+    graph: onnx_ir.Graph,
+    include_if_and_loop: bool = False,
+) -> Iterable[onnx_ir.Graph]:
     """
     Yield ``graph`` followed by every Control-flow body nested inside it, depth first.
 
     Control-flow ops carry their bodies as graph-valued attributes rather than as nodes, so a
     plain walk over ``graph.node`` never sees them.
 
-    NOTE: ``If`` and ``Loop`` bodies are deliberately not yielded.
-
-    :param graph: Graph to walk
-    :return: Iterator over ``graph`` and the ``Scan`` bodies within it
+    NOTE: ``If`` and ``Loop`` bodies are deliberately not yielded, unless enabled through `include_if_and_loop` flag.
     """
     yield graph
 
     for node in graph:
-        if node.op_type == "Scan":
-            yield from _iterate_ir_graphs_recursive(node.attributes["body"].as_graph())
+        if node.op_type == "Scan" or (include_if_and_loop and node.op_type == "Loop"):
+            yield from _iterate_graphs_recursive_ir(
+                node.attributes["body"].as_graph(),
+                include_if_and_loop=include_if_and_loop,
+            )
+
+        elif include_if_and_loop and node.op_type == "If":
+            for attr in node.attributes.values():
+                if attr.type == onnx_ir.AttributeType.GRAPH:
+                    yield from _iterate_graphs_recursive_ir(
+                        attr.as_graph(),
+                        include_if_and_loop=include_if_and_loop,
+                    )
 
 
 def _get_all_constants(
@@ -1701,6 +1748,50 @@ def _get_all_constants(
                 queue += consumers.get(consumer.output[0], [])
 
     return constants
+
+
+def _get_all_constants_ir(
+    graph: onnx_ir.Graph,
+) -> Dict[str, onnx_ir.Value]:
+    """
+    IR-native counterpart of :func:`_get_all_constants`. Get all constants in ``graph``,
+    including:
+      * Initializers
+      * Output of Constant nodes.
+      * Output of Identity nodes that takes initializers or Constant nodes as input (recursively).
+
+    Returns ``Value`` handles rather than eagerly materialized numpy arrays.
+    """
+    constants: Dict[str, onnx_ir.Value] = {}
+    for subgraph in _iterate_graphs_recursive_ir(graph, include_if_and_loop=True):
+        constants.update(subgraph.initializers)
+
+        for node in subgraph:
+            if node.op_type == "Constant":
+                value_attr = node.attributes.get("value")
+                if (
+                    value_attr is not None
+                    and value_attr.type == onnx_ir.AttributeType.TENSOR
+                ):
+                    out = node.outputs[0]
+                    out.const_value = value_attr.as_tensor()
+                    constants[out.name] = out
+
+    for const in list(constants.values()):
+        queue = list(const.consumers())
+        while queue:
+            consumer = queue.pop()
+            if consumer.op_type == "Identity":
+                out = consumer.outputs[0]
+                constants[out.name] = const
+                queue.extend(out.consumers())
+
+    return constants
+
+
+def to_array_ir(value: onnx_ir.Value) -> np.ndarray:
+    """IR-native counterpart of :func:`to_array`."""
+    return value.const_value.numpy()
 
 
 def _get_qdq_nodes(

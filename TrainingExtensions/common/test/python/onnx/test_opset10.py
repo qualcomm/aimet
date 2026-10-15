@@ -6,7 +6,7 @@ import pytest
 import numpy as np
 
 try:
-    import onnx
+    import onnx_ir
     import onnxruntime as ort
 
     try:
@@ -27,6 +27,18 @@ except ImportError:
     pass
 else:
 
+    def _make_model(opset_version, input_value, output_value, initializers, nodes):
+        graph = onnx_ir.Graph(
+            inputs=[input_value],
+            outputs=[output_value],
+            nodes=nodes,
+            initializers=initializers,
+            opset_imports={"": opset_version},
+            name="graph",
+        )
+        ir_model = onnx_ir.Model(graph, ir_version=10)
+        return onnx_ir.to_proto(ir_model)
+
     @pytest.mark.parametrize("zero_point", [0, 1])
     @pytest.mark.parametrize("dtype", ["int8", "uint8"])
     def test_QuantizeLinear_success(dtype: str, zero_point):
@@ -40,40 +52,32 @@ else:
         """
         When: Create onnx model with opset10 QuantizeLinear
         """
-        model = onnx.helper.make_model(
-            ir_version=10,
-            opset_imports=[onnx.OperatorSetIdProto(version=10)],
-            graph=onnx.helper.make_graph(
-                name="QuantizeLinear",
-                inputs=[
-                    onnx.helper.make_tensor_value_info(
-                        "input", onnx.TensorProto.FLOAT, shape=input.shape
-                    ),
-                ],
-                outputs=[
-                    onnx.helper.make_tensor_value_info(
-                        "output",
-                        getattr(onnx.TensorProto, dtype.upper()),
-                        shape=expected_output.shape,
-                    ),
-                ],
-                initializer=[
-                    onnx.numpy_helper.from_array(scale, name="scale"),
-                    QuantizeLinear.make_zero_point(
-                        zero_point, dtype=dtype, name="zero_point"
-                    ),
-                ],
-                nodes=[
-                    QuantizeLinear.make_node(
-                        name="QuantizeLinear",
-                        inputs=["input", "scale", "zero_point"],
-                        output="output",
-                        dtype=dtype,
-                        axis=None,
-                        block_size=None,
-                    )
-                ],
-            ),
+        input_value = onnx_ir.Value(
+            name="input",
+            type=onnx_ir.TensorType(onnx_ir.DataType.FLOAT),
+            shape=onnx_ir.Shape(input.shape),
+        )
+        output_value = onnx_ir.Value(
+            name="output",
+            type=onnx_ir.TensorType(getattr(onnx_ir.DataType, dtype.upper())),
+            shape=onnx_ir.Shape(expected_output.shape),
+        )
+        scale_value = onnx_ir.Value(
+            name="scale", const_value=onnx_ir.tensor(scale, name="scale")
+        )
+        zero_point_value = QuantizeLinear.make_zero_point(
+            zero_point, dtype=dtype, name="zero_point"
+        )
+        node = QuantizeLinear.make_node(
+            name="QuantizeLinear",
+            inputs=[input_value, scale_value, zero_point_value],
+            output=output_value,
+            dtype=dtype,
+            axis=None,
+            block_size=None,
+        )
+        model = _make_model(
+            10, input_value, output_value, [scale_value, zero_point_value], [node]
         )
 
         """
@@ -99,8 +103,12 @@ else:
         with pytest.raises(RuntimeError):
             _ = QuantizeLinear.make_node(
                 name="QuantizeLinear",
-                inputs=["input", "scale", "zero_point"],
-                output="output",
+                inputs=[
+                    onnx_ir.Value(name="input"),
+                    onnx_ir.Value(name="scale"),
+                    onnx_ir.Value(name="zero_point"),
+                ],
+                output=onnx_ir.Value(name="output"),
                 dtype=dtype,
                 axis=None,
                 block_size=None,
@@ -122,8 +130,12 @@ else:
         with pytest.raises(RuntimeError):
             _ = QuantizeLinear.make_node(
                 name="QuantizeLinear",
-                inputs=["input", "scale", "zero_point"],
-                output="output",
+                inputs=[
+                    onnx_ir.Value(name="input"),
+                    onnx_ir.Value(name="scale"),
+                    onnx_ir.Value(name="zero_point"),
+                ],
+                output=onnx_ir.Value(name="output"),
                 dtype="int8",
                 axis=axis,
                 block_size=block_size,
@@ -146,40 +158,32 @@ else:
         """
         When: Create onnx model with opset10 DequantizeLinear
         """
-        model = onnx.helper.make_model(
-            ir_version=10,
-            opset_imports=[onnx.OperatorSetIdProto(version=10)],
-            graph=onnx.helper.make_graph(
-                name="DequantizeLinear",
-                inputs=[
-                    onnx.helper.make_tensor_value_info(
-                        "input",
-                        getattr(onnx.TensorProto, dtype.upper()),
-                        shape=input.shape,
-                    ),
-                ],
-                outputs=[
-                    onnx.helper.make_tensor_value_info(
-                        "output", onnx.TensorProto.FLOAT, shape=expected_output.shape
-                    ),
-                ],
-                initializer=[
-                    onnx.numpy_helper.from_array(scale, name="scale"),
-                    DequantizeLinear.make_zero_point(
-                        zero_point, dtype=dtype, name="zero_point"
-                    ),
-                ],
-                nodes=[
-                    DequantizeLinear.make_node(
-                        name="DequantizeLinear",
-                        inputs=["input", "scale", "zero_point"],
-                        output="output",
-                        dtype=dtype,
-                        axis=None,
-                        block_size=None,
-                    )
-                ],
-            ),
+        input_value = onnx_ir.Value(
+            name="input",
+            type=onnx_ir.TensorType(getattr(onnx_ir.DataType, dtype.upper())),
+            shape=onnx_ir.Shape(input.shape),
+        )
+        output_value = onnx_ir.Value(
+            name="output",
+            type=onnx_ir.TensorType(onnx_ir.DataType.FLOAT),
+            shape=onnx_ir.Shape(expected_output.shape),
+        )
+        scale_value = onnx_ir.Value(
+            name="scale", const_value=onnx_ir.tensor(scale, name="scale")
+        )
+        zero_point_value = DequantizeLinear.make_zero_point(
+            zero_point, dtype=dtype, name="zero_point"
+        )
+        node = DequantizeLinear.make_node(
+            name="DequantizeLinear",
+            inputs=[input_value, scale_value, zero_point_value],
+            output=output_value,
+            dtype=dtype,
+            axis=None,
+            block_size=None,
+        )
+        model = _make_model(
+            10, input_value, output_value, [scale_value, zero_point_value], [node]
         )
 
         """
@@ -219,8 +223,12 @@ else:
         with pytest.raises(RuntimeError):
             _ = DequantizeLinear.make_node(
                 name="QuantizeLinear",
-                inputs=["input", "scale", "zero_point"],
-                output="output",
+                inputs=[
+                    onnx_ir.Value(name="input"),
+                    onnx_ir.Value(name="scale"),
+                    onnx_ir.Value(name="zero_point"),
+                ],
+                output=onnx_ir.Value(name="output"),
                 dtype=dtype,
                 axis=None,
                 block_size=None,
@@ -242,8 +250,12 @@ else:
         with pytest.raises(RuntimeError):
             _ = DequantizeLinear.make_node(
                 name="DequantizeLinear",
-                inputs=["input", "scale", "zero_point"],
-                output="output",
+                inputs=[
+                    onnx_ir.Value(name="input"),
+                    onnx_ir.Value(name="scale"),
+                    onnx_ir.Value(name="zero_point"),
+                ],
+                output=onnx_ir.Value(name="output"),
                 dtype="int8",
                 axis=axis,
                 block_size=block_size,
@@ -262,46 +274,49 @@ else:
         """
         When: Create onnx model with opset21 QuantizeLinear - DequantizeLinear
         """
-        model = onnx.helper.make_model(
-            ir_version=10,
-            opset_imports=[onnx.OperatorSetIdProto(version=21)],
-            graph=onnx.helper.make_graph(
-                name="QuantizeDequantize",
-                inputs=[
-                    onnx.helper.make_tensor_value_info(
-                        "input", onnx.TensorProto.FLOAT, shape=input.shape
-                    ),
-                ],
-                outputs=[
-                    onnx.helper.make_tensor_value_info(
-                        "output", onnx.TensorProto.FLOAT, shape=expected_output.shape
-                    ),
-                ],
-                initializer=[
-                    onnx.numpy_helper.from_array(scale, name="scale"),
-                    QuantizeLinear.make_zero_point(
-                        zero_point, dtype=dtype, name="zero_point"
-                    ),
-                ],
-                nodes=[
-                    QuantizeLinear.make_node(
-                        name="QuantizeLinear",
-                        inputs=["input", "scale", "zero_point"],
-                        output="input_q",
-                        dtype=dtype,
-                        axis=None,
-                        block_size=None,
-                    ),
-                    DequantizeLinear.make_node(
-                        name="DequantizeLinear",
-                        inputs=["input_q", "scale", "zero_point"],
-                        output="output",
-                        dtype=dtype,
-                        axis=None,
-                        block_size=None,
-                    ),
-                ],
-            ),
+        input_value = onnx_ir.Value(
+            name="input",
+            type=onnx_ir.TensorType(onnx_ir.DataType.FLOAT),
+            shape=onnx_ir.Shape(input.shape),
+        )
+        input_q_value = onnx_ir.Value(
+            name="input_q",
+            type=onnx_ir.TensorType(getattr(onnx_ir.DataType, dtype.upper())),
+            shape=onnx_ir.Shape(input.shape),
+        )
+        output_value = onnx_ir.Value(
+            name="output",
+            type=onnx_ir.TensorType(onnx_ir.DataType.FLOAT),
+            shape=onnx_ir.Shape(expected_output.shape),
+        )
+        scale_value = onnx_ir.Value(
+            name="scale", const_value=onnx_ir.tensor(scale, name="scale")
+        )
+        zero_point_value = QuantizeLinear.make_zero_point(
+            zero_point, dtype=dtype, name="zero_point"
+        )
+        q_node = QuantizeLinear.make_node(
+            name="QuantizeLinear",
+            inputs=[input_value, scale_value, zero_point_value],
+            output=input_q_value,
+            dtype=dtype,
+            axis=None,
+            block_size=None,
+        )
+        dq_node = DequantizeLinear.make_node(
+            name="DequantizeLinear",
+            inputs=[input_q_value, scale_value, zero_point_value],
+            output=output_value,
+            dtype=dtype,
+            axis=None,
+            block_size=None,
+        )
+        model = _make_model(
+            21,
+            input_value,
+            output_value,
+            [scale_value, zero_point_value],
+            [q_node, dq_node],
         )
 
         """

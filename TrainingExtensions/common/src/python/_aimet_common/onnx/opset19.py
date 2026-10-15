@@ -5,7 +5,7 @@
 # pylint: disable=no-member
 from packaging.version import parse
 import onnx
-from onnx import TensorProto
+import onnx_ir
 from . import opset13
 
 
@@ -18,10 +18,10 @@ class QuantizeLinear(opset13.QuantizeLinear):
     if parse(onnx.__version__) >= parse("1.15.0"):
         SUPPORTED_DTYPES.update(
             {
-                "float8e4m3fn": TensorProto.FLOAT8E4M3FN,
-                "float8e4m3fnuz": TensorProto.FLOAT8E4M3FNUZ,
-                "float8e5m2": TensorProto.FLOAT8E5M2,
-                "float8e5m2fnuz": TensorProto.FLOAT8E5M2FNUZ,
+                "float8e4m3fn": onnx_ir.DataType.FLOAT8E4M3FN,
+                "float8e4m3fnuz": onnx_ir.DataType.FLOAT8E4M3FNUZ,
+                "float8e5m2": onnx_ir.DataType.FLOAT8E5M2,
+                "float8e5m2fnuz": onnx_ir.DataType.FLOAT8E5M2FNUZ,
             }
         )
 
@@ -35,9 +35,9 @@ class DequantizeLinear(opset13.DequantizeLinear):
     if parse(onnx.__version__) >= parse("1.15.0"):
         SUPPORTED_DTYPES.update(
             {
-                "float8e4m3fn": TensorProto.FLOAT8E4M3FN,
-                "float8e4m3fnuz": TensorProto.FLOAT8E4M3FNUZ,
-                "float8e5m2": TensorProto.FLOAT8E5M2,
-                "float8e5m2fnuz": TensorProto.FLOAT8E5M2FNUZ,
+                "float8e4m3fn": onnx_ir.DataType.FLOAT8E4M3FN,
+                "float8e4m3fnuz": onnx_ir.DataType.FLOAT8E4M3FNUZ,
+                "float8e5m2": onnx_ir.DataType.FLOAT8E5M2,
+                "float8e5m2fnuz": onnx_ir.DataType.FLOAT8E5M2FNUZ,
             }
         )

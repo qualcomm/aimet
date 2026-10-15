@@ -4,7 +4,7 @@
 
 # pylint: disable=no-member
 from typing import Iterable, Optional
-from onnx import helper
+import onnx_ir
 from . import opset10
 
 
@@ -15,12 +15,12 @@ class QuantizeLinear(opset10.QuantizeLinear):
     def make_node(
         cls,
         name: str,
-        inputs: Iterable[str],
-        output: str,
+        inputs: Iterable[onnx_ir.Value],
+        output: onnx_ir.Value,
         dtype: str,
         axis: Optional[int] = None,
         block_size: Optional[int] = None,
-    ):
+    ) -> onnx_ir.Node:
         if block_size is not None:
             raise RuntimeError(
                 f"Blockwise quantization is not supported in opset {cls.OPSET}"
@@ -28,12 +28,12 @@ class QuantizeLinear(opset10.QuantizeLinear):
 
         cls._check_dtype(dtype)
 
-        return helper.make_node(
+        return onnx_ir.node(
             "QuantizeLinear",
             name=name,
             inputs=list(inputs),
             outputs=[output],
-            axis=axis,
+            attributes={"axis": axis},
         )
 
 
@@ -44,12 +44,12 @@ class DequantizeLinear(opset10.DequantizeLinear):
     def make_node(
         cls,
         name: str,
-        inputs: Iterable[str],
-        output: str,
+        inputs: Iterable[onnx_ir.Value],
+        output: onnx_ir.Value,
         dtype: str,
         axis: Optional[int] = None,
         block_size: Optional[int] = None,
-    ):
+    ) -> onnx_ir.Node:
         if block_size is not None:
             raise RuntimeError(
                 f"Blockwise quantization is not supported in opset {cls.OPSET}"
@@ -57,10 +57,10 @@ class DequantizeLinear(opset10.DequantizeLinear):
 
         cls._check_dtype(dtype)
 
-        return helper.make_node(
+        return onnx_ir.node(
             "DequantizeLinear",
             name=name,
             inputs=list(inputs),
             outputs=[output],
-            axis=axis,
+            attributes={"axis": axis},
         )
