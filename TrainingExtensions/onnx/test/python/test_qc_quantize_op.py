@@ -3716,3 +3716,69 @@ def test_set_granularity():
     quantizer._set_granularity(Blockwise(16))
     assert quantizer._scale_quantizer is None
     assert quantizer.quant_info.blockSize == 16
+
+
+def test_load_encodings_with_different_channel_axis():
+    """
+    Given: A per-channel quantizer with channel axis 1
+    When: Loading per-channel encodings with channel axis 0
+    Then: The loaded axis should be used for quantize-dequantize and export
+    """
+    qc_op = _new_quantizer((2, 2), bitwidth=8)
+    qc_op.tensor_quantizer_params.channel_axis = 1
+    qc_op.enable_per_channel_quantization()
+    assert qc_op.quant_info.channelAxis == 1
+
+    qc_op._load_encodings_dict(
+        {"name": "w", "axis": 0, "output_dtype": "int8", "y_scale": [0.1, 1.0]}
+    )
+    assert qc_op.quant_info.channelAxis == 0
+    assert qc_op.export_encodings("2.0.0")["axis"] == 0
+
+    out = qc_op.quantize_dequantize(np.full((2, 2), 0.4, dtype=np.float32))
+    assert np.allclose(out, [[0.4, 0.4], [0.0, 0.0]])
+
+
+def test_load_encodings_with_different_block_axis():
+    """
+    Given: A blockwise quantizer with block axis 1
+    When: Loading blockwise encodings with the same block size but block axis 0
+    Then: The loaded axes should be used for quantize-dequantize and export
+    """
+    qc_op = _new_quantizer((4, 4), bitwidth=8)
+    qc_op._enable_blockwise_quantization(2)
+    assert qc_op._encoding_shape() == (4, 2)
+
+    scale = np.array([[0.1, 0.1, 0.1, 0.1], [1.0, 1.0, 1.0, 1.0]], dtype=np.float32)
+    encoding = AffineEncoding(
+        scale=scale,
+        offset=np.zeros_like(scale),
+        dtype="int8",
+        channel_axis=1,
+        block_axis=0,
+        block_size=2,
+    )
+    encoding.load_to(qc_op)
+    assert qc_op.quant_info.channelAxis == 1
+    assert qc_op.quant_info.blockAxis == 0
+    assert qc_op._encoding_shape() == (2, 4)
+
+    out = qc_op.quantize_dequantize(np.full((4, 4), 0.4, dtype=np.float32))
+    assert np.allclose(out, [[0.4] * 4] * 2 + [[0.0] * 4] * 2)
+
+
+def test_enable_per_channel_with_equivalent_axis_retains_encodings():
+    """
+    Given: A per-channel quantizer with computed encodings
+    When: Re-enabling per-channel quantization with an equivalent negative channel axis
+    Then: The existing encodings should be retained
+    """
+    qc_op = _new_quantizer((3, 20), bitwidth=8)
+    qc_op.enable_per_channel_quantization()
+    _calibrate_and_qdq(qc_op, np.random.randn(3, 20).astype(np.float32))
+    scale_before = qc_op._get_scale()
+
+    qc_op.tensor_quantizer_params.channel_axis = -2
+    qc_op.enable_per_channel_quantization()
+    assert qc_op.is_initialized()
+    assert np.array_equal(qc_op._get_scale(), scale_before)
