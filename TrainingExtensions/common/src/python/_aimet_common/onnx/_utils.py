@@ -1067,13 +1067,37 @@ def _is_metadata_op(op_type: str, domain: str = "") -> bool:
     )
 
 
-def _parse(markdown: str) -> dict[str, list[str]]:
+def _parse(markdown: str, reference_opset_version: int = 24) -> dict[str, list[str]]:
+    """
+    Parse ONNX->QNN inverse mapping table generated based on official QAIRT documentation
+    See https://docs.qualcomm.com/nav/home/SupportedOps.html?product=924033590759186372
+
+    Args:
+        markdown: A markdown table mapping ONNX operators to QNN IR operators.
+        reference_opset_version: Reference ONNX opset version in official QAIRT documentation
+
+    Returns:
+        A dictionary mapping ONNX operator names to a list of corresponding QNN IR operator names.
+    """
     onnx_to_qnn_ir = {}
     rows = markdown.strip().split("\n")[2:]  # Skip the header and separator lines
+
+    not_found = []
+
     for row in rows:
         _, onnx_op, qnn_ir_op, *_ = (entry.strip() for entry in row.split("|"))
-        assert onnx_op in _all_op_schemas
+
+        if onnx_op not in _all_op_schemas:
+            not_found.append(onnx_op)
+            continue
+
         onnx_to_qnn_ir.setdefault(onnx_op, []).append(qnn_ir_op)
+
+    if not_found and onnx.defs.onnx_opset_version() >= reference_opset_version:
+        # Internal error; This should never happen unless for a bug
+        raise AssertionError(
+            f"Found non-existent operator(s) in the internal mapping table: {not_found}."
+        )
 
     return onnx_to_qnn_ir
 
