@@ -17,6 +17,12 @@ from transformers.models.qwen3_5.modeling_qwen3_5 import (
     Qwen3_5ForCausalLM,
     Qwen3_5TextConfig,
 )
+from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import (
+    Qwen2_5_VLVisionConfig,
+)
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    Qwen2_5_VisionTransformerPretrainedModel,
+)
 from aimet_torch.spinquant.hadamard_utils import get_hadamard_matrix
 from aimet_torch.spinquant.spinquant_optimizer import SpinQuant
 from aimet_torch.experimental.transforms.transformed_layers import TransformationMixin
@@ -498,3 +504,42 @@ def test_apply_spinquant_qwen3_5_hybrid_is_lossless():
 
     assert not torch.equal(orig_embed, model.model.embed_tokens.weight)
     assert torch.allclose(orig_logits, new_logits, atol=1e-4, rtol=1e-4)
+
+
+# Hadamard matrices of size 12 * 2^n are non-symmetric; 16 and 20 are symmetric.
+@pytest.mark.parametrize("vit_hidden_size", [12, 16, 20, 24])
+def test_apply_spinquant_to_visual_encoder_is_lossless(vit_hidden_size):
+    torch.manual_seed(0)
+    lm_hidden_size = 16
+    config = Qwen2_5_VLVisionConfig(
+        depth=2,
+        hidden_size=vit_hidden_size,
+        intermediate_size=2 * vit_hidden_size,
+        num_heads=vit_hidden_size // 4,
+        in_channels=3,
+        patch_size=2,
+        temporal_patch_size=1,
+        spatial_merge_size=2,
+        out_hidden_size=lm_hidden_size,
+        window_size=4,
+        fullatt_block_indexes=[1],
+        attn_implementation="eager",
+    )
+    visual = Qwen2_5_VisionTransformerPretrainedModel(config).eval()
+    grid_thw = torch.tensor([[1, 4, 4], [2, 4, 4]], dtype=torch.long)
+    pixel_values = torch.randn(48, 12)
+
+    def forward():
+        out = visual(pixel_values, grid_thw)
+        return out.pooler_output if hasattr(out, "pooler_output") else out
+
+    with torch.no_grad():
+        orig_out = forward()
+        SpinQuant._apply_spinquant_to_visual_encoder(visual, lm_hidden_size)
+        new_out = forward()
+
+    # Merger output is intentionally rotated into the language backbone's R1 space
+    r_lm = get_hadamard_matrix(lm_hidden_size) / torch.sqrt(
+        torch.tensor(lm_hidden_size)
+    )
+    assert torch.allclose(orig_out @ r_lm, new_out, atol=1e-5)
