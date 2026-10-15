@@ -1312,16 +1312,12 @@ class QuantizationSimModelOnnxExporter:
         return encodings_dict
 
 
-@deprecated("""
-Use QuantizationSimModel.load_encodings with the following keyword arguments instead:
-```
-sim.load_encodings(encoding_path
-                   strict=True,
-                   partial=False,
-                   requires_grad=None,
-                   allow_overwrite=None)
-```
-""")
+@deprecated(
+    "Use QuantizationSimModel.quantizer_state_dict and torch.nn.Module.load_state_dict "
+    "instead to save and load encoding checkpoint more efficiently and without roundtrip loss. "
+    "For more information, see "
+    "https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.quantizer_state_dict"
+)
 def load_encodings_to_sim(
     quant_sim_model: _QuantizationSimModelBase, pytorch_encoding_path: str
 ):
@@ -1342,7 +1338,8 @@ def load_encodings_to_sim(
     )
 
 
-@deprecated(r"""
+@deprecated(
+    r"""
 Use aimet_torch.nn.compute_encodings contextmanager on each sim.model instead. For example:
 ```
 with torch.no_grad(), \
@@ -1351,7 +1348,9 @@ with torch.no_grad(), \
         aimet_torch.nn.compute_encodings(sim_2.model):
     # Run forward pass with calibration dataset
 ```
-""")
+""".strip(),
+    deletion_planned="2.44.0",
+)
 def compute_encodings_for_sims(
     sim_list: Sequence[QuantizationSimModel],
     forward_pass_callback: Callable,

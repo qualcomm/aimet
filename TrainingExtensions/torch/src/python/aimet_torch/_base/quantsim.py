@@ -1122,6 +1122,12 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         file_path = os.path.join(path, filename_prefix + ".safetensors")
         save_safetensor_file(data, file_path, metadata)
 
+    @deprecated(
+        "Use QuantizationSimModel.quantizer_state_dict and torch.nn.Module.load_state_dict "
+        "instead to save and load encoding checkpoint more efficiently and without roundtrip loss. "
+        "For more information, see "
+        "https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.quantizer_state_dict"
+    )
     def save_encodings_to_json(self, path: str, filename_prefix: str):
         """
         Save encodings in the model to json.
@@ -2089,7 +2095,12 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             path, filename_prefix, dummy_input, onnx_export_args, propagate_encodings
         )
 
-    # pylint: disable=arguments-differ
+    @deprecated(
+        "Use QuantizationSimModel.quantizer_state_dict and torch.nn.Module.load_state_dict "
+        "instead to save and load encoding checkpoint more efficiently and without roundtrip loss. "
+        "For more information, see "
+        "https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.quantizer_state_dict"
+    )
     def load_encodings(
         self,
         encodings: Union[Mapping, str, os.PathLike],
@@ -2169,7 +2180,12 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 activation_encodings, strict, partial, requires_grad, allow_overwrite
             )
 
-    @deprecated("Use QuantizationSimModel.load_encodings instead.")
+    @deprecated(
+        "Use QuantizationSimModel.quantizer_state_dict and torch.nn.Module.load_state_dict "
+        "instead to save and load encoding checkpoint more efficiently and without roundtrip loss. "
+        "For more information, see "
+        "https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.quantizer_state_dict"
+    )
     def load_and_freeze_encodings(
         self, encoding_path: str, ignore_when_quantizer_disabled: bool = False
     ):
@@ -2255,7 +2271,12 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                     f"Encoding import failed for module: {module_name}.\n{str(e)}"
                 ) from e
 
-    @deprecated("Use QuantizationSimModel.load_encodings instead.")
+    @deprecated(
+        "Use QuantizationSimModel.quantizer_state_dict and torch.nn.Module.load_state_dict "
+        "instead to save and load encoding checkpoint more efficiently and without roundtrip loss. "
+        "For more information, see "
+        "https://qualcomm.github.io/aimet-pages/releases/latest/apiref/torch/quantsim.html#aimet_torch.QuantizationSimModel.quantizer_state_dict"
+    )
     def set_and_freeze_param_encodings(self, encoding_path: str):
         """
         Set and freeze parameter encodings from encodings JSON file.
@@ -2308,7 +2329,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                     self._module_marker_map[name] = marker_layer
 
 
-@deprecated("Use pickle.dump instead")
+@deprecated("Use pickle.dump instead", deletion_planned="2.44.0")
 def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: str):
     """
     This API provides a way for the user to save a checkpoint of the quantized model which can
@@ -2323,7 +2344,7 @@ def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: 
         pickle.dump(quant_sim_model, file)
 
 
-@deprecated("Use pickle.load instead")
+@deprecated("Use pickle.load instead", deletion_planned="2.44.0")
 def load_checkpoint(file_path: str) -> _QuantizationSimModelInterface:
     """
     Load the quantized model
@@ -2336,7 +2357,10 @@ def load_checkpoint(file_path: str) -> _QuantizationSimModelInterface:
         return sim
 
 
-@deprecated("check_accumulator_overflow API will be removed in the future releases.")
+@deprecated(
+    "check_accumulator_overflow API will be removed in the future releases.",
+    deletion_planned="2.44.0",
+)
 def check_accumulator_overflow(model: torch.nn.Module, quant_bw: int, accum_bw: int):
     """
     Checks for any potential for accumulator overflow across all the layers of the given model
