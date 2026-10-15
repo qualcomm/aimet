@@ -5147,6 +5147,53 @@ def make_split_concat_model(num_splits=128, split_size=32, num_channels=64):
     return model
 
 
+def matmul_split_concat_matmul_model(num_splits=64, split_size=8, num_channels=64):
+    """
+    MatMul -> Reshape -> Split -> Concat -> MatMul. The Reshape output is not quantized, so
+    Split's input has a static shape and shape inference needs the values of split_sizes.
+    """
+    total = num_splits * split_size
+    split_outputs = [f"split_out_{i}" for i in range(num_splits)]
+    initializers = [
+        numpy_helper.from_array(
+            np.random.randn(num_channels, total).astype(np.float32), name="w0"
+        ),
+        numpy_helper.from_array(
+            np.random.randn(total, num_channels).astype(np.float32), name="w1"
+        ),
+        numpy_helper.from_array(np.array([1, total], dtype=np.int64), name="shape"),
+        numpy_helper.from_array(
+            np.full(num_splits, split_size, dtype=np.int64), name="split_sizes"
+        ),
+    ]
+    graph = helper.make_graph(
+        [
+            helper.make_node("MatMul", ["input", "w0"], ["mm0_out"], name="mm0"),
+            helper.make_node(
+                "Reshape", ["mm0_out", "shape"], ["reshape_out"], name="reshape"
+            ),
+            helper.make_node(
+                "Split",
+                ["reshape_out", "split_sizes"],
+                split_outputs,
+                name="split",
+                axis=1,
+            ),
+            helper.make_node(
+                "Concat", split_outputs, ["concat_out"], name="concat", axis=1
+            ),
+            helper.make_node("MatMul", ["concat_out", "w1"], ["output"], name="mm1"),
+        ],
+        "matmul_split_concat_matmul",
+        [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, num_channels])],
+        [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, num_channels])],
+        initializer=initializers,
+    )
+    model = make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+    onnx.checker.check_model(model)
+    return model
+
+
 def unsafe_concat_tie_model():
     """
             -- Add -+-----------+

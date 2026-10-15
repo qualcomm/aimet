@@ -785,6 +785,33 @@ def test_scan_reading_outer_activation(quantize_subgraphs):
     assert sim.qc_quantize_op_dict["w_post"].is_encoding_frozen()
 
 
+def test_seq_mse_with_large_split_length_input():
+    model = models_for_tests.matmul_split_concat_matmul_model()
+    sim = QuantizationSimModel(
+        model=model,
+        quant_scheme=QuantScheme.post_training_tf,
+        providers=["CPUExecutionProvider"],
+        default_param_bw=4,
+    )
+    inputs = [make_dummy_input(model) for _ in range(2)]
+
+    """
+    When: Split's split_sizes input exceeds onnx_ir's default external data threshold of 256 bytes
+    Then: It stays inline in the split graph, so ORT can infer Split's output shapes
+    """
+    seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=2), inputs)
+    subgraph_path = seq_mse._split_onnx_graph(["input"], ["concat_out"])
+    subgraph = onnx.load_model(subgraph_path, load_external_data=False)
+    (split_sizes,) = (
+        init for init in subgraph.graph.initializer if init.name == "split_sizes"
+    )
+    assert split_sizes.data_location == onnx.TensorProto.DEFAULT
+
+    apply_seq_mse(sim, inputs, num_candidates=4)
+    assert sim.qc_quantize_op_dict["w0"].is_encoding_frozen()
+    assert sim.qc_quantize_op_dict["w1"].is_encoding_frozen()
+
+
 def test_nodes_to_exclude():
     """Skip seq mse optimization if nodes to exclude provided"""
     model = single_residual_model()

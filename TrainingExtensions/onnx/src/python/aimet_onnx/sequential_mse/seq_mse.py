@@ -126,6 +126,8 @@ class SequentialMse:
             onnx_ir.from_proto(sim.model.model),
             model_path,
             external_data="model.onnx.data",
+            # Prevents Split's split_sizes input from being externalized
+            size_threshold_bytes=1024**2,
         )
         self._ir_model = onnx_ir.load(model_path)
 
