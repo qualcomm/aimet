@@ -72,12 +72,8 @@ apply_spinquant(onnx_model, topology=topology)
 # [create-sim]
 from aimet_onnx.quantsim import QuantizationSimModel
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import TorchONNXInterface
-from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-    _set_tensors_to_output_n_bit_symmmetric,
-    _tie_quantizers_for_kv_cache,
-    _set_lm_head_precision,
-)
-from GenAILab.bench.precision import WeightPrecision
+from aimet_onnx.llm_configurator import configure_llm
+from aimet_onnx.defs import QSpec
 from aimet_onnx.common.defs import int8
 
 # Built on the rotated graph, so compute_encodings calibrates on rotated weights.
@@ -89,9 +85,12 @@ quantsim = QuantizationSimModel(
     config_file="htp_v73",
     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
 )
-_set_tensors_to_output_n_bit_symmmetric(quantsim, kv_bits=8)
-_set_lm_head_precision(quantsim, WeightPrecision(qtype=int8, granularity="PCQ"))
-_tie_quantizers_for_kv_cache(quantsim)
+configure_llm(
+    quantsim,
+    topology,
+    kv_cache_type=int8,
+    lm_head_weight_type=QSpec.per_channel(int8),
+)
 
 quantsim_with_torch_interface = TorchONNXInterface(quantsim, hf_model.config)
 generator = Generator(
@@ -105,7 +104,7 @@ from GenAILab.bench.datasets import Wikitext
 from GenAILab.bench.onnx.quant_recipes import _prefill_inputs
 
 train_dataset = Wikitext.load_encoded_dataset(tokenizer, CONTEXT_LENGTH, "train")
-calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, num_batches=20)
+calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, 20)
 
 
 def _forward(session, _):

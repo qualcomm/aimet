@@ -31,12 +31,8 @@ from GenAILab.qai_hub_lm.models.base import LLM
 from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descriptors
 from GenAILab.qai_hub_lm.models.generator import Generator
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import TorchONNXInterface
-from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
-    _set_tensors_to_output_n_bit_symmmetric,
-    _tie_quantizers_for_kv_cache,
-    _set_lm_head_precision,
-)
-from GenAILab.bench.precision import WeightPrecision
+from aimet_onnx.llm_configurator import configure_llm
+from aimet_onnx.defs import QSpec
 from aimet_onnx.common.defs import int8
 
 assembled_dummy_inputs = tuple(
@@ -76,10 +72,13 @@ quantsim = QuantizationSimModel(
     config_file="htp_v73",
     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
 )
-# Setting kv_cache and some other layers to 8-bit
-_set_tensors_to_output_n_bit_symmmetric(quantsim, kv_bits=8)
-_set_lm_head_precision(quantsim, WeightPrecision(qtype=int8, granularity="PCQ"))
-_tie_quantizers_for_kv_cache(quantsim)
+# Tie the KV cache quantizers and set them to 8-bit; set lm_head to 8-bit per-channel
+configure_llm(
+    quantsim,
+    topology,
+    kv_cache_type=int8,
+    lm_head_weight_type=QSpec.per_channel(int8),
+)
 
 quantsim_with_torch_interface = TorchONNXInterface(quantsim, hf_model.config)
 generator = Generator(
@@ -100,7 +99,7 @@ ADASCALE_NUM_ITERATIONS = 2048  # reduce for larger models; see quantization rec
 
 train_dataset = Wikitext.load_encoded_dataset(tokenizer, CONTEXT_LENGTH, "train")
 prefilled_inputs = _prefill_inputs(
-    quantsim, generator, train_dataset, num_batches=ADASCALE_NUM_BATCHES
+    quantsim, generator, train_dataset, ADASCALE_NUM_BATCHES
 )
 
 # ``topology`` was analyzed on the float model above; AdaScale optimizes one decoder
@@ -117,7 +116,7 @@ AdaScale.apply_adascale(
 # [compute-encodings]
 from tqdm import tqdm
 
-calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, num_batches=20)
+calib_inputs = _prefill_inputs(quantsim, generator, train_dataset, 20)
 
 
 def _forward(session, _):
