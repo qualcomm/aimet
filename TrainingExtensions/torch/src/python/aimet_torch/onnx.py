@@ -28,7 +28,6 @@ from aimet_torch.common.onnx._utils import (
     _derive_data_movement_op_encodings,
     _derive_const_rescale_op_output_encodings,
     contains_tensor_type,
-    _remove_onnx_qdq_nodes,
     to_array,
 )
 
@@ -1094,6 +1093,256 @@ def _fold_linear_weight_transpose(onnx_model: onnx.ModelProto, base_dir):
     return aliases
 
 
+def _convert_qdq_to_aimet_qdq(
+    onnx_model: onnx.ModelProto, base_dir: str | None
+) -> None:
+    """
+    Convert all QuantizeLinear-DequantizeLinear pairs to aimet::QuantizeDequantize
+    or aimet::FloatQuantizeDequantize nodes.
+
+    This is to make canonical QuanitzeLinear-DequantizeLinear pairs
+    subject to the post-processing steps as AIMET QDQ nodes, such as
+    removing back-to-back QDQ nodes, propagating encodings, etc.
+
+    Before:
+        x -> QuantizeLinear(scale, zp) -> DequantizeLinear(scale, zp) -> ...
+
+    After:
+        x -> aimet::QuantizeDequantize(scale, -zp)  -> ...
+        x -> aimet::FloatQuantizeDequantize(scale)  -> ...  (float8/float4)
+
+    NOTE: QuantizeLinear whose output is consumed by anything other than a single
+    DequantizeLinear is left untouched.
+    """
+    # pylint: disable=too-many-locals, too-many-branches, too-many-statements
+    producers: dict[str, onnx.NodeProto] = {}
+    consumers: dict[str, list[onnx.NodeProto]] = {}
+
+    for node in onnx_model.graph.node:
+        for out in node.output:
+            producers[out] = node
+        for inp in node.input:
+            consumers.setdefault(inp, []).append(node)
+
+    constants = _get_all_constants(onnx_model, consumers)
+    graph_outputs = {out.name for out in onnx_model.graph.output}
+
+    int_ranges = {
+        onnx.TensorProto.UINT8: (0, 255),
+        onnx.TensorProto.INT8: (-128, 127),
+        onnx.TensorProto.UINT16: (0, 65535),
+        onnx.TensorProto.INT16: (-32768, 32767),
+        onnx.TensorProto.INT32: (-(2**31), 2**31 - 1),
+        onnx.TensorProto.UINT4: (0, 15),
+        onnx.TensorProto.INT4: (-8, 7),
+    }
+    if hasattr(onnx.TensorProto, "UINT2"):
+        int_ranges |= {onnx.TensorProto.UINT2: (0, 3)}
+
+    if hasattr(onnx.TensorProto, "INT2"):
+        int_ranges |= {onnx.TensorProto.INT2: (-2, 1)}
+
+    float_dtypes = {
+        getattr(onnx.TensorProto, name)
+        for name in (
+            "FLOAT8E4M3FN",
+            "FLOAT8E4M3FNUZ",
+            "FLOAT8E5M2",
+            "FLOAT8E5M2FNUZ",
+            "FLOAT4E2M1",
+        )
+        if hasattr(onnx.TensorProto, name)
+    }
+
+    taken_names = (
+        set(producers)
+        | set(constants)
+        | {init.name for init in onnx_model.graph.initializer}
+        | {node.name for node in onnx_model.graph.node}
+    )
+
+    def unique_name(base: str) -> str:
+        name, i = base, 0
+        while name in taken_names:
+            name = f"{base}_{i}"
+            i += 1
+        taken_names.add(name)
+        return name
+
+    ranks: dict[str, int] | None = None
+
+    def get_rank(name: str) -> int | None:
+        nonlocal ranks
+        if name in constants:
+            return len(constants[name].dims)
+
+        if ranks is None:
+            ranks = {}
+            try:
+                inferred = onnx.shape_inference.infer_shapes(onnx_model)
+            except Exception:  # pylint: disable=broad-exception-caught
+                inferred = onnx_model
+            for vi in itertools.chain(
+                inferred.graph.input, inferred.graph.value_info, inferred.graph.output
+            ):
+                if vi.type.HasField("tensor_type") and vi.type.tensor_type.HasField(
+                    "shape"
+                ):
+                    ranks[vi.name] = len(vi.type.tensor_type.shape.dim)
+        return ranks.get(name)
+
+    def get_attr(node: onnx.NodeProto, name: str, default: Any):
+        for attr in node.attribute:
+            if attr.name == name:
+                return onnx.helper.get_attribute_value(attr)
+        return default
+
+    def get_array(name: str) -> np.ndarray | None:
+        proto = constants.get(name)
+        return None if proto is None else to_array(proto, base_dir=base_dir)
+
+    def add_initializer(base: str, array: np.ndarray) -> str:
+        name = unique_name(base)
+        onnx_model.graph.initializer.append(onnx.numpy_helper.from_array(array, name))
+        return name
+
+    replaced: dict[str, onnx.NodeProto] = {}  # dq.name -> new node
+    removed: set[str] = set()  # names of converted QuantizeLinear nodes
+
+    for dq in list(onnx_model.graph.node):
+        if dq.op_type != "DequantizeLinear" or dq.domain not in ("", "ai.onnx"):
+            continue
+
+        # Optional Clip between Q and DQ (emitted for quant_min/quant_max):
+        #   Q -> Clip(min, max) -> DQ
+        clip = None
+        clip_range = None
+        q = producers.get(dq.input[0])
+        if q is not None and q.op_type == "Clip" and q.domain in ("", "ai.onnx"):
+            if len(q.input) < 3 or consumers.get(q.output[0], []) != [dq]:
+                continue
+            if q.output[0] in graph_outputs:
+                continue
+            clip_min, clip_max = get_array(q.input[1]), get_array(q.input[2])
+            if clip_min is None or clip_max is None:
+                continue
+            clip = q
+            clip_range = (int(clip_min), int(clip_max))
+            q = producers.get(clip.input[0])
+
+        if (
+            q is None
+            or q.op_type != "QuantizeLinear"
+            or q.domain not in ("", "ai.onnx")
+        ):
+            continue
+
+        # DequantizeLinear (or Clip) must be the only consumer of QuantizeLinear's output
+        if (
+            consumers.get(q.output[0], []) != [clip or dq]
+            or q.output[0] in graph_outputs
+        ):
+            continue
+
+        if len(q.input) < 2 or len(dq.input) < 2:
+            continue
+
+        axis = get_attr(q, "axis", 1)
+        block_size = get_attr(q, "block_size", 0)
+        if (axis, block_size) != (
+            get_attr(dq, "axis", 1),
+            get_attr(dq, "block_size", 0),
+        ):
+            continue
+
+        scale = get_array(q.input[1])
+        if scale is None or not np.array_equal(scale, get_array(dq.input[1])):
+            continue
+
+        has_zp = len(q.input) > 2 and q.input[2] != ""
+        zp = None
+        if has_zp:
+            zp = get_array(q.input[2])
+            if zp is None or len(dq.input) < 3 or dq.input[2] == "":
+                continue
+            if not np.array_equal(zp, get_array(dq.input[2])):
+                continue
+            q_dtype = constants[q.input[2]].data_type
+        else:
+            q_dtype = get_attr(q, "output_dtype", onnx.TensorProto.UINT8)
+
+        if q_dtype not in int_ranges and q_dtype not in float_dtypes:
+            continue
+
+        scale = np.asarray(scale, dtype=np.float32)
+
+        if scale.size == 1:
+            scale = scale.reshape(1)
+            block_ints = None
+        elif block_size:
+            rank = get_rank(q.input[0])
+            if rank is None:
+                continue
+            block_ints = [1] * rank
+            block_ints[axis % rank] = int(block_size)
+        else:
+            rank = get_rank(q.input[0])
+            if rank is None:
+                continue
+            shape = [1] * rank
+            shape[axis % rank] = scale.size
+            scale = scale.reshape(shape)
+            block_ints = None
+
+        name = dq.name or unique_name(f"{q.name}_qdq")
+        scale_name = add_initializer(f"{dq.output[0]}_scale", scale)
+        inputs = [q.input[0], scale_name]
+
+        if q_dtype in float_dtypes:
+            attrs = {"dtype": q_dtype}
+            op_type = "FloatQuantizeDequantize"
+        else:
+            qmin, qmax = clip_range or int_ranges[q_dtype]
+            offset = (
+                -np.asarray(zp, dtype=np.float32)
+                if zp is not None
+                else np.zeros((), dtype=np.float32)
+            )
+            offset = offset.reshape(scale.shape if offset.size > 1 else (1,))
+            inputs.append(add_initializer(f"{dq.output[0]}_offset", offset))
+            attrs = {"qmin": qmin, "qmax": qmax}
+            op_type = "QuantizeDequantize"
+
+        if block_ints:
+            attrs["block_size"] = block_ints
+
+        replaced[dq.name] = onnx.helper.make_node(
+            op_type,
+            inputs=inputs,
+            outputs=[dq.output[0]],
+            name=name,
+            domain="aimet",
+            **attrs,
+        )
+        removed.add(q.name)
+        if clip is not None:
+            removed.add(clip.name)
+
+    if not replaced:
+        return
+
+    all_nodes = [
+        replaced.get(node.name, node)
+        for node in onnx_model.graph.node
+        if node.name not in removed
+    ]
+    onnx_model.graph.ClearField("node")
+    onnx_model.graph.node.extend(all_nodes)
+
+    if not any(opset.domain == "aimet" for opset in onnx_model.opset_import):
+        onnx_model.opset_import.append(onnx.helper.make_opsetid("aimet", 1))
+
+
 def _to_onnx(
     model: torch.nn.Module,
     args: Union[Tuple[Any, ...], torch.Tensor],
@@ -1106,6 +1355,7 @@ def _to_onnx(
     base_dir = str(Path(str(f)).absolute().parent)
     _onnx.export(model, args, f, **kwargs)
     onnx_model = onnx.load(f, load_external_data=False)
+    _convert_qdq_to_aimet_qdq(onnx_model, base_dir)
     aliases = _fold_linear_weight_transpose(onnx_model, base_dir)
     aliases |= _duplicate_shared_qdq_inputs(onnx_model, base_dir)
     _remove_redundant_qdqs(onnx_model, base_dir)
@@ -1127,12 +1377,6 @@ def _to_onnx(
         base_dir=base_dir,
     ).items():
         is_param = name in param_names or aliases.get(name) in param_names
-        tensor_to_encoding_map[name] = (encoding, is_param)
-
-    for encoding in _remove_onnx_qdq_nodes(onnx_model, base_dir=base_dir):
-        name = encoding.pop("name")
-        is_param = name in param_names or aliases.get(name) in param_names
-        encoding = AffineEncoding._from_qnn_encoding_dict(encoding, version="2.1.0")
         tensor_to_encoding_map[name] = (encoding, is_param)
 
     static_input_shapes = {

@@ -3558,30 +3558,70 @@ def test_export_aten_quantize_dequantize(tmp_path: pathlib.Path):
     """
     Given: Model with torch built-in (de-)quantize_per_* ops
     When: Export
-    Then: The exported onnx model should have QDQ where torch built-in (de-)quantize_per_* ops were
+    Then: The exported onnx model should have QDQ where torch built-in (de-)quantize_per_* ops were.
+          It should also go through the same post-processing steps,
+          such as removing back-to-back QDQ, propagating encodings, etc.
     """
+
+    def _qdq_per_tensor(x):
+        x = torch.ops.quantized_decomposed.quantize_per_tensor(
+            x,
+            scale=0.1,
+            zero_point=0,
+            quant_min=0,
+            quant_max=255,
+            dtype=torch.uint8,
+        )
+        x = torch.ops.quantized_decomposed.dequantize_per_tensor(
+            x,
+            scale=0.1,
+            zero_point=0,
+            quant_min=0,
+            quant_max=255,
+            dtype=torch.uint8,
+        )
+        return x
+
+    def _qdq_per_channel(x):
+        scale = torch.ones(x.shape[0])
+        zero_point = torch.zeros_like(scale)
+        x = torch.ops.quantized_decomposed.quantize_per_channel(
+            x,
+            scales=scale,
+            zero_points=zero_point,
+            axis=0,
+            quant_min=0,
+            quant_max=255,
+            dtype=torch.uint8,
+        )
+        x = torch.ops.quantized_decomposed.dequantize_per_channel(
+            x,
+            scales=scale,
+            zero_points=zero_point,
+            axis=0,
+            quant_min=0,
+            quant_max=255,
+            dtype=torch.uint8,
+        )
+        return x
 
     @aimet_torch.nn.QuantizationMixin.ignore
     class Model(torch.nn.Module):
-        def forward(self, x):
-            x = torch.ops.quantized_decomposed.quantize_per_tensor(
-                x,
-                scale=0.1,
-                zero_point=0,
-                quant_min=0,
-                quant_max=255,
-                dtype=torch.uint8,
-            )
-            x = torch.ops.quantized_decomposed.dequantize_per_tensor(
-                x,
-                scale=0.1,
-                zero_point=0,
-                quant_min=0,
-                quant_max=255,
-                dtype=torch.uint8,
-            )
-            return x.T
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.randn(10, 10))
 
+        def forward(self, x):
+            x_qdq = _qdq_per_tensor(x)
+            # Redundant back-to-back QDQ; should be removed in post-processing
+            x_qdq = _qdq_per_tensor(x_qdq)
+            w_qdq = _qdq_per_channel(self.weight)
+            y = torch.nn.functional.linear(x_qdq, w_qdq)
+            y_qdq = _qdq_per_tensor(y)
+            # Transpose; y_qdq's encoding should be propagated to y_qdq.T
+            return y_qdq.T
+
+    tmp_path = pathlib.Path(".")
     model = Model()
     dummy_input = torch.randn(10, 10)
     aimet_torch.onnx.export(
@@ -3592,16 +3632,25 @@ def test_export_aten_quantize_dequantize(tmp_path: pathlib.Path):
         output_names=["output"],
         opset_version=21,
     )
-    model = onnx.load(str(tmp_path / "model.onnx"))
-    producers = {out: node for node in model.graph.node for out in node.output}
-    consumers = {}
-    for node in model.graph.node:
-        for inp in node.input:
-            consumers.setdefault(inp, []).append(node)
 
-    assert producers["output"].op_type == "DequantizeLinear"
-    (q,) = consumers["input"]
-    assert q.op_type == "QuantizeLinear"
+    ir_model = onnx_ir.load(str(tmp_path / "model.onnx"))
+
+    for node in ir_model.graph.all_nodes():
+        if node.op_type in ("QuantizeLinear", "DequantizeLinear"):
+            continue
+        for inp in node.inputs:
+            assert inp.producer().op_type == "DequantizeLinear"
+        for out in node.outputs:
+            (q,) = out.consumers()
+            assert q.op_type == "QuantizeLinear"
+
+    sess = ort.InferenceSession(
+        onnx_ir.to_proto(ir_model).SerializeToString(),
+        providers=["CPUExecutionProvider"],
+    )
+    (out,) = sess.run(None, {"input": dummy_input.detach().numpy()})
+    expected_out = model(dummy_input)
+    assert torch.allclose(torch.from_numpy(out), expected_out)
 
     sim = QuantizationSimModel(Model(), dummy_input).onnx.export(
         dummy_input,
@@ -3614,7 +3663,12 @@ def test_export_aten_quantize_dequantize(tmp_path: pathlib.Path):
     with open(tmp_path / "model.encodings") as f:
         encodings = json.load(f)["encodings"]
 
-    assert {e["name"] for e in encodings} == {"input", "output"}
+    assert {e["name"] for e in encodings} == {
+        "input",
+        "weight",
+        "linear",
+        "output",
+    }
 
 
 @pytest.mark.parametrize(
