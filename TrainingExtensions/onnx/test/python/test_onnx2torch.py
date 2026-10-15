@@ -8,7 +8,8 @@ import onnx_ir
 import onnxruntime as ort
 import pytest
 import torch
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
+from onnx.reference import ReferenceEvaluator
 from torch import nn as nn
 
 from aimet_onnx.adascale.model_converter import get_pt_block
@@ -351,3 +352,68 @@ def test_scan():
     Then: The converted model matches ORT, as the body converts with the model's opset
     """
     _assert_scan_matches_ort(model, feed)
+
+
+def _reduce_model(op_type, axes_source, axes, **attrs):
+    """Opset 18 model applying op_type to x over axes read from axes_source."""
+    x_info = _float_info("x", [2, 3, 4])
+    axes_array = np.array(axes, dtype=np.int64)
+    inputs, nodes, initializers = [x_info], [], []
+    if axes_source == "graph_input":
+        inputs.append(
+            helper.make_tensor_value_info("axes", TensorProto.INT64, [len(axes)])
+        )
+    elif axes_source == "identity":
+        initializers.append(numpy_helper.from_array(axes_array, "axes_init"))
+        nodes.append(helper.make_node("Identity", ["axes_init"], ["axes"]))
+    else:
+        initializers.append(numpy_helper.from_array(axes_array, "axes"))
+    nodes.append(helper.make_node(op_type, ["x", "axes"], ["output"], **attrs))
+    graph = helper.make_graph(
+        nodes, "g", inputs, [_float_info("output", None)], initializers
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+    model.ir_version = 10
+    return model
+
+
+@pytest.mark.parametrize("op_type", ["ReduceMean", "ReduceL2"])
+@pytest.mark.parametrize("axes_source", ["initializer", "identity", "graph_input"])
+@pytest.mark.parametrize("axes", [[1], [-1], [0, 2]])
+@pytest.mark.parametrize("keepdims", [0, 1])
+def test_reduce_axes(op_type, axes_source, axes, keepdims):
+    """
+    Given: An opset 18 reduction whose axes input is an initializer, or is only known
+           at runtime (graph input or Identity output)
+    When: The model is converted to torch
+    Then: The converted model reduces over the given axes, matching ORT
+    """
+    model = _reduce_model(op_type, axes_source, axes, keepdims=keepdims)
+    feed = {"x": np.random.randn(2, 3, 4).astype(np.float32)}
+    if axes_source == "graph_input":
+        feed["axes"] = np.array(axes, dtype=np.int64)
+    onnx_out, *_ = ort.InferenceSession(model.SerializeToString()).run(None, feed)
+    pt_block, _ = get_pt_block(onnx_ir.from_proto(model), (list(feed), ["output"]))
+    converted_out = pt_block(*(torch.from_numpy(arr) for arr in feed.values()))
+
+    np.testing.assert_allclose(
+        onnx_out, converted_out.detach().numpy(), rtol=1e-6, atol=1e-6
+    )
+
+
+def test_reduce_l2_noop_with_empty_axes():
+    """
+    Given: An opset 18 ReduceL2 with empty axes and noop_with_empty_axes=1
+    When: The model is converted to torch
+    Then: The converted model returns |x|, since only the reduction step is a no-op
+
+    Compared against the ONNX reference implementation, as ORT returns x unchanged.
+    """
+    model = _reduce_model("ReduceL2", "initializer", [], noop_with_empty_axes=1)
+    x = np.random.randn(2, 3, 4).astype(np.float32)
+    pt_block, _ = get_pt_block(onnx_ir.from_proto(model), (["x"], ["output"]))
+
+    np.testing.assert_array_equal(
+        ReferenceEvaluator(model).run(None, {"x": x})[0], np.abs(x)
+    )
+    np.testing.assert_array_equal(pt_block(torch.from_numpy(x)).numpy(), np.abs(x))
