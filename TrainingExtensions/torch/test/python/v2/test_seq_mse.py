@@ -202,6 +202,41 @@ class TestSeqMse:
 
     @pytest.mark.parametrize(
         "quantizer_shape, block_size",
+        [[[], None], [[128, 1], None], [[128, 8], [-1, -1]]],
+    )
+    @pytest.mark.parametrize("zero_point_shift", [0.0, 0.5])
+    def test_optimize_module_preserves_zero_point_shift(
+        self, quantizer_shape, block_size, zero_point_shift
+    ):
+        """
+        When: optimize_module is run with a single candidate (i.e. the original range)
+        Then: Scale and quantized weight should be unchanged, including for zero_point_shift=0.5
+        """
+        linear = torch.nn.Linear(64, 128)
+        wrapper = QuantizationMixin.from_module(linear)
+        qtzr = QuantizeDequantize(
+            shape=quantizer_shape,
+            bitwidth=4,
+            symmetric=True,
+            block_size=block_size,
+            zero_point_shift=zero_point_shift,
+        )
+        wrapper.param_quantizers["weight"] = qtzr
+
+        with qtzr.compute_encodings():
+            _ = qtzr(wrapper.weight.data)
+        scale_before = qtzr.get_scale().clone()
+        wq_before = qtzr(wrapper.weight).detach().clone()
+
+        xq = torch.randn(4, 64)
+        optimize_module(wrapper, xq, xq, SeqMseParams(num_batches=1, num_candidates=1))
+
+        assert qtzr.zero_point_shift == zero_point_shift
+        assert torch.allclose(qtzr.get_scale(), scale_before)
+        assert torch.allclose(qtzr(wrapper.weight), wq_before)
+
+    @pytest.mark.parametrize(
+        "quantizer_shape, block_size",
         [([], None), ((128, 1), None), ((128, 8), (1, 16))],
     )
     @pytest.mark.parametrize("loss_fn", ["mse", "l1", "sqnr"])

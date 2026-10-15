@@ -275,6 +275,7 @@ class SequentialMse(SequentialMseBase):
             quantizer.bitwidth,
             quantizer.symmetric,
             block_size=quantizer.block_size,
+            zero_point_shift=quantizer.zero_point_shift,
         ).to(x_min.device)
 
         min_tensor = x_min
