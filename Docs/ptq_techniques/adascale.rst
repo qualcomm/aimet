@@ -31,7 +31,7 @@ Prerequisites
 To use AdaScale, you need:
 
 - A pre-trained model loaded from HuggingFace. Supported model families:
-  ``Llama``, ``Qwen2``, ``Mistral``, ``Phi3``, ``Qwen3``.
+  ``Llama``, ``Qwen2``, ``Mistral``, ``Phi3``, ``Qwen3``, ``Qwen3.5``.
   PyTorch additionally supports vision-language models: ``Qwen2.5-VL``, ``Qwen3-VL``.
 - **ONNX only**: the model must be exported to ONNX with the input naming convention required by
   AdaScale — `Step 2`_ handles this.
@@ -154,6 +154,9 @@ See :ref:`Quantization recipes for LLMs <quantization-genai-recipe>` for full re
    * - Qwen/Qwen3-4B
      - 128
      - 512
+   * - Qwen/Qwen3.5-4B
+     - 128
+     - 2048
    * - microsoft/Phi-3.5-mini-instruct
      - 32
      - 256

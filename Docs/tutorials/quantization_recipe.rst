@@ -155,6 +155,16 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       </tbody>
       <tbody>
         <tr>
+          <td rowspan="2"><a href="https://huggingface.co/Qwen/Qwen3.5-4B">Qwen 3.5 4B</a></td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>8.88</td><td>72.03</td><td>1</td><td>22</td>
+        </tr>
+        <tr>
+          <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>AdaScale (b=128, i=2048)</td>
+          <td>10.09</td><td>72.67</td><td>221</td><td>52</td>
+        </tr>
+      </tbody>
+      <tbody>
+        <tr>
           <td rowspan="3"><a href="https://huggingface.co/microsoft/Phi-3.5-mini-instruct">Phi 3.5 mini Instruct</a></td>
           <td>FP32</td><td>FP32</td><td>—</td><td>5.77</td><td>68.89</td><td>&lt;1</td><td>17</td>
         </tr>

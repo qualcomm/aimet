@@ -22,7 +22,8 @@ AIMET implements **R1** and **R2 rotations** (fixed Hadamard, no optimization).
   Enabled by default.
 * **R2** applies a per-head Hadamard rotation across the attention head dimension, absorbed into
   V and O projections to reduce outliers in the attention output. Disabled by default; enable via
-  ``enable_r2=True``. Not supported on architectures with fused QKV projections (e.g. Phi3).
+  ``enable_r2=True``. Not supported on architectures with fused QKV projections (e.g. Phi3) or
+  linear-attention blocks (e.g. Qwen3.5).
 
 The ONNX ``apply_spinquant`` API exposes these as boolean flags ``enable_r1`` and ``enable_r2``.
 
@@ -37,6 +38,9 @@ The ONNX ``apply_spinquant`` API exposes these as boolean flags ``enable_r1`` an
      - ✓
      - ✓
    * - ``Qwen2ForCausalLM``, ``Qwen3ForCausalLM``
+     - ✓
+     - ✓
+   * - ``Qwen3_5ForCausalLM`` (R1 only)
      - ✓
      - ✓
    * - ``MistralForCausalLM``
