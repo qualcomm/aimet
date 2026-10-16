@@ -16,8 +16,7 @@ from transformers import (
 )
 from transformers.cache_utils import DynamicCache
 
-from .components import AUDIO, COMPONENTS, VISUAL
-from ..schema.components import require_component
+from .components import AUDIO, COMPONENTS, VISUAL, spec
 from .generator import Generator, VLM_Generator
 from .utils.layer_cache import (
     LayerCacheDescriptor,
@@ -60,7 +59,7 @@ class SimCollection:
 
     def component(self, name: str) -> "QuantizationSimModel":
         """The sim for a modality component, or ``None`` if this model lacks it."""
-        require_component(name)
+        spec(name)  # raises KeyError for an unknown component
         return getattr(self, name)
 
     def has(self, name: str) -> bool:
@@ -268,7 +267,7 @@ class VLM(LLM):
     """
 
     #: Names of the modality components this model has, from
-    #: :data:`GenAILab.qai_hub_lm.models.components.COMPONENTS`. Defaults to
+    #: :data:`.components.COMPONENTS`. Defaults to
     #: vision, which is what every subclass was before audio existed.
     COMPONENTS: tuple[str, ...] = (VISUAL.name,)
 

@@ -26,9 +26,9 @@ import warnings
 import torch
 from transformers import AutoProcessor, PretrainedConfig, PreTrainedModel
 
-from GenAILab.qai_hub_lm.models.base import VLM
-from GenAILab.qai_hub_lm.models.components import AUDIO
-from GenAILab.qai_hub_lm.models.generator import VLM_Generator
+from .base import VLM
+from .components import AUDIO
+from .generator import VLM_Generator
 
 #: Default padded mel-frame count for sample inputs (see the "audio component"
 #: note in base.py for the waveform-samples / audio_frames(=mel frames) /
@@ -252,7 +252,7 @@ class Qwen3ASR_LM(VLM):
         backbone consumes ``inputs_embeds``. Position ids stay 1-D: Qwen3-ASR uses
         ordinary RoPE, not the Qwen-VL family's 3-D mrope.
         """
-        from GenAILab.qai_hub_lm.models.generator import Generator
+        from .generator import Generator
 
         if config is None:
             config = model.config

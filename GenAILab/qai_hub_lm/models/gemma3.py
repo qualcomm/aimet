@@ -13,9 +13,9 @@ try:
 except ImportError:
     modeling_gemma3 = None
 
-from GenAILab.qai_hub_lm.models.base import VLM
-from GenAILab.qai_hub_lm.models.generator import Generator, VLM_Generator
-from GenAILab.qai_hub_lm.models.utils.layer_cache import (
+from .base import VLM
+from .generator import Generator, VLM_Generator
+from .utils.layer_cache import (
     AttentionType,
     LayerCacheDescriptor,
     attention_mask_input_names,
@@ -252,7 +252,7 @@ class Gemma3_VLM(VLM):
         layer_cache_descriptors: list[LayerCacheDescriptor] | None = None,
         **kwargs,
     ) -> tuple[str, ...]:
-        from GenAILab.qai_hub_lm.models.utils.layer_cache import cache_state_names
+        from .utils.layer_cache import cache_state_names
 
         return tuple(
             ["inputs_embeds"]

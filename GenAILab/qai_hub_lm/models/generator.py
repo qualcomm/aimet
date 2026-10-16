@@ -23,7 +23,6 @@ from transformers.generation import GenerationMixin
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from .components import AUDIO, COMPONENTS, VISUAL, prefill_only_keys, spec
-from ..schema.components import require_component
 from .utils.attention_mask import (
     convert_2d_attention_mask_to_4d,
     convert_2d_attention_mask_to_4d_sliding_window,
@@ -35,6 +34,11 @@ from .utils.layer_cache import (
     _resolve_text_config,
 )
 from .utils.rope_embedding import RopeEmbedding, RopeEmbeddingProtocol
+
+try:
+    from ..schema.components import require_component
+except ImportError:  # copied into AI Hub Models, where the schema is ``lm_schema``
+    from ..lm_schema.components import require_component
 
 
 #: Fallback mel-frame hop, in samples, when a processor's feature extractor

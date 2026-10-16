@@ -24,10 +24,10 @@ try:
 except ImportError:
     modeling_gemma4 = None
 
-from GenAILab.qai_hub_lm.models.base import VLM
-from GenAILab.qai_hub_lm.models.components import AUDIO, VISUAL
-from GenAILab.qai_hub_lm.models.generator import Generator, VLM_Generator
-from GenAILab.qai_hub_lm.models.utils.layer_cache import LayerCacheDescriptor
+from .base import VLM
+from .components import AUDIO, VISUAL
+from .generator import Generator, VLM_Generator
+from .utils.layer_cache import LayerCacheDescriptor
 
 
 class SoftcappedLMHead(torch.nn.Module):
@@ -581,7 +581,7 @@ class Gemma4_VLM(VLM):
         layer_cache_descriptors: list[LayerCacheDescriptor] | None = None,
         **kwargs,
     ) -> tuple[str, ...]:
-        from GenAILab.qai_hub_lm.models.utils.layer_cache import (
+        from .utils.layer_cache import (
             attention_mask_input_names,
             cache_state_names,
         )
@@ -599,7 +599,7 @@ class Gemma4_VLM(VLM):
         layer_cache_descriptors: list[LayerCacheDescriptor] | None = None,
         **kwargs,
     ) -> dict[str, dict[int, str]]:
-        from GenAILab.qai_hub_lm.models.utils.layer_cache import (
+        from .utils.layer_cache import (
             AttentionType,
             attention_mask_input_names,
         )

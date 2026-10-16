@@ -22,12 +22,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from GenAILab.qai_hub_lm.schema.components import (
-    BACKBONE,
-    require_component,
-    MODALITY_COMPONENTS,
-    ComponentKind,
-)
+try:
+    from ..schema.components import (
+        BACKBONE,
+        require_component,
+        MODALITY_COMPONENTS,
+        ComponentKind,
+    )
+except ImportError:  # copied into AI Hub Models, where the schema is ``lm_schema``
+    from ..lm_schema.components import (
+        BACKBONE,
+        require_component,
+        MODALITY_COMPONENTS,
+        ComponentKind,
+    )
 
 __all__ = [
     "AUDIO",
