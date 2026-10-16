@@ -20,13 +20,12 @@ from aimet_torch.common.layer_output_utils import (
     save_layer_output_names,
 )
 
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch import utils
 from aimet_torch import torchscript_utils
 from aimet_torch.onnx_utils import OnnxSaver, OnnxExportApiArgs
 from aimet_torch.nn.base import BaseQuantizationMixin
 
-_quantized_module_types = (_QuantizedModuleProtocol,)
+_quantized_module_types = (BaseQuantizationMixin,)
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.LayerOutputs)

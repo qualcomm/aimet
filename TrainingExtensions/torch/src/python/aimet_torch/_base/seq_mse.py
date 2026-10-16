@@ -27,7 +27,7 @@ from aimet_torch.utils import (
     change_tensor_device_placement,
     get_device,
 )
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
+from aimet_torch.nn import BaseQuantizationMixin
 from aimet_torch._base.adaround.activation_sampler import (
     create_modulelist_for_group_modules,
     get_block_inputs,
@@ -414,7 +414,7 @@ class SequentialMseBase(ABC):
         name_to_quant_module = {
             name: quant_module
             for name, quant_module in quant_model.named_modules()
-            if isinstance(quant_module, _QuantizedModuleProtocol)
+            if isinstance(quant_module, BaseQuantizationMixin)
         }
 
         if not cached_quant_dataset:

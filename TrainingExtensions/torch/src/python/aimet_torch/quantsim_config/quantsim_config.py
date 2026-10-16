@@ -967,14 +967,13 @@ def _create_module_to_quantsim_wrapper_dict(
     :return: Dictionary mapping modules in the model to corresponding quantsim wrappers
     """
     # pylint: disable=import-outside-toplevel, cyclic-import
-    from aimet_torch._base.quantsim import _QuantizedModuleProtocol
     from aimet_torch.nn import BaseQuantizationMixin
 
     module_to_quantsim_wrapper_dict = {}
     for _, module in model.named_modules():
         if isinstance(module, BaseQuantizationMixin):
             continue
-        if isinstance(module, (_QuantizedModuleProtocol, LazyQuantizeWrapper)):
+        if isinstance(module, (BaseQuantizationMixin, LazyQuantizeWrapper)):
             module_to_quantsim_wrapper_dict[module._module_to_wrap] = module  # pylint: disable=protected-access
     return module_to_quantsim_wrapper_dict
 

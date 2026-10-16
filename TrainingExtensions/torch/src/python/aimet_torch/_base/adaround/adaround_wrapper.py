@@ -9,7 +9,7 @@ from typing import Tuple
 import torch
 
 from aimet_torch.common.defs import AdaroundConstants
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
+from aimet_torch.nn import BaseQuantizationMixin
 from aimet_torch.utils import patch_attr
 
 
@@ -18,7 +18,7 @@ class AdaroundWrapperBase(abc.ABC, torch.nn.Module):
     Adaround base class
     """
 
-    def __init__(self, module: _QuantizedModuleProtocol):
+    def __init__(self, module: BaseQuantizationMixin):
         super().__init__()
         assert self.weight_name in module.param_quantizers
         self.module_to_wrap = module

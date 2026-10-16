@@ -21,7 +21,7 @@ from aimet_torch.common.amp.convert_ops_reduction import (
 
 from aimet_torch.meta.connectedgraph import ConnectedGraph
 from aimet_torch.meta.operation import Op
-from aimet_torch._base.quantsim import _QuantizationSimModelInterface
+from aimet_torch.quantsim import QuantizationSimModel
 from aimet_torch._base.amp.quantizer_groups import (
     ops_not_to_traverse,
     get_module_name_to_module_dict,
@@ -44,7 +44,7 @@ class ReduceConvertOps(BaseReduceConvertOps):
 
     def __init__(
         self,
-        aimet_sim: _QuantizationSimModelInterface,
+        aimet_sim: QuantizationSimModel,
         quantizer_groups: List[QuantizerGroupBase],
         candidates: List,
         mac_dict: Dict,

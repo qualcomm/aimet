@@ -22,13 +22,9 @@ from typing import (
     Union,
     Dict,
     Optional,
-    runtime_checkable,
-    Protocol,
     Mapping,
-    TYPE_CHECKING,
     Tuple,
     Type,
-    Iterable,
 )
 
 import torch
@@ -70,10 +66,8 @@ from aimet_torch.quantsim_config.quantsim_config import QuantSimConfigurator
 from aimet_torch._base.nn.modules.custom import MatMul, RotaryEmbedding
 from aimet_torch.onnx_utils import OnnxSaver, OnnxExportApiArgs, CustomMarker
 from aimet_torch.experimental.quantsim._export_utils import _export_to_1_0_0
-
-if TYPE_CHECKING:
-    # pylint: disable=cyclic-import
-    from aimet_torch.quantization.base.encoding import EncodingBase
+from aimet_torch.quantization.base import QuantizerBase
+from aimet_torch.nn import BaseQuantizationMixin
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -119,125 +113,7 @@ class QuantParams:
         self.config_file = config_file
 
 
-@runtime_checkable
-class _QuantizerProtocol(Protocol):
-    def get_encodings(self) -> Optional["EncodingBase"]:
-        """
-        Return the quantizer's encodings as an EncodingBase object
-        """
-
-    def set_encodings(self, encoding: "EncodingBase"):
-        """
-        Set the quantizer's encodings
-        """
-
-
-@runtime_checkable
-class _QuantizedModuleProtocol(Protocol):
-    """
-    Defines the minimum interface requirements for exporting encodings from a module.
-    """
-
-    def export_input_encodings(self, encoding_version: str) -> List[List[Dict]]:
-        """
-        Returns a list of input encodings, each represented as a List of Dicts
-        """
-
-    def export_output_encodings(self, encoding_version: str) -> List[List[Dict]]:
-        """
-        Returns a list of output encodings, each represented as a List of Dicts
-        """
-
-    def export_param_encodings(self, encoding_version: str) -> Dict[str, List[Dict]]:
-        """
-        Returns a dict of {param name: param encodings}, with each encoding represented as a List of Dicts
-        """
-
-    def import_input_encodings(
-        self,
-        encodings: Mapping[str, Mapping],
-        strict: bool,
-        partial: bool,
-        requires_grad: Optional[bool],
-        allow_overwrite: bool,
-    ):
-        """
-        Import input encodings represented in below format:
-        {
-            '0': dict,
-            '1': dict,
-            ...
-        }
-        """
-
-    def import_output_encodings(
-        self,
-        encodings: Mapping[str, Mapping],
-        strict: bool,
-        partial: bool,
-        requires_grad: Optional[bool],
-        allow_overwrite: bool,
-    ):
-        """
-        Import output encodings represented in below format:
-        {
-            '0': dict,
-            '1': dict,
-            ...
-        }
-        """
-
-    def import_param_encodings(
-        self,
-        encodings: Mapping[str, Mapping],
-        strict: bool,
-        partial: bool,
-        requires_grad: Optional[bool],
-        allow_overwrite: bool,
-    ):
-        """
-        Import parameter encodings represented in below format:
-        {
-            'param_name_0': [dict, dict, ...],
-            'param_name_1': [dict, dict, ...],
-            ...
-        }
-        """
-
-    def get_original_module(self) -> torch.nn.Module:
-        """
-        Returns the floating point version of quantized module
-        """
-
-
-ExportableQuantModule = _QuantizedModuleProtocol
-
-
-class _QuantizationSimModelInterface(ABC):
-    model: torch.nn.Module
-
-    @abstractmethod
-    def compute_encodings(self, *args, **kwargs):  # pylint: disable=missing-function-docstring
-        ...
-
-    @abstractmethod
-    def export(self, *args, **kwargs):  # pylint: disable=missing-function-docstring
-        ...
-
-    @abstractmethod
-    def load_encodings(self, *args, **kwargs):  # pylint: disable=missing-function-docstring
-        ...
-
-    @abstractmethod
-    def named_qmodules(self) -> Iterable[Tuple[str, torch.nn.Module]]:
-        """Generator that yields all quantized modules in the model and their names"""
-
-    def qmodules(self) -> Iterable[torch.nn.Module]:
-        """Generator that yields all quantized modules"""
-        yield from (module for _, module in self.named_qmodules())
-
-
-class _QuantizationSimModelBase(_QuantizationSimModelInterface):
+class _QuantizationSimModelBase(ABC):
     # pylint: disable=too-many-arguments, too-many-instance-attributes, too-many-locals, too-many-public-methods, too-many-statements
     __doc__ = f"""
     Class that simulates the quantized model execution on a target hardware backend.
@@ -411,6 +287,12 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         self, module, num_inout_tensors, default_data_type: QuantizationDataType
     ): ...
 
+    @abstractmethod
+    def qmodules(self): ...
+
+    @abstractmethod
+    def named_qmodules(self): ...
+
     def exclude_param_from_quantization(self, param_name_to_exclude: str):
         """
         Excludes all parameters matching 'param_name' from quantization
@@ -565,9 +447,6 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         """
         Apply exception rules to specific op. For example, a rule can override high bitwidth to Embedding module
         """
-        # pylint: disable=import-outside-toplevel, cyclic-import
-        from aimet_torch.nn import BaseQuantizationMixin
-
         for wrapper in self.qmodules():
             if isinstance(wrapper, BaseQuantizationMixin):
                 continue
@@ -720,8 +599,8 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         """
 
     def _get_target_quantizer(
-        self, input_quantizer: _QuantizerProtocol, input_op: Op
-    ) -> _QuantizerProtocol:
+        self, input_quantizer: QuantizerBase, input_op: Op
+    ) -> QuantizerBase:
         """
         Returns input quantizer if enabled otherwise returns closest enabled parent output quantizer.
 
@@ -747,9 +626,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 )
         return target_quantizer
 
-    def _get_closest_producer_wrapper(
-        self, op: Op
-    ) -> Optional[_QuantizedModuleProtocol]:
+    def _get_closest_producer_wrapper(self, op: Op) -> Optional[BaseQuantizationMixin]:
         """
         Find the closest producer QcQuantizeWrapper and return it
 
@@ -788,7 +665,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
         return self._get_closest_producer_wrapper(op.input_ops[0])
 
-    def _get_qmodule(self, op: Op) -> Optional[_QuantizedModuleProtocol]:
+    def _get_qmodule(self, op: Op) -> Optional[BaseQuantizationMixin]:
         orig_module = op.get_module()
         if not orig_module:
             return None
@@ -931,14 +808,8 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         )
 
         if use_embedded_encodings:
-            self.save_model_with_embedded_quantization_nodes(
-                self.model,
-                path,
-                filename_prefix,
-                dummy_input,
-                onnx_export_args,
-                export_to_torchscript,
-                self._is_conditional,
+            raise RuntimeError(
+                "use_embedded_encodings=True is not supported since aimet-torch v2.0.0"
             )
         else:
             if export_to_torchscript:
@@ -967,20 +838,6 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                     export_model=export_model,
                     filename_prefix_encodings=filename_prefix_encodings,
                 )
-
-    # pylint: disable=missing-function-docstring
-    @classmethod
-    @abstractmethod
-    def save_model_with_embedded_quantization_nodes(
-        cls,
-        sim_model,
-        path: str,
-        filename_prefix: str,
-        dummy_input: Union[torch.Tensor, Tuple],
-        onnx_export_args: Optional[Union[OnnxExportApiArgs, Dict]] = None,
-        export_to_torchscript: bool = False,
-        is_conditional: bool = False,
-    ): ...
 
     @classmethod
     def export_torch_script_model_and_encodings(
@@ -1153,7 +1010,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         param_encodings = OrderedDict()
 
         for module_name, module in self.model.named_modules():
-            if not isinstance(module, _QuantizedModuleProtocol):
+            if not isinstance(module, BaseQuantizationMixin):
                 continue
 
             activation_encodings[module_name] = defaultdict(OrderedDict)
@@ -1256,7 +1113,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
     @staticmethod
     def _get_torch_encodings_for_missing_layers(
-        layer: _QuantizedModuleProtocol,
+        layer: BaseQuantizationMixin,
         layer_name: str,  # pylint: disable=too-many-branches
         missing_activation_encodings_torch: Dict,
         missing_param_encodings: Dict,
@@ -1270,7 +1127,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         :param missing_param_encodings: dictionary of param encodings
         :param valid_param_set: a set of valid param input names in model
         """
-        if isinstance(layer, _QuantizedModuleProtocol):
+        if isinstance(layer, BaseQuantizationMixin):
             # --------------------------------------
             # Update encodings for Input activations
             # --------------------------------------
@@ -1349,7 +1206,6 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 ops.
         :param quantizer_args
         """
-
         # pylint: disable=too-many-locals
 
         # Create a dictionary to export to JSON
@@ -1373,7 +1229,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             # TODO: specifically call out dropout layers here since they are specifically switched out during export.
             # These ops should eventually be reworked as part of math invariant ops to ignore quantization altogether.
             # pylint: disable=protected-access
-            if isinstance(layer, _QuantizedModuleProtocol) and isinstance(
+            if isinstance(layer, BaseQuantizationMixin) and isinstance(
                 layer.get_original_module(), utils.DROPOUT_TYPES
             ):
                 continue
@@ -1477,7 +1333,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             else:
                 param_encodings_torch = {}
                 for module_name, module in sim_model.named_modules():
-                    if not isinstance(module, _QuantizedModuleProtocol):
+                    if not isinstance(module, BaseQuantizationMixin):
                         continue
                     for param_name, encoding in module.export_param_encodings(
                         encoding_version="0.6.1"
@@ -1530,7 +1386,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
     @staticmethod
     def _update_param_encodings_dict_for_layer(
-        layer: _QuantizedModuleProtocol,
+        layer: BaseQuantizationMixin,
         layer_name: str,
         param_encodings: Dict,
         valid_param_set: set,
@@ -1562,7 +1418,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
     @classmethod
     def _update_encoding_dicts_for_layer(
         cls,
-        layer: _QuantizedModuleProtocol,
+        layer: BaseQuantizationMixin,
         layer_name: str,
         activation_encodings_onnx: Dict,
         activation_encodings_torch: Dict,
@@ -1589,8 +1445,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         :param tensor_to_consumer_map: Dictionary mapping tensor names to op names which consume the tensor
         :param layers_to_onnx_op_names: Dictionary mapping PyTorch layer names to names of corresponding ONNX ops
         """
-
-        if isinstance(layer, _QuantizedModuleProtocol):
+        if isinstance(layer, BaseQuantizationMixin):
             # --------------------------------------
             # Update encodings for Input activations
             # --------------------------------------
@@ -1692,7 +1547,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
     @classmethod
     def _update_encoding_dict_for_output_activations(
         cls,
-        layer: _QuantizedModuleProtocol,
+        layer: BaseQuantizationMixin,
         layer_name: str,
         op_to_io_tensor_map: Dict,
         activation_encodings_onnx: Dict,
@@ -1762,7 +1617,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
     @classmethod
     def _update_encoding_dict_for_input_activations(
         cls,
-        layer: _QuantizedModuleProtocol,
+        layer: BaseQuantizationMixin,
         layer_name: str,
         op_to_io_tensor_map: Dict,
         activation_encodings_onnx: Dict,
@@ -1971,13 +1826,13 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
     def _get_leaf_module_to_name_map(self):
         """
-        Returns a mapping from leaf modules to module name, where any _QuantizedModuleProtocol is considered a leaf module,
+        Returns a mapping from leaf modules to module name, where any BaseQuantizationMixin is considered a leaf module,
         and is therefore not further recursed (since we do not want to retrieve all internal quantizers/modules).
         """
 
         def recursively_populate_map(starting_module, module_map, start_str):
             for name, module in starting_module.named_children():
-                if isinstance(module, _QuantizedModuleProtocol) or utils.is_leaf_module(
+                if isinstance(module, BaseQuantizationMixin) or utils.is_leaf_module(
                     module
                 ):
                     module_map[module] = start_str + name
@@ -1997,7 +1852,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
             hooks[module_ref].remove()
             del hooks[module_ref]
             module_name = module_to_name_map[module_ref]
-            if isinstance(module_ref, _QuantizedModuleProtocol):
+            if isinstance(module_ref, BaseQuantizationMixin):
                 module_ref = module_ref.get_original_module()
             marker_layer = torch.jit.trace(
                 CustomMarker(module_ref, module_name, "True"), inputs
@@ -2216,7 +2071,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         allow_overwrite: bool,
     ):
         for name, quant_module in self.model.named_modules():
-            if isinstance(quant_module, _QuantizedModuleProtocol):
+            if isinstance(quant_module, BaseQuantizationMixin):
                 param_encoding = {
                     param_name: encoding_dict[f"{name}.{param_name}"]
                     for param_name, _ in quant_module.param_quantizers.items()
@@ -2240,7 +2095,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
         allow_overwrite: bool,
     ):
         for module_name, module in self.model.named_modules():
-            if not isinstance(module, _QuantizedModuleProtocol):
+            if not isinstance(module, BaseQuantizationMixin):
                 continue
 
             try:
@@ -2319,7 +2174,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
                 name = module_to_name_map[module]
                 module = (
                     module.get_original_module()
-                    if isinstance(module, _QuantizedModuleProtocol)
+                    if isinstance(module, BaseQuantizationMixin)
                     else module
                 )
                 with utils.in_eval_mode(module), torch.no_grad():
@@ -2330,7 +2185,7 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
 
 @deprecated("Use pickle.dump instead", deletion_planned="2.44.0")
-def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: str):
+def save_checkpoint(quant_sim_model: _QuantizationSimModelBase, file_path: str):
     """
     This API provides a way for the user to save a checkpoint of the quantized model which can
     be loaded at a later point to continue fine-tuning e.g.
@@ -2345,7 +2200,7 @@ def save_checkpoint(quant_sim_model: _QuantizationSimModelInterface, file_path: 
 
 
 @deprecated("Use pickle.load instead", deletion_planned="2.44.0")
-def load_checkpoint(file_path: str) -> _QuantizationSimModelInterface:
+def load_checkpoint(file_path: str) -> _QuantizationSimModelBase:
     """
     Load the quantized model
 

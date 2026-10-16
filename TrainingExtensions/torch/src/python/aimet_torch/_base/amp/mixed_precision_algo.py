@@ -35,7 +35,7 @@ from aimet_torch._base.amp.quantizer_groups import (
     get_module_name_to_module_dict,
     find_supported_candidates,
 )
-from aimet_torch._base.quantsim import _QuantizationSimModelInterface
+from aimet_torch.quantsim import QuantizationSimModel
 
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
@@ -200,7 +200,7 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
     # pylint: disable=too-many-arguments
     def __init__(
         self,
-        sim: _QuantizationSimModelInterface,
+        sim: QuantizationSimModel,
         dummy_input: Union[torch.Tensor, Tuple],
         candidates: List[CANDIDATE_WITH_DTYPE],
         eval_callback_for_phase1: Callable[[torch.nn.Module], float],

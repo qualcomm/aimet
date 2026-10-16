@@ -26,10 +26,8 @@ from aimet_torch.common.utils import AimetLogger
 from aimet_torch.defs import PassThroughOp
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
-from aimet_torch._base.quantsim import (
-    _QuantizationSimModelInterface,
-    _QuantizedModuleProtocol,
-)
+from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch.nn import BaseQuantizationMixin
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.BatchNormFolding)
 
@@ -492,8 +490,8 @@ class BatchNormFoldBase(ABC):
     @abstractmethod
     def fold_all_batch_norms_to_scale(
         cls,
-        sim: _QuantizationSimModelInterface,
-    ) -> List[Tuple[_QuantizedModuleProtocol, _QuantizedModuleProtocol]]:
+        sim: QuantizationSimModel,
+    ) -> List[Tuple[BaseQuantizationMixin, BaseQuantizationMixin]]:
         """
         Fold all batch_norm layers in a model into the quantization scale parameter
         of the corresponding conv layers
@@ -523,12 +521,12 @@ class BatchNormFoldBase(ABC):
     @abstractmethod
     def _fold_to_scale(
         cls,
-        conv_wrapper: _QuantizedModuleProtocol,
-        bn_wrapper: _QuantizedModuleProtocol,
+        conv_wrapper: BaseQuantizationMixin,
+        bn_wrapper: BaseQuantizationMixin,
     ):
         """
         Fold BatchNorm into the scale and bias of the given layer.
 
-        :param conv_wrapper: _QuantizedModuleProtocol that wraps conv or linear layer.
-        :param bn_wrapper: _QuantizedModuleProtocol that wraps bn.
+        :param conv_wrapper: BaseQuantizationMixin that wraps conv or linear layer.
+        :param bn_wrapper: BaseQuantizationMixin that wraps bn.
         """

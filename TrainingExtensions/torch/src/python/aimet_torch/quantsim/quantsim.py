@@ -49,7 +49,6 @@ from aimet_torch._base.quantsim import (
     logger,
     unquantizable_modules,
     QuantParams,
-    ExportableQuantModule,
     save_checkpoint,
     load_checkpoint,
     check_accumulator_overflow,
@@ -78,7 +77,6 @@ __all__ = [
     "QuantizationSimModel",
     "QuantizationSimModelOnnxExporter",
     "QuantParams",
-    "ExportableQuantModule",
     "save_checkpoint",
     "load_checkpoint",
     "check_accumulator_overflow",
@@ -663,13 +661,6 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
                 if param_name_to_exclude in module.param_quantizers:
                     module.param_quantizers[param_name_to_exclude] = None
 
-    # pylint: disable=missing-function-docstring
-    @staticmethod
-    def compute_layer_encodings_for_sim(sim: "QuantizationSimModel"):
-        raise NotImplementedError(
-            "QuantizationSimModel.compute_layer_encodings_for_sim has been removed."
-        )
-
     # pylint: disable=missing-function-docstring, unused-argument
     @staticmethod
     def prepare_sim_for_compute_encodings(sim: "QuantizationSimModel"):
@@ -677,33 +668,6 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
             "QuantizationSimModel.prepare_sim_for_compute_encodings has been deprecated and is no longer necessary. "
             "Any calls can be safely removed."
         )
-
-    # pylint: disable=missing-function-docstring
-    @classmethod
-    def set_mode_for_recurrent_module(cls, layer, name: str):
-        raise NotImplementedError(
-            "QuantizationSimModel.set_mode_for_recurrent_module has been removed."
-        )
-
-    @staticmethod
-    def save_model_with_embedded_quantization_nodes(
-        sim_model,
-        path: str,
-        filename_prefix: str,
-        dummy_input,
-        onnx_export_args=None,
-        export_to_torchscript=False,
-        is_conditional=False,
-    ):
-        raise NotImplementedError(
-            "QuantizationSimModel.save_model_with_embedded_quantization_nodes has been removed."
-        )
-
-    @staticmethod
-    def _replace_quantization_wrapper_with_native_torch_quantization_nodes(
-        quant_sim_model, device: torch.device
-    ):
-        raise NotImplementedError()
 
     @classmethod
     @torch.no_grad()
@@ -766,7 +730,7 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
             >>> for qmodule in sim.qmodules():
             ...     print(qmodule)
         """
-        yield from super().qmodules()
+        yield from (module for _, module in self.named_qmodules())
 
     def named_qmodules(self):
         """

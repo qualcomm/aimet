@@ -20,7 +20,6 @@ from aimet_torch.utils import replace_modules
 from aimet_torch._base.nn.modules.custom import Add, Multiply
 from aimet_torch.quantsim import QuantizationSimModel
 from aimet_torch.quantization.affine import QuantizeDequantize
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
 from aimet_torch.nn import BaseQuantizationMixin
 
 
@@ -426,7 +425,7 @@ class PeftQuantUtils:
         tensors = {}
 
         for module_name, module in sim.model.named_modules():
-            if not isinstance(module, _QuantizedModuleProtocol):
+            if not isinstance(module, BaseQuantizationMixin):
                 continue
             org_name = module_name
             pt_name = self._get_module_name(module_name)

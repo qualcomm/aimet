@@ -20,10 +20,8 @@ from aimet_torch.common.defs import QuantScheme
 
 from aimet_torch import utils
 from aimet_torch.meta import connectedgraph_utils
-from aimet_torch._base.quantsim import (
-    _QuantizationSimModelInterface,
-    _QuantizedModuleProtocol,
-)
+from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch.nn import BaseQuantizationMixin
 from aimet_torch._base.adaround.adaround_optimizer import AdaroundOptimizer
 from aimet_torch._base.adaround.adaround_loss import AdaroundHyperParameters
 from aimet_torch._base.adaround.activation_sampler import (
@@ -151,7 +149,7 @@ class AdaroundBase(ABC):
     @classmethod
     def _apply_adaround(
         cls,
-        quant_sim: _QuantizationSimModelInterface,
+        quant_sim: QuantizationSimModel,
         model: torch.nn.Module,
         dummy_input: Union[torch.Tensor, Tuple],
         params: AdaroundParameters,
@@ -204,7 +202,7 @@ class AdaroundBase(ABC):
     def _adaround_model(
         cls,
         model: torch.nn.Module,
-        quant_sim: _QuantizationSimModelInterface,
+        quant_sim: QuantizationSimModel,
         module_act_func_pair: Dict,
         params: AdaroundParameters,
         dummy_input: Union[torch.Tensor, Tuple],
@@ -490,7 +488,7 @@ class AdaroundBase(ABC):
 
     @staticmethod
     @abstractmethod
-    def _compute_param_encodings(quant_sim: _QuantizationSimModelInterface):
+    def _compute_param_encodings(quant_sim: QuantizationSimModel):
         """
         Compute encodings for parameters, needed for initializing Adaround quantizers
         :param quant_sim: Quant sim
@@ -508,7 +506,7 @@ class AdaroundBase(ABC):
 
     @staticmethod
     @abstractmethod
-    def _get_adaround_wrapper(quant_module: _QuantizedModuleProtocol): ...
+    def _get_adaround_wrapper(quant_module: BaseQuantizationMixin): ...
 
     @staticmethod
     @abstractmethod
@@ -527,7 +525,7 @@ class AdaroundBase(ABC):
 
     @staticmethod
     @abstractmethod
-    def _validate_quant_module_for_adaround(quant_module: _QuantizedModuleProtocol): ...
+    def _validate_quant_module_for_adaround(quant_module: BaseQuantizationMixin): ...
 
     @staticmethod
     @abstractmethod
@@ -564,7 +562,7 @@ class AdaroundBase(ABC):
     @abstractmethod
     def _get_quant_wrapper(
         quant_sim_model: torch.nn.Module, module_name: str
-    ) -> Union[_QuantizedModuleProtocol, None]:
+    ) -> Union[BaseQuantizationMixin, None]:
         """
         For given module name, get the quantized wrapper module from the QuantSim model
         :param quant_sim_model: Model with simulation ops
@@ -574,7 +572,7 @@ class AdaroundBase(ABC):
 
     @classmethod
     def _export_encodings_to_json(
-        cls, path: str, filename_prefix: str, quant_sim: _QuantizationSimModelInterface
+        cls, path: str, filename_prefix: str, quant_sim: QuantizationSimModel
     ):
         """
         Save Adadrounded module's parameter encodings to JSON file
@@ -587,7 +585,7 @@ class AdaroundBase(ABC):
         param_encodings = {}
 
         for name, quant_module in quant_sim.model.named_modules():
-            if isinstance(quant_module, _QuantizedModuleProtocol) and isinstance(
+            if isinstance(quant_module, BaseQuantizationMixin) and isinstance(
                 quant_module.get_original_module(), AdaroundSupportedModules
             ):
                 if "weight" in quant_module.param_quantizers:
@@ -605,7 +603,7 @@ class AdaroundBase(ABC):
 
     @classmethod
     def _update_param_encodings_dict(
-        cls, quant_module: _QuantizedModuleProtocol, name: str, param_encodings: Dict
+        cls, quant_module: BaseQuantizationMixin, name: str, param_encodings: Dict
     ):
         """
         Add module's weight parameter encodings to dictionary to be used for exporting encodings
@@ -623,7 +621,7 @@ class AdaroundBase(ABC):
     @staticmethod
     def _override_param_bitwidth(
         model: torch.nn.Module,
-        quant_sim: _QuantizationSimModelInterface,
+        quant_sim: QuantizationSimModel,
         param_bw_override_list: List[Tuple[torch.nn.Module, int]],
     ):
         """
@@ -644,7 +642,7 @@ class AdaroundBase(ABC):
         # Create a mapping of QuantSim model's AdaRoundable module name and their module
         name_to_module = {}
         for q_name, q_module in quant_sim.model.named_modules():
-            if isinstance(q_module, _QuantizedModuleProtocol):
+            if isinstance(q_module, BaseQuantizationMixin):
                 if isinstance(q_module.get_original_module(), AdaroundSupportedModules):  # pylint: disable=protected-access
                     name_to_module[q_name] = q_module
 
@@ -658,7 +656,7 @@ class AdaroundBase(ABC):
     def _exclude_modules(
         cls,
         model: torch.nn.Module,
-        quant_sim: _QuantizationSimModelInterface,
+        quant_sim: QuantizationSimModel,
         ignore_quant_ops_list: List[torch.nn.Module],
     ):
         """

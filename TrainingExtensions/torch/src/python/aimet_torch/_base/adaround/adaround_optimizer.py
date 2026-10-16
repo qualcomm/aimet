@@ -16,7 +16,7 @@ import torch.distributed as dist
 # Import AIMET specific modules
 from aimet_torch.common.utils import AimetLogger
 from aimet_torch import utils
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
+from aimet_torch.nn import BaseQuantizationMixin
 from aimet_torch._base.adaround.activation_sampler import ActivationSampler
 from aimet_torch._base.adaround.adaround_loss import (
     AdaroundLoss,
@@ -40,7 +40,7 @@ class AdaroundOptimizer:
     def adaround_module(
         cls,
         module: torch.nn.Module,
-        quant_module: _QuantizedModuleProtocol,
+        quant_module: BaseQuantizationMixin,
         orig_model: torch.nn.Module,
         quant_model: torch.nn.Module,
         act_func: Union[torch.nn.Module, None],

@@ -21,7 +21,7 @@ from aimet_torch import utils
 from aimet_torch.gptvq.defs import GPTVQSupportedModules, GPTVQParameters
 from aimet_torch.gptvq.gptvq_optimizer import GPTVQOptimizer
 from aimet_torch.gptvq.utils import get_module_name_to_hessian_tensor
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
+from aimet_torch.nn import BaseQuantizationMixin
 from aimet_torch.save_utils import SaveUtils
 from aimet_torch.nn import BaseQuantizationMixin
 from aimet_torch.quantization.affine.quantizer import QuantizeDequantize
@@ -432,7 +432,7 @@ class GPTVQ:
 
     @staticmethod
     def _update_param_encodings_dict(
-        quant_module: _QuantizedModuleProtocol,
+        quant_module: BaseQuantizationMixin,
         name: str,
         param_encodings: Dict,
         rows_per_block: int,

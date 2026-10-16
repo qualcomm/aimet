@@ -19,16 +19,14 @@ from aimet_torch.utils import (
     save_to_cache,
     get_ordered_list_of_modules,
 )
-from aimet_torch._base.quantsim import (
-    _QuantizationSimModelInterface,
-    _QuantizedModuleProtocol,
-)
+from aimet_torch.quantsim import QuantizationSimModel
+from aimet_torch.nn import BaseQuantizationMixin
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
 
 def create_modulelist_for_group_modules(
-    model: torch.nn.Module, sim: _QuantizationSimModelInterface, grouped_modules: Dict
+    model: torch.nn.Module, sim: QuantizationSimModel, grouped_modules: Dict
 ) -> Tuple[List[torch.nn.ModuleList], List[torch.nn.ModuleList]]:
     """
     Use torch.nn.ModuleList to group modules from a single block.
@@ -54,7 +52,7 @@ def create_modulelist_for_group_modules(
 
 def get_block_inputs(
     model: torch.nn.Module,
-    sim: _QuantizationSimModelInterface,
+    sim: QuantizationSimModel,
     breakpoint_module_name: str,
     cached_dataset: CachedDataset,
     cache_on_cpu: bool,
@@ -211,7 +209,7 @@ class ActivationSampler:
     def __init__(
         self,
         orig_module: torch.nn.Module,
-        quant_module: _QuantizedModuleProtocol,
+        quant_module: BaseQuantizationMixin,
         orig_model: torch.nn.Module,
         quant_model: torch.nn.Module,
         forward_fn: Callable[[torch.nn.Module, Any], Any],

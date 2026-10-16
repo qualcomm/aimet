@@ -14,7 +14,7 @@ from aimet_torch.common.amp.utils import (
     CANDIDATE_WITH_DTYPE as TORCH_CANDIDATE,
     AMPSearchAlgo,
 )
-from .quantsim import _QuantizationSimModelInterface
+from aimet_torch.quantsim import QuantizationSimModel
 from .amp.mixed_precision_algo import GreedyMixedPrecisionAlgo
 from .amp.quantizer_groups import QuantizerGroup
 
@@ -23,7 +23,7 @@ logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
 
 # pylint: disable=too-many-arguments
 def choose_mixed_precision(
-    sim: _QuantizationSimModelInterface,
+    sim: QuantizationSimModel,
     dummy_input: Union[torch.Tensor, Tuple],
     candidates: List[TORCH_CANDIDATE],
     eval_callback_for_phase1: Callable[[torch.nn.Module], float],

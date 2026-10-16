@@ -4,7 +4,7 @@
 
 """Utilities to save a models and related parameters"""
 
-from aimet_torch._base.quantsim import _QuantizedModuleProtocol
+from aimet_torch.nn import BaseQuantizationMixin
 
 
 class SaveUtils:
@@ -17,7 +17,7 @@ class SaveUtils:
         :param module: Model
         """
         for module_name, module_ref in module.named_children():
-            if isinstance(module_ref, _QuantizedModuleProtocol):
+            if isinstance(module_ref, BaseQuantizationMixin):
                 setattr(module, module_name, module_ref.get_original_module())
             # recursively call children modules
             else:

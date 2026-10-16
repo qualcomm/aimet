@@ -13,7 +13,6 @@ from ...quantsim import (
     QuantizationSimModel,
     QuantizationSimModelOnnxExporter,
     QuantParams,
-    ExportableQuantModule,
     save_checkpoint,
     load_checkpoint,
     check_accumulator_overflow,
