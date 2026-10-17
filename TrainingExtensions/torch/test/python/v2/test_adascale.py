@@ -920,6 +920,24 @@ class TestAdaScaleBasicFunctionality:
         assert torch.allclose(adascale_qdq.beta, torch.zeros(64))
         assert torch.allclose(adascale_qdq.gamma, torch.zeros(64))
 
+    def test_adascale_quantizer_forward_with_block_quantization(self):
+        """Test Linear AdaScale forward with block-quantized weights."""
+        weight = torch.randn(8, 128)
+        qdq = QuantizeDequantize(
+            shape=(8, 4),
+            bitwidth=4,
+            symmetric=True,
+            block_size=(1, 32),
+        )
+        with qdq.compute_encodings():
+            qdq(weight)
+
+        adascale_qdq = AdaScaleLinearQuantizeDequantize(qdq, weight.shape)
+        output = adascale_qdq(weight)
+
+        assert output.shape == weight.shape
+        torch.testing.assert_close(output, qdq(weight))
+
     def test_get_blocks(self, fxt_quantsim_ready_model):
         """Test _get_blocks correctly identifies decoder blocks for all model types"""
         blocks = AdaScale._get_blocks(fxt_quantsim_ready_model)

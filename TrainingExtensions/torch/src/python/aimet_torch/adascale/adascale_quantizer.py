@@ -12,7 +12,7 @@ import torch
 
 from aimet_torch.quantization import DequantizedTensor
 from aimet_torch.quantization.affine import QuantizeDequantize
-from aimet_torch.quantization._utils import concretize_block_size, interleave
+from aimet_torch.quantization._utils import blockwise, concretize_block_size, interleave
 
 use_adascale_lwc: bool = True
 
@@ -92,9 +92,7 @@ class AdaScaleQuantizeDequantize(QuantizeDequantize):
         :param input: Input tensor to be QDQ
         :return: Dequantized tensor after applying AdaScale QDQ
         """
-        for scale in self._get_learnable_scales():
-            input = input / torch.exp(scale)
-        return super().forward(input)
+        return super().forward(self.get_folded_weight(input))
 
     @abstractmethod
     def _get_learnable_scales(self) -> list[torch.Tensor]:
@@ -139,6 +137,18 @@ class AdaScaleLinearQuantizeDequantize(AdaScaleQuantizeDequantize):
     def _get_learnable_scales(self) -> list[torch.Tensor]:
         """learnable scales corresponding to Linear layer"""
         return [self.s2, self.s3]
+
+    def get_folded_weight(self, weight: torch.Tensor) -> torch.Tensor:
+        """Apply elementwise and blockwise scales in the original weight layout."""
+        if self.block_size is None:
+            return super().get_folded_weight(weight)
+        weight = weight / torch.exp(self.s2).reshape(weight.shape)
+        return blockwise(
+            torch.div,
+            weight,
+            torch.exp(self.s3).reshape(self.shape),
+            self.block_size,
+        )
 
 
 class AdaScaleConv2dQuantizeDequantize(AdaScaleQuantizeDequantize):
