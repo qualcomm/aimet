@@ -179,6 +179,14 @@ class EncodingBase(abc.ABC):
 
         (block_axis,) = block_axis_candidates or (None,)
 
+        if not channel_axis_candidates and block_axis is not None:
+            # A singleton dimension can still be the channel axis if its block size is 1.
+            channel_axis_candidates = [
+                axis
+                for axis, blk_size in enumerate(concrete_block_size)
+                if blk_size == 1
+            ]
+
         if len(channel_axis_candidates) > 1:
             raise RuntimeError(
                 f"Multiple non-trivial channel axes found: {channel_axis_candidates}. "
