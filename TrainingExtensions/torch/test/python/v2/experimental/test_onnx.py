@@ -4058,3 +4058,58 @@ def test_int32_encoding_propagation(tmp_path):
     assert len(dq_nodes) == 1
     (dq,) = dq_nodes
     assert dq.input[0] == "bias_q"
+
+
+@torch.no_grad()
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_export_int32_bias_reduced_precision(
+    tmp_path: pathlib.Path, dtype: torch.dtype
+):
+    """
+    Given: Model whose bias scale (input_scale * weight_scale) times 2**31
+           exceeds the float16 range
+    When: Export float16/bfloat16/float32 model with int32 bias encodings
+    Then: Int32 bias encodings should be finite and equal to input_scale * weight_scale
+          and the exported bias should be finite
+    """
+    model = torch.nn.Sequential(
+        torch.nn.Linear(10, 10),
+        torch.nn.ReLU(),
+        torch.nn.Linear(10, 10),
+    ).to(dtype)
+    x = (torch.randn(64, 10) * 4).to(dtype)
+    sim = QuantizationSimModel(model, x)
+    sim.compute_encodings(lambda m: m(x))
+    sim.onnx.export(
+        x,
+        tmp_path / "model.onnx",
+        input_names=["input"],
+        output_names=["output"],
+        dynamo=False,
+        encoding_version="2.0.0",
+        export_int32_bias=True,
+    )
+
+    with open(tmp_path / "model.encodings") as f:
+        encodings = {enc["name"]: enc for enc in json.load(f)["encodings"]}
+    onnx_model = onnx.load(tmp_path / "model.onnx")
+    initializers = {init.name: init for init in onnx_model.graph.initializer}
+    input_quantizers = {
+        0: sim.model[0].input_quantizers[0],
+        2: sim.model[1].output_quantizers[0],
+    }
+    for idx, input_qtzr in input_quantizers.items():
+        input_scale = input_qtzr.get_scale().double()
+        weight_scale = sim.model[idx].param_quantizers["weight"].get_scale().double()
+        expected_scale = (input_scale * weight_scale.flatten()).numpy()
+        # sanity check: bias_scale * 2**31 is not representable in float16
+        assert np.all(expected_scale * 2**31 > torch.finfo(torch.float16).max)
+
+        bias_encoding = encodings[f"{idx}.bias"]
+        assert bias_encoding["output_dtype"] == "int32"
+        bias_scale = np.asarray(bias_encoding["y_scale"], dtype=np.float64)
+        assert np.all(np.isfinite(bias_scale))
+        assert np.allclose(bias_scale, expected_scale, rtol=1e-6, atol=0)
+
+        bias = onnx.numpy_helper.to_array(initializers[f"{idx}.bias"])
+        assert np.all(np.isfinite(bias.astype(np.float64)))
