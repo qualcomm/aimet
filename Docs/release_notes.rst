@@ -9,12 +9,88 @@ Release notes
 2.42.0
 ======
 
-* Deprecations
+* New Features
     * ONNX
-        * Move ``adascale``, ``spinquant``, ``llm_topology`` and ``llm_configurator`` out of ``aimet_onnx.experimental`` into top-level ``aimet_onnx``. The old ``aimet_onnx.experimental.*`` import paths still work but emit a deprecation warning, and will be removed in AIMET 2.45
+        * Add experimental support for quantizing ``Scan`` bodies in ``QuantizationSimModel``, including export and tied boundary quantizers (`98862fd`_, `0b7790c`_, `b1f9dcd`_)
+        * Support ``Scan`` models in SeqMSE and AdaScale (`96708be`_, `e4f5c5c`_)
+        * Support Mamba2 in ``analyze_llm_topology`` (`d62b91b`_)
+        * Add ``strict`` option to ``set_param_type`` to skip incompatible quantizers (`6f1416e`_)
+
+    * Common
+        * Add analysis pass support to GenAI Lab (`d6e86ea`_)
+        * Add predicated-experts MoE adaptation for Qwen3-MoE and Qwen3.5-MoE to GenAI Lab (`6b8e298`_)
+        * Enable subgraph quantization for ONNX ``QuantizationSimModel`` in GenAI Lab (`594ebe8`_)
+
+* Bug fixes and Improvements
+    * ONNX
+        * Always save models with external data regardless of size (`fe922f8`_)
+        * Fix stale quantization axes when loading encodings (`bbaeb29`_)
+        * Preserve runtime reduction axes and patch ``cumsum`` support in AdaScale's ONNX to torch conversion (`db50a5c`_, `c300055`_)
+        * Keep ``Split`` sizes inline in SeqMSE's saved model (`f69c5d6`_)
+        * Align LLM configurator with GenAI Lab (`64dcabd`_)
 
     * Torch
-        * Move ``adascale`` and ``spinquant`` out of ``aimet_torch.experimental`` into top-level ``aimet_torch``. The old ``aimet_torch.experimental.*`` import paths still work but emit a deprecation warning, and will be removed in AIMET 2.45
+        * Preserve zero-point shift in SeqMSE candidate encodings (`5a979d8`_)
+        * Fix SpinQuant visual merger rotation compensation (`dcd291d`_)
+        * Apply encoding post-processing to canonical ``QuantizeLinear``-``DequantizeLinear`` pairs during ONNX export (`e25d511`_)
+        * Synchronize ``precomputed_zero_point``'s device with offset (`ee5ca3c`_)
+        * Quantize ``Qwen3MoeTopKRouter`` pre-softmax logits to match the transformers 4.x gate (`5e9e565`_)
+        * Fix ``CallbackFunc`` import in quant_analyzer notebook (`26e7eca`_)
+
+    * Common
+        * Fix import-time assertion error with onnx<1.18 (`3c937bc`_)
+        * Delete unused legacy quantsim config files (`093e72f`_)
+        * Use ``configure_llm`` API in GenAI Lab (`bbb2c97`_)
+        * Fix Qwen 3.5 export on transformers >= 5.15 in GenAI Lab (`1d669a6`_)
+        * Export dynamo backbones with one ``torch.export`` mode per torch version in GenAI Lab (`7d13097`_)
+        * Rename GenAI Lab linear-attention state I/O to ``conv_state`` / ``recurrent_state`` (`e078c16`_)
+        * Fix GenAI Lab relative imports (`6c0d5d3`_)
+        * Document v2.1.0 encoding spec and fix broken AdaScale/SpinQuant doc snippets (`38dc892`_, `191d51b`_)
+
+* Deprecations
+    * ONNX
+        * Move ``adascale``, ``spinquant``, ``llm_topology`` and ``llm_configurator`` out of ``aimet_onnx.experimental`` into top-level ``aimet_onnx``. The old ``aimet_onnx.experimental.*`` import paths still work but emit a deprecation warning, and will be removed in AIMET 2.45 (`94a2319`_)
+
+    * Torch
+        * Move ``adascale`` and ``spinquant`` out of ``aimet_torch.experimental`` into top-level ``aimet_torch``. The old ``aimet_torch.experimental.*`` import paths still work but emit a deprecation warning, and will be removed in AIMET 2.45 (`6360e0c`_)
+        * Deprecate ``save_encodings_to_json``, ``load_encodings``, ``load_and_freeze_encodings``, ``set_and_freeze_param_encodings`` and ``load_encodings_to_sim`` in favor of ``QuantizationSimModel.quantizer_state_dict`` and ``torch.nn.Module.load_state_dict`` (`c34cf34`_)
+        * ``save_checkpoint``, ``load_checkpoint``, ``check_accumulator_overflow`` and ``compute_encodings_for_sims`` are deprecated and will be removed in AIMET 2.44 (`c34cf34`_)
+
+.. _94a2319: https://github.com/qualcomm/aimet/commit/94a23193af1f9598b5e2698fbb49654d58fe57c6
+.. _6360e0c: https://github.com/qualcomm/aimet/commit/6360e0c7d9f122cfa64f42475f099c3dafca4010
+.. _c34cf34: https://github.com/qualcomm/aimet/commit/c34cf342150dcece0574ef5fd51c88b1139a2d78
+.. _98862fd: https://github.com/qualcomm/aimet/commit/98862fd3cf3e957d497ee574f2f0b7add239afd6
+.. _0b7790c: https://github.com/qualcomm/aimet/commit/0b7790ccb239917f4b8ed51ce80eb17abd3d6cc2
+.. _b1f9dcd: https://github.com/qualcomm/aimet/commit/b1f9dcdb600e0b5811438dd72e4c1d94c5dcab9d
+.. _96708be: https://github.com/qualcomm/aimet/commit/96708be0bafb1c721c60653f5e4d76f1c72c03ff
+.. _e4f5c5c: https://github.com/qualcomm/aimet/commit/e4f5c5c38a2bc8703d406fcd263f28cb2b185d5b
+.. _d62b91b: https://github.com/qualcomm/aimet/commit/d62b91bcb38b770f09786ee219252f34d88426e1
+.. _6f1416e: https://github.com/qualcomm/aimet/commit/6f1416e0bc3868a1dc43ce48072a4d5fe778f042
+.. _d6e86ea: https://github.com/qualcomm/aimet/commit/d6e86eaa12b67e7eed3b3493341357472e148b0b
+.. _6b8e298: https://github.com/qualcomm/aimet/commit/6b8e29882cf2635d546f68d25c081d9d6cf61f12
+.. _594ebe8: https://github.com/qualcomm/aimet/commit/594ebe8d7db29d98ee166ffefaf72df62f380c42
+.. _bbaeb29: https://github.com/qualcomm/aimet/commit/bbaeb29b581740c6c64142edf6dea3a083caf41b
+.. _db50a5c: https://github.com/qualcomm/aimet/commit/db50a5c3a809ea8de57e60ee9055cd95fc84b796
+.. _c300055: https://github.com/qualcomm/aimet/commit/c300055e5e6ba82e2fa2a9515ea2818bdf3fef86
+.. _f69c5d6: https://github.com/qualcomm/aimet/commit/f69c5d6c8d783efe8b85e50c2aec8b2f3a4ab7fc
+.. _fe922f8: https://github.com/qualcomm/aimet/commit/fe922f818eb02ee4c67eeaa90108b223441216bc
+.. _64dcabd: https://github.com/qualcomm/aimet/commit/64dcabd811f485ea85e5215f44bb1e66ce9313b8
+.. _5a979d8: https://github.com/qualcomm/aimet/commit/5a979d8559965d33bcba068846ff26e62fb18733
+.. _dcd291d: https://github.com/qualcomm/aimet/commit/dcd291d8681e41c0fc1d4bb4e508fd655b8bf1a5
+.. _e25d511: https://github.com/qualcomm/aimet/commit/e25d5116107e2c3b8fa5c1e583cf1aecd9ac60a7
+.. _ee5ca3c: https://github.com/qualcomm/aimet/commit/ee5ca3c9c6eeafa1ada6a0a3753781ddb81f470c
+.. _5e9e565: https://github.com/qualcomm/aimet/commit/5e9e56535017546e9637112c0291d547f478f386
+.. _26e7eca: https://github.com/qualcomm/aimet/commit/26e7eca4658955f647553e7e1ca0aef1db4a55e5
+.. _3c937bc: https://github.com/qualcomm/aimet/commit/3c937bc865b3154e7e3089511051764f2d667252
+.. _093e72f: https://github.com/qualcomm/aimet/commit/093e72f41185445b4f9e3a469624ccd2d44f95cb
+.. _bbb2c97: https://github.com/qualcomm/aimet/commit/bbb2c979203defc367e622b14d92f0a41204f8c9
+.. _1d669a6: https://github.com/qualcomm/aimet/commit/1d669a63948203a2d5cc18268afefb2f6b3edd44
+.. _7d13097: https://github.com/qualcomm/aimet/commit/7d13097a36bc3da873b8b62d4eff168362b5fc47
+.. _e078c16: https://github.com/qualcomm/aimet/commit/e078c16ce21d1eb0315e04d5b5adcadf94f8529e
+.. _6c0d5d3: https://github.com/qualcomm/aimet/commit/6c0d5d3053662695899d682b3c5b97adee621301
+.. _38dc892: https://github.com/qualcomm/aimet/commit/38dc8929160091015d5099d453f06c5e1b30488a
+.. _191d51b: https://github.com/qualcomm/aimet/commit/191d51b1273a0d2ac73cb2beac33cd1f2b5e81f9
+
 
 2.41.0
 ======
