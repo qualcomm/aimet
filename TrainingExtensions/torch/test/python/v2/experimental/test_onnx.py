@@ -3822,6 +3822,77 @@ def test_encoding_version_2_1_0(tmp_path: pathlib.Path, input_ndim: int):
     assert encodings == expected_encoding
 
 
+@pytest.mark.parametrize("dynamo", [True, False])
+@pytest.mark.parametrize("input_ndim", [2, 3])
+@pytest.mark.parametrize("encoding_version", [None, "1.0.0", "2.0.0", "2.1.0"])
+def test_export_blockwise_single_output_channel(
+    tmp_path: pathlib.Path, dynamo: bool, input_ndim: int, encoding_version
+):
+    """
+    Given: A blockwise Linear with one output channel
+    When: Export to ONNX QDQ or ONNX with JSON encodings
+    Then: Export should preserve the block size and quantized output
+    """
+    model = torch.nn.Linear(4, 1, bias=False).eval()
+    with torch.no_grad():
+        model.weight.copy_(torch.tensor([[-8.0, 7.0, -16.0, 14.0]]))
+    x = torch.tensor([0.0, 1.0, 0.0, 1.0]).reshape(*(1,) * (input_ndim - 1), 4)
+    sim = QuantizationSimModel(model, x)
+    set_blockwise_quantization_for_weights(
+        sim, [torch.nn.Linear], bitwidth=4, symmetric=True, block_size=2
+    )
+    aimet_torch.utils.remove_activation_quantizers(sim.model)
+    sim.compute_encodings(lambda m: m(x))
+    assert sim.model(x).item() == 21.0
+
+    onnx_path = tmp_path / "model.onnx"
+    kwargs = dict(
+        input_names=["input"],
+        output_names=["output"],
+        opset_version=21,
+        dynamo=dynamo,
+        export_int32_bias=False,
+    )
+    if encoding_version is None:
+        aimet_torch.onnx.export(sim.model, (x,), onnx_path, **kwargs)
+    else:
+        sim.onnx.export((x,), onnx_path, encoding_version=encoding_version, **kwargs)
+        with open(tmp_path / "model.encodings") as f:
+            encodings = json.load(f)
+        assert encodings["version"] == encoding_version
+        (encoding,) = encodings[
+            "param_encodings" if encoding_version == "1.0.0" else "encodings"
+        ]
+        assert encoding["block_size"] == 2
+
+    onnx_model = onnx.load(onnx_path)
+    onnx.checker.check_model(onnx_model, full_check=True)
+    if encoding_version is None:
+        qdq_nodes = [
+            node
+            for node in onnx_model.graph.node
+            if node.op_type in ("QuantizeLinear", "DequantizeLinear")
+            and any(attr.name == "block_size" for attr in node.attribute)
+        ]
+        assert len(qdq_nodes) == 2
+        for node in qdq_nodes:
+            attrs = {
+                attr.name: helper.get_attribute_value(attr) for attr in node.attribute
+            }
+            assert attrs["block_size"] == 2
+
+    sess_options = ort.SessionOptions()
+    sess_options.intra_op_num_threads = 1
+    sess_options.inter_op_num_threads = 1
+    sess = ort.InferenceSession(
+        onnx_model.SerializeToString(),
+        providers=["CPUExecutionProvider"],
+        sess_options=sess_options,
+    )
+    (out,) = sess.run(None, {"input": x.numpy()})
+    np.testing.assert_array_equal(out, np.full((1,) * input_ndim, 21.0))
+
+
 def test_export_with_abnormal_axes(tmp_path: pathlib.Path):
     """
     Given: Weight quantized with multiple non-trivial block axes
