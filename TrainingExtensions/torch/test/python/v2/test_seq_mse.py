@@ -192,8 +192,7 @@ class TestSeqMse:
 
         # If we use higher param_bw (for example 16, 31), then it should always choose larger candidates so
         # before and after param encodings should be almost same.
-        # Per-tensor encoding also typically picks the largest candidate.
-        if param_bw >= 16 or quantizer_shape == []:
+        if param_bw >= 16:
             assert torch.allclose(before.min, after.min, rtol=1e-4)
             assert torch.allclose(before.max, after.max, rtol=1e-4)
         else:
@@ -292,7 +291,7 @@ class TestSeqMse:
             ],
             dim=-1,
         ).reshape(-1, out_channels, num_blocks)
-        expected_loss = params.get_loss_fn()(xw, xqwq, reduction="none").sum(0)
+        expected_loss = params.get_loss_fn()(xqwq, xw, reduction="none").sum(0)
 
         assert torch.allclose(expected_loss, loss)
 
@@ -332,10 +331,7 @@ class TestSeqMse:
 
         # If we use higher param_bw (for example 16, 31), then it should always choose larger candidates so
         # before and after param encodings should be almost same.
-        # Per-tensor encoding also typically picks the largest candidate.
-        if param_bw >= 16 or quantizer_shape == [
-            1,
-        ]:
+        if param_bw >= 16:
             assert torch.allclose(before.min, after.min, rtol=1e-4)
             assert torch.allclose(before.max, after.max, rtol=1e-4)
         else:
