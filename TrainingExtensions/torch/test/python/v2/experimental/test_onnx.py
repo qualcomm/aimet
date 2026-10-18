@@ -3621,7 +3621,6 @@ def test_export_aten_quantize_dequantize(tmp_path: pathlib.Path):
             # Transpose; y_qdq's encoding should be propagated to y_qdq.T
             return y_qdq.T
 
-    tmp_path = pathlib.Path(".")
     model = Model()
     dummy_input = torch.randn(10, 10)
     aimet_torch.onnx.export(
@@ -3645,7 +3644,7 @@ def test_export_aten_quantize_dequantize(tmp_path: pathlib.Path):
             assert q.op_type == "QuantizeLinear"
 
     sess = ort.InferenceSession(
-        onnx_ir.to_proto(ir_model).SerializeToString(),
+        str(tmp_path / "model.onnx"),
         providers=["CPUExecutionProvider"],
     )
     (out,) = sess.run(None, {"input": dummy_input.detach().numpy()})
