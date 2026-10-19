@@ -290,8 +290,10 @@ def copy_pt_weights_to_onnx(
     for name, module in pt_block.named_modules():
         if param_map.get(name) is None:
             continue
-        if quantizer_dict is not None and not quantizer_dict[param_map[name]].enabled:
-            continue
+        if quantizer_dict is not None:
+            quantizer = quantizer_dict[param_map[name]]
+            if not quantizer.enabled or quantizer.is_encoding_frozen():
+                continue
         if isinstance(module, (QuantizedLinear, QuantizedConv2d)):
             _folded = (
                 module.param_quantizers["weight"]

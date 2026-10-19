@@ -7,6 +7,7 @@ import math
 
 import torch
 from aimet_onnx.common.quantsim import _get_minimum_scale
+from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.adascale.utils import (
     derive_symmetric_qmin_qmax,
     validate_arguments,
@@ -452,7 +453,7 @@ class QuantizedLinear(torch.nn.Linear):
 
         enc_shape = enc_shape or (self.weight.shape[0], 1)
         self.param_quantizers = torch.nn.ModuleDict()
-        self.param_quantizers["weight"] = WeightQdq(
+        self.param_quantizers["weight"] = AdaScaleLinearWeightQdq(
             self.weight,
             bitwidth=bitwidth,
             block_size=block_size,
@@ -507,7 +508,7 @@ class QuantizedConv2d(torch.nn.Conv2d):
 
         enc_shape = enc_shape or (self.weight.shape[0], 1, 1, 1)
         self.param_quantizers = torch.nn.ModuleDict()
-        self.param_quantizers["weight"] = WeightQdq(
+        self.param_quantizers["weight"] = AdaScaleConvWeightQdq(
             self.weight,
             bitwidth=bitwidth,
             block_size=block_size,
@@ -525,45 +526,61 @@ class QuantizedConv2d(torch.nn.Conv2d):
 
 def add_qlinear_layers(
     model: torch.nn.Module,
-    bitwidth: int = 4,
-    block_size=None,
-    zero_point_shift=None,
-    per_module_bitwidth: Optional[Dict[str, int]] = None,
+    per_module_quantizers: Dict[str, QcQuantizeOp],
 ) -> torch.nn.Module:
     """
-    :param per_module_bitwidth: Optional mapping of dotted module name (as seen via
-        ``model.named_modules()``) to a bitwidth override. If passed, every
-        Linear/Conv2d module MUST have an entry here -- a missing entry raises
-        ``KeyError`` rather than silently falling back to ``bitwidth``. If not
-        passed (``None``), every Linear/Conv2d uses the flat ``bitwidth`` arg.
+    :param per_module_quantizers: Mapping of dotted module name (as seen via
+        ``model.named_modules()``) to its ONNX quantizer. Bitwidth and initialized
+        encoding ranges are copied from the source quantizer. Every Linear/Conv2d
+        module must have an entry.
     """
 
-    def _module_bitwidth(name: str) -> int:
-        if per_module_bitwidth is None:
-            return bitwidth
-        return per_module_bitwidth[name]
+    def _initialize_quantizer(qmodule: torch.nn.Module, source_quantizer: QcQuantizeOp):
+        qdq = qmodule.param_quantizers["weight"]
+        # Use WeightQDQ quantizer for frozen quantizer for efficiency
+        if source_quantizer.is_encoding_frozen():
+            weight_qdq = WeightQdq(
+                weight_tensor=qmodule.weight,
+                enc_shape=qdq.shape,
+                bitwidth=qdq.bitwidth,
+            )
+            qmodule.param_quantizers["weight"] = weight_qdq
+            qdq = weight_qdq
+            qdq.requires_grad_(False)
+
+        encodings = source_quantizer.get_encodings()
+        if encodings is not None:
+            min_values = [encoding.min for encoding in encodings]
+            max_values = [encoding.max for encoding in encodings]
+            min_tensor = torch.as_tensor(
+                min_values, dtype=qdq.min.dtype, device=qdq.min.device
+            ).reshape(qdq.shape)
+            max_tensor = torch.as_tensor(
+                max_values, dtype=qdq.max.dtype, device=qdq.max.device
+            ).reshape(qdq.shape)
+            qdq.set_range(min_tensor, max_tensor)
 
     def _convert_to_qmodule(module: torch.nn.Module, name: str = ""):
         if isinstance(module, torch.nn.Linear):
+            source_quantizer = per_module_quantizers[name]
             enc_shape = (module.weight.shape[0], 1)
             qmodule = QuantizedLinear(
                 module,
                 enc_shape=enc_shape,
-                bitwidth=_module_bitwidth(name),
-                block_size=block_size,
-                zero_point_shift=zero_point_shift,
+                bitwidth=source_quantizer.bitwidth,
             )
+            _initialize_quantizer(qmodule, source_quantizer)
             return qmodule
 
         elif isinstance(module, torch.nn.Conv2d):
+            source_quantizer = per_module_quantizers[name]
             enc_shape = (module.weight.shape[0], 1, 1, 1)
             qmodule = QuantizedConv2d(
                 module,
                 enc_shape=enc_shape,
-                bitwidth=_module_bitwidth(name),
-                block_size=block_size,
-                zero_point_shift=zero_point_shift,
+                bitwidth=source_quantizer.bitwidth,
             )
+            _initialize_quantizer(qmodule, source_quantizer)
             return qmodule
 
         for child_name, child in module.named_children():
@@ -573,27 +590,6 @@ def add_qlinear_layers(
 
     model = _convert_to_qmodule(model)
     return model
-
-
-def replace_with_adascale_quantizers(model: torch.nn.Module) -> torch.nn.Module:
-    for m in model.modules():
-        if isinstance(m, QuantizedLinear):
-            m.param_quantizers["weight"] = AdaScaleLinearWeightQdq(
-                weight_tensor=m.weight,
-                enc_shape=m.param_quantizers["weight"].shape,
-                bitwidth=m.param_quantizers["weight"].bitwidth,
-                block_size=m.param_quantizers["weight"].block_size,
-                zero_point_shift=m.param_quantizers["weight"].zero_point_shift,
-            )
-
-        elif isinstance(m, QuantizedConv2d):
-            m.param_quantizers["weight"] = AdaScaleConvWeightQdq(
-                weight_tensor=m.weight,
-                enc_shape=m.param_quantizers["weight"].shape,
-                bitwidth=m.param_quantizers["weight"].bitwidth,
-                block_size=m.param_quantizers["weight"].block_size,
-                zero_point_shift=m.param_quantizers["weight"].zero_point_shift,
-            )
 
 
 def get_adascale_trainable_params(

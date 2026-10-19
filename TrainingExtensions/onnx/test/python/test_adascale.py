@@ -5,7 +5,7 @@ import os
 import copy
 import shutil
 import warnings
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import numpy as np
 import torch
 from onnx import numpy_helper, load_model
@@ -16,6 +16,8 @@ import pytest
 
 import aimet_onnx
 from aimet_onnx import QuantizationSimModel
+from aimet_onnx.common import libpymo
+from aimet_onnx.common.quantsim import calculate_delta_offset
 from aimet_onnx.adascale.adascale_optimizer import (
     AdaScale,
     adascale_model_config_dict,
@@ -28,7 +30,6 @@ from aimet_onnx.adascale.quantizer import (
     AdaScaleConvWeightQdq,
     WeightQdq,
     get_adascale_trainable_params,
-    replace_with_adascale_quantizers,
     QuantizedConv2d,
 )
 from aimet_onnx.llm_topology import (
@@ -112,6 +113,18 @@ class ModelWithConsecutiveConvBlocks(torch.nn.Module):
             x = linear_block(x)
         x = self.softmax(x)
         return x
+
+
+def _make_quantizer_map(model):
+    return {
+        name: Mock(
+            bitwidth=4,
+            get_encodings=Mock(return_value=None),
+            is_encoding_frozen=Mock(return_value=False),
+        )
+        for name, module in model.named_modules()
+        if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d))
+    }
 
 
 class TestRetargetFp16CastsToBf16:
@@ -251,15 +264,9 @@ class TestAdascaleQuantizer:
             dilation=2,
             groups=2,
         )
-        enc_shape = (module.weight.shape[0], 1, 1, 1)
-        qmodule = QuantizedConv2d(
-            module,
-            enc_shape=enc_shape,
-            bitwidth=4,
-            block_size=None,
-            zero_point_shift=None,
-        )
-        replace_with_adascale_quantizers(qmodule)
+        qmodule = add_qlinear_layers(module, _make_quantizer_map(module))
+        assert isinstance(qmodule, QuantizedConv2d)
+        assert isinstance(qmodule.param_quantizers["weight"], AdaScaleConvWeightQdq)
         # Check to run the op and see if it runs without failures
         out = qmodule(x)
         attrs = [
@@ -302,8 +309,7 @@ class TestAdascaleQuantizer:
         input_tensor = torch.rand(*input_shape)
         orig_out = model(input_tensor).detach()
 
-        model = add_qlinear_layers(model)
-        replace_with_adascale_quantizers(model)
+        model = add_qlinear_layers(model, _make_quantizer_map(model))
         temp = model(input_tensor)
 
         all_beta_gamma_parameters, all_scale_parameters = get_adascale_trainable_params(
@@ -343,7 +349,7 @@ class TestAdascaleQuantizer:
         dummy_input = torch.rand(input_shape)
         out_1 = model(copy.deepcopy(dummy_input))
 
-        add_qlinear_layers(model)
+        add_qlinear_layers(model, _make_quantizer_map(model))
         out_2 = model(copy.deepcopy(dummy_input))
 
         # verify weights have not changed and the classes are swapped correctly
@@ -369,6 +375,62 @@ class TestAdascaleQuantizer:
         # with params removed, we should get the un-quantized output
         out_3 = model(copy.deepcopy(dummy_input))
         assert torch.equal(out_3, out_1)
+
+    @pytest.mark.parallel
+    def test_existing_encoding_range_is_preserved(self):
+        model = torch.nn.Sequential(torch.nn.Linear(4, 3))
+        encoding_min = [-1.0, -2.0, -3.0]
+        encoding_max = [0.875, 1.75, 2.625]
+        bitwidth = 4
+
+        encodings = [
+            libpymo.TfEncoding(
+                min_value,
+                max_value,
+                *calculate_delta_offset(
+                    min_value,
+                    max_value,
+                    bitwidth,
+                    use_symmetric_encodings=True,
+                    use_strict_symmetric=False,
+                ),
+                bitwidth,
+            )
+            for min_value, max_value in zip(encoding_min, encoding_max)
+        ]
+
+        quantizer = Mock(
+            bitwidth=bitwidth,
+            get_encodings=Mock(return_value=encodings),
+            is_encoding_frozen=Mock(return_value=False),
+        )
+        add_qlinear_layers(model, per_module_quantizers={"0": quantizer})
+        adascale_qdq = model[0].param_quantizers["weight"]
+        expected_min = torch.tensor(encoding_min).reshape(adascale_qdq.shape)
+        expected_max = torch.tensor(encoding_max).reshape(adascale_qdq.shape)
+        assert isinstance(adascale_qdq, AdaScaleLinearWeightQdq)
+        assert torch.equal(adascale_qdq.min, expected_min)
+        assert torch.equal(adascale_qdq.max, expected_max)
+
+    @pytest.mark.parallel
+    def test_frozen_quantizer_is_not_replaced_with_adascale_quantizer(self):
+        model = torch.nn.Sequential(
+            torch.nn.Linear(4, 4),
+            torch.nn.Linear(4, 4),
+        )
+
+        quantizers = _make_quantizer_map(model)
+        quantizers["0"].is_encoding_frozen.return_value = True
+        add_qlinear_layers(model, per_module_quantizers=quantizers)
+
+        frozen_qdq = model[0].param_quantizers["weight"]
+        assert isinstance(frozen_qdq, WeightQdq)
+        assert all(not param.requires_grad for param in frozen_qdq.parameters())
+        assert isinstance(model[1].param_quantizers["weight"], AdaScaleLinearWeightQdq)
+
+        beta_gamma, scales = get_adascale_trainable_params(model)
+        assert len(beta_gamma) == 2
+        assert len(scales) == 2
 
     @pytest.mark.parallel
     def test_single_quantizer_backprop(self):
@@ -433,8 +495,7 @@ class TestAdascaleQuantizer:
     @pytest.mark.parallel
     def test_get_adascale_trainable_params_linear(self):
         model = ModelWithConsecutiveLinearBlocks().eval()
-        add_qlinear_layers(model)
-        replace_with_adascale_quantizers(model)
+        add_qlinear_layers(model, _make_quantizer_map(model))
         all_beta_gamma_parameters, all_scale_parameters = get_adascale_trainable_params(
             model
         )
@@ -448,8 +509,7 @@ class TestAdascaleQuantizer:
     @pytest.mark.parallel
     def test_get_adascale_trainable_params_conv(self):
         model = ModelWithConsecutiveConvBlocks().eval()
-        add_qlinear_layers(model)
-        replace_with_adascale_quantizers(model)
+        add_qlinear_layers(model, _make_quantizer_map(model))
         all_beta_gamma_parameters, all_scale_parameters = get_adascale_trainable_params(
             model
         )
@@ -812,6 +872,71 @@ class TestAdascaleQuantizer:
             assert all(e.bw == 4 for e in other_enc)
             # int8 symmetric offset is -128, not the int4 default of -8
             assert all(e.offset == -128 for e in boosted_enc)
+
+    @pytest.mark.parallel
+    def test_apply_adascale_does_not_optimize_frozen_quantizer(self):
+        torch.manual_seed(1)
+        np.random.seed(1)
+        model = _export_decoder_with_ids(LlamaStyleDecoder())
+        topology = analyze_llm_topology(model, STRUCTURAL_MODEL_TYPE)
+        node_by_name = {node.name: node for node in model.graph.node}
+        frozen_weight_name = node_by_name[topology.blocks[0].q_proj[0]].input[1]
+        unfrozen_weight_name = node_by_name[topology.blocks[0].k_proj[0]].input[1]
+
+        sim = QuantizationSimModel(
+            model,
+            param_type="int4",
+            activation_type="int16",
+        )
+        inputs = {}
+        for graph_input in sim.session.get_inputs():
+            shape = [dim if isinstance(dim, int) else 1 for dim in graph_input.shape]
+            if "int" in graph_input.type:
+                inputs[graph_input.name] = np.random.randint(0, _VOCAB, shape).astype(
+                    np.int64
+                )
+            else:
+                inputs[graph_input.name] = np.zeros(shape, dtype=np.float32)
+
+        sim._compute_param_encodings(overwrite=False)
+        sim.qc_quantize_op_dict[frozen_weight_name].freeze_encodings()
+        original_weights = {
+            initializer.name: numpy_helper.to_array(initializer).copy()
+            for initializer in sim.model.model.graph.initializer
+            if initializer.name in (frozen_weight_name, unfrozen_weight_name)
+        }
+        original_frozen_encodings = [
+            (encoding.min, encoding.max, encoding.delta, encoding.offset)
+            for encoding in sim.qc_quantize_op_dict[frozen_weight_name].get_encodings()
+        ]
+
+        AdaScale.apply_adascale(
+            sim,
+            [inputs],
+            adascale_model_config_dict["llama"],
+            num_iterations=5,
+            topology=topology,
+        )
+
+        updated_weights = {
+            initializer.name: numpy_helper.to_array(initializer).copy()
+            for initializer in sim.model.model.graph.initializer
+            if initializer.name in (frozen_weight_name, unfrozen_weight_name)
+        }
+        updated_frozen_encodings = [
+            (encoding.min, encoding.max, encoding.delta, encoding.offset)
+            for encoding in sim.qc_quantize_op_dict[frozen_weight_name].get_encodings()
+        ]
+
+        assert np.array_equal(
+            updated_weights[frozen_weight_name],
+            original_weights[frozen_weight_name],
+        )
+        assert updated_frozen_encodings == original_frozen_encodings
+        assert not np.array_equal(
+            updated_weights[unfrozen_weight_name],
+            original_weights[unfrozen_weight_name],
+        )
 
     @pytest.mark.parallel
     @pytest.mark.parametrize("seq_len", [8, 32, 2048])

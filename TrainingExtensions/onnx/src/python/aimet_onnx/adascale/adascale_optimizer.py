@@ -41,7 +41,6 @@ from aimet_onnx.llm_topology.topology_types import (
 from aimet_onnx.adascale.quantizer import (
     add_qlinear_layers,
     get_adascale_trainable_params,
-    replace_with_adascale_quantizers,
 )
 
 from aimet_onnx.adascale.activation_sampler import ActivationSampler
@@ -504,17 +503,15 @@ class AdaScale:
 
                 out.requires_grad_(False)
                 fp_out.append(change_tensor_device_placement(out, torch.device("cpu")))
-        per_module_bitwidth = {
-            name: quantizer_dict[onnx_name].bitwidth
+        per_module_quantizers = {
+            name: quantizer_dict[onnx_name]
             for name, onnx_name in pt_weights_to_onnx_initializers.items()
             if onnx_name in quantizer_dict
         }
         pytorch_block = add_qlinear_layers(
             pytorch_block,
-            per_module_bitwidth=per_module_bitwidth,
+            per_module_quantizers=per_module_quantizers,
         )
-        replace_with_adascale_quantizers(pytorch_block)
-
         # only set adascale params to train mode
         all_beta_gamma_parameters, all_scale_parameters = get_adascale_trainable_params(
             pytorch_block
