@@ -8,6 +8,7 @@ from functools import partial, lru_cache
 import numpy as np
 from pathlib import Path
 from packaging import version
+import operator
 import torch
 from torchvision.models import resnet18, mobilenet_v3_large
 from torch.export import ExportedProgram
@@ -353,7 +354,12 @@ def test_compute_missing_encodings(device: str, tmp_path: Path):
             continue
 
         for inp in node.all_input_nodes:
-            assert _is_torch_ao_qdq_node(inp)
+            input_type = type(inp.meta["val"])
+
+            if issubclass(input_type, torch.Tensor):
+                assert _is_torch_ao_qdq_node(inp)
+            else:
+                assert not _is_torch_ao_qdq_node(inp)
 
         if isinstance(
             node.target, torch._ops.OpOverload
@@ -367,9 +373,14 @@ def test_compute_missing_encodings(device: str, tmp_path: Path):
             assert dtype == torch.uint16
 
         for user in node.users:
-            assert _is_torch_ao_qdq_node(user)
+            output_type = type(node.meta["val"])
 
-            if node is user.all_input_nodes[0]:
+            if issubclass(output_type, torch.Tensor):
+                assert _is_torch_ao_qdq_node(user)
+            else:
+                assert not _is_torch_ao_qdq_node(user)
+
+            if _is_torch_ao_qdq_node(user) and node is user.all_input_nodes[0]:
                 quantized_dtype = user.args[-1]
                 expected_dtype = (
                     torch.int32

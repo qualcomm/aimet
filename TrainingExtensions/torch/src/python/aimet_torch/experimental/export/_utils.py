@@ -279,3 +279,21 @@ def _refresh_output_specs(fn):
         return ret
 
     return wrapper
+
+
+def get_example_inputs(op: torch._ops.OpOverload) -> tuple[tuple, dict]:
+    """
+    Get example inputs for a given operator.
+    """
+
+    from ._example_inputs import _example_inputs_registry
+
+    input_factory = _example_inputs_registry.get(op, None)
+
+    if not op:
+        raise RuntimeError(
+            f"Example inputs for {op} not found. "
+            "Please register example inputs using the @register_example_inputs decorator."
+        )
+
+    return input_factory()

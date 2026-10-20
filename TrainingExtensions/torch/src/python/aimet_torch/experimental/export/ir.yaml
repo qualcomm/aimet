@@ -1,0 +1,434 @@
+- name: aten::_adaptive_avg_pool2d
+  is_core_aten: true
+# - name: aten::_adaptive_avg_pool2d_backward
+#   is_core_aten: true
+# - name: aten::_adaptive_avg_pool3d
+#   is_core_aten: true
+# - name: aten::_cdist_forward
+#   is_core_aten: true
+# - name: aten::_embedding_bag
+#   is_core_aten: true
+# - name: aten::_fft_c2r
+#   is_core_aten: true
+# - name: aten::_fft_r2c
+#   is_core_aten: true
+# - name: aten::_local_scalar_dense
+#   is_core_aten: true
+- name: aten::_log_softmax
+  is_core_aten: true
+- name: aten::_native_batch_norm_legit
+  is_core_aten: true
+# - name: aten::_native_batch_norm_legit.no_stats
+#   is_core_aten: true
+- name: aten::_native_batch_norm_legit_no_training
+  is_core_aten: true
+# - name: aten::_pdist_forward
+#   is_core_aten: true
+- name: aten::_prelu_kernel
+  is_core_aten: false
+- name: aten::_softmax
+  is_core_aten: true
+- name: aten::_to_copy
+  is_core_aten: true
+- name: aten::abs
+  is_core_aten: true
+# - name: aten::acos
+#   is_core_aten: true
+# - name: aten::acosh
+#   is_core_aten: true
+# - name: aten::adaptive_avg_pool1d
+#   is_core_aten: true
+# - name: aten::add.Scalar
+#   is_core_aten: true
+- name: aten::add.Tensor
+  is_core_aten: true
+- name: aten::addmm
+  is_core_aten: true
+- name: aten::alias
+  is_core_aten: true
+- name: aten::amax
+  is_core_aten: true
+- name: aten::amin
+  is_core_aten: true
+# - name: aten::any
+#   is_core_aten: true
+# - name: aten::any.dim
+#   is_core_aten: true
+# - name: aten::any.dims
+#   is_core_aten: true
+- name: aten::arange.start_step
+  is_core_aten: true
+- name: aten::argmax
+  is_core_aten: true
+- name: aten::argmin
+  is_core_aten: true
+# - name: aten::as_strided
+#   is_core_aten: true
+- name: aten::asin
+  is_core_aten: true
+# - name: aten::asinh
+#   is_core_aten: true
+- name: aten::atan
+  is_core_aten: true
+# - name: aten::atan2
+#   is_core_aten: true
+# - name: aten::atan2.out
+#   is_core_aten: true
+# - name: aten::atanh
+#   is_core_aten: true
+- name: aten::avg_pool1d
+  is_core_aten: true
+- name: aten::avg_pool2d
+  is_core_aten: true
+# - name: aten::avg_pool2d_backward
+#   is_core_aten: true
+- name: aten::avg_pool3d
+  is_core_aten: true
+# - name: aten::bitwise_and.Scalar
+#   is_core_aten: true
+# - name: aten::bitwise_and.Tensor
+#   is_core_aten: true
+# - name: aten::bitwise_not
+#   is_core_aten: true
+# - name: aten::bitwise_or.Scalar
+#   is_core_aten: true
+# - name: aten::bitwise_or.Tensor
+#   is_core_aten: true
+# - name: aten::bitwise_xor.Scalar
+#   is_core_aten: true
+# - name: aten::bitwise_xor.Tensor
+#   is_core_aten: true
+- name: aten::bmm
+  is_core_aten: true
+- name: aten::cat
+  is_core_aten: true
+- name: aten::ceil
+  is_core_aten: true
+- name: aten::channel_shuffle
+  is_core_aten: false
+- name: aten::clamp
+  is_core_aten: true
+# - name: aten::clamp.Tensor
+#   is_core_aten: true
+- name: aten::clone
+  is_core_aten: true
+- name: aten::col2im
+  is_core_aten: true
+- name: aten::constant_pad_nd
+  is_core_aten: true
+- name: aten::conv1d
+  is_core_aten: false
+- name: aten::conv2d
+  is_core_aten: false
+- name: aten::conv3d
+  is_core_aten: false
+- name: aten::conv_transpose1d
+  is_core_aten: false
+- name: aten::conv_transpose2d.input
+  is_core_aten: false
+- name: aten::conv_transpose3d.input
+  is_core_aten: false
+- name: aten::convolution
+  is_core_aten: true
+# - name: aten::convolution_backward
+#   is_core_aten: true
+- name: aten::copy
+  is_core_aten: true
+- name: aten::cos
+  is_core_aten: true
+# - name: aten::cosh
+#   is_core_aten: true
+- name: aten::cumsum
+  is_core_aten: true
+# - name: aten::diagonal
+#   is_core_aten: true
+# - name: aten::div.Scalar
+#   is_core_aten: true
+# - name: aten::div.Scalar_mode
+#   is_core_aten: true
+- name: aten::div.Tensor
+  is_core_aten: true
+# - name: aten::div.Tensor_mode
+#   is_core_aten: true
+- name: aten::elu
+  is_core_aten: true
+- name: aten::embedding
+  is_core_aten: true
+# - name: aten::embedding_dense_backward
+#   is_core_aten: true
+- name: aten::empty.memory_format
+  is_core_aten: true
+# - name: aten::empty_strided
+#   is_core_aten: true
+# - name: aten::eq.Scalar
+#   is_core_aten: true
+- name: aten::eq.Tensor
+  is_core_aten: true
+# - name: aten::erf
+#   is_core_aten: true
+- name: aten::exp
+  is_core_aten: true
+# - name: aten::expand
+#   is_core_aten: true
+# - name: aten::expm1
+#   is_core_aten: true
+# - name: aten::fill.Scalar
+#   is_core_aten: true
+# - name: aten::flip
+#   is_core_aten: true
+- name: aten::floor
+  is_core_aten: true
+# - name: aten::fmod.Scalar
+#   is_core_aten: true
+- name: aten::fmod.Tensor
+  is_core_aten: true
+- name: aten::full
+  is_core_aten: true
+- name: aten::full_like
+  is_core_aten: true
+- name: aten::gather
+  is_core_aten: true
+# - name: aten::ge.Scalar
+#   is_core_aten: true
+- name: aten::ge.Tensor
+  is_core_aten: true
+- name: aten::gelu
+  is_core_aten: true
+- name: aten::grid_sampler_2d
+  is_core_aten: true
+- name: aten::group_norm
+  is_core_aten: false
+# - name: aten::gt.Scalar
+#   is_core_aten: true
+- name: aten::gt.Tensor
+  is_core_aten: true
+- name: aten::hardswish
+  is_core_aten: false
+- name: aten::hardtanh
+  is_core_aten: true
+- name: aten::im2col
+  is_core_aten: false
+- name: aten::index.Tensor
+  is_core_aten: true
+- name: aten::index_put
+  is_core_aten: true
+- name: aten::index_select
+  is_core_aten: true
+- name: aten::instance_norm
+  is_core_aten: false
+- name: aten::isinf
+  is_core_aten: true
+- name: aten::isnan
+  is_core_aten: true
+# - name: aten::le.Scalar
+#   is_core_aten: true
+- name: aten::le.Tensor
+  is_core_aten: true
+- name: aten::leaky_relu
+  is_core_aten: true
+- name: aten::linear
+  is_core_aten: false
+- name: aten::log
+  is_core_aten: true
+# - name: aten::log10
+#   is_core_aten: true
+# - name: aten::log1p
+#   is_core_aten: true
+# - name: aten::log2
+#   is_core_aten: true
+- name: aten::logical_and
+  is_core_aten: true
+- name: aten::logical_not
+  is_core_aten: true
+- name: aten::logical_or
+  is_core_aten: true
+- name: aten::logical_xor
+  is_core_aten: true
+# - name: aten::lt.Scalar
+#   is_core_aten: true
+- name: aten::lt.Tensor
+  is_core_aten: true
+- name: aten::masked_scatter
+  is_core_aten: true
+- name: aten::matmul
+  is_core_aten: false
+- name: aten::max.dim
+  is_core_aten: true
+- name: aten::max_pool1d_with_indices
+  is_core_aten: false
+- name: aten::max_pool2d_with_indices
+  is_core_aten: true
+# - name: aten::max_pool2d_with_indices_backward
+#   is_core_aten: true
+- name: aten::max_pool3d_with_indices
+  is_core_aten: true
+# - name: aten::maximum
+#   is_core_aten: true
+- name: aten::mean
+  is_core_aten: true
+- name: aten::mean.dim
+  is_core_aten: true
+- name: aten::min.dim
+  is_core_aten: true
+- name: aten::minimum
+  is_core_aten: true
+- name: aten::mm
+  is_core_aten: true
+# - name: aten::mul.Scalar
+#   is_core_aten: true
+- name: aten::mul.Tensor
+  is_core_aten: true
+# - name: aten::native_dropout
+#   is_core_aten: true
+# - name: aten::native_group_norm
+#   is_core_aten: true
+# - name: aten::native_group_norm_backward
+#   is_core_aten: true
+- name: aten::native_layer_norm
+  is_core_aten: true
+# - name: aten::native_layer_norm_backward
+#   is_core_aten: true
+# - name: aten::ne.Scalar
+#   is_core_aten: true
+- name: aten::ne.Tensor
+  is_core_aten: true
+- name: aten::neg
+  is_core_aten: true
+- name: aten::nonzero
+  is_core_aten: true
+- name: aten::ones
+  is_core_aten: false
+- name: aten::permute
+  is_core_aten: true
+- name: aten::pixel_shuffle
+  is_core_aten: false
+- name: aten::pixel_unshuffle
+  is_core_aten: false
+# - name: aten::pow.Scalar
+#   is_core_aten: true
+- name: aten::pow.Tensor_Scalar
+  is_core_aten: true
+- name: aten::pow.Tensor_Tensor
+  is_core_aten: true
+# - name: aten::prod
+#   is_core_aten: true
+# - name: aten::prod.dim_int
+#   is_core_aten: true
+# - name: aten::rand
+#   is_core_aten: true
+# - name: aten::randn
+#   is_core_aten: true
+# - name: aten::randperm
+#   is_core_aten: true
+- name: aten::reciprocal
+  is_core_aten: true
+- name: aten::reflection_pad1d
+  is_core_aten: true
+- name: aten::reflection_pad2d
+  is_core_aten: true
+- name: aten::reflection_pad3d
+  is_core_aten: true
+- name: aten::relu
+  is_core_aten: true
+- name: aten::relu6
+  is_core_aten: false
+# - name: aten::remainder.Scalar
+#   is_core_aten: true
+# - name: aten::remainder.Tensor
+#   is_core_aten: true
+- name: aten::repeat
+  is_core_aten: true
+- name: aten::replication_pad1d
+  is_core_aten: false
+- name: aten::replication_pad2d
+  is_core_aten: true
+- name: aten::replication_pad3d
+  is_core_aten: true
+# - name: aten::resize_
+#   is_core_aten: true
+- name: aten::round
+  is_core_aten: true
+- name: aten::rsqrt
+  is_core_aten: true
+# - name: aten::scalar_tensor
+#   is_core_aten: true
+# - name: aten::scatter.src
+#   is_core_aten: true
+# - name: aten::scatter.value
+#   is_core_aten: true
+- name: aten::scatter_add
+  is_core_aten: true
+# - name: aten::scatter_reduce.two
+#   is_core_aten: true
+# - name: aten::select.int
+#   is_core_aten: true
+- name: aten::select_scatter
+  is_core_aten: true
+- name: aten::sigmoid
+  is_core_aten: true
+- name: aten::sign
+  is_core_aten: true
+- name: aten::sin
+  is_core_aten: true
+# - name: aten::sinh
+#   is_core_aten: true
+# - name: aten::slice.Tensor
+#   is_core_aten: true
+- name: aten::slice_scatter
+  is_core_aten: true
+# - name: aten::sort
+#   is_core_aten: true
+- name: aten::split_with_sizes
+  is_core_aten: true
+- name: aten::sqrt
+  is_core_aten: true
+# - name: aten::squeeze.dim
+#   is_core_aten: true
+# - name: aten::squeeze.dims
+#   is_core_aten: true
+# - name: aten::sub.Scalar
+#   is_core_aten: true
+- name: aten::sub.Tensor
+  is_core_aten: true
+- name: aten::sum.dim_IntList
+  is_core_aten: true
+# - name: aten::sym_is_contiguous
+#   is_core_aten: true
+# - name: aten::sym_numel
+#   is_core_aten: true
+# - name: aten::sym_size.int
+#   is_core_aten: true
+# - name: aten::sym_storage_offset
+#   is_core_aten: true
+# - name: aten::sym_stride.int
+#   is_core_aten: true
+# - name: aten::tan
+#   is_core_aten: true
+- name: aten::tanh
+  is_core_aten: true
+# - name: aten::topk
+#   is_core_aten: true
+# - name: aten::trunc
+#   is_core_aten: true
+# - name: aten::unsqueeze
+#   is_core_aten: true
+# - name: aten::upsample_bilinear2d.vec
+#   is_core_aten: true
+- name: aten::upsample_linear1d
+  is_core_aten: false
+# - name: aten::upsample_nearest2d.vec
+#   is_core_aten: true
+# - name: aten::var.correction
+#   is_core_aten: true
+# - name: aten::var.dim
+#   is_core_aten: true
+- name: aten::view
+  is_core_aten: true
+- name: aten::where.self
+  is_core_aten: true
+- name: aten::zeros
+  is_core_aten: false
+# - aten::rms_norm
+#   is_core_aten: false
+# - aten::upsample_bicubic2d
+#   is_core_aten: false
