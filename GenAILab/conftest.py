@@ -3,12 +3,32 @@
 
 """pytest config for test_genai.py"""
 
+import ctypes
+import ctypes.util
 import warnings
 from pathlib import Path
 
 import onnxruntime as ort
 import pytest
 import yaml
+
+# glibc's malloc keeps freed large blocks in per-thread arenas instead of
+# returning them to the OS once the arena has already grown, so host RSS
+# climbs monotonically across model-load/export cycles even though live
+# heap usage doesn't (https://github.com/pytorch/pytorch/issues/41486).
+# Lowering the mmap/trim thresholds forces those large blocks through
+# mmap/munmap instead, which glibc does release immediately. mallopt() takes
+# effect for all allocations made after the call, so this must run before
+# torch/onnxruntime/transformers do any sizeable allocating — i.e. here, at
+# conftest import time, before those modules get pulled in by the test file.
+try:
+    _libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+    _M_TRIM_THRESHOLD = -1
+    _M_MMAP_THRESHOLD = -3
+    _libc.mallopt(_M_TRIM_THRESHOLD, 65536)
+    _libc.mallopt(_M_MMAP_THRESHOLD, 65536)
+except (OSError, AttributeError):
+    pass  # non-glibc platform; no-op
 
 # Suppress verbose onnxruntime INFO/WARNING messages (e.g. EP selection,
 # graph optimisation notes) that clutter test output.  Level 3 = ERROR only.
