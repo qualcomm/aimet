@@ -14,6 +14,7 @@ from .torch_builtins import (
     _validate_arguments,
     _is_grid_representable,
     _is_numerically_stable,
+    _USE_AIMET_243_GRADIENT_BUG_FIX,
 )
 from aimet_torch.utils import _torch_compiler_is_compiling
 from aimet_torch.common.utils import AimetLogger
@@ -31,6 +32,7 @@ try:
         and triton
         and parse(triton.__version__) >= parse("3.0.0")
     )
+    _USE_AIMET_243_GRADIENT_BUG_FIX = tl.constexpr(_USE_AIMET_243_GRADIENT_BUG_FIX)
 
     @triton.jit
     def quantize_per_tensor(
@@ -386,7 +388,9 @@ try:
             rounding_err = rounded - scaled
 
             if scale_grad_ptr is not None:
-                clamped = tl.clamp(rounded, qmin, qmax) + offset + zero_point_shift
+                clamped = tl.clamp(rounded, qmin, qmax) + offset
+                if _USE_AIMET_243_GRADIENT_BUG_FIX:
+                    clamped += zero_point_shift
                 scale_grad = output_grad * tl.where(
                     is_within_clamping_boundary,
                     rounding_err,
@@ -452,7 +456,9 @@ try:
             rounding_err = rounded - scaled
 
             if scale_grad_ptr is not None:
-                clamped = tl.clamp(rounded, qmin, qmax) + offset + zero_point_shift
+                clamped = tl.clamp(rounded, qmin, qmax) + offset
+                if _USE_AIMET_243_GRADIENT_BUG_FIX:
+                    clamped += zero_point_shift
                 scale_grad = output_grad * tl.where(
                     is_within_clamping_boundary,
                     rounding_err,
@@ -527,7 +533,9 @@ try:
             rounding_err = rounded - scaled
 
             if scale_grad_ptr is not None:
-                clamped = tl.clamp(rounded, qmin, qmax) + offset + zero_point_shift
+                clamped = tl.clamp(rounded, qmin, qmax) + offset
+                if _USE_AIMET_243_GRADIENT_BUG_FIX:
+                    clamped += zero_point_shift
                 scale_grad = output_grad * tl.where(
                     is_within_clamping_boundary,
                     rounding_err,

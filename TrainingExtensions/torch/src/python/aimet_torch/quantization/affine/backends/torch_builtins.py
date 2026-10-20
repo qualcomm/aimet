@@ -4,6 +4,7 @@
 
 """Default quantization backend for quantizing weights and activations"""
 
+import os
 import functools
 from packaging import version
 from typing import Callable, Optional, List, Tuple
@@ -23,6 +24,14 @@ from aimet_torch.utils import (
 from ....experimental.onnx import _export as _onnx
 from aimet_torch.experimental import pgs
 from aimet_torch.quantization._utils import interleave, concretize_block_size
+
+
+# There was a major bug fix in v2.43.0 for gradient computation when zero_point_shift=0.5.
+# (https://github.com/qualcomm/aimet/commit/aa91641d0f63f8c6957d240a7d06a2fa0cd3bd9c)
+# This is an internal hidden flag to facilitate end-to-end A/B testing.
+_USE_AIMET_243_GRADIENT_BUG_FIX: bool = (
+    os.environ.get("USE_AIMET_243_GRADIENT_BUG_FIX", "1") == "1"
+)
 
 
 _torch_version: Tuple[int, int, int] = (
@@ -790,7 +799,7 @@ class QuantDequantFunc(torch.autograd.Function):
 
             if ctx.scale_requires_grad:
                 x_rounded.clamp_(offset + qmin, offset + qmax)
-                if zero_point_shift != 0.0:
+                if zero_point_shift != 0.0 and _USE_AIMET_243_GRADIENT_BUG_FIX:
                     x_rounded.add_(zero_point_shift)
                 scale_grad = grad * torch.where(
                     mask,
