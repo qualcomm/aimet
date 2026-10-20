@@ -1,3 +1,3 @@
-deepspeed
+deepspeed<=0.19.7
 onnxruntime
 spconv; sys_platform != "darwin"
