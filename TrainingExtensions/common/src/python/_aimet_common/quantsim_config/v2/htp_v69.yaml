@@ -1,0 +1,70 @@
+name: HTP V69 config file
+description: This is a quantsim config file for HTP V69
+ops:
+  # Wildcard for all op_types that are not explicitly listed below
+  - op_type: "*"
+    type_constraints:
+      - "*": uint8
+      - "*": uint16
+
+  - op_type: Conv
+    type_constraints:
+      # W8A8
+      - X: uint8
+        W: int8[channel_axis=0]
+        B: int32
+        Y: uint8
+      # W8A16
+      - X: uint16
+        W: int8[channel_axis=0]
+        B: int32
+        Y: uint16
+      # W16A16
+      - X: uint16
+        W: int16[channel_axis=0]
+        B: int32
+        Y: uint16
+
+  - op_type: Softmax
+    type_constraints:
+      - input: uint8
+        output: uint8
+      - input: uint16
+        output: uint16
+    value_contraints:
+      fix:
+        - output: {min: 0.0, max: 1.0}
+
+  - op_type: Relu
+    type_constraints:
+      - X: uint8
+        Y: uint8
+      - X: uint16
+        Y: uint16
+    value_contraints:
+      fix:
+        - Y: {min: 0.0}
+      tie:
+        - [X, Y]
+
+  - op_type: ReduceMean
+    type_constraints:
+      - data: uint8
+        axes: n/a  # integer input; not quantizable
+        reduced: uint8
+      - data: uint16
+        axes: n/a  # integer input; not quantizable
+        reduced: uint16
+    value_contraints:
+      tie:
+        - [data, reduced]
+
+  - op_type: Concat
+    type_constraints:
+      - inputs: uint8
+        concat_result: uint8
+      - inputs: uint16
+        concat_result: uint16
+    value_contraints:
+      tie:
+        - [inputs, concat_result]
