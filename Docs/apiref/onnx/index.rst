@@ -21,6 +21,8 @@ aimet_onnx API
     aimet_onnx.layer_output_utils <layer_output_generation>
     aimet_onnx.analysis <interactive_visualization>
     aimet_onnx.analysis.sensitivity <sensitivity>
+    aimet_onnx.peft <peft>
+    aimet_onnx.experimental.lora <lora>
 
 ..
   # start-after
@@ -41,3 +43,5 @@ AIMET quantization for ONNX models provides the following functionality.
 - :ref:`aimet_onnx.layer_output_utils <apiref-onnx-layer-output-generation>`
 - :ref:`aimet_onnx.analysis <apiref-onnx-interactive-visualization>`
 - :ref:`aimet_onnx.analysis.sensitivity <apiref-onnx-sensitivity>`
+- :ref:`aimet_onnx.peft <apiref-onnx-peft>`
+- :ref:`aimet_onnx.experimental.lora <apiref-onnx-lora>`
