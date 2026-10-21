@@ -1,0 +1,88 @@
+name: HTP V69 config file
+description: This is a quantsim config file for HTP V69
+ops:
+  # Wildcard for all op_types that are not explicitly listed below
+  - op_type: "*"
+    type_constraints:
+      - "*": uint8
+      - "*": uint16
+
+  - op_type: aten::conv2d
+    type_constraints:
+      # W8A8
+      - input: uint8
+        weight: int8[channel_axis=0]
+        bias: int32
+        stride: n/a
+        padding: n/a
+        dilation: n/a
+        groups: n/a
+        $ret[0]: uint8
+      # W8A16
+      - input: uint16
+        weight: int8[channel_axis=0]
+        bias: int32
+        stride: n/a
+        padding: n/a
+        dilation: n/a
+        groups: n/a
+        $ret[0]: uint16
+      # W16A16
+      - input: uint16
+        weight: int16[channel_axis=0]
+        bias: int32
+        stride: n/a
+        padding: n/a
+        dilation: n/a
+        groups: n/a
+        $ret[0]: uint16
+
+  - op_type: aten::_softmax
+    type_constraints:
+      - self: uint8
+        dim: n/a
+        half_to_float: n/a
+        $ret[0]: uint8
+      - self: uint16
+        dim: n/a
+        half_to_float: n/a
+        $ret[0]: uint16
+    value_contraints:
+      fix:
+        - $ret[0]: {min: 0.0, max: 1.0}
+
+  - op_type: aten::relu
+    type_constraints:
+      - self: uint8
+        $ret[0]: uint8
+      - self: uint16
+        $ret[0]: uint16
+    value_contraints:
+      fix:
+        - $ret[0]: {min: 0.0}
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::mean
+    type_constraints:
+      - self: uint8
+        dtype: n/a
+        $ret[0]: uint8
+      - self: uint16
+        dtype: n/a
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::cat
+    type_constraints:
+      - tensors: uint8
+        dim: n/a
+        $ret[0]: uint8
+      - tensors: uint16
+        dim: n/a
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [tensors, "$ret[0]"]

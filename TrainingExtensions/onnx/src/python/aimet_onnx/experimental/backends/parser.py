@@ -2,102 +2,35 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import itertools
-import re
-import yaml
-from dataclasses import dataclass
-from typing import TypeAlias
-from ...onnx._utils import _all_op_schemas
+import onnx
+from aimet_onnx.common.experimental.backends.schema import (
+    qtype,
+    Argument,
+    FixedRange,
+    EqualRange,
+    OpSignature,
+    OpSchema,
+)
+from aimet_onnx.common.onnx._utils import _all_op_schemas
 
 
-_TYPE_STR_PATTERN = re.compile(r"^(?P<dtype>\w+)(?:\[(?P<attrs>.*)\])?$")
 _FLOAT_ONNX_TYPE_STRS = {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}
 
 
-@dataclass(frozen=True)
-class qtype:
-    dtype: str
-    channel_axis: int | None = None
-    block_axis: int | None = None
-
-    @classmethod
-    def from_str(cls, type_str: str) -> "list[qtype]":
-        match = _TYPE_STR_PATTERN.match(type_str.strip())
-        if match is None:
-            raise ValueError(f"Invalid type string: {type_str!r}")
-
-        attrs = {}
-        if match.group("attrs"):
-            for pair in match.group("attrs").split(","):
-                key, value = pair.split("=")
-                attrs[key.strip()] = int(value.strip())
-
-        parsed = qtype(
-            dtype=match.group("dtype"),
-            channel_axis=attrs.get("channel_axis"),
-            block_axis=attrs.get("block_axis"),
-        )
-
-        # Per-channel/per-block quantization trivially supports the per-tensor case,
-        # so a specified axis implicitly also allows the axis-less (per-tensor) qtype.
-        options = [parsed]
-        if parsed.channel_axis is not None or parsed.block_axis is not None:
-            options.append(qtype(dtype=parsed.dtype))
-
-        return options
-
-
-@dataclass(frozen=True)
-class Argument:
-    name: str
-    qtype: "qtype | None"
-
-
-@dataclass(frozen=True)
-class FixedRange:
-    arg: Argument
-    min: float | None
-    max: float | None
-
-    def __post_init__(self):
-        if self.min is None and self.max is None:
-            raise ValueError("At least one of min or max must be specified")
-
-        if self.min is not None and self.max is not None and self.min > self.max:
-            raise ValueError(f"min {self.min} cannot be greater than max {self.max}")
-
-
-@dataclass(frozen=True)
-class EqualRange:
-    arg1: Argument
-    arg2: Argument
-
-
-ValueConstraint: TypeAlias = FixedRange | EqualRange
-
-
-@dataclass(frozen=True)
-class OpSignature:
-    op_type: str
-    inputs: tuple[Argument, ...]
-    outputs: tuple[Argument, ...]
-
-
-@dataclass(frozen=True)
-class OpSchema:
-    signature: OpSignature
-    value_constraints: tuple[ValueConstraint, ...] = ()
-
-
-def _validate_against_onnx_schema(onnx_schema, type_constraint: dict) -> None:
-    expected_names = {param.name for param in onnx_schema.inputs} | {
-        param.name for param in onnx_schema.outputs
-    }
+def _validate_against_onnx_schema(
+    onnx_schema: onnx.defs.OpSchema,
+    type_constraint: dict,
+) -> None:
+    expected_names = [
+        *(param.name for param in onnx_schema.inputs),
+        *(param.name for param in onnx_schema.outputs),
+    ]
     actual_names = set(type_constraint.keys())
 
-    if actual_names != expected_names:
+    if actual_names != set(expected_names):
         raise ValueError(
             f"{onnx_schema.name}: argument names {sorted(actual_names)} do not match "
-            f"ONNX schema {sorted(expected_names)}"
+            f"ONNX schema {expected_names}"
         )
 
     allowed_type_strs_by_type_param = {
@@ -127,7 +60,7 @@ def _validate_against_onnx_schema(onnx_schema, type_constraint: dict) -> None:
             )
 
 
-def parse_op(op_entry: dict) -> set[OpSchema]:
+def parse_onnx_op(op_entry: dict) -> set[OpSchema]:
     schemas = set()
     op_type = op_entry["op_type"]
 
@@ -172,6 +105,7 @@ def parse_op(op_entry: dict) -> set[OpSchema]:
             )
 
             signature = OpSignature(
+                domain="onnx",
                 op_type=op_type,
                 inputs=tuple(args[name] for name in input_names),
                 outputs=tuple(args[name] for name in output_names),

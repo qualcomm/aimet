@@ -3,26 +3,15 @@
 
 import yaml
 
-try:
-    from aimet_onnx.common.quantsim_config.v2.parser import (
-        OpSchema,
-        OpSignature,
-        Argument,
-        FixedRange,
-        EqualRange,
-        parse_op,
-        qtype,
-    )
-except ImportError:
-    from aimet_torch.common.quantsim_config.v2.parser import (
-        OpSchema,
-        OpSignature,
-        Argument,
-        FixedRange,
-        EqualRange,
-        parse_op,
-        qtype,
-    )
+from aimet_onnx.common.experimental.backends.schema import (
+    OpSchema,
+    OpSignature,
+    Argument,
+    FixedRange,
+    EqualRange,
+    qtype,
+)
+from aimet_onnx.experimental.backends.parser import parse_onnx_op
 
 
 def test_op_schema_parsing():
@@ -45,12 +34,13 @@ type_constraints:
     B: int32
     Y: uint16
 """)
-    schemas: set[OpSchema] = parse_op(yaml_config)
+    schemas: set[OpSchema] = parse_onnx_op(yaml_config)
     assert len(schemas) == 6
     assert schemas == {
         # W8A8 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Conv",
                 inputs=(
                     Argument(name="X", qtype=qtype("uint8")),
@@ -64,6 +54,7 @@ type_constraints:
         # W8A8 per-channel
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Conv",
                 inputs=(
                     Argument(name="X", qtype=qtype("uint8")),
@@ -77,6 +68,7 @@ type_constraints:
         # W8A16 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Conv",
                 inputs=(
                     Argument(name="X", qtype=qtype("uint16")),
@@ -90,6 +82,7 @@ type_constraints:
         # W8A16 per-channel
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Conv",
                 inputs=(
                     Argument(name="X", qtype=qtype("uint16")),
@@ -103,6 +96,7 @@ type_constraints:
         # W16A16 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Conv",
                 inputs=(
                     Argument(name="X", qtype=qtype("uint16")),
@@ -116,6 +110,7 @@ type_constraints:
         # W16A16 per-channel
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Conv",
                 inputs=(
                     Argument(name="X", qtype=qtype("uint16")),
@@ -139,11 +134,12 @@ value_contraints:
   fix:
     - output: {min: 0.0, max: 1.0}
 """)
-    schemas = parse_op(yaml_config)
+    schemas = parse_onnx_op(yaml_config)
     assert len(schemas) == 2
     assert schemas == {
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Softmax",
                 inputs=(Argument(name="input", qtype=qtype("uint8")),),
                 outputs=(Argument(name="output", qtype=qtype("uint8")),),
@@ -156,6 +152,7 @@ value_contraints:
         ),
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Softmax",
                 inputs=(Argument(name="input", qtype=qtype("uint16")),),
                 outputs=(Argument(name="output", qtype=qtype("uint16")),),
@@ -181,11 +178,12 @@ value_contraints:
   tie:
     - [X, Y]
 """)
-    schemas = parse_op(yaml_config)
+    schemas = parse_onnx_op(yaml_config)
     assert len(schemas) == 2
     assert schemas == {
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Relu",
                 inputs=(Argument(name="X", qtype=qtype("uint8")),),
                 outputs=(Argument(name="Y", qtype=qtype("uint8")),),
@@ -202,6 +200,7 @@ value_contraints:
         ),
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Relu",
                 inputs=(Argument(name="X", qtype=qtype("uint16")),),
                 outputs=(Argument(name="Y", qtype=qtype("uint16")),),
@@ -231,11 +230,12 @@ value_contraints:
   tie:
     - [data, reduced]
 """)
-    schemas = parse_op(yaml_config)
+    schemas = parse_onnx_op(yaml_config)
     assert len(schemas) == 2
     assert schemas == {
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="ReduceMean",
                 inputs=(
                     Argument(name="data", qtype=qtype("uint8")),
@@ -252,6 +252,7 @@ value_contraints:
         ),
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="ReduceMean",
                 inputs=(
                     Argument(name="data", qtype=qtype("uint16")),
@@ -279,11 +280,12 @@ value_contraints:
   tie:
     - [inputs, concat_result]
 """)
-    schemas = parse_op(yaml_config)
+    schemas = parse_onnx_op(yaml_config)
     assert len(schemas) == 2
     assert schemas == {
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Concat",
                 inputs=(Argument(name="inputs", qtype=qtype("uint8")),),
                 outputs=(Argument(name="concat_result", qtype=qtype("uint8")),),
@@ -297,6 +299,7 @@ value_contraints:
         ),
         OpSchema(
             signature=OpSignature(
+                domain="onnx",
                 op_type="Concat",
                 inputs=(Argument(name="inputs", qtype=qtype("uint16")),),
                 outputs=(Argument(name="concat_result", qtype=qtype("uint16")),),
