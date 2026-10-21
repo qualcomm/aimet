@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # pylint: disable=protected-access
-from contextlib import ExitStack
-from typing import Any, Iterable
+from contextlib import ExitStack, contextmanager
+from typing import Any, Iterable, Callable
 import operator
 
 import torch
@@ -244,39 +244,42 @@ def _is_multi_output_op(node: torch.fx.Node) -> bool:
     )
 
 
-def _refresh_output_specs(fn):
+@contextmanager
+def _refresh_output_specs_ctx(ep: ExportedProgram):
+    original_output_names = [
+        node.name for node in ep.graph.output_node().all_input_nodes
+    ]
+
+    yield
+
+    # Edge case: if any new QDQ nodes were added before the output nodes,
+    # we need to update the output names in the graph signature accordingly
+    # Example:
+    #                         (q/dq inserted by
+    #                       encoding propagation)
+    #         reshape -----------> q -------> dq -----------------> (output)
+    #           ↑                             ↑
+    #  ep.graph_signature is           ep.graph_signature should be
+    #  still pointing to this          updated to point to this dq node
+    #  as graph output                 as graph output
+    new_output_names = {
+        old_name: node.name
+        for old_name, node in zip(
+            original_output_names,
+            ep.graph.output_node().all_input_nodes,
+        )
+    }
+    for spec in ep.graph_signature.output_specs:
+        old_output_name = spec.arg.name
+        new_output_name = new_output_names.get(old_output_name, old_output_name)
+        spec.arg.name = new_output_name
+
+
+def _refresh_output_specs(fn: Callable):
     def wrapper(*args, **kwargs):
-        ep: ExportedProgram
-
         ep, *args = args
-        original_output_names = [
-            node.name for node in ep.graph.output_node().all_input_nodes
-        ]
-        ret = fn(ep, *args, **kwargs)
-
-        # Edge case: if any new QDQ nodes were added before the output nodes,
-        # we need to update the output names in the graph signature accordingly
-        # Example:
-        #                         (q/dq inserted by
-        #                       encoding propagation)
-        #         reshape -----------> q -------> dq -----------------> (output)
-        #           ↑                             ↑
-        #  ep.graph_signature is           ep.graph_signature should be
-        #  still pointing to this          updated to point to this dq node
-        #  as graph output                 as graph output
-        new_output_names = {
-            old_name: node.name
-            for old_name, node in zip(
-                original_output_names,
-                ep.graph.output_node().all_input_nodes,
-            )
-        }
-        for spec in ep.graph_signature.output_specs:
-            old_output_name = spec.arg.name
-            new_output_name = new_output_names.get(old_output_name, old_output_name)
-            spec.arg.name = new_output_name
-
-        return ret
+        with _refresh_output_specs_ctx(ep):
+            return fn(ep, *args, **kwargs)
 
     return wrapper
 
@@ -290,10 +293,32 @@ def get_example_inputs(op: torch._ops.OpOverload) -> tuple[tuple, dict]:
 
     input_factory = _example_inputs_registry.get(op, None)
 
-    if not op:
+    if not input_factory:
         raise RuntimeError(
             f"Example inputs for {op} not found. "
             "Please register example inputs using the @register_example_inputs decorator."
         )
 
     return input_factory()
+
+
+def _is_torch_ao_qdq_node(node: torch.fx.Node) -> bool:
+    return _is_torch_ao_q_node(node) or _is_torch_ao_dq_node(node)
+
+
+def _is_torch_ao_q_node(node: torch.fx.Node) -> bool:
+    return node.target in _torch_ao_q_ops
+
+
+def _is_torch_ao_dq_node(node: torch.fx.Node) -> bool:
+    return node.target in _torch_ao_dq_ops
+
+
+_torch_ao_q_ops = (
+    *(torch.ops.quantized_decomposed.quantize_per_tensor.op_overloads()),
+    *(torch.ops.quantized_decomposed.quantize_per_channel.op_overloads()),
+)
+_torch_ao_dq_ops = (
+    *(torch.ops.quantized_decomposed.dequantize_per_tensor.op_overloads()),
+    *(torch.ops.quantized_decomposed.dequantize_per_channel.op_overloads()),
+)

@@ -5,22 +5,24 @@
 import operator
 from contextlib import contextmanager
 from typing import Optional, Callable
-import re
 import torch
 from torch._C import _fx_map_arg
 from torch.export.graph_signature import TensorArgument
 import aimet_torch
 from aimet_torch.quantization.affine import QuantizeDequantize
-from .export import _post_process
-from ._utils import (
+from aimet_torch.experimental.export.export import _post_process
+from aimet_torch.experimental.export._utils import (
     _is_grid_preserving_op,
     _remove_dangling_nodes,
     _eval_node,
     _insert_placeholder,
     _is_multi_output_op,
     _refresh_output_specs,
+    _refresh_output_specs_ctx,
+    _is_torch_ao_qdq_node,
 )
-from .qnn import _qnn_decompositions
+from aimet_torch.experimental.export.qnn import _qnn_decompositions
+from aimet_torch.experimental.backends import BackendDescription
 
 
 class ExportedProgram(torch.export.ExportedProgram):
@@ -104,11 +106,20 @@ class ExportedProgram(torch.export.ExportedProgram):
         return new_ep
 
     @contextmanager
-    def compute_missing_encodings(self, param_bw: int, activation_bw: int):
+    def compute_missing_encodings(
+        self,
+        param_bw: int,
+        activation_bw: int,
+        target_backend: str | None = None,
+    ):
         """
         Add missing output quantizers and compute encodings.
 
-        NOTE: This is prototype hardcoded with W8A16
+        Args:
+            param_bw: Bitwidth for weight quantization
+            activation_bw: Bitwidth for activation quantization
+            target_backends: Target backend(s) for the quantized model.
+                The model will be configured for the specified backend(s).
 
         Example:
 
@@ -124,10 +135,18 @@ class ExportedProgram(torch.export.ExportedProgram):
             >>> torch.export.save(ep, "fully_quantized_model.pt2")
         """
         # Step 1. Add missing quantizers
-        #
         # Add QuantizeDequantize module after
         # every floating-point op doesn't have quantized outputs.
-        newly_added_qtzrs = self._add_missing_quantizers(param_bw, activation_bw)
+        if target_backend:
+            backend_description = BackendDescription.from_backend_id(target_backend)
+            with _refresh_output_specs_ctx(self):
+                newly_added_qtzrs = backend_description.configure(
+                    self.graph_module, param_bw, activation_bw
+                )
+        else:
+            # If target backend is not specified, fall back to legacy behavior
+            # This is only to keep CI happy. In the future, we will require target backend to be specified.
+            newly_added_qtzrs = self._add_missing_quantizers(param_bw, activation_bw)
 
         # Step 2. Enter compute_encodings mode and yield control back to user to
         # calibrate encodings of the newly added quantizers. While the control
@@ -387,13 +406,3 @@ class ExportedProgram(torch.export.ExportedProgram):
 
 def _is_bias(node: torch.fx.Node) -> bool:
     return node.name.endswith("bias")  # TODO
-
-
-def _is_torch_ao_qdq_node(node: torch.fx.Node) -> bool:
-    return bool(
-        isinstance(node.target, torch._ops.OpOverload)
-        and re.match(
-            r"quantized_decomposed::(de)?quantize_per_.+",
-            node.target.name(),
-        )
-    )

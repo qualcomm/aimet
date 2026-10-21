@@ -27,7 +27,7 @@ class qtype:
                 key, value = pair.split("=")
                 attrs[key.strip()] = int(value.strip())
 
-        parsed = qtype(
+        parsed = cls(
             dtype=match.group("dtype"),
             channel_axis=attrs.get("channel_axis"),
             block_axis=attrs.get("block_axis"),
@@ -37,7 +37,7 @@ class qtype:
         # so a specified axis implicitly also allows the axis-less (per-tensor) qtype.
         options = [parsed]
         if parsed.channel_axis is not None or parsed.block_axis is not None:
-            options.append(qtype(dtype=parsed.dtype))
+            options.append(cls(dtype=parsed.dtype))
 
         return options
 
@@ -46,6 +46,20 @@ class qtype:
 class Argument:
     name: str
     qtype: "qtype | None"
+    role: str | None = None
+
+    _allowed_roles = {
+        "weight",
+        "bias",
+        None,
+    }
+
+    def __post_init__(self):
+        if self.role not in self._allowed_roles:
+            raise ValueError(
+                f"Invalid role {self.role} for argument {self.name}. "
+                f"Allowed roles are: {self._allowed_roles}"
+            )
 
 
 @dataclass(frozen=True)
@@ -77,6 +91,23 @@ class OpSignature:
     op_type: str
     inputs: tuple[Argument, ...]
     outputs: tuple[Argument, ...]
+
+    def __post_init__(self):
+        weights = [arg for arg in self.inputs if arg.role == "weight"]
+
+        if len(weights) > 1:
+            raise ValueError(
+                f"Op {self.domain}::{self.op_type} has multiple weight arguments: "
+                f"{[arg.name for arg in weights]}"
+            )
+
+        biases = [arg for arg in self.inputs if arg.role == "bias"]
+
+        if len(biases) > 1:
+            raise ValueError(
+                f"Op {self.domain}::{self.op_type} has multiple bias arguments: "
+                f"{[arg.name for arg in biases]}"
+            )
 
 
 @dataclass(frozen=True)

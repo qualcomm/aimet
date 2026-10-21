@@ -3,7 +3,8 @@
 
 import yaml
 
-from aimet_torch.common.experimental.backends.schema import (
+from aimet_torch.experimental.backends.parser import parse_aten_op
+from aimet_torch.experimental.backends.schema import (
     OpSchema,
     OpSignature,
     Argument,
@@ -11,7 +12,6 @@ from aimet_torch.common.experimental.backends.schema import (
     EqualRange,
     qtype,
 )
-from aimet_torch.experimental.backends.parser import parse_aten_op
 
 
 def test_aten_op_schema_parsing():
@@ -56,8 +56,8 @@ type_constraints:
                 op_type="conv2d",
                 inputs=(
                     Argument(name="input", qtype=qtype("uint8")),
-                    Argument(name="weight", qtype=qtype("int8")),
-                    Argument(name="bias", qtype=qtype("int32")),
+                    Argument(name="weight", qtype=qtype("int8"), role="weight"),
+                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
@@ -74,8 +74,12 @@ type_constraints:
                 op_type="conv2d",
                 inputs=(
                     Argument(name="input", qtype=qtype("uint8")),
-                    Argument(name="weight", qtype=qtype("int8", channel_axis=0)),
-                    Argument(name="bias", qtype=qtype("int32")),
+                    Argument(
+                        name="weight",
+                        qtype=qtype("int8", channel_axis=0),
+                        role="weight",
+                    ),
+                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
@@ -92,8 +96,8 @@ type_constraints:
                 op_type="conv2d",
                 inputs=(
                     Argument(name="input", qtype=qtype("uint16")),
-                    Argument(name="weight", qtype=qtype("int8")),
-                    Argument(name="bias", qtype=qtype("int32")),
+                    Argument(name="weight", qtype=qtype("int8"), role="weight"),
+                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
@@ -110,8 +114,12 @@ type_constraints:
                 op_type="conv2d",
                 inputs=(
                     Argument(name="input", qtype=qtype("uint16")),
-                    Argument(name="weight", qtype=qtype("int8", channel_axis=0)),
-                    Argument(name="bias", qtype=qtype("int32")),
+                    Argument(
+                        name="weight",
+                        qtype=qtype("int8", channel_axis=0),
+                        role="weight",
+                    ),
+                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
@@ -128,8 +136,8 @@ type_constraints:
                 op_type="conv2d",
                 inputs=(
                     Argument(name="input", qtype=qtype("uint16")),
-                    Argument(name="weight", qtype=qtype("int16")),
-                    Argument(name="bias", qtype=qtype("int32")),
+                    Argument(name="weight", qtype=qtype("int16"), role="weight"),
+                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
@@ -146,8 +154,12 @@ type_constraints:
                 op_type="conv2d",
                 inputs=(
                     Argument(name="input", qtype=qtype("uint16")),
-                    Argument(name="weight", qtype=qtype("int16", channel_axis=0)),
-                    Argument(name="bias", qtype=qtype("int32")),
+                    Argument(
+                        name="weight",
+                        qtype=qtype("int16", channel_axis=0),
+                        role="weight",
+                    ),
+                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),

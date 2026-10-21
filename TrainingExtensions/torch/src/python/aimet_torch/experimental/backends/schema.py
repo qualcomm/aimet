@@ -1,0 +1,287 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+# pylint: disable=protected-access
+import operator
+from dataclasses import dataclass
+from pathlib import Path
+import yaml
+import torch
+from torch._subclasses.fake_tensor import FakeTensor
+from torch._C import _fx_map_arg
+
+from aimet_torch.common.experimental.backends.schema import (  # pylint: disable=unused-import
+    qtype as _qtype,
+    OpSchema as _OpSchema,
+    OpSignature,
+    Argument,
+    FixedRange,
+    EqualRange,
+)
+from aimet_torch.experimental.export._utils import (
+    _is_multi_output_op,
+    _is_grid_preserving_op,
+    _is_torch_ao_qdq_node,
+)
+from aimet_torch.quantization.affine import QuantizeDequantize
+
+
+@dataclass(frozen=True)
+class qtype(_qtype):
+    def instantiate_quantize_dequantize(
+        self, input_shape: tuple[int, ...]
+    ) -> QuantizeDequantize:
+        if self.dtype.startswith("int"):
+            bitwidth = int(self.dtype[3:])
+            qmin = -(2 ** (bitwidth - 1))
+            qmax = 2 ** (bitwidth - 1) - 1
+            symmetric = True
+        elif self.dtype.startswith("uint"):
+            bitwidth = int(self.dtype[4:])
+            qmin = 0
+            qmax = 2**bitwidth - 1
+            symmetric = False
+        else:
+            raise NotImplementedError
+
+        if self.channel_axis is None:
+            shape = ()
+        else:
+            shape = tuple(
+                dim if axis == self.channel_axis else 1
+                for axis, dim in enumerate(input_shape)
+            )
+
+        return QuantizeDequantize(
+            shape=shape,
+            qmin=qmin,
+            qmax=qmax,
+            symmetric=symmetric,
+        )
+
+
+@dataclass(frozen=True)
+class OpSchema(_OpSchema):
+    def exact_match(
+        self,
+        op: torch._ops.OpOverload,
+        weight_bw: int,
+        activation_bw: int,
+        per_channel_quantization: bool = False,
+    ) -> bool:
+        domain, op_type = op.name().split("::")
+
+        if (domain, op_type) != (self.signature.domain, self.signature.op_type):
+            return False
+
+        for arg in self.signature.inputs + self.signature.outputs:
+            if arg.role == "weight":
+                if arg.qtype.dtype not in (f"int{weight_bw}", f"uint{weight_bw}"):
+                    return False
+
+                if per_channel_quantization == (arg.qtype.channel_axis is None):
+                    return False
+
+            if (
+                arg.role is None
+                and arg.qtype
+                and arg.qtype.dtype
+                not in (f"int{activation_bw}", f"uint{activation_bw}")
+            ):
+                return False
+
+        return True
+
+    def configure_node(self, node: torch.fx.Node) -> dict[str, QuantizeDequantize]:
+        """
+        Insert QuantizeDequantize or FloatQuantizeDequantize nodes as specified in the schema.
+
+        For example, given aten::conv2d(input, weight, bias, ...) -> Tensor,
+
+        Before:
+            input --------->
+            weight --------> conv2d --------> output
+            bias ---------->
+
+        After:
+            input --> QDQ ->
+            weight -> QDQ -> conv2d -> QDQ -> output
+            bias ---> QDQ ->
+        """
+
+        def replace(args, old: torch.fx.Node, new: torch.fx.Node):
+            return _fx_map_arg(args, lambda arg: new if arg is old else arg)
+
+        graph = node.graph
+
+        if node.graph.owning_module:
+            graph_module: torch.fx.GraphModule = node.graph.owning_module
+        else:
+            raise RuntimeError("Node is not part of a GraphModule")
+
+        newly_added_qtzrs: dict[str, QuantizeDequantize] = {}
+
+        quantization_specs: dict[torch.fx.Node, Argument] = {
+            node: arg_spec
+            for node, arg_spec in zip(node.all_input_nodes, self.signature.inputs)
+        }
+
+        if isinstance(node.meta["val"], torch.Tensor):
+            quantization_specs |= {node: self.signature.outputs[0]}
+        else:
+            raise NotImplementedError(f"Node {node} returns tuple of Tensors")
+
+        for node, arg_spec in quantization_specs.items():
+            fake_input: FakeTensor = node.meta["val"]
+            qdq = arg_spec.qtype.instantiate_quantize_dequantize(fake_input.shape)
+            qdq.to(fake_input.device)
+            graph_module.add_module(f"{node.name}_qdq", qdq)
+
+            with graph.inserting_after(node):
+                qdq_node = graph.call_module(f"{node.name}_qdq", args=(node,))
+                qdq_node.meta["val"] = fake_input.clone().detach()
+
+            for user in list(node.users):
+                if user is qdq_node:
+                    continue
+
+                if _is_torch_ao_qdq_node(user):
+                    continue
+
+                user.args = replace(user.args, old=node, new=qdq_node)
+                user.kwargs = replace(user.kwargs, old=node, new=qdq_node)
+
+            newly_added_qtzrs[qdq_node.name] = qdq
+
+        return newly_added_qtzrs
+
+
+class BackendDescription:
+    def __init__(
+        self,
+        all_ops: set[OpSchema],
+        name: str | None = None,
+    ):
+        self.name = name
+        self.all_ops: dict[tuple[str, str], set[OpSchema]] = {}
+
+        for schema in all_ops:
+            signature = schema.signature
+            key = (signature.domain, signature.op_type)
+            self.all_ops.setdefault(key, set()).add(schema)
+
+    def __repr__(self) -> str:
+        return f"BackendDescription(name={self.name})"
+
+    @classmethod
+    def from_backend_id(cls, backend_id: str) -> "BackendDescription":
+        from aimet_torch.experimental.backends.parser import parse_aten_op
+
+        with open(Path(__file__).parent / f"{backend_id}.yaml", "r") as f:
+            yaml_config = yaml.safe_load(f)
+
+        all_ops = set()
+
+        for op_entry in yaml_config["ops"]:
+            if op_entry["op_type"] == "*":
+                continue
+            all_ops |= parse_aten_op(op_entry)
+
+        return cls(all_ops, name=yaml_config.get("name", None))
+
+    def get_schema(
+        self,
+        op: torch._ops.OpOverload,
+        weight_bw: int,
+        activation_bw: int,
+    ) -> OpSchema:
+        domain, op_type = op.name().split("::")
+        schemas = self.all_ops.get((domain, op_type), None)
+
+        if not schemas:
+            raise ValueError(f"Op {op.name()} not found in backend {self.name}")
+
+        for schema in schemas:
+            if schema.exact_match(op, weight_bw, activation_bw):
+                return schema
+
+        raise ValueError(
+            f"Op {op.name()} found in backend {self.name}, but no matching schema found"
+        )
+
+    def configure(
+        self,
+        graph_module: torch.fx.GraphModule,
+        weight_bw: int,
+        activation_bw: int,
+    ) -> dict[str, QuantizeDequantize]:
+        """
+        Configure graph module for quantization according to the backend description.
+        """
+        graph = graph_module.graph
+        newly_added_qtzrs: dict[str, QuantizeDequantize] = {}
+
+        for node in graph.nodes:
+            # Exclude multi-output ops which returns tuple of tensors.
+            # QDQ for each output will be attached to the the succeeding getitem node
+            #
+            #                                      ┌─ getitem -> y0 -> QDQ
+            # ... -> QDQ -> split -> (y0, y1, y2) ─┼─ getitem -> y1 -> QDQ
+            #                                      └─ getitem -> y2 -> QDQ
+            if _is_multi_output_op(node):
+                continue
+
+            # getitem output will inherit the previous node's input encoding
+            # if the previous node is a grid-preserving op (aka data movement op)
+            if node.target is operator.getitem and _is_grid_preserving_op(
+                node.all_input_nodes[0]
+            ):
+                continue
+
+            # Exclude grid-preserving ops (aka data movement ops) if its input is already quantized.
+            # This is to avoid redundant quantize-dequantize pairs around data movement ops.
+            if _is_grid_preserving_op(node) and node.target.overloadpacket not in (
+                torch.ops.aten.relu,
+                torch.ops.aten.relu_,
+            ):
+                continue
+
+            # Nodes followed by relu will inherit output encoding from relu
+            if all(
+                isinstance(user.target, torch._ops.OpOverload)
+                and user.target.overloadpacket
+                in (torch.ops.aten.relu, torch.ops.aten.relu_)
+                for user in node.users
+            ):
+                continue
+
+            val = node.meta.get("val", None)
+
+            # Exclude non-tensors from quantization
+            if not isinstance(val, torch.Tensor):
+                continue
+
+            # Exclude non-floating point tensors from quantization
+            if not val.dtype.is_floating_point:
+                continue
+
+            if node.name in newly_added_qtzrs:
+                continue
+
+            if _is_torch_ao_qdq_node(node):
+                continue
+
+            if all(_is_torch_ao_qdq_node(user) for user in node.users):
+                continue
+
+            if not isinstance(node.target, torch._ops.OpOverload):
+                continue
+
+            schema: OpSchema = self.get_schema(
+                node.target, weight_bw=weight_bw, activation_bw=activation_bw
+            )
+            newly_added_qtzrs |= schema.configure_node(node)
+
+        # Recompile the graph
+        graph_module.recompile()
+        return newly_added_qtzrs

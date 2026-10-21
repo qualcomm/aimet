@@ -6,7 +6,7 @@ import torch
 from torch._C import _jit_get_all_schemas
 
 from aimet_torch.experimental.export.qnn import _qualcomm_aten_ir_ops
-from aimet_torch.common.experimental.backends.schema import (
+from aimet_torch.experimental.backends.schema import (
     qtype,
     OpSchema,
     OpSignature,
@@ -31,6 +31,16 @@ _all_qualcomm_aten_function_schemas = {
     if _fullname(s) in _qualcomm_aten_ir_op_names
 }
 del _qualcomm_aten_ir_op_names, _qualcomm_aten_ir_ops
+
+
+# fmt: off
+_tensor_roles = {
+    #   op_type    | arg_name   | role
+    # ---------------------------------
+    ("aten::conv2d", "weight"): "weight",
+    ("aten::conv2d", "bias"  ): "bias",
+}
+# fmt: on
 
 
 def _validate_against_aten_schema(
@@ -87,7 +97,14 @@ def parse_aten_op(op_entry: dict) -> set[OpSchema]:
         ]
 
         for combo in itertools.product(*per_arg_options):
-            args = {name: Argument(name=name, qtype=qt) for name, qt in combo}
+            args = {
+                arg_name: Argument(
+                    name=arg_name,
+                    qtype=qt,
+                    role=_tensor_roles.get((op_type_fullname, arg_name)),
+                )
+                for arg_name, qt in combo
+            }
 
             value_constraints = tuple(
                 FixedRange(
