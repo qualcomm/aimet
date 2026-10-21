@@ -31,18 +31,25 @@ from . import opset10, opset13, opset19, opset21, opset23, opset25
 from ..utils import AimetLogger
 
 __all__ = [
+    "_ParamUtils",
     "_add_onnx_qdq_nodes",
     "_convert_version",
+    "_convert_version_with_external_weights",
     "_derive_const_rescale_op_output_encodings",
     "_derive_data_movement_op_encodings",
+    "_all_op_schemas",
+    "_finalize_graph_changes",
     "_get_all_constants",
     "_get_effective_encoding",
+    "_get_node_attribute",
     "_is_grid_equivariant_op",
     "_is_grid_preserving_op",
     "_is_htp_interpolation_op",
     "_is_metadata_op",
     "_iterate_graph_nodes_recursive",
+    "_iterate_graphs_recursive",
     "_onnx_to_qnn_ir",
+    "_remove_onnx_qdq_nodes",
     "contains_tensor_type",
     "to_array",
 ]

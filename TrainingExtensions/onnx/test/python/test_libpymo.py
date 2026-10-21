@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-import aimet_onnx.common._libpymo as libpymo
-import aimet_onnx.common.py_libpymo as py_libpymo
+from aimet_onnx.common import libpymo
+from aimet_onnx.common import py_libpymo
 from aimet_onnx.common.defs import qtype
 from aimet_onnx.common.quantsim import _max_representable_value
 
