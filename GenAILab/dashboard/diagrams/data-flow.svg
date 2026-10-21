@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#5b6b7a"/>
+    </marker>
+    <style>
+      .box{rx:10;ry:10;stroke-width:1.5;}
+      .lbl{font-size:13px;fill:#1f2933;font-weight:600;}
+      .sub{font-size:11px;fill:#52606d;}
+      .edge{stroke:#5b6b7a;stroke-width:2;fill:none;marker-end:url(#arrow);}
+      .edgelbl{font-size:10.5px;fill:#3e4c59;}
+      .store{fill:#e6f0ff;stroke:#3366cc;}
+      .compute{fill:#eaf7ee;stroke:#2f9e44;}
+      .edgebox{fill:#fff4e6;stroke:#e8590c;}
+      .actor{fill:#f1f3f5;stroke:#868e96;}
+      .title{font-size:16px;fill:#1f2933;font-weight:700;}
+    </style>
+  </defs>
+
+  <text x="20" y="30" class="title">GenAILab — Data Flow</text>
+
+  <!-- Uploader -->
+  <rect class="box actor" x="20" y="70" width="120" height="60"/>
+  <text x="80" y="96" class="lbl" text-anchor="middle">Uploader / CI</text>
+  <text x="80" y="114" class="sub" text-anchor="middle">genai-test, users</text>
+
+  <!-- Staging bucket -->
+  <rect class="box store" x="190" y="70" width="150" height="60"/>
+  <text x="265" y="94" class="lbl" text-anchor="middle">S3 staging</text>
+  <text x="265" y="112" class="sub" text-anchor="middle">1-day expiry</text>
+
+  <!-- Lambda -->
+  <rect class="box compute" x="390" y="70" width="150" height="60"/>
+  <text x="465" y="94" class="lbl" text-anchor="middle">Ingest Lambda</text>
+  <text x="465" y="112" class="sub" text-anchor="middle">parse → load</text>
+
+  <!-- RDS -->
+  <rect class="box store" x="600" y="30" width="150" height="60"/>
+  <text x="675" y="54" class="lbl" text-anchor="middle">RDS Postgres</text>
+  <text x="675" y="72" class="sub" text-anchor="middle">genai_laboratory</text>
+
+  <!-- Artifact bucket -->
+  <rect class="box store" x="600" y="130" width="150" height="60"/>
+  <text x="675" y="154" class="lbl" text-anchor="middle">S3 artifacts</text>
+  <text x="675" y="172" class="sub" text-anchor="middle">long-term store</text>
+
+  <!-- Metabase EC2 -->
+  <rect class="box compute" x="390" y="240" width="150" height="60"/>
+  <text x="465" y="264" class="lbl" text-anchor="middle">Metabase (EC2)</text>
+  <text x="465" y="282" class="sub" text-anchor="middle">Docker container</text>
+
+  <!-- ALB -->
+  <rect class="box edgebox" x="190" y="240" width="150" height="60"/>
+  <text x="265" y="264" class="lbl" text-anchor="middle">ALB</text>
+  <text x="265" y="282" class="sub" text-anchor="middle">public URL</text>
+
+  <!-- Viewer -->
+  <rect class="box actor" x="20" y="240" width="120" height="60"/>
+  <text x="80" y="270" class="lbl" text-anchor="middle">Viewers</text>
+  <text x="80" y="288" class="sub" text-anchor="middle">dashboards</text>
+
+  <!-- edges top row -->
+  <path class="edge" d="M140,100 L188,100"/>
+  <text x="164" y="92" class="edgelbl" text-anchor="middle">upload</text>
+  <path class="edge" d="M340,100 L388,100"/>
+  <text x="364" y="92" class="edgelbl" text-anchor="middle">ObjectCreated</text>
+  <path class="edge" d="M540,90 L598,66"/>
+  <text x="576" y="70" class="edgelbl" text-anchor="middle">rows</text>
+  <path class="edge" d="M540,110 L598,150"/>
+  <text x="576" y="140" class="edgelbl" text-anchor="middle">artifact</text>
+
+  <!-- read edge RDS -> Metabase -->
+  <path class="edge" d="M620,90 C560,180 520,200 480,238"/>
+  <text x="600" y="200" class="edgelbl" text-anchor="middle">SELECT :5432</text>
+
+  <!-- bottom row (right to left) -->
+  <path class="edge" d="M388,270 L342,270"/>
+  <text x="365" y="262" class="edgelbl" text-anchor="middle">:3000</text>
+  <path class="edge" d="M188,270 L142,270"/>
+  <text x="165" y="262" class="edgelbl" text-anchor="middle">HTTP</text>
+
+  <!-- legend -->
+  <rect x="600" y="250" width="14" height="14" class="store"/>
+  <text x="620" y="262" class="sub">storage</text>
+  <rect x="690" y="250" width="14" height="14" class="compute"/>
+  <text x="710" y="262" class="sub">compute</text>
+  <rect x="600" y="272" width="14" height="14" class="edgebox"/>
+  <text x="620" y="284" class="sub">ingress</text>
+  <rect x="690" y="272" width="14" height="14" class="actor"/>
+  <text x="710" y="284" class="sub">actor</text>
+</svg>

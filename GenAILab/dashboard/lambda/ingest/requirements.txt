@@ -1,0 +1,5 @@
+# Runtime dependencies for the ingest Lambda.
+# pg8000 is a pure-Python Postgres driver (no libpq / native build needed).
+# boto3 is provided by the Lambda runtime; pinned here for local runs/tests.
+pg8000>=1.30
+boto3>=1.34

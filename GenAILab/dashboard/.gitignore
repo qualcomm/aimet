@@ -1,0 +1,9 @@
+# Sensitive infra detail + AWS discovery tooling — never commit.
+# Holds the Confluence doc draft, the read-only inventory scripts, and their
+# raw JSON dumps (account IDs, IPs, ARNs, secret metadata).
+_confluence/
+*.tgz
+
+# Lambda build output
+lambda/**/build/
+lambda/**/current.zip
