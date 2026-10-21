@@ -8,6 +8,12 @@ from typing import Optional, Union
 
 from .utils import AimetLogger
 
+__all__ = [
+    "_EarlyStoppingConfig",
+    "_create_early_stopping",
+]
+
+
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AdaScale)
 
 

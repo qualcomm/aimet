@@ -10,6 +10,12 @@ from .graph_pattern_matcher import PatternType
 from .utils import AimetLogger
 from .connected_graph.operation import Op
 
+__all__ = [
+    "GraphSearcher",
+    "_check_if_conv3d_or_depthwise_conv",
+]
+
+
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
 
 
