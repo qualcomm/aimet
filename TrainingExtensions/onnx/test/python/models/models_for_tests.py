@@ -5266,6 +5266,87 @@ def unsafe_concat_tie_model():
     return model
 
 
+def unsafe_split_relu_tie_model():
+    """
+                   +---------> (output_2)
+    input -> Split +-> Relu -> (output_1)
+    """
+    graph = helper.make_graph(
+        name="SplitReluTieModel",
+        nodes=[
+            helper.make_node(
+                "Split",
+                inputs=["input"],
+                outputs=["split_out_0", "output_2"],
+                name="split",
+                num_outputs=2,
+                axis=1,
+            ),
+            helper.make_node(
+                "Relu",
+                inputs=["split_out_0"],
+                outputs=["output_1"],
+                name="relu",
+            ),
+        ],
+        inputs=[
+            helper.make_tensor_value_info("input", TensorProto.FLOAT, shape=[10, 20])
+        ],
+        outputs=[
+            helper.make_tensor_value_info(
+                "output_1", TensorProto.FLOAT, shape=[10, 10]
+            ),
+            helper.make_tensor_value_info(
+                "output_2", TensorProto.FLOAT, shape=[10, 10]
+            ),
+        ],
+    )
+    model = make_model(graph=graph)
+    onnx.checker.check_model(model, True)
+    return model
+
+
+def unsafe_split_concat_tie_model():
+    """
+                                      +-------------------------> (output_2)
+    (input_1) -> input_1_QDQ -> Split +-> Concat -> output_QDQ -> (output_1)
+    (input_2) -> input_2_QDQ ---------------^
+    """
+    graph = helper.make_graph(
+        name="SplitConcatTieModel",
+        nodes=[
+            helper.make_node(
+                "Split",
+                inputs=["input_1"],
+                outputs=["split_out_0", "output_2"],
+                name="split",
+                num_outputs=2,
+                axis=1,
+            ),
+            helper.make_node(
+                "Concat",
+                inputs=["split_out_0", "input_2"],
+                outputs=["output_1"],
+                name="concat",
+                axis=1,
+            ),
+        ],
+        inputs=[
+            helper.make_tensor_value_info("input_1", TensorProto.FLOAT, shape=[10, 10]),
+            helper.make_tensor_value_info("input_2", TensorProto.FLOAT, shape=[10, 10]),
+        ],
+        outputs=[
+            helper.make_tensor_value_info(
+                "output_1", TensorProto.FLOAT, shape=[10, 15]
+            ),
+            helper.make_tensor_value_info("output_2", TensorProto.FLOAT, shape=[10, 5]),
+        ],
+    )
+    model = make_model(graph=graph)
+    onnx.checker.check_model(model, True)
+    return model
+
+
 def relu_maxpool_concat_model():
     """
                     ----- Add -------------

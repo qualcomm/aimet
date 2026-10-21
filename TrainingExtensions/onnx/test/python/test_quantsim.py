@@ -5259,6 +5259,44 @@ class TestEncodingPropagation:
             is not sim.qc_quantize_op_dict["mul_output"]
         )
 
+    def test_quantsim_skips_unsafe_split_relu_tie_quantizers(self):
+        """
+        Given
+                                      +-----------------------> (output_2)
+        (input) -> input_QDQ -> Split +-> Relu -> output_QDQ -> (output_1)
+                                                  (∈ [0, ?])
+
+        output_QDQ should NOT be tied to input_QDQ
+        """
+        model = models_for_tests.unsafe_split_relu_tie_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model, config_file="htp_v79")
+
+        # No quantizer should be tied
+        assert len(sim.qc_quantize_op_dict.keys()) == len(
+            set(sim.qc_quantize_op_dict.values())
+        )
+
+    def test_quantsim_skips_unsafe_split_concat_tie_quantizers(self):
+        """
+        Given
+                                          +-------------------------> (output_2)
+        (input_1) -> input_1_QDQ -> Split +-> Concat -> output_QDQ -> (output_1)
+        (input_2) -> input_2_QDQ ---------------^
+
+        output_QDQ should be tied to input_2_QDQ, but NOT to input_1_QDQ
+        """
+        model = models_for_tests.unsafe_split_concat_tie_model()
+        with _apply_constraints(True):
+            sim = QuantizationSimModel(model, config_file="htp_v79")
+
+        assert sim.qc_quantize_op_dict.keys() == {"input_1", "input_2", "output_1"}
+        assert sim.qc_quantize_op_dict["output_1"] is sim.qc_quantize_op_dict["input_2"]
+        assert (
+            sim.qc_quantize_op_dict["output_1"]
+            is not sim.qc_quantize_op_dict["input_1"]
+        )
+
     @pytest.mark.parametrize(
         "model_factory",
         [

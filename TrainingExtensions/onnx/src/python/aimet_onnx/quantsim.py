@@ -2515,6 +2515,30 @@ class QuantizationSimModel:
         # pylint: disable = protected-access
         if not op_types_to_tie:
             return
+
+        graph_outputs = set(self.connected_graph.outputs())
+
+        def get_end_consumers(inp: Product) -> Iterable[Op | Product]:
+            """
+            Recursively find all end consumers of given input.
+            For example:
+                                     +-> end_consumer_1
+                          +-> Split -+-> end_consumer_2
+            inp -> Split -+------------> end_consumer_3
+            """
+            for consumer in inp.consumers:
+                if consumer.type != "Split":
+                    yield consumer
+                    continue
+
+                for out in consumer.outputs:
+                    yield from get_end_consumers(out)
+
+                    # Edge case: Split output is a graph output.
+                    # Return output itself as the "consumer"
+                    if not out.consumers and out in graph_outputs:
+                        yield out
+
         qtzr_to_name = {qtzr: name for name, qtzr in self.qc_quantize_op_dict.items()}
         visited = set()
 
@@ -2564,7 +2588,10 @@ class QuantizationSimModel:
                         src_name = inp.name
 
                     consumers = set(
-                        self.connected_graph.get_product(src_name).consumers
+                        end_consumer
+                        for end_consumer in get_end_consumers(
+                            self.connected_graph.get_product(src_name)
+                        )
                     )
                     path_to_quantizer = self._get_path_to_effective_quantizer(inp.name)
                     if path_to_quantizer:
@@ -2573,15 +2600,27 @@ class QuantizationSimModel:
                             for node in path_to_quantizer
                             if node.op_type != "QcQuantizeOp"
                         ]
-                        all_consumers = consumers | set(
-                            consumer for op in cg_path for consumer in op.output_ops
+                        all_end_consumers = consumers | set(
+                            end_consumer
+                            for op in cg_path
+                            for out in op.outputs
+                            for end_consumer in get_end_consumers(out)
                         )
                         consumers = set(
-                            consumer
-                            for consumer in all_consumers
-                            if consumer not in cg_path
+                            end_consumer
+                            for end_consumer in all_end_consumers
+                            if end_consumer not in cg_path
                         )
 
+                    # If there are multiple consumers of input quantizer,
+                    # it's not safe to tie the output quantizer to the input quantizer.
+                    # For example, in the following graph, tying output_QDQ to input_QDQ,
+                    # which has multiple consumers, leads to catastrophic accuracy drop.
+                    #
+                    #                      +---------------------------+
+                    #                      |                           v
+                    #  input -> input_QDQ -+-> Relu -> output_QDQ -> MatMul -> ...
+                    #                                  (∈ [0, ?])
                     if len(consumers) > 1:
                         continue
 
@@ -2632,11 +2671,22 @@ class QuantizationSimModel:
         :param op_types_to_tie: List of onnx ops for which to tie quantizers
         """
         # pylint: disable=protected-access
-        n_consumers: dict[str, int] = defaultdict(int)
+        seen: set[str] = set()
+        has_multiple_consumers: dict[str, bool] = {}
+
         for graph in self._graphs_to_quantize():
             for node in graph.node:
-                for inp in node.input:
-                    n_consumers[inp] += 1
+                if node.op_type == "Split":
+                    # Split node's output consumers are the effective consumers
+                    # of Split input
+                    has_multiple_consumers[node.input[0]] = True
+                else:
+                    for inp in node.input:
+                        has_multiple_consumers[inp] = inp in seen
+
+                seen |= set(node.input)
+
+        del seen
 
         for op in self.connected_graph.ordered_ops:
             if op.type not in op_types_to_tie:
@@ -2688,7 +2738,9 @@ class QuantizationSimModel:
                     path = self._get_path_to_effective_quantizer(
                         op.get_module().input[0]
                     )
-                    if path and any(n_consumers[node.output[0]] != 1 for node in path):
+                    if path and any(
+                        has_multiple_consumers[node.output[0]] for node in path
+                    ):
                         # Input is consumed by multiple consumers when output range is constrained.
                         # For example:
                         #                           [0, ?]

@@ -92,6 +92,14 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         self.ordered_ops = self._get_ordered_ops()
         self._assert_no_conflicting_shared_parameters()
         self._warn_on_conflicting_shared_bias_initializers()
+        self._input_names = [input.name for input in self.model.graph.input]
+        self._output_names = [output.name for output in self.model.graph.output]
+
+    def inputs(self) -> List[Product]:
+        return [self._products[input_name] for input_name in self._input_names]
+
+    def outputs(self) -> List[Product]:
+        return [self._products[output_name] for output_name in self._output_names]
 
     def get_op_from_module_name(self, name: str) -> Op:
         """
