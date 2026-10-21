@@ -42,6 +42,7 @@ import pytest
 peft = pytest.importorskip("peft")
 torch = pytest.importorskip("torch")
 transformers = pytest.importorskip("transformers")
+safetensors = pytest.importorskip("safetensors")
 
 from aimet_onnx import int4, int8, int16
 from aimet_onnx.experimental.lora import (

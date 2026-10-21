@@ -17,6 +17,10 @@ import pytest
 import torch
 import torch.nn as nn
 
+from .conftest import skip_module_on_windows_arm64
+
+skip_module_on_windows_arm64("safetensors is not available on Windows ARM64")
+
 from aimet_onnx.experimental.lora.lora_graph_passes import (
     LORA_CONV_ADAPTER_PATTERN,
     LORA_MATMUL_ADAPTER_PATTERN,
