@@ -12,7 +12,7 @@ import math
 import numpy as np
 import warnings
 from dataclasses import dataclass
-from typing import TypeVar, Generic, Tuple, Optional, List
+from typing import TypeVar, Generic, Tuple, Optional, List, Iterator
 import itertools
 import torch
 from aimet_torch.common.quantsim import _get_minimum_scale
@@ -145,11 +145,12 @@ class _HistogramObserver(_Observer[_Histogram]):
         self._histogram_range_limit = None
 
     # pylint: disable=too-many-locals
-    @torch.no_grad()
-    def collect_stats(self, input_tensor: torch.Tensor) -> List[_Histogram]:
+    def _get_histogram_inputs(
+        self, input_tensor: torch.Tensor
+    ) -> Iterator[torch.Tensor]:
+        """Yield input slices in histogram order for both collection and merging."""
         from ._utils import interleave, concretize_block_size
 
-        hist_stats = []
         histogram_shape = self.shape
 
         if self.block_size is not None:
@@ -183,6 +184,12 @@ class _HistogramObserver(_Observer[_Histogram]):
                     torch.select(hist_input, axis, index), axis
                 )
 
+            yield hist_input
+
+    @torch.no_grad()
+    def collect_stats(self, input_tensor: torch.Tensor) -> List[_Histogram]:
+        hist_stats = []
+        for hist_input in self._get_histogram_inputs(input_tensor):
             hist_min, hist_max = self._get_min_max(hist_input)
 
             bin_edges = self._create_bin_edges(
@@ -250,10 +257,11 @@ class _HistogramObserver(_Observer[_Histogram]):
             self._histogram_range_limit = torch.stack((left_limit, right_limit), dim=1)
             return
 
-        hist_inputs = torch.reshape(input_tensor, (len(new_stats_list), -1))
-        for index, new_stats in enumerate(new_stats_list):
+        hist_inputs = self._get_histogram_inputs(input_tensor)
+        for index, (new_stats, curr_input) in enumerate(
+            zip(new_stats_list, hist_inputs)
+        ):
             curr_stats = self.stats[index]
-            curr_input = hist_inputs[index]
             left_limit, right_limit = self._histogram_range_limit[index]
 
             updated_min = new_stats.min.clamp(left_limit, curr_stats.bin_edges[0])
