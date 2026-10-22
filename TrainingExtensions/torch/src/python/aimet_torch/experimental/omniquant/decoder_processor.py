@@ -99,7 +99,9 @@ class TransformerProcessor:
             ]
 
     @classmethod
-    def init_let_params(cls, let_pair_list: List[_LetPair], num_repeats):
+    def init_let_params(
+        cls, let_pair_list: List[_LetPair], num_repeats, num_key_value_heads=1
+    ):
         """Register let params to LET pairs."""
         for _let_pair in let_pair_list:
             prev_modules, foll_modules = _let_pair.prev, _let_pair.follow
@@ -128,5 +130,7 @@ class TransformerProcessor:
                 else:
                     nr = 1
                 module.param_quantizers["weight"].register_let_params(
-                    foll_scale=prev_scale, num_repeats=nr
+                    foll_scale=prev_scale,
+                    num_repeats=nr,
+                    num_key_value_heads=num_key_value_heads if nr > 1 else 1,
                 )
