@@ -315,10 +315,22 @@ def _is_torch_ao_dq_node(node: torch.fx.Node) -> bool:
 
 
 _torch_ao_q_ops = (
-    *(torch.ops.quantized_decomposed.quantize_per_tensor.op_overloads()),
-    *(torch.ops.quantized_decomposed.quantize_per_channel.op_overloads()),
+    *(
+        getattr(torch.ops.quantized_decomposed.quantize_per_tensor, overload_name)
+        for overload_name in torch.ops.quantized_decomposed.quantize_per_tensor.overloads()
+    ),
+    *(
+        getattr(torch.ops.quantized_decomposed.quantize_per_channel, overload_name)
+        for overload_name in torch.ops.quantized_decomposed.quantize_per_channel.overloads()
+    ),
 )
 _torch_ao_dq_ops = (
-    *(torch.ops.quantized_decomposed.dequantize_per_tensor.op_overloads()),
-    *(torch.ops.quantized_decomposed.dequantize_per_channel.op_overloads()),
+    *(
+        getattr(torch.ops.quantized_decomposed.dequantize_per_tensor, overload_name)
+        for overload_name in torch.ops.quantized_decomposed.dequantize_per_tensor.overloads()
+    ),
+    *(
+        getattr(torch.ops.quantized_decomposed.dequantize_per_channel, overload_name)
+        for overload_name in torch.ops.quantized_decomposed.dequantize_per_channel.overloads()
+    ),
 )
