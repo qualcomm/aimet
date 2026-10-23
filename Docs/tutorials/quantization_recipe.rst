@@ -56,7 +56,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct">LLaMA 3.2 1B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>12.14</td><td>46.06</td><td>&lt;1</td><td>7</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>12.14</td><td>46.06</td><td>—</td><td>7</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r1)<br>AdaScale (b=128, i=2048)</td>
@@ -70,7 +70,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct">LLaMA 3.2 3B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>10.13</td><td>60.74</td><td>&lt;1</td><td>14</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>10.13</td><td>60.74</td><td>—</td><td>14</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r1)<br>AdaScale (b=128, i=1024)</td>
@@ -84,7 +84,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen2.5-0.5B">Qwen 2.5 0.5B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>13.14</td><td>46.30</td><td>&lt;1</td><td>4</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>13.14</td><td>46.30</td><td>—</td><td>4</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT16</td><td>SpinQuant (r1)<br>AdaScale (b=128, i=2048)</td>
@@ -98,7 +98,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen2.5-1.5B">Qwen 2.5 1.5B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>54.65</td><td>&lt;1</td><td>8</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>54.65</td><td>—</td><td>8</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT16</td><td>SpinQuant (r1)<br>AdaScale (b=128, i=1024)</td>
@@ -112,7 +112,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="2"><a href="https://huggingface.co/Qwen/Qwen3-0.6B">Qwen 3 0.6B</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>19.15</td><td>47.11</td><td>&lt;1</td><td>8</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>19.15</td><td>47.11</td><td>—</td><td>8</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r2 + r3)<br>AdaScale (b=128, i=2048)</td>
@@ -122,7 +122,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="2"><a href="https://huggingface.co/Qwen/Qwen3-1.7B">Qwen 3 1.7B</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>15.63</td><td>59.96</td><td>1</td><td>18</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>15.63</td><td>59.96</td><td>—</td><td>18</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>AdaScale (b=128, i=2048)</td>
@@ -132,7 +132,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen3-4B">Qwen 3 4B</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>70.06</td><td>&lt;1</td><td>17</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>70.06</td><td>—</td><td>17</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r1)<br>AdaScale (b=128, i=512)</td>
@@ -146,7 +146,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="2"><a href="https://huggingface.co/Qwen/Qwen3-8B">Qwen 3 8B</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>8.99</td><td>74.96</td><td>2</td><td>34</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>8.99</td><td>74.96</td><td>—</td><td>34</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>AdaScale (b=128, i=2048)</td>
@@ -155,8 +155,18 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       </tbody>
       <tbody>
         <tr>
+          <td rowspan="2"><a href="https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct">Qwen 3 VL 8B Instruct</a></td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>7.78</td><td>76.3</td><td>—</td><td>37</td>
+        </tr>
+        <tr>
+          <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>AdaScale (b=128, i=2048)</td>
+          <td>8.37</td><td>72.63</td><td>366</td><td>75</td>
+        </tr>
+      </tbody>
+      <tbody>
+        <tr>
           <td rowspan="2"><a href="https://huggingface.co/Qwen/Qwen3.5-4B">Qwen 3.5 4B</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>8.88</td><td>72.03</td><td>1</td><td>22</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>8.88</td><td>72.03</td><td>—</td><td>22</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>AdaScale (b=128, i=2048)</td>
@@ -166,7 +176,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/microsoft/Phi-3.5-mini-instruct">Phi 3.5 mini Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>5.77</td><td>68.89</td><td>&lt;1</td><td>17</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>5.77</td><td>68.89</td><td>—</td><td>17</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r1)<br>AdaScale (b=32, i=256)</td>
@@ -180,7 +190,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="2"><a href="https://huggingface.co/google/gemma-3-4b-it">Gemma 3 4B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>13.41</td><td>58.41</td><td>&lt;1</td><td>20</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>13.41</td><td>58.41</td><td>—</td><td>20</td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r2)<br>SeqMSE</td>
@@ -190,7 +200,7 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="2"><a href="https://huggingface.co/google/gemma-3-1b-it">Gemma 3 1B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>23.11</td><td>39.92</td><td>&lt;1</td><td>8</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>23.11</td><td>39.92</td><td>—</td><td>8</td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r2)<br>SeqMSE</td>
@@ -200,11 +210,21 @@ AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inl
       <tbody>
         <tr>
           <td rowspan="2"><a href="https://huggingface.co/google/gemma-3-270m-it">Gemma 3 270M Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>54.88</td><td>26.31</td><td>&lt;1</td><td>4</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>54.88</td><td>26.31</td><td>—</td><td>4</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant (r2)<br>AdaScale (b=128, i=2048)</td>
           <td>64.79</td><td>26.83</td><td>26</td><td>81</td>
+        </tr>
+      </tbody>
+      <tbody>
+        <tr>
+          <td rowspan="2"><a href="https://huggingface.co/google/gemma-4-E4B-it">Gemma 4 E4B Instruct</a></td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>—</td><td>58.93</td><td>—</td><td>34</td>
+        </tr>
+        <tr>
+          <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SeqMSE</td>
+          <td>—</td><td>53.53</td><td>23</td><td>64</td>
         </tr>
       </tbody>
     </table>
