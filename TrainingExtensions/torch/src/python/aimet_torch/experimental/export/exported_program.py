@@ -284,7 +284,7 @@ class ExportedProgram(torch.export.ExportedProgram):
 
         if uncalibrated_qtzrs:
             raise RuntimeError(
-                "Following quantizers are not calibrated:\n{uncalibrated_qtzrs}\n"
+                f"Following quantizers are not calibrated:\n{uncalibrated_qtzrs}\n"
                 "Please make sure to run forward passes with "
                 "calibration dataset inside the context manager."
             )

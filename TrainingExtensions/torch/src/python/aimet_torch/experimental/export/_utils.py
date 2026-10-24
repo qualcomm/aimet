@@ -3,7 +3,7 @@
 
 # pylint: disable=protected-access
 from contextlib import ExitStack, contextmanager
-from typing import Any, Iterable, Callable
+from typing import Any, Iterable, Callable, TYPE_CHECKING
 import operator
 
 import torch
@@ -13,6 +13,9 @@ from torch._export.utils import _detect_fake_mode_from_gm
 from torch.export.graph_signature import InputKind, InputSpec, TensorArgument
 from torch.fx.passes.shape_prop import _extract_tensor_metadata
 from torch._subclasses.fake_tensor import FakeTensorMode
+
+if TYPE_CHECKING:
+    from aimet_torch.quantization.affine import QuantizeDequantize
 
 
 _GRID_PRESERVING_OPS = (
@@ -334,3 +337,27 @@ _torch_ao_dq_ops = (
         for overload_name in torch.ops.quantized_decomposed.dequantize_per_channel.overloads()
     ),
 )
+
+
+def _is_aimet_qdq_node(qdq_node: torch.fx.Node | None) -> bool:
+    return _get_aimet_qdq_module(qdq_node) is not None
+
+
+def _get_aimet_qdq_module(
+    qdq_node: torch.fx.Node | None,
+) -> "QuantizeDequantize | None":
+    from aimet_torch.quantization.affine import QuantizeDequantize
+
+    if (
+        qdq_node
+        and qdq_node.op == "call_module"
+        and isinstance(qdq_node.target, str)
+        and (graph_module := qdq_node.graph.owning_module)
+        and isinstance(
+            (qdq_module := graph_module.get_submodule(qdq_node.target)),
+            QuantizeDequantize,
+        )
+    ):
+        return qdq_module
+
+    return None

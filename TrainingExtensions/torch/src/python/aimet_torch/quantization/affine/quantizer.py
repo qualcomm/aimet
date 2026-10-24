@@ -378,8 +378,8 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):  # pylint: disable=too-man
     @torch.no_grad()
     def set_range(
         self,
-        min: Optional[torch.Tensor],
-        max: Optional[torch.Tensor],
+        min: Optional[torch.Tensor | float],
+        max: Optional[torch.Tensor | float],
     ):
         """
         Set quantization parameters to the given min-max range.

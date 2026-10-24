@@ -13,17 +13,43 @@ from torch._C import _fx_map_arg
 from aimet_torch.common.experimental.backends.schema import (  # pylint: disable=unused-import
     qtype as _qtype,
     OpSchema as _OpSchema,
-    OpSignature,
-    Argument,
-    FixedRange,
+    OpSignature as _OpSignature,
+    Argument as _Argument,
+    FixedRange as _FixedRange,
     EqualRange,
 )
 from aimet_torch.experimental.export._utils import (
     _is_multi_output_op,
     _is_grid_preserving_op,
     _is_torch_ao_qdq_node,
+    _is_aimet_qdq_node,
+    _get_aimet_qdq_module,
 )
 from aimet_torch.quantization.affine import QuantizeDequantize
+
+
+@dataclass(frozen=True)
+class FixedRange(_FixedRange):
+    # Overwrite parent type hint
+    arg: "Argument"
+
+    def apply(self, qdq_nodes: dict["Argument", torch.fx.Node]):
+        qdq_node = qdq_nodes.get(self.arg, None)
+        qdq_module = _get_aimet_qdq_module(qdq_node)
+
+        if not qdq_module:
+            # qdq_module=None indicatese this argument is not quantized.
+            # Skip applying constraints
+            return
+
+        if not isinstance(qdq_module, QuantizeDequantize):
+            raise TypeError(f"Expected QuantizeDequantize, got {type(qdq_module)}")
+
+        qdq_module.set_range(self.min, self.max)
+        qdq_module.allow_overwrite(
+            min=self.min is None,
+            max=self.max is None,
+        )
 
 
 @dataclass(frozen=True)
@@ -61,7 +87,23 @@ class qtype(_qtype):
 
 
 @dataclass(frozen=True)
+class Argument(_Argument):
+    # Overwrite parent type hint
+    qtype: "qtype | None" = None
+
+
+@dataclass(frozen=True)
+class OpSignature(_OpSignature):
+    # Overwrite parent type hint
+    inputs: tuple[Argument, ...]
+    outputs: tuple[Argument, ...]
+
+
+@dataclass(frozen=True)
 class OpSchema(_OpSchema):
+    # Overwrite parent type hint
+    signature: OpSignature
+
     def exact_match(
         self,
         op: torch._ops.OpOverload,
@@ -76,6 +118,9 @@ class OpSchema(_OpSchema):
 
         for arg in self.signature.inputs + self.signature.outputs:
             if arg.role == "weight":
+                if not arg.qtype:
+                    return False
+
                 if arg.qtype.dtype not in (f"int{weight_bw}", f"uint{weight_bw}"):
                     return False
 
@@ -100,13 +145,30 @@ class OpSchema(_OpSchema):
 
         Before:
             input --------->
-            weight --------> conv2d --------> output
+            weight --------> conv2d --------> ...
             bias ---------->
 
         After:
             input --> QDQ ->
-            weight -> QDQ -> conv2d -> QDQ -> output
+            weight -> QDQ -> conv2d -> QDQ -> ...
             bias ---> QDQ ->
+
+
+        Args:
+            node (torch.fx.Node): Main node to be configured.
+                Corresponds to "conv2d" in the example above.
+
+        Returns:
+            dict[str, QuantizeDequantize]: A dictionary mapping the names of the newly created QDQ nodes
+                to their corresponding QuantizeDequantize modules.
+
+        Local Variables:
+            target_node (torch.fx.Node): The node to which the QDQ will be attached.
+                Corresponds to "input", "weight", "bias", and "conv2d" in the example above.
+            qdq_node (torch.fx.Node): The newly created quantize-dequantize nodes,
+                each of which is associated with one QuantizeDequantize module.
+                Corresponds to the QDQ nodes in the example above.
+            qdq_module (QuantizeDequantize): The QuantizeDequantize module associated with the qdq_node.
         """
 
         def replace(args, old: torch.fx.Node, new: torch.fx.Node):
@@ -120,40 +182,72 @@ class OpSchema(_OpSchema):
             raise RuntimeError("Node is not part of a GraphModule")
 
         newly_added_qtzrs: dict[str, QuantizeDequantize] = {}
-
-        quantization_specs: dict[torch.fx.Node, Argument] = {
-            node: arg_spec
-            for node, arg_spec in zip(node.all_input_nodes, self.signature.inputs)
+        quantization_specs: dict[Argument, torch.fx.Node] = {
+            arg_spec: target_node
+            for arg_spec, target_node in zip(
+                self.signature.inputs, node.all_input_nodes
+            )
         }
 
         if isinstance(node.meta["val"], torch.Tensor):
-            quantization_specs |= {node: self.signature.outputs[0]}
+            quantization_specs |= {self.signature.outputs[0]: node}
         else:
             raise NotImplementedError(f"Node {node} returns tuple of Tensors")
 
-        for node, arg_spec in quantization_specs.items():
-            fake_input: FakeTensor = node.meta["val"]
-            qdq = arg_spec.qtype.instantiate_quantize_dequantize(fake_input.shape)
-            qdq.to(fake_input.device)
-            graph_module.add_module(f"{node.name}_qdq", qdq)
+        for arg_spec, target_node in quantization_specs.items():
+            if not arg_spec.qtype:
+                # qtype=None indicates that the argument should not be quantized
+                continue
 
-            with graph.inserting_after(node):
-                qdq_node = graph.call_module(f"{node.name}_qdq", args=(node,))
+            fake_input: FakeTensor = target_node.meta["val"]
+            qdq_module = arg_spec.qtype.instantiate_quantize_dequantize(
+                fake_input.shape
+            )
+            qdq_module.to(fake_input.device)
+            graph_module.add_module(f"{target_node.name}_qdq", qdq_module)
+
+            with graph.inserting_after(target_node):
+                qdq_node = graph.call_module(
+                    f"{target_node.name}_qdq", args=(target_node,)
+                )
                 qdq_node.meta["val"] = fake_input.clone().detach()
 
-            for user in list(node.users):
+            for user in list(target_node.users):
                 if user is qdq_node:
                     continue
 
                 if _is_torch_ao_qdq_node(user):
                     continue
 
-                user.args = replace(user.args, old=node, new=qdq_node)
-                user.kwargs = replace(user.kwargs, old=node, new=qdq_node)
+                user.args = replace(user.args, old=target_node, new=qdq_node)
+                user.kwargs = replace(user.kwargs, old=target_node, new=qdq_node)
 
-            newly_added_qtzrs[qdq_node.name] = qdq
+            newly_added_qtzrs[qdq_node.name] = qdq_module
 
+        self.apply_constraints(node)
         return newly_added_qtzrs
+
+    def apply_constraints(self, node: torch.fx.Node):
+        qdq_nodes: dict[Argument, torch.fx.Node] = {
+            arg_spec: qdq_node
+            for arg_spec, qdq_node in zip(self.signature.inputs, node.all_input_nodes)
+            if _is_aimet_qdq_node(qdq_node)
+        }
+        if isinstance(node.meta["val"], torch.Tensor) and len(node.users) == 1:
+            (output_qdq_node,) = node.users
+            if _is_aimet_qdq_node(output_qdq_node):
+                qdq_nodes |= {self.signature.outputs[0]: output_qdq_node}
+        else:
+            raise NotImplementedError(
+                f"Node {node} returns tuple of Tensors or has multiple users"
+            )
+
+        self._apply_fixed_range_constraints(qdq_nodes)
+
+    def _apply_fixed_range_constraints(self, qdq_nodes: dict[Argument, torch.fx.Node]):
+        for constraint in self.value_constraints:
+            if isinstance(constraint, FixedRange):
+                constraint.apply(qdq_nodes)
 
 
 class BackendDescription:
