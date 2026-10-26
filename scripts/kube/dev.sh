@@ -7,11 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NAMESPACE="aihub"
 
-if ! command -v argo &>/dev/null || ! command -v kubectl &>/dev/null \
-   || ! command -v rsync &>/dev/null || ! command -v jq &>/dev/null \
-   || ! command -v inotifywait &>/dev/null; then
-  bash "$SCRIPT_DIR/install_deps.sh"
-fi
+# Always run: besides missing tools, it upgrades a kubectl too old for the cluster
+bash "$SCRIPT_DIR/install_deps.sh"
 
 if ! kubectl auth whoami -n "$NAMESPACE" &>/dev/null; then
   echo "ERROR: Cluster credentials are missing or expired." >&2
@@ -101,15 +98,19 @@ echo "================================================"
 
 SYNC_PIDS=()
 SIGNAL_FILES=()
+SYNC_LOGS=()
 for DIR in "${DIRS[@]}"; do
   SIG=$(mktemp /tmp/kube-sync-done.XXXXXX)
   rm -f "$SIG"
   SIGNAL_FILES+=("$SIG")
-  "$SCRIPT_DIR/sync_pod.sh" "$POD" "$DIR" "$SIG" &>/dev/null &
+  LOG=$(mktemp /tmp/kube-sync-log.XXXXXX)
+  SYNC_LOGS+=("$LOG")
+  # Own session: sync_pod.sh's `kill 0` cleanup must not take dev.sh down with it
+  setsid "$SCRIPT_DIR/sync_pod.sh" "$POD" "$DIR" "$SIG" &>"$LOG" &
   SYNC_PIDS+=($!)
 done
 
-trap 'for pid in "${SYNC_PIDS[@]}"; do kill "$pid" 2>/dev/null; done; rm -f "${SIGNAL_FILES[@]}"' EXIT
+trap 'for pid in "${SYNC_PIDS[@]}"; do kill -- -"$pid" 2>/dev/null; done; rm -f "${SIGNAL_FILES[@]}" "${SYNC_LOGS[@]}"' EXIT
 
 # cd into repo dir if single dir, otherwise base
 if [ ${#DIRS[@]} -eq 1 ]; then
@@ -122,8 +123,13 @@ echo "Waiting for initial sync..."
 ALL_DONE=false
 while ! $ALL_DONE; do
   ALL_DONE=true
-  for SIG in "${SIGNAL_FILES[@]}"; do
-    if [ ! -f "$SIG" ]; then
+  for i in "${!SIGNAL_FILES[@]}"; do
+    if [ ! -f "${SIGNAL_FILES[$i]}" ]; then
+      if ! kill -0 "${SYNC_PIDS[$i]}" 2>/dev/null; then
+        echo "ERROR: sync of ${DIRS[$i]} exited before the initial sync completed:" >&2
+        cat "${SYNC_LOGS[$i]}" >&2
+        exit 1
+      fi
       ALL_DONE=false
       break
     fi

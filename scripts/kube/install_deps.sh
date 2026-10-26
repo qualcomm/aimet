@@ -14,11 +14,26 @@ if ! command -v argo &>/dev/null; then
   rm /tmp/argo
 fi
 
-if ! command -v kubectl &>/dev/null; then
+# The cluster's exec proxy rejects older clients ("kubectl X is too old for exec")
+KUBECTL_MIN_VERSION="1.31"
+
+kubectl_too_old() {
+  local ver
+  ver=$(kubectl version --client 2>/dev/null | sed -n 's/^Client Version: v\([0-9]*\.[0-9]*\).*/\1/p')
+  [ -z "$ver" ] || [ "$(printf '%s\n' "$KUBECTL_MIN_VERSION" "$ver" | sort -V | head -1)" != "$KUBECTL_MIN_VERSION" ]
+}
+
+if ! command -v kubectl &>/dev/null || kubectl_too_old; then
   echo "Installing kubectl..."
   "${CURL[@]}" "https://dl.k8s.io/release/$("${CURL[@]}" https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /tmp/kubectl
   sudo install /tmp/kubectl /usr/local/bin/kubectl
   rm /tmp/kubectl
+  hash -r
+  if kubectl_too_old; then
+    echo "ERROR: $(command -v kubectl) is older than v$KUBECTL_MIN_VERSION." >&2
+    echo "It shadows /usr/local/bin/kubectl on PATH; remove or upgrade it." >&2
+    exit 1
+  fi
 fi
 
 APT_DEPS=()

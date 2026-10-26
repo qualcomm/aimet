@@ -44,7 +44,14 @@ do_sync() {
 
 # Wait for pod to signal readiness (deps installed)
 echo "[sync] Waiting for pod to be ready..."
-while ! kubectl exec -n "$NAMESPACE" "$POD" -- test -f /tmp/.pod-ready 2>/dev/null; do
+# A missing marker exits non-zero silently; any output means exec itself failed
+until EXEC_ERR=$(kubectl exec -n "$NAMESPACE" "$POD" -- test -f /tmp/.pod-ready 2>&1); do
+  if [[ "$EXEC_ERR" == *"unable to upgrade connection"* ]]; then
+    echo "[sync] ERROR: kubectl exec failed: $EXEC_ERR" >&2
+    exit 1
+  elif [ -n "$EXEC_ERR" ]; then
+    echo "[sync] kubectl exec failed, retrying: $EXEC_ERR" >&2
+  fi
   sleep 5
 done
 
