@@ -4,34 +4,37 @@
 """Utilities for replicating Torch model interface on ONNX InferenceSessions. Borrowed from AI Hub Models"""
 
 import warnings
-import numpy as np
+import onnx
 import torch
 import onnxruntime
 from typing import Iterable, Any, Collection
 
-_TORCH_TO_NP_DTYPE = {
-    torch.float16: np.float16,
-    torch.float32: np.float32,
-    torch.float64: np.float64,
-    torch.int32: np.int32,
-    torch.int64: np.int64,
-    torch.int8: np.int8,
-    torch.uint8: np.uint8,
-    torch.bool: np.bool_,
+# Element types are tracked as ONNX TensorProto codes rather than numpy dtypes:
+# numpy has no bfloat16, but IOBinding accepts the ONNX code directly, so bf16
+# tensors can be bound on CUDA without ever passing through numpy.
+_TORCH_TO_ONNX_DTYPE = {
+    torch.bfloat16: onnx.TensorProto.BFLOAT16,
+    torch.float16: onnx.TensorProto.FLOAT16,
+    torch.float32: onnx.TensorProto.FLOAT,
+    torch.float64: onnx.TensorProto.DOUBLE,
+    torch.int32: onnx.TensorProto.INT32,
+    torch.int64: onnx.TensorProto.INT64,
+    torch.int8: onnx.TensorProto.INT8,
+    torch.uint8: onnx.TensorProto.UINT8,
+    torch.bool: onnx.TensorProto.BOOL,
 }
 
-_ORT_TYPE_TO_NP_DTYPE = {
-    "tensor(float16)": np.float16,
-    "tensor(float)": np.float32,
-    "tensor(double)": np.float64,
-    "tensor(int32)": np.int32,
-    "tensor(int64)": np.int64,
-    "tensor(int8)": np.int8,
-    "tensor(uint8)": np.uint8,
-    "tensor(bool)": np.bool_,
+_ORT_TYPE_TO_TORCH_DTYPE = {
+    "tensor(bfloat16)": torch.bfloat16,
+    "tensor(float16)": torch.float16,
+    "tensor(float)": torch.float32,
+    "tensor(double)": torch.float64,
+    "tensor(int32)": torch.int32,
+    "tensor(int64)": torch.int64,
+    "tensor(int8)": torch.int8,
+    "tensor(uint8)": torch.uint8,
+    "tensor(bool)": torch.bool,
 }
-
-_NP_TO_TORCH_DTYPE = {v: k for k, v in _TORCH_TO_NP_DTYPE.items()}
 
 
 def _is_cuda_session(session) -> bool:
@@ -68,7 +71,7 @@ def _resolve_output_shapes(
     """Resolve concrete output shapes from session metadata and input shapes.
 
     Returns None if any dimension cannot be resolved, allowing the caller to
-    fall back to the standard numpy-based inference path.
+    let ORT allocate the outputs instead.
     """
     input_shapes = {name: tuple(t.shape) for name, t in inputs.items()}
     sym_table: dict[str, int] = {}
@@ -124,8 +127,7 @@ def _override_model_inputs_with_session_dtypes(
     higher-precision reference don't attribute the induced error to the graph.
     """
     expected = {
-        inp.name: _NP_TO_TORCH_DTYPE[_ORT_TYPE_TO_NP_DTYPE[inp.type]]
-        for inp in session.get_inputs()
+        inp.name: _ORT_TYPE_TO_TORCH_DTYPE[inp.type] for inp in session.get_inputs()
     }
     out: dict[str, torch.Tensor] = {}
     for name, tensor in inputs.items():
@@ -154,44 +156,54 @@ def _iobinding_inference(
     inputs = _override_model_inputs_with_session_dtypes(session, inputs)
     output_shapes = _resolve_output_shapes(session, inputs)
 
-    if output_shapes is None:
-        return _numpy_inference(session, inputs, torch_device)
-
     binding = session.io_binding()
     output_metas = session.get_outputs()
 
+    # Bound buffers are referenced by raw pointer, so keep the (possibly newly
+    # moved or made contiguous) tensors alive until the run completes.
     bound_inputs = []
     for name, tensor in inputs.items():
-        tensor = tensor.contiguous()
+        tensor = tensor.to(torch_device).contiguous()
         bound_inputs.append(tensor)
         binding.bind_input(
             name=name,
             device_type="cuda",
             device_id=device_id,
-            element_type=_TORCH_TO_NP_DTYPE[tensor.dtype],
+            element_type=_TORCH_TO_ONNX_DTYPE[tensor.dtype],
             shape=tuple(tensor.shape),
             buffer_ptr=tensor.data_ptr(),
         )
 
     output_tensors = []
-    for meta, shape in zip(output_metas, output_shapes):
-        np_dtype = _ORT_TYPE_TO_NP_DTYPE[meta.type]
-        tensor = torch.empty(
-            shape, dtype=_NP_TO_TORCH_DTYPE[np_dtype], device=torch_device
-        )
-        output_tensors.append(tensor)
-        binding.bind_output(
-            name=meta.name,
-            device_type="cuda",
-            device_id=device_id,
-            element_type=np_dtype,
-            shape=shape,
-            buffer_ptr=tensor.data_ptr(),
-        )
+    if output_shapes is None:
+        # Shapes are unknown up front: let ORT allocate the outputs on the GPU
+        # and hand them to torch via DLPack (zero-copy, works for bf16).
+        for meta in output_metas:
+            binding.bind_output(meta.name, "cuda", device_id)
+    else:
+        for meta, shape in zip(output_metas, output_shapes):
+            tensor = torch.empty(
+                shape, dtype=_ORT_TYPE_TO_TORCH_DTYPE[meta.type], device=torch_device
+            )
+            output_tensors.append(tensor)
+            binding.bind_output(
+                name=meta.name,
+                device_type="cuda",
+                device_id=device_id,
+                element_type=_TORCH_TO_ONNX_DTYPE[tensor.dtype],
+                shape=shape,
+                buffer_ptr=tensor.data_ptr(),
+            )
 
     torch.cuda.synchronize()
     session.run_with_iobinding(binding)
     torch.cuda.synchronize()
+
+    if output_shapes is None:
+        output_tensors = [
+            torch.from_dlpack(out._ortvalue.to_dlpack())
+            for out in binding.get_outputs()
+        ]
 
     if len(output_tensors) == 1:
         return output_tensors[0]
@@ -203,7 +215,20 @@ def _numpy_inference(
     inputs: dict[str, torch.Tensor],
     target_device: str,
 ) -> torch.Tensor | Collection[torch.Tensor]:
-    """Fallback: run via numpy when output shapes cannot be resolved."""
+    """Run a CPU session via numpy (``session.run``)."""
+    bf16_io = [
+        meta.name
+        for meta in (*session.get_inputs(), *session.get_outputs())
+        if meta.type == "tensor(bfloat16)"
+    ]
+    if bf16_io:
+        # numpy has no bfloat16, and ORT's CPU EP has too few bf16 kernels to
+        # run these graphs anyway.
+        raise RuntimeError(
+            f"bfloat16 graph inputs/outputs {bf16_io[:4]} require a session on "
+            "CUDAExecutionProvider; numpy-based CPU inference cannot represent "
+            "bfloat16."
+        )
     np_inputs = {k: v.cpu().detach().numpy() for k, v in inputs.items()}
     output_np = session.run(None, np_inputs)
     output_tensors = [torch.from_numpy(out).to(target_device) for out in output_np]
@@ -251,7 +276,7 @@ def _float_dtype_from_session(session) -> torch.dtype:
     input type; falls back to fp32 for graphs with no float inputs.
     """
     for inp in session.get_inputs():
-        torch_dtype = _NP_TO_TORCH_DTYPE[_ORT_TYPE_TO_NP_DTYPE[inp.type]]
+        torch_dtype = _ORT_TYPE_TO_TORCH_DTYPE[inp.type]
         if torch_dtype.is_floating_point:
             return torch_dtype
     return torch.float32

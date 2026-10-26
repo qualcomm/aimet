@@ -53,6 +53,42 @@ def _disable_onnx_quantizers(quantsim):
             op.enabled = True
 
 
+# Recipes that need no quantizers, and so run on a bf16 float-only session.
+_BF16_SUPPORTED_RECIPES = {"RemoveQuantization", "Skip"}
+
+
+def _check_bf16_supported(config):
+    """Fail fast on bf16 configs the float-only ONNX path cannot run.
+
+    AIMET-ONNX cannot build a QuantizationSimModel over bfloat16 graph I/O yet,
+    so a bf16 model is instantiated as a float-only session: quantization
+    recipes, pre-sim techniques, analysis passes and VLMs are rejected here
+    rather than failing deep inside AIMET.
+    """
+    if not torch.cuda.is_available():
+        raise ValueError(
+            "dtype 'bfloat16' requires CUDA: ONNX Runtime's CPU execution "
+            "provider has too few bfloat16 kernels to run the model."
+        )
+    if issubclass(config.model.model_cls, VLM):
+        raise ValueError("dtype 'bfloat16' is not yet supported for ONNX VLMs.")
+    unsupported = [
+        step.name
+        for step in (*config.recipe.pre_sim, *config.recipe.backbone)
+        if step.name not in _BF16_SUPPORTED_RECIPES
+    ]
+    if unsupported:
+        raise ValueError(
+            f"dtype 'bfloat16' runs the float model only (AIMET-ONNX cannot "
+            f"quantize bfloat16 graphs yet); unsupported recipe steps: "
+            f"{unsupported}. Use RemoveQuantization or Skip."
+        )
+    if config.analysis is not None:
+        raise ValueError("dtype 'bfloat16' does not support analysis passes yet.")
+    if config.model.encodings is not None:
+        raise ValueError("dtype 'bfloat16' cannot load precomputed encodings.")
+
+
 def test_llm_quantization(
     test_config,
     model_cache: DiskBackedModelCache,
@@ -93,10 +129,13 @@ def test_llm_quantization(
     model_kwargs = config.model.extra_kwargs.copy()
 
     dtype_name = model_dtype or "float32"
-    if dtype_name not in ("float32", "float16"):
+    if dtype_name not in ("float32", "float16", "bfloat16"):
         raise ValueError(
-            f"Unsupported model dtype {dtype_name!r}; expected 'float32' or 'float16'."
+            f"Unsupported model dtype {dtype_name!r}; expected 'float32', "
+            "'float16' or 'bfloat16'."
         )
+    if dtype_name == "bfloat16":
+        _check_bf16_supported(config)
     model_kwargs["dtype"] = getattr(torch, dtype_name)
 
     if config.eval_in_onnx:
