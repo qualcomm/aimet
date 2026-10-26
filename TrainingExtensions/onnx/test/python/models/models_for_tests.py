@@ -6071,6 +6071,56 @@ def if_model():
     )
 
 
+def weighted_if_model():
+    """
+    An If whose branches hold MatMuls, one reading a top-level weight by name and one its own:
+
+        x -> pre(Relu) -> h
+        cond -> the_if -> y      then_branch: h, w_top  -> t_mm -> t_o
+                                 else_branch: h, w_else -> e_mm -> e_o   (w_else declared here)
+    """
+    w_top = numpy_helper.from_array(np.eye(DIM, dtype=np.float32), name="w_top")
+    w_else = numpy_helper.from_array(-np.eye(DIM, dtype=np.float32), name="w_else")
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("Relu", ["x"], ["h"], name="pre"),
+                helper.make_node(
+                    "If",
+                    ["cond"],
+                    ["y"],
+                    name="the_if",
+                    then_branch=helper.make_graph(
+                        [
+                            helper.make_node(
+                                "MatMul", ["h", "w_top"], ["t_o"], name="t_mm"
+                            )
+                        ],
+                        "then",
+                        inputs=[],
+                        outputs=[_ti("t_o", [DIM, DIM])],
+                    ),
+                    else_branch=helper.make_graph(
+                        [
+                            helper.make_node(
+                                "MatMul", ["h", "w_else"], ["e_o"], name="e_mm"
+                            )
+                        ],
+                        "else",
+                        inputs=[],
+                        outputs=[_ti("e_o", [DIM, DIM])],
+                        initializer=[w_else],
+                    ),
+                ),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM]), _ti("cond", [1], TensorProto.BOOL)],
+            outputs=[_ti("y", [DIM, DIM])],
+            initializer=[w_top],
+        )
+    )
+
+
 def chained_if_model():
     """
     Two Ifs in a row, as an MoE block exports one per expert. Each If lists only its condition as

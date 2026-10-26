@@ -360,7 +360,18 @@ def compute_encodings(sim: "QuantizationSimModel"):
     else:
         for op_name, qc_op in enabled_quantizers.items():
             if not qc_op.is_encoding_frozen():
-                qc_op.compute_encodings()
+                try:
+                    qc_op.compute_encodings()
+                except RuntimeError as e:
+                    branch = sim._if_branch_of(op_name)  # pylint: disable=protected-access
+                    if branch is None:
+                        raise
+                    raise RuntimeError(
+                        f"Quantizer of {op_name} in {branch[1]} of If node {branch[0]} saw no "
+                        "data during calibration: that branch never ran. Calibrate with inputs "
+                        "that run every branch of every If, e.g. for MoE experts, force every "
+                        "expert active."
+                    ) from e
             qc_op.op_mode = OpMode.quantizeDequantize
 
         sim._adjust_weight_scales_against_overflow()  # pylint: disable=protected-access
@@ -757,14 +768,59 @@ class QuantizationSimModel:
 
     def _graphs_to_quantize(self) -> List[onnx.GraphProto]:
         """
-        Returns the top-level graph, followed by the Scan bodies if subgraph quantization is enabled.
+        Returns the top-level graph, followed by the Scan bodies and If branches if subgraph
+        quantization is enabled.
 
         NOTE: Computed on every call since rebuilding graph.node (e.g. _remove_quantization_nodes)
         copies the nodes, invalidating references to the bodies they hold.
         """
         if not self._quantize_subgraphs:
             return [self.model.graph()]
-        return list(_iterate_graphs_recursive(self.model.graph()))
+        return list(_iterate_graphs_recursive(self.model.graph(), include_if=True))
+
+    def _if_branch_of(self, tensor_name: str) -> Optional[Tuple[str, str]]:
+        """
+        Name of the If node and of its branch that define ``tensor_name``, at any depth
+
+            cond -> the_if      then_branch: h -> Relu -> t_o      _if_branch_of("t_o")
+                                                                   == ("the_if", "then_branch")
+
+        :return: (If node name, branch attribute name), or None outside any If branch
+        """
+
+        def find(graph: onnx.GraphProto) -> Optional[Tuple[str, str]]:
+            for node in graph.node:
+                for attr in node.attribute:
+                    if attr.type != onnx.AttributeProto.GRAPH:
+                        continue
+                    defined = {init.name for init in attr.g.initializer}
+                    defined.update(name for n in attr.g.node for name in n.output)
+                    if node.op_type == "If" and tensor_name in defined:
+                        return node.name, attr.name
+                    found = find(attr.g)
+                    if found:
+                        return found
+            return None
+
+        return find(self.model.graph())
+
+    def _raise_for_quantized_if_branches(self, api: str):
+        branches = (
+            attr.g
+            for graph in self._graphs_to_quantize()
+            for node in graph.node
+            if node.op_type == "If"
+            for attr in node.attribute
+            if attr.type == onnx.AttributeProto.GRAPH
+        )
+        if any(
+            node.op_type == "QcQuantizeOp"
+            for branch in branches
+            for node in branch.node
+        ):
+            raise NotImplementedError(
+                f"{api} is not supported yet for models with quantizers inside If branches"
+            )
 
     def _get_param_names(self):
         """
@@ -774,14 +830,13 @@ class QuantizationSimModel:
         connected graph ops, which include body ops, so body params are excluded explicitly.
         """
 
-        # Params declared inside a body that is not quantized (any body without subgraph
-        # quantization; If branches always, for now) are not quantized:
+        # Params declared inside a body are quantized only with subgraph quantization:
         #
         #   cond -> If      then_branch: h, W_top  -> MatMul    W_top declared at top level
         #                   else_branch: h, W_else -> MatMul    W_else declared in the branch
         #
-        #   W_else is never quantized. W_top is quantized at top level with subgraph
-        #   quantization, since ConnectedGraph then holds the branch MatMul reading it.
+        #   With subgraph quantization, W_top is quantized at top level and W_else inside
+        #   else_branch. Without it, neither is, since ConnectedGraph then holds no branch op.
         def tensors_of(graphs):
             names = set()
             for graph in graphs:
@@ -2818,6 +2873,7 @@ class QuantizationSimModel:
         .. image:: ../../images/conv_qdq.onnx.svg
             :align: center
         """
+        self._raise_for_quantized_if_branches("to_onnx_qdq()")
         with (
             self._concretize_int32_bias_quantizers()
             if export_int32_bias
@@ -3182,6 +3238,7 @@ class QuantizationSimModel:
             >>> sum(node.op_type == "QcQuantizeOp" for node in sim.model.model.graph.node)
             21
         """
+        self._raise_for_quantized_if_branches("fold_param_quantizers()")
         # Compute encodings for any param quantizers that aren't initialized yet so we don't
         # fold with garbage scales/offsets.
         self._compute_param_encodings(overwrite=False)

@@ -44,6 +44,28 @@ def _bodies(model):
     return list(_iterate_graphs_recursive(model.graph))[1:]
 
 
+def _if_branches(model):
+    """Every branch of every top-level If, keyed by (If node name, branch attribute name)."""
+    return {
+        (node.name, attr.name): attr.g
+        for node in model.graph.node
+        if node.op_type == "If"
+        for attr in node.attribute
+        if attr.type == onnx.AttributeProto.GRAPH
+    }
+
+
+def _if_inputs(model, cond):
+    """Random float inputs, with every boolean input (an If condition) set to ``cond``."""
+    inputs = _inputs(model)
+    inputs.update(
+        (inp.name, np.array([cond]))
+        for inp in model.graph.input
+        if inp.type.tensor_type.elem_type == onnx.TensorProto.BOOL
+    )
+    return inputs
+
+
 # Fixture, and the tensors quantized in each Scan body (in _iterate_graphs_recursive order)
 BODY_QUANTIZERS = [
     (
@@ -79,35 +101,31 @@ class TestSubgraphQuantizerInsertion:
         assert top
         assert all(not body for body in bodies)
 
-    @pytest.mark.parametrize("flag", [False, True])
     @pytest.mark.parametrize(
-        "make_model", [models_for_tests.if_model, models_for_tests.chained_if_model]
+        "make_model",
+        [
+            models_for_tests.if_model,
+            models_for_tests.chained_if_model,
+            models_for_tests.weighted_if_model,
+        ],
     )
-    def test_if_branches_are_left_unquantized(self, make_model, flag):
+    def test_flag_off_leaves_if_branches_unquantized(self, make_model):
         """A model with If branches"""
         model = make_model()
-        inputs = _inputs(model)
-        inputs.update(
-            (inp.name, np.array([True]))
-            for inp in model.graph.input
-            if inp.type.tensor_type.elem_type == onnx.TensorProto.BOOL
-        )
-        sim = _sim(model, flag=flag)
+        sim = _sim(model, flag=False)
 
         """
-        When: QuantizationSimModel is created, with or without subgraph quantization
-        Then: 1) ConnectedGraph represents the If branches only with subgraph quantization
+        When: QuantizationSimModel is created without subgraph quantization
+        Then: 1) ConnectedGraph does not represent the If branches
               2) No quantizer is inserted into any If branch, nor is any branch param quantized
-              3) The sim calibrates and runs
+              3) The sim calibrates and runs, taking only one branch
         """
         assert all(
-            bool(op.subgraphs) == flag
+            not op.subgraphs
             for op in sim.connected_graph.get_all_ops().values()
             if op.type == "If"
         )
-        branches = list(
-            _iterate_graphs_recursive(sim.model.model.graph, include_if=True)
-        )[1:]
+        branches = _if_branches(sim.model.model).values()
         assert branches
         assert not any(
             node.op_type == "QcQuantizeOp"
@@ -115,10 +133,181 @@ class TestSubgraphQuantizerInsertion:
             for node in branch.node
         )
         assert not set(sim.param_names) & {
-            init.name for branch in branches for init in branch.initializer
+            init.name
+            for branch in _if_branches(model).values()
+            for init in branch.initializer
         }
+        inputs = _if_inputs(model, cond=True)
         sim.compute_encodings([inputs])
         sim.session.run(None, inputs)
+
+    @pytest.mark.parametrize(
+        "make_model, expected",
+        [
+            (models_for_tests.if_model, [["thn_o"], ["els_o"]]),
+            (models_for_tests.chained_if_model, [["t0_o"], [], ["t1_o"], []]),
+            (models_for_tests.weighted_if_model, [["t_o"], ["e_o", "w_else"]]),
+            (
+                models_for_tests.if_in_scan_model,
+                [["b_branch", "b_c", "b_co", "b_x"], ["t_o"], ["e_o"]],
+            ),
+        ],
+    )
+    def test_quantizers_inserted_in_if_branches(self, make_model, expected):
+        """A model with If branches, one branch per If, in then/else order"""
+        model = make_model()
+        sim = _sim(model)
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: 1) Tensors produced inside each branch, and params declared there, are
+                 quantized in that branch
+              2) Activations of the top-level graph are quantized as without the flag
+        """
+        top, *bodies = [
+            sorted(n.input[0] for n in graph.node if n.op_type == "QcQuantizeOp")
+            for graph in _iterate_graphs_recursive(
+                sim.model.model.graph, include_if=True
+            )
+        ]
+        print(f"top-level graph: {top}, subgraphs: {bodies}")
+        assert sorted(bodies) == sorted(expected)
+
+        sim_off = _sim(make_model(), flag=False)
+        top_off = sorted(
+            n.input[0]
+            for n in sim_off.model.model.graph.node
+            if n.op_type == "QcQuantizeOp"
+        )
+        # Top-level weights read only inside a branch become params with the flag
+        assert [name for name in top if name not in sim.param_names] == top_off
+
+    def test_if_branch_params_are_quantized_where_declared(self):
+        """An If whose then branch reads a top-level weight, and whose else branch its own"""
+        sim = _sim(models_for_tests.weighted_if_model())
+        branches = _if_branches(sim.model.model)
+        then_branch = branches["the_if", "then_branch"]
+        else_branch = branches["the_if", "else_branch"]
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: 1) Both weights are params
+              2) The top-level weight is quantized at top level, the branch weight in its branch
+              3) Each branch MatMul reads its weight's quantized output
+        """
+        assert {"w_top", "w_else"} <= set(sim.param_names)
+        top_quantized = {
+            n.input[0]
+            for n in sim.model.model.graph.node
+            if n.op_type == "QcQuantizeOp"
+        }
+        assert "w_top" in top_quantized
+        assert any(
+            n.op_type == "QcQuantizeOp" and n.input[0] == "w_else"
+            for n in else_branch.node
+        )
+        (t_mm,) = [n for n in then_branch.node if n.name == "t_mm"]
+        (e_mm,) = [n for n in else_branch.node if n.name == "e_mm"]
+        assert t_mm.input[1] == "w_top_qdq"
+        assert e_mm.input[1] == "w_else_qdq"
+
+    @pytest.mark.parametrize(
+        "make_model",
+        [
+            models_for_tests.if_model,
+            models_for_tests.chained_if_model,
+            models_for_tests.weighted_if_model,
+            models_for_tests.if_in_scan_model,
+        ],
+    )
+    def test_calibrating_every_if_branch(self, make_model):
+        """A sim of a model with If branches, with subgraph quantization"""
+        model = make_model()
+        sim = _sim(model)
+
+        """
+        When: Calibrated with inputs that take both branches of every If
+        Then: 1) Every enabled quantizer, in every branch, has an encoding
+              2) The sim runs either way
+        """
+        sim.compute_encodings(
+            [_if_inputs(model, cond=True), _if_inputs(model, cond=False)]
+        )
+        assert all(
+            q.is_initialized() for q in sim.qc_quantize_op_dict.values() if q.enabled
+        )
+        for cond in (True, False):
+            sim.session.run(None, _if_inputs(model, cond=cond))
+
+    @pytest.mark.parametrize(
+        "make_model, cond, if_name, branch",
+        [
+            (models_for_tests.if_model, True, "the_if", "else_branch"),
+            (models_for_tests.weighted_if_model, True, "the_if", "else_branch"),
+            (models_for_tests.weighted_if_model, False, "the_if", "then_branch"),
+            (models_for_tests.chained_if_model, False, "if_0", "then_branch"),
+            (models_for_tests.if_in_scan_model, True, "b_if", "else_branch"),
+        ],
+    )
+    def test_an_if_branch_that_never_ran_fails_calibration(
+        self, make_model, cond, if_name, branch
+    ):
+        """A sim of a model with If branches, with subgraph quantization"""
+        model = make_model()
+        sim = _sim(model)
+
+        """
+        When: Calibrated with inputs that never take one branch of an If
+        Then: Calibration fails, naming the If and the branch that never ran, rather than
+              leaving that branch's quantizers without an encoding
+        """
+        with pytest.raises(RuntimeError, match=f"in {branch} of If node {if_name}"):
+            sim.compute_encodings([_if_inputs(model, cond=cond)])
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize(
+        "make_model",
+        [
+            models_for_tests.if_model,
+            models_for_tests.weighted_if_model,
+            models_for_tests.if_in_scan_model,
+        ],
+    )
+    def test_qdq_apis_with_if_branches(self, make_model, flag, tmp_path):
+        """A calibrated sim of a model with If branches"""
+        model = make_model()
+        sim = _sim(model, flag=flag)
+        sim.compute_encodings(
+            [_if_inputs(model, cond=True), _if_inputs(model, cond=False)]
+        )
+
+        """
+        When: Exported, converted to ONNX QDQ, and param quantizers folded
+        Then: 1) export() works, with every enabled branch quantizer's encoding
+              2) Without subgraph quantization, to_onnx_qdq() and fold_param_quantizers() work
+              3) With it, they raise rather than produce a broken model, as they don't
+                 handle quantizers inside If branches yet
+        """
+        sim.export(str(tmp_path), "model")
+        with open(tmp_path / "model.encodings") as f:
+            encodings = json.load(f)
+        exported = {
+            enc["name"]
+            for enc in encodings["activation_encodings"] + encodings["param_encodings"]
+        }
+        assert {
+            name for name, q in sim.qc_quantize_op_dict.items() if q.enabled
+        } <= exported
+
+        if not flag:
+            sim.to_onnx_qdq()
+            sim.fold_param_quantizers()
+            return
+
+        with pytest.raises(NotImplementedError, match="If branches"):
+            sim.to_onnx_qdq()
+        with pytest.raises(NotImplementedError, match="If branches"):
+            sim.fold_param_quantizers()
 
     @pytest.mark.parametrize("make_model, expected", BODY_QUANTIZERS)
     def test_quantizers_inserted_in_bodies(self, make_model, expected):
