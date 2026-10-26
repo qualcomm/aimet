@@ -3,15 +3,10 @@
 
 """Utilities for configuring AIMET-ONNX. Borrowed from AI Hub Models."""
 
-import copy
-import os
-
-import onnx
 import torch
 
 from aimet_onnx.defs import QSpec
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.utils import OrtInferenceSession
 
 from GenAILab.bench.precision import (
     Granularity,
@@ -76,67 +71,6 @@ def get_ort_providers(
             else ["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
     return ["CPUExecutionProvider"]
-
-
-def has_bf16_io(model: onnx.ModelProto) -> bool:
-    """Whether any graph input or output of ``model`` is bfloat16.
-
-    ``QuantizationSimModel`` rejects such graphs outright, so they cannot be
-    wrapped in a sim (see :class:`FloatOnlySim`).
-    """
-    return any(
-        io.type.tensor_type.elem_type == onnx.TensorProto.BFLOAT16
-        for io in (*model.graph.input, *model.graph.output)
-    )
-
-
-class FloatOnlySim:
-    """Float-only stand-in for a ``QuantizationSimModel``.
-
-    Used for graphs that AIMET cannot wrap in a sim yet (bfloat16 graph I/O).
-    It exposes the slice of the sim interface the GenAILab runner touches --
-    ``model``, ``session``, ``providers``, ``_rebuild_session``, an empty
-    ``qc_quantize_op_dict`` and ``export`` -- so the float model can be
-    instantiated and evaluated through the normal generator and metrics path.
-    With no quantizers, ``fp_mode`` and ``RemoveQuantization`` are no-ops.
-    """
-
-    def __init__(self, model: onnx.ModelProto, providers):
-        self.model = _FloatModel(model)
-        self.providers = providers
-        self.qc_quantize_op_dict = {}
-        self.param_names = []
-        self.activation_names = []
-        self.session = None
-        self._rebuild_session()
-
-    def _rebuild_session(self):
-        # Release the old session (and its GPU memory) before building anew.
-        self.session = None
-        self.session = OrtInferenceSession(self.model.model, self.providers)
-
-    @staticmethod
-    def remove_quantizers(model: onnx.ModelProto) -> onnx.ModelProto:
-        return model
-
-    def export(self, path: str, filename_prefix: str, export_model: bool = True):
-        """Write the float model; there are no encodings to export."""
-        if export_model:
-            # Saving with external data strips the tensors from the proto it is
-            # given, which would break the live session; save a copy instead.
-            onnx.save_model(
-                copy.deepcopy(self.model.model),
-                os.path.join(path, filename_prefix + ".onnx"),
-                save_as_external_data=True,
-                location=filename_prefix + ".data",
-            )
-
-
-class _FloatModel:
-    """Minimal ``ONNXModel`` stand-in: just the ``.model`` proto attribute."""
-
-    def __init__(self, model: onnx.ModelProto):
-        self.model = model
 
 
 class AttributePatch:

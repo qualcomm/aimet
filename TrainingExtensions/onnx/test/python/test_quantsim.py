@@ -2851,6 +2851,118 @@ class TestQuantSim:
         fp32_encoding_names = {e["name"] for e in fp32_encodings_dict["encodings"]}
         assert bf16_encoding_names == fp32_encoding_names
 
+    @pytest.mark.cuda
+    def test_quantsim_with_bfloat16_inputs_and_outputs(self):
+        """
+        Given: Model whose graph inputs and outputs are bfloat16
+        When: Instantiate quantsim on CUDA
+        Then: Quantizer placement is the same as for the equivalent float32 model
+        """
+        if not "CUDAExecutionProvider" in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+
+        fp32_model = models_for_tests.simple_mlp_model(torch.float32)
+        bf16_model = models_for_tests.simple_mlp_model(
+            torch.bfloat16, io_dtype=torch.bfloat16
+        )
+        assert all(
+            io.type.tensor_type.elem_type == onnx.TensorProto.BFLOAT16
+            for io in (*bf16_model.graph.input, *bf16_model.graph.output)
+        )
+
+        def build_sim(model):
+            return QuantizationSimModel(
+                model,
+                providers=CUDA_PROVIDERS,
+                param_type=aimet_onnx.int8,
+                activation_type=aimet_onnx.int8,
+                quant_scheme=QuantScheme.min_max,
+            )
+
+        fp32_sim = build_sim(fp32_model)
+        bf16_sim = build_sim(bf16_model)
+
+        fp32_enabled = {
+            name for name, q in fp32_sim.qc_quantize_op_dict.items() if q.enabled
+        }
+        bf16_enabled = {
+            name for name, q in bf16_sim.qc_quantize_op_dict.items() if q.enabled
+        }
+        assert fp32_enabled == bf16_enabled
+
+        """
+        When: Calibrate with bfloat16 numpy inputs
+        Then: Every enabled quantizer is initialized, with encodings close to the
+              equivalent float32 model's
+        """
+        rng = np.random.default_rng(0)
+        fp32_inputs = [
+            {"input": rng.standard_normal((4, 16)).astype(np.float32)} for _ in range(4)
+        ]
+        bf16_inputs = [
+            {"input": item["input"].astype(ml_dtypes.bfloat16)} for item in fp32_inputs
+        ]
+        fp32_sim.compute_encodings(fp32_inputs)
+        bf16_sim.compute_encodings(bf16_inputs)
+
+        for name in bf16_enabled:
+            assert bf16_sim.qc_quantize_op_dict[name].is_initialized(), name
+            fp32_enc = fp32_sim.qc_quantize_op_dict[name].get_encodings()[0]
+            bf16_enc = bf16_sim.qc_quantize_op_dict[name].get_encodings()[0]
+            assert np.isclose(fp32_enc.min, bf16_enc.min, atol=0.05), name
+            assert np.isclose(fp32_enc.max, bf16_enc.max, atol=0.05), name
+
+        """
+        When: Calibrate through a forward pass callback using run_with_ort_values
+        Then: Encodings match calibrating with the list of bfloat16 inputs
+        """
+        expected = {
+            name: bf16_sim.qc_quantize_op_dict[name].get_encodings()[0]
+            for name in bf16_enabled
+        }
+
+        def forward_pass(session):
+            for item in bf16_inputs:
+                ort_inputs = {
+                    name: ort.OrtValue.ortvalue_from_numpy_with_onnx_type(
+                        value.view(np.uint16), onnx.TensorProto.BFLOAT16
+                    )
+                    for name, value in item.items()
+                }
+                session.run_with_ort_values(None, ort_inputs)
+
+        bf16_sim.compute_encodings(forward_pass)
+
+        for name in bf16_enabled:
+            enc = bf16_sim.qc_quantize_op_dict[name].get_encodings()[0]
+            assert np.isclose(enc.min, expected[name].min), name
+            assert np.isclose(enc.max, expected[name].max), name
+
+        """
+        When: Calibrate with bfloat16 or float32 inputs
+        Then: The session runs through IOBinding with outputs left on the GPU
+        """
+        for sim, inputs, output_type in (
+            (bf16_sim, bf16_inputs, "tensor(bfloat16)"),
+            (fp32_sim, fp32_inputs, "tensor(float)"),
+        ):
+            bindings = []
+            original_io_binding = sim.session.io_binding
+
+            def recording_io_binding():
+                binding = original_io_binding()
+                bindings.append(binding)
+                return binding
+
+            with patch.object(sim.session, "io_binding", recording_io_binding):
+                sim.compute_encodings(inputs)
+
+            assert len(bindings) == len(inputs)
+            for binding in bindings:
+                outputs = binding.get_outputs()
+                assert [o.device_name() for o in outputs] == ["cuda"]
+                assert [o.data_type() for o in outputs] == [output_type]
+
     def test_matmul_v73_higher_exception_rule(self, tmp_dir):
         model = models_for_tests.model_with_exceptional_ops()
         quantsim_config = {

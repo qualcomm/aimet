@@ -2547,9 +2547,12 @@ def weight_matmul_model(in_features=10, out_features=20):
     return model
 
 
-def simple_mlp_model(internal_dtype=torch.float32):
+def simple_mlp_model(internal_dtype=torch.float32, io_dtype=torch.float32):
     """
-    Small MLP: fp32 input -> Cast -> Linear -> Relu -> Linear -> Cast -> fp32 output.
+    Small MLP: input -> Cast -> Linear -> Relu -> Linear -> Cast -> output.
+
+    Inputs/outputs are ``io_dtype``; the Casts are omitted where ``io_dtype`` already
+    matches ``internal_dtype``.
     """
     in_features, hidden, out_features = 16, 32, 8
 
@@ -2562,14 +2565,14 @@ def simple_mlp_model(internal_dtype=torch.float32):
         def forward(self, x):
             x = x.to(internal_dtype)
             x = torch.relu(self.fc1(x))
-            return self.fc2(x).to(torch.float32)
+            return self.fc2(x).to(io_dtype)
 
     torch.manual_seed(0)
     model = MLPModel().to(internal_dtype).eval()
     buffer = io.BytesIO()
     torch.onnx.export(
         model,
-        torch.randn(1, in_features, dtype=torch.float32),
+        torch.randn(1, in_features, dtype=io_dtype),
         buffer,
         input_names=["input"],
         output_names=["output"],

@@ -9,7 +9,9 @@ import onnx
 import pytest
 import torch
 
-from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import FloatOnlySim, has_bf16_io
+from aimet_onnx.quantsim import QuantizationSimModel
+from aimet_onnx.utils import OrtInferenceSession
+
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import (
     TorchONNXInterface,
     mock_torch_onnx_inference,
@@ -45,9 +47,12 @@ def _onnx_model(dtype: torch.dtype, dynamic: bool = False) -> onnx.ModelProto:
     return onnx.load_model(buf)
 
 
-def test_has_bf16_io():
-    assert has_bf16_io(_onnx_model(torch.bfloat16))
-    assert not has_bf16_io(_onnx_model(torch.float32))
+def _float_sim(model: onnx.ModelProto) -> QuantizationSimModel:
+    """A sim over ``model`` with every quantizer disabled, i.e. float evaluation."""
+    sim = QuantizationSimModel(model, providers=CUDA_PROVIDERS)
+    for quantizer in sim.qc_quantize_op_dict.values():
+        quantizer.enabled = False
+    return sim
 
 
 @pytest.mark.cuda
@@ -55,7 +60,7 @@ def test_has_bf16_io():
 class TestBF16Inference:
     @pytest.mark.parametrize("dynamic", [False, True])
     def test_bf16_io_round_trips_on_cuda(self, dynamic):
-        sim = FloatOnlySim(_onnx_model(torch.bfloat16, dynamic), CUDA_PROVIDERS)
+        sim = _float_sim(_onnx_model(torch.bfloat16, dynamic))
         x = torch.arange(8, dtype=torch.bfloat16, device="cuda").reshape(2, 4)
 
         y = mock_torch_onnx_inference(sim.session, x)
@@ -65,7 +70,7 @@ class TestBF16Inference:
         torch.testing.assert_close(y, x * 2)
 
     def test_interface_reports_bf16(self):
-        sim = FloatOnlySim(_onnx_model(torch.bfloat16), CUDA_PROVIDERS)
+        sim = _float_sim(_onnx_model(torch.bfloat16))
         interface = TorchONNXInterface(sim, config=None)
 
         assert interface.dtype == torch.bfloat16
@@ -75,14 +80,14 @@ class TestBF16Inference:
             y = interface(x)
         assert y.dtype == torch.bfloat16
 
-    def test_rebuild_session_keeps_model_runnable(self, tmp_path):
-        sim = FloatOnlySim(_onnx_model(torch.bfloat16), CUDA_PROVIDERS)
-        sim.export(str(tmp_path), "model")
+    def test_remove_quantizers_keeps_model_runnable(self):
+        sim = _float_sim(_onnx_model(torch.bfloat16))
+        # What the RemoveQuantization recipe does.
+        sim.model.model = sim.remove_quantizers(sim.model.model)
         sim._rebuild_session()
 
         x = torch.ones(2, 4, dtype=torch.bfloat16, device="cuda")
         torch.testing.assert_close(mock_torch_onnx_inference(sim.session, x), x * 2)
-        assert (tmp_path / "model.onnx").exists()
 
 
 def test_bf16_cpu_session_raises_clear_error():
@@ -98,14 +103,14 @@ def test_bf16_cpu_session_raises_clear_error():
         graph, opset_imports=[onnx.helper.make_opsetid("", 18)]
     )
     model.ir_version = 9
-    sim = FloatOnlySim(model, ["CPUExecutionProvider"])
+    session = OrtInferenceSession(model, ["CPUExecutionProvider"])
 
     with pytest.raises(RuntimeError, match="CUDAExecutionProvider"):
-        mock_torch_onnx_inference(sim.session, torch.ones(2, dtype=torch.bfloat16))
+        mock_torch_onnx_inference(session, torch.ones(2, dtype=torch.bfloat16))
 
 
 def test_fp32_cpu_session_unchanged():
-    sim = FloatOnlySim(_onnx_model(torch.float32), ["CPUExecutionProvider"])
+    session = OrtInferenceSession(_onnx_model(torch.float32), ["CPUExecutionProvider"])
     x = torch.ones(2, 4)
 
-    torch.testing.assert_close(mock_torch_onnx_inference(sim.session, x), x * 2)
+    torch.testing.assert_close(mock_torch_onnx_inference(session, x), x * 2)

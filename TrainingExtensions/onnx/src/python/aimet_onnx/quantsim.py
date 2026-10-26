@@ -27,6 +27,7 @@ from functools import wraps
 import json
 import re
 import warnings
+import ml_dtypes
 import numpy as np
 import onnx
 import onnx_ir
@@ -163,7 +164,10 @@ _fuse_supergroups = True
 # Experimental: also quantize tensors inside Scan bodies.
 _quantize_subgraphs = False
 
-data_types_to_quantize = [np.float32, np.float16, np.dtype("bfloat16")]
+# Not helper.tensor_dtype_to_np_dtype(BFLOAT16): onnx < 1.19 maps that to float32.
+_BFLOAT16 = np.dtype(ml_dtypes.bfloat16)
+
+data_types_to_quantize = [np.float32, np.float16, _BFLOAT16]
 
 _DEPRECATED_ARGS = {
     "rounding_mode",
@@ -497,19 +501,6 @@ class QuantizationSimModel:
                 or provider[0] == "CUDAExecutionProvider"
             ):
                 op_domain = "aimet.customop.cuda"
-
-        # Note: bfloat16 I/O is not supported via session.run and will fail during calibration
-        bf16_io = [
-            io.name
-            for io in (*model.model.graph.input, *model.model.graph.output)
-            if io.type.tensor_type.elem_type == onnx.TensorProto.BFLOAT16
-        ]
-        if bf16_io:
-            raise RuntimeError(
-                f"BFLOAT16 model inputs/outputs are not supported by "
-                f"QuantizationSimModel. Offending tensors: {bf16_io}. "
-                f"Only intermediate BFLOAT16 tensors are supported."
-            )
 
         self._op_domain = op_domain
         self.providers = providers
@@ -1463,6 +1454,12 @@ class QuantizationSimModel:
             ...         _ = sess.run(None, {"input": input})
             ...
             >>> sim.compute_encodings(run_forward_pass)
+
+        .. note::
+            ``inputs`` may contain bfloat16 arrays (``ml_dtypes.bfloat16``) for models with
+            bfloat16 inputs. ``InferenceSession.run`` cannot accept these, so a
+            ``forward_pass_callback`` for such a model must feed the session through
+            ``run_with_ort_values`` or IOBinding instead.
         """
         inputs, forward_pass_callback, forward_pass_calback_args = (
             _parse_compute_encodings_args(*args, **kwargs)
@@ -1474,7 +1471,7 @@ class QuantizationSimModel:
 
         with compute_encodings(self):
             for item in inputs:
-                self.session.run(None, item)
+                _run_session(self.session, item)
 
     def _compute_encodings_from_callback(
         self, forward_pass_callback, forward_pass_callback_args=_NOT_SPECIFIED
@@ -4866,6 +4863,66 @@ def log_and_catch_mismatched_encodings(
             logger.error(log_message)
             raise AssertionError(log_message)
         logger.info(log_message)
+
+
+def _run_session(session: ort.InferenceSession, inputs: Dict[str, np.ndarray]):
+    """
+    Run ``session`` on ``inputs`` through IOBinding to drive calibration.
+
+    Unlike ``InferenceSession.run``, IOBinding accepts bfloat16 inputs, and the outputs
+    (which calibration discards) are left on the session's device rather than copied
+    back to host memory.
+    """
+    binding = session.io_binding()
+    declared_dtypes = {inp.name: inp.type for inp in session.get_inputs()}
+    for name, value in inputs.items():
+        if not isinstance(value, ort.OrtValue):
+            if not isinstance(value, np.ndarray):
+                # Like session.run, build non-array inputs (lists, scalars) with the
+                # input's declared element type instead of numpy's default.
+                value = np.asarray(
+                    value, dtype=_ort_type_to_np_dtype(declared_dtypes.get(name, ""))
+                )
+            if value.dtype == _BFLOAT16:
+                # OrtValue cannot be built from a bfloat16 array directly; pass the raw bits.
+                value = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(
+                    np.ascontiguousarray(value).view(np.uint16),
+                    onnx.TensorProto.BFLOAT16,
+                )
+            else:
+                value = ort.OrtValue.ortvalue_from_numpy(np.ascontiguousarray(value))
+        binding.bind_ortvalue_input(name, value)
+
+    device_type, device_id = _output_device(session)
+    for output in session.get_outputs():
+        binding.bind_output(output.name, device_type, device_id)
+    session.run_with_iobinding(binding)
+
+
+def _ort_type_to_np_dtype(ort_type: str) -> Optional[np.dtype]:
+    """numpy dtype for an ORT type string such as ``"tensor(float)"``, if it has one."""
+    # ORT spells tensor element types as the lowercased ONNX TensorProto name.
+    match = re.fullmatch(r"tensor\((\w+)\)", ort_type)
+    if match is None:
+        return None
+    try:
+        elem_type = onnx.TensorProto.DataType.Value(match.group(1).upper())
+    except ValueError:
+        return None
+    if elem_type == onnx.TensorProto.BFLOAT16:
+        return _BFLOAT16
+    try:
+        return helper.tensor_dtype_to_np_dtype(elem_type)
+    except KeyError:
+        return None
+
+
+def _output_device(session: ort.InferenceSession) -> Tuple[str, int]:
+    """Device (type, id) on which ``session`` computes, for binding its outputs."""
+    if "CUDAExecutionProvider" in session.get_providers():
+        cuda_options = session.get_provider_options().get("CUDAExecutionProvider", {})
+        return "cuda", int(cuda_options.get("device_id", 0))
+    return "cpu", 0
 
 
 def _parse_compute_encodings_args(*args, **kwargs):

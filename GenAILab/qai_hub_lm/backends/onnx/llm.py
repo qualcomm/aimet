@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import tempfile
-import warnings
 import onnx
 import torch
 from transformers import AutoConfig
@@ -41,16 +40,8 @@ from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
     _disable_float_quantizers,
     weight_precision_to_qspec,
     get_ort_providers,
-    has_bf16_io,
     AttributePatch,
-    FloatOnlySim,
 )
-
-
-def _default_providers():
-    return get_ort_providers(
-        torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    )
 
 
 @YAMLConfigParser.register_default_llm
@@ -154,20 +145,6 @@ class LLM_ONNX(LLM):
         onnx_model = entry.backbone
         config = entry.config
 
-        if has_bf16_io(onnx_model):
-            # AIMET cannot build a sim over bfloat16 graph I/O yet, so a bf16
-            # model runs as a float-only session (no quantizers).
-            warnings.warn(
-                "bfloat16 ONNX models are not yet supported by "
-                "QuantizationSimModel; running the float model without "
-                "quantization.",
-                stacklevel=2,
-            )
-            return SimCollection(
-                FloatOnlySim(onnx_model, providers=_default_providers()),
-                config=config,
-            )
-
         block_prec = precision.blocks["default"]
         # Float defaults apply to every parameter unless a more specific
         # precision (for example, lm_head) overrides them below.
@@ -190,7 +167,11 @@ class LLM_ONNX(LLM):
                 param_type=default_param_qtype,
                 activation_type=default_activation_qtype,
                 config_file=QUANTSIM_CONFIG,
-                providers=_default_providers(),
+                providers=get_ort_providers(
+                    torch.device("cuda")
+                    if torch.cuda.is_available()
+                    else torch.device("cpu")
+                ),
             )
 
         kv_cache_type = precision.resolve_kv_cache_qtype()
