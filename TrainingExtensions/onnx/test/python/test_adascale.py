@@ -41,7 +41,11 @@ from aimet_onnx.adascale.model_converter import (
     _retarget_fp16_casts_to_bf16,
     upcast_fp16_block_to_bf16,
 )
-from .utils import add_genai_tests_path, force_random_weight_init
+from .utils import (
+    add_genai_tests_path,
+    force_random_weight_init,
+    offline_hf_configs,
+)
 from .models.style_decoders import (
     _VOCAB,
     _export_decoder_with_ids,
@@ -1384,7 +1388,9 @@ def test_adascale_block_topologies(config_attr, backend, detect_kwargs, _):
     "insufficient disk for large ONNX export on Windows AMD64 runner"
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
-def test_adascale_e2e(add_genai_tests_path, dtype, small_model: bool = True):
+def test_adascale_e2e(
+    add_genai_tests_path, offline_hf_configs, dtype, small_model: bool = True
+):
     from transformers import AutoConfig
     from GenAILab.qai_hub_lm.backends.onnx.llm import LLM_ONNX
     from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
@@ -1492,7 +1498,7 @@ def test_adascale_e2e(add_genai_tests_path, dtype, small_model: bool = True):
     "insufficient disk for large ONNX export on Windows AMD64 runner"
 )
 def test_adascale_e2e_fp16_qwen3_bf16_upcast(
-    add_genai_tests_path, small_model: bool = True
+    add_genai_tests_path, offline_hf_configs, small_model: bool = True
 ):
     """Regression test for the fp16 AdaScale accuracy-collapse fix.
 

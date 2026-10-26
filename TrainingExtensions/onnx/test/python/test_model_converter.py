@@ -30,6 +30,7 @@ from .utils import (
     add_genai_tests_path,
     tmp_dir,
     force_random_weight_init,
+    offline_hf_configs,
     random_chunked_dataset,
 )
 
@@ -74,7 +75,7 @@ def _check_onnx_weights(model, layers_to_check: set = None, are_zeros: bool = Fa
 
 
 @pytest.mark.skip_on_windows_arm64("transformers is not available on Windows ARM64")
-def test_model_round_trip_with_qwen(add_genai_tests_path, tmp_dir):
+def test_model_round_trip_with_qwen(add_genai_tests_path, offline_hf_configs, tmp_dir):
     from GenAILab.qai_hub_lm.models.generator import Generator
     from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import (
         TorchONNXInterface,
@@ -196,7 +197,7 @@ def test_model_round_trip_with_qwen(add_genai_tests_path, tmp_dir):
     [(False, 17), (False, 18), (True, 18), (False, 19), (False, 20), (False, 21)],
 )
 def test_model_round_trip_with_qwen_dynamo(
-    add_genai_tests_path, tmp_dir, dynamo, opset_version
+    add_genai_tests_path, offline_hf_configs, tmp_dir, dynamo, opset_version
 ):
     from unittest.mock import patch
     from GenAILab.qai_hub_lm.models.generator import Generator

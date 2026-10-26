@@ -7,6 +7,7 @@ import tempfile
 import torch
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -56,6 +57,56 @@ def force_random_weight_init(vocab_size: int | None = None):
 
     with patch.object(AutoModelForCausalLM, "from_pretrained", new=_from_config_stub):
         yield
+
+
+_HF_CONFIG_DIR = Path(__file__).parent / "models" / "hf_configs"
+
+
+def _vendored_config_dir(model_id) -> Path | None:
+    """Directory holding the verbatim ``config.json`` of HF repo ``model_id``, if vendored."""
+    if not isinstance(model_id, str):
+        return None
+    path = _HF_CONFIG_DIR / model_id.replace("/", "--")
+    return path if (path / "config.json").is_file() else None
+
+
+@pytest.fixture
+def offline_hf_configs(add_genai_tests_path, monkeypatch):
+    """
+    Serve ``config.json`` (and a stub tokenizer) of vendored HF repos from disk.
+
+    The configs under ``models/hf_configs`` are verbatim copies of the Hub files, so
+    model structure is identical to what the Hub would give. Combine with
+    ``force_random_weight_init`` so that neither config nor weights hit the network.
+    """
+    from transformers import AutoConfig
+    from GenAILab.qai_hub_lm.models.base import LLM
+
+    real_from_pretrained = AutoConfig.from_pretrained
+
+    def _config_from_pretrained(model_id, *args, **kwargs):
+        local = _vendored_config_dir(model_id)
+        return real_from_pretrained(local if local else model_id, *args, **kwargs)
+
+    def _instantiate_tokenizer(model_id):
+        local = _vendored_config_dir(model_id)
+        assert local is not None, f"No vendored config for {model_id}"
+        config = real_from_pretrained(local)
+        return SimpleNamespace(eos_token_id=config.eos_token_id)
+
+    def _is_huggingface_ckpt(model_id):
+        return _vendored_config_dir(model_id) is not None
+
+    monkeypatch.setattr(AutoConfig, "from_pretrained", _config_from_pretrained)
+    monkeypatch.setattr(
+        LLM, "instantiate_tokenizer", staticmethod(_instantiate_tokenizer)
+    )
+    # Treat vendored repos as HF checkpoints (it would otherwise query the Hub's model_info)
+    for module in (
+        "GenAILab.qai_hub_lm.backends.onnx.llm",
+        "GenAILab.qai_hub_lm.backends.onnx.export_utils",
+    ):
+        monkeypatch.setattr(f"{module}.is_huggingface_ckpt", _is_huggingface_ckpt)
 
 
 def random_chunked_dataset(vocab_size: int, context_length: int, num_chunks: int = 5):

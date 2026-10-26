@@ -39,7 +39,11 @@ from aimet_onnx.llm_topology.norm_detection import (
 )
 from aimet_onnx.llm_topology.layer_roles import LinearRole
 from aimet_onnx.llm_topology.topology import get_llm_topology
-from .utils import add_genai_tests_path, force_random_weight_init
+from .utils import (
+    add_genai_tests_path,
+    force_random_weight_init,
+    offline_hf_configs,
+)
 
 _NUM_LAYERS = 2
 _BOTH = ("torchscript", "dynamo")
@@ -692,7 +696,7 @@ def verify_find_blocks(sim):
     ]
 
 
-def test_get_decoder_blocks(add_genai_tests_path):
+def test_get_decoder_blocks(add_genai_tests_path, offline_hf_configs):
     from GenAILab.qai_hub_lm.backends.onnx.llm import LLM_ONNX
     from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
         get_model_checkpoint_path,
@@ -710,7 +714,7 @@ def test_get_decoder_blocks(add_genai_tests_path):
         shutil.rmtree(cache_dir, ignore_errors=True)
 
 
-def test_get_decoder_blocks_qwen3(add_genai_tests_path):
+def test_get_decoder_blocks_qwen3(add_genai_tests_path, offline_hf_configs):
     from GenAILab.qai_hub_lm.backends.onnx.llm import LLM_ONNX
     from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
         get_model_checkpoint_path,
@@ -731,7 +735,7 @@ def test_get_decoder_blocks_qwen3(add_genai_tests_path):
 @pytest.mark.skip_on_windows_amd64(
     "insufficient disk for large ONNX export on Windows AMD64 runner"
 )
-def test_get_decoder_blocks_qwen3_5(add_genai_tests_path):
+def test_get_decoder_blocks_qwen3_5(add_genai_tests_path, offline_hf_configs):
     import GenAILab.qai_hub_lm.transforms.exportable_linear_attention  # noqa: F401
     from GenAILab.bench.yaml_config_parser import YAMLConfigParser
     from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
