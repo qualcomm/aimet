@@ -469,6 +469,7 @@ class AffineQuantizerBase(QuantizerBase, _GridMixin):  # pylint: disable=too-man
             qmax=encodings.qmax,
             symmetric=encodings.symmetry,
             block_size=encodings.block_size,
+            zero_point_shift=encodings.zero_point_shift,
         )
 
         qtzr.set_range(encodings.min, encodings.max)
