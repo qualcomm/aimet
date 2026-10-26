@@ -54,9 +54,9 @@ OPS_WITH_PARAMS = [
 CONSTANT_TYPE = ["Constant", "ConstantOfShape"]
 
 
-def _subgraphs_of(node: NodeProto) -> List[onnx.GraphProto]:
+def _subgraphs_of(node: NodeProto) -> List[Tuple[str, onnx.GraphProto]]:
     """
-    Return every graph ``node`` carries as an attribute.
+    Return every graph ``node`` carries as an attribute, with the name of that attribute.
 
     :param node: Node to inspect
     :return: Its subgraphs, outermost attribute order preserved
@@ -64,9 +64,11 @@ def _subgraphs_of(node: NodeProto) -> List[onnx.GraphProto]:
     subgraphs = []
     for attr in node.attribute:
         if attr.type == onnx.AttributeProto.GRAPH:
-            subgraphs.append(attr.g)
+            subgraphs.append((attr.name, attr.g))
         elif attr.type == onnx.AttributeProto.GRAPHS:
-            subgraphs.extend(attr.graphs)
+            subgraphs.extend(
+                (f"{attr.name}[{i}]", graph) for i, graph in enumerate(attr.graphs)
+            )
     return subgraphs
 
 
@@ -78,14 +80,24 @@ class ConnectedGraph(AimetCommonConnectedGraph):
     Operations represent the nodes in an onnx model, while products represent the tensors.
     """
 
-    def __init__(self, model: ModelProto):
+    def __init__(self, model: ModelProto, include_if_branches: bool = False):
         """
         :param: model: ONNX model to create connected graph from
+        :param: include_if_branches: Whether to also represent the ops inside If branches
+
+            x -> Relu -> h
+            cond -> If -> y       then_branch: h -> MatMul -> t_o
+                                  else_branch: h -> Identity -> e_o
+
+            False: ops {Relu, If},                   If.subgraphs == {}
+            True:  ops {Relu, If, MatMul, Identity}, If.subgraphs ==
+                   {"then_branch": [MatMul], "else_branch": [Identity]}
         """
         super().__init__()
         self.model = model
         if isinstance(self.model, ONNXModel):
             self.model = self.model.model
+        self._include_if_branches = include_if_branches
         self.fill_op_product_graph()
         self.starting_ops = list(self._get_starting_ops())
         # List of ops in the order they are traversed using the forward function
@@ -265,7 +277,11 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         - Links products with their producer and consumer ops
         - Identifies which products should be considered parameters
         """
-        graphs = list(_iterate_graphs_recursive(self.model.graph))
+        graphs = list(
+            _iterate_graphs_recursive(
+                self.model.graph, include_if=self._include_if_branches
+            )
+        )
 
         for graph in graphs:
             # Add products for all tensors in initializer
@@ -293,8 +309,8 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         graph_index_of = {id(graph): index for index, graph in enumerate(graphs)}
         # The ops of each graph, in the order the graph declares them
         ops_by_graph_index: Dict[int, List[Op]] = {}
-        # Map control-flow op -> corresponding subgraph index
-        subgraphs_to_order: List[Tuple[Op, int]] = []
+        # Map control-flow op -> attribute name and index of each of its subgraphs
+        subgraphs_to_order: List[Tuple[Op, str, int]] = []
 
         # Create ops and link with products
         for graph_index, graph in enumerate(graphs):
@@ -324,15 +340,14 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                     product.producer = op
 
                 subgraphs_to_order.extend(
-                    (op, graph_index_of[id(subgraph)])
-                    for subgraph in _subgraphs_of(node)
+                    (op, attr_name, graph_index_of[id(subgraph)])
+                    for attr_name, subgraph in _subgraphs_of(node)
                     if id(subgraph) in graph_index_of
                 )
 
         # Add subgraph ops for the op containing the body.
-        for op, graph_index in subgraphs_to_order:
-            for body_op in ops_by_graph_index.get(graph_index, []):
-                op.add_subgraph_op(body_op)
+        for op, attr_name, graph_index in subgraphs_to_order:
+            op.add_subgraph(attr_name, ops_by_graph_index.get(graph_index, []))
 
         # TODO: Move this process outside of ConnectedGraph altogether
         self._set_param_products()
@@ -401,7 +416,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         info_dict = find_all_node_info(ir_model)
 
         tensor_dict = {}
-        for graph in _iterate_graphs_recursive(self.model.graph):
+        for graph in _iterate_graphs_recursive(
+            self.model.graph, include_if=self._include_if_branches
+        ):
             tensor_dict.update({init.name: init for init in graph.initializer})
             for node in graph.node:
                 if node.op_type != "Constant":

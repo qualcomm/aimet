@@ -297,6 +297,7 @@ def _apply_constraints(flag: bool):
 def _quantize_subgraphs_enabled(flag: bool = True):
     """
     Quantize tensors inside Scan bodies in QuantizationSimModels created within this context.
+    Their ConnectedGraphs also represent the ops inside If branches.
     """
     global _quantize_subgraphs  # pylint: disable=global-statement
     orig_flag = _quantize_subgraphs
@@ -537,7 +538,9 @@ class QuantizationSimModel:
 
         self.model = model
         self._quantize_subgraphs = _quantize_subgraphs
-        self.connected_graph = ConnectedGraph(self.model)
+        self.connected_graph = ConnectedGraph(
+            self.model, include_if_branches=self._quantize_subgraphs
+        )
 
         if _has_unfolded_batchnorms(self.model.model, self.connected_graph):
             logger.warning(
@@ -770,12 +773,26 @@ class QuantizationSimModel:
         NOTE: Unlike activations, which are only gathered from _graphs_to_quantize(), params come from
         connected graph ops, which include body ops, so body params are excluded explicitly.
         """
-        # Without subgraph quantization, params declared inside a body are not quantized.
-        body_params = set()
-        if not self._quantize_subgraphs:
-            for graph in list(_iterate_graphs_recursive(self.model.graph()))[1:]:
-                body_params.update(init.name for init in graph.initializer)
-                body_params.update(name for node in graph.node for name in node.output)
+
+        # Params declared inside a body that is not quantized (any body without subgraph
+        # quantization; If branches always, for now) are not quantized:
+        #
+        #   cond -> If      then_branch: h, W_top  -> MatMul    W_top declared at top level
+        #                   else_branch: h, W_else -> MatMul    W_else declared in the branch
+        #
+        #   W_else is never quantized. W_top is quantized at top level with subgraph
+        #   quantization, since ConnectedGraph then holds the branch MatMul reading it.
+        def tensors_of(graphs):
+            names = set()
+            for graph in graphs:
+                names.update(init.name for init in graph.initializer)
+                names.update(name for node in graph.node for name in node.output)
+            return names
+
+        all_graphs = _iterate_graphs_recursive(self.model.graph(), include_if=True)
+        body_params = tensors_of(list(all_graphs)[1:]) - tensors_of(
+            self._graphs_to_quantize()
+        )
 
         valid_ops = self._get_ops_with_parameter()
         for op in valid_ops:

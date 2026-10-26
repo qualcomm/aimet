@@ -79,6 +79,47 @@ class TestSubgraphQuantizerInsertion:
         assert top
         assert all(not body for body in bodies)
 
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize(
+        "make_model", [models_for_tests.if_model, models_for_tests.chained_if_model]
+    )
+    def test_if_branches_are_left_unquantized(self, make_model, flag):
+        """A model with If branches"""
+        model = make_model()
+        inputs = _inputs(model)
+        inputs.update(
+            (inp.name, np.array([True]))
+            for inp in model.graph.input
+            if inp.type.tensor_type.elem_type == onnx.TensorProto.BOOL
+        )
+        sim = _sim(model, flag=flag)
+
+        """
+        When: QuantizationSimModel is created, with or without subgraph quantization
+        Then: 1) ConnectedGraph represents the If branches only with subgraph quantization
+              2) No quantizer is inserted into any If branch, nor is any branch param quantized
+              3) The sim calibrates and runs
+        """
+        assert all(
+            bool(op.subgraphs) == flag
+            for op in sim.connected_graph.get_all_ops().values()
+            if op.type == "If"
+        )
+        branches = list(
+            _iterate_graphs_recursive(sim.model.model.graph, include_if=True)
+        )[1:]
+        assert branches
+        assert not any(
+            node.op_type == "QcQuantizeOp"
+            for branch in branches
+            for node in branch.node
+        )
+        assert not set(sim.param_names) & {
+            init.name for branch in branches for init in branch.initializer
+        }
+        sim.compute_encodings([inputs])
+        sim.session.run(None, inputs)
+
     @pytest.mark.parametrize("make_model, expected", BODY_QUANTIZERS)
     def test_quantizers_inserted_in_bodies(self, make_model, expected):
         """A model with Scan bodies"""

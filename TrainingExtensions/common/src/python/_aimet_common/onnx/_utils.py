@@ -1710,25 +1710,40 @@ def _iterate_graph_nodes_recursive(graph: onnx.GraphProto) -> Iterable[onnx.Node
             yield from _iterate_graph_nodes_recursive(body.g)
 
 
-def _iterate_graphs_recursive(graph: onnx.GraphProto) -> Iterable[onnx.GraphProto]:
+def _iterate_graphs_recursive(
+    graph: onnx.GraphProto, include_if: bool = False
+) -> Iterable[onnx.GraphProto]:
     """
     Yield ``graph`` followed by every Control-flow body nested inside it, depth first.
 
     Control-flow ops carry their bodies as graph-valued attributes rather than as nodes, so a
     plain walk over ``graph.node`` never sees them.
 
-    NOTE: ``If`` and ``Loop`` bodies are deliberately not yielded.
+    NOTE: ``Loop`` bodies are deliberately not yielded, nor are ``If`` branches unless
+    ``include_if`` is set:
+
+        main: Relu -> Scan -> If
+                      body: Add
+                            If: then_branch, else_branch
+
+        include_if=False: main, body
+        include_if=True:  main, body, body/If then_branch, body/If else_branch,
+                          If then_branch, If else_branch
 
     :param graph: Graph to walk
-    :return: Iterator over ``graph`` and the ``Scan`` bodies within it
+    :param include_if: Whether to also yield the then/else branches of ``If`` nodes
+    :return: Iterator over ``graph`` and the bodies within it
     """
     yield graph
     for node in graph.node:
-        if node.op_type != "Scan":
-            continue
-        for attr in node.attribute:
-            if attr.name == "body":
-                yield from _iterate_graphs_recursive(attr.g)
+        if node.op_type == "Scan":
+            for attr in node.attribute:
+                if attr.name == "body":
+                    yield from _iterate_graphs_recursive(attr.g, include_if=include_if)
+        elif include_if and node.op_type == "If":
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    yield from _iterate_graphs_recursive(attr.g, include_if=include_if)
 
 
 def _iterate_graphs_recursive_ir(

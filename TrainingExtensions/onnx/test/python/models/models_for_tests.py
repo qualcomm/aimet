@@ -6071,6 +6071,131 @@ def if_model():
     )
 
 
+def chained_if_model():
+    """
+    Two Ifs in a row, as an MoE block exports one per expert. Each If lists only its condition as
+    input, and its branches read everything else (h, y0) by name:
+
+        x -> pre(Relu) -> h
+        cond0 -> if_0 -> y0      then_branch: h -> t0_add -> t0_o
+                                 else_branch: e0_zeros (initializer, no op)
+        cond1 -> if_1 -> y1      then_branch: y0, h -> t1_add -> t1_o
+                                 else_branch: y0 -> e1_id -> e1_o
+        y1 -> post(Relu) -> y
+    """
+    zeros = numpy_helper.from_array(np.zeros(DIM, dtype=np.float32), name="e0_zeros")
+    if_0 = helper.make_node(
+        "If",
+        ["cond0"],
+        ["y0"],
+        name="if_0",
+        then_branch=helper.make_graph(
+            [helper.make_node("Add", ["h", "h"], ["t0_o"], name="t0_add")],
+            "then_0",
+            inputs=[],
+            outputs=[_ti("t0_o", [DIM])],
+        ),
+        else_branch=helper.make_graph(
+            [],
+            "else_0",
+            inputs=[],
+            outputs=[_ti("e0_zeros", [DIM])],
+            initializer=[zeros],
+        ),
+    )
+    if_1 = helper.make_node(
+        "If",
+        ["cond1"],
+        ["y1"],
+        name="if_1",
+        then_branch=helper.make_graph(
+            [helper.make_node("Add", ["y0", "h"], ["t1_o"], name="t1_add")],
+            "then_1",
+            inputs=[],
+            outputs=[_ti("t1_o", [DIM])],
+        ),
+        else_branch=helper.make_graph(
+            [helper.make_node("Identity", ["y0"], ["e1_o"], name="e1_id")],
+            "else_1",
+            inputs=[],
+            outputs=[_ti("e1_o", [DIM])],
+        ),
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("Relu", ["x"], ["h"], name="pre"),
+                if_0,
+                if_1,
+                helper.make_node("Relu", ["y1"], ["y"], name="post"),
+            ],
+            "outer",
+            inputs=[
+                _ti("x", [DIM]),
+                _ti("cond0", [1], TensorProto.BOOL),
+                _ti("cond1", [1], TensorProto.BOOL),
+            ],
+            outputs=[_ti("y", [DIM])],
+        )
+    )
+
+
+def if_in_scan_model():
+    """
+    A Scan whose body holds an If, whose branches read the body's scanned input by name:
+
+        init, xs -> the_scan -> final
+            body: cond -> b_if -> b_branch      then_branch: b_x -> t_relu -> t_o
+                                                else_branch: b_x -> e_neg -> e_o
+                  b_c, b_branch -> b_add -> b_co
+    """
+    if_node = helper.make_node(
+        "If",
+        ["cond"],
+        ["b_branch"],
+        name="b_if",
+        then_branch=helper.make_graph(
+            [helper.make_node("Relu", ["b_x"], ["t_o"], name="t_relu")],
+            "then",
+            inputs=[],
+            outputs=[_ti("t_o", [DIM, DIM])],
+        ),
+        else_branch=helper.make_graph(
+            [helper.make_node("Neg", ["b_x"], ["e_o"], name="e_neg")],
+            "else",
+            inputs=[],
+            outputs=[_ti("e_o", [DIM, DIM])],
+        ),
+    )
+    body = helper.make_graph(
+        [if_node, helper.make_node("Add", ["b_c", "b_branch"], ["b_co"], name="b_add")],
+        "scan_body",
+        inputs=[_ti("b_c", [DIM, DIM]), _ti("b_x", [DIM, DIM])],
+        outputs=[_ti("b_co", [DIM, DIM])],
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "Scan",
+                    ["init", "xs"],
+                    ["final"],
+                    name="the_scan",
+                    body=body,
+                    num_scan_inputs=1,
+                )
+            ],
+            "outer",
+            inputs=[
+                _ti("init", [DIM, DIM]),
+                _ti("xs", [TRIP, DIM, DIM]),
+                _ti("cond", [1], TensorProto.BOOL),
+            ],
+            outputs=[_ti("final", [DIM, DIM])],
+        )
+    )
+
+
 def body_scan_model(body_nodes, body_initializer=(), top_nodes=(), top_outputs=()):
     """A Scan over xs with one carry. The body reads b_c (carry), b_x (slice) and writes b_co."""
     body = helper.make_graph(

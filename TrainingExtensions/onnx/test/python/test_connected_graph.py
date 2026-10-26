@@ -20,18 +20,35 @@ from .models import models_for_tests
 
 
 def _all_nodes(model):
-    """Every node in the model, at every depth, counting only Scan bodies."""
+    """Every node in the model, at every depth, counting only Scan bodies and If branches."""
 
     def walk(graph):
         for node in graph.node:
             yield node
-            if node.op_type != "Scan":
+            if node.op_type not in ("Scan", "If"):
                 continue
             for attr in node.attribute:
-                if attr.name == "body":
+                if attr.type == onnx.AttributeProto.GRAPH:
                     yield from walk(attr.g)
 
     return list(walk(model.graph))
+
+
+def _in_if_branch(model, target):
+    """Whether ``target`` is a node inside an If branch, at any depth."""
+
+    def walk(graph, in_branch):
+        for node in graph.node:
+            if node is target:
+                return in_branch
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    found = walk(attr.g, in_branch or node.op_type == "If")
+                    if found is not None:
+                        return found
+        return None
+
+    return bool(walk(model.graph, False))
 
 
 class TestConnectedGraph:
@@ -431,6 +448,76 @@ class TestSubgraphOpsAreRepresented:
         } == {"bw"}
         assert cg.get_all_products()["bw"].is_parm
 
+    @pytest.mark.parametrize(
+        "make_model",
+        [
+            models_for_tests.if_model,
+            models_for_tests.chained_if_model,
+            models_for_tests.if_in_scan_model,
+        ],
+    )
+    def test_if_branches_are_left_out_by_default(self, make_model):
+        """A model with If branches"""
+        model = make_model()
+        cg = ConnectedGraph(model)
+
+        """
+        When: A ConnectedGraph is constructed for it without include_if_branches
+        Then: The branches' nodes are not ops and no If holds a branch, as before If support
+        """
+        ifs = [op for op in cg.get_all_ops().values() if op.type == "If"]
+        assert ifs
+        assert all(not op.subgraphs for op in ifs)
+        assert set(cg.get_all_ops()) == {
+            node.name for node in _all_nodes(model) if not _in_if_branch(model, node)
+        }
+
+    def test_each_if_branch_is_held_apart(self):
+        """An If whose then branch holds a Relu and whose else branch holds a Neg"""
+        model = models_for_tests.if_model()
+        cg = ConnectedGraph(model, include_if_branches=True)
+
+        """
+        When: A ConnectedGraph is constructed for it with include_if_branches
+        Then: Both branches' nodes are ops, held by the If under the branch each belongs to, so
+              a pass can tell which ops run when the condition holds
+        """
+        assert set(cg.get_all_ops()) == {node.name for node in _all_nodes(model)}
+        the_if = cg.get_all_ops()["the_if"]
+        assert {
+            branch: [op.name for op in ops] for branch, ops in the_if.subgraphs.items()
+        } == {"then_branch": ["thn_op"], "else_branch": ["els_op"]}
+        assert sorted(op.name for op in the_if.subgraph_ops) == ["els_op", "thn_op"]
+
+    def test_a_branch_holding_no_op_is_still_a_branch(self):
+        """An If whose else branch returns an initializer and holds no op"""
+        cg = ConnectedGraph(
+            models_for_tests.chained_if_model(), include_if_branches=True
+        )
+
+        """
+        When: A ConnectedGraph is constructed for it with include_if_branches
+        Then: The If still lists that branch, empty, rather than looking like it has one branch
+        """
+        if_0 = cg.get_all_ops()["if_0"]
+        assert {
+            branch: [op.name for op in ops] for branch, ops in if_0.subgraphs.items()
+        } == {"then_branch": ["t0_add"], "else_branch": []}
+
+    def test_an_if_inside_a_scan_body_is_held_one_level_down(self):
+        """A Scan whose body holds an If"""
+        cg = ConnectedGraph(
+            models_for_tests.if_in_scan_model(), include_if_branches=True
+        )
+        ops = cg.get_all_ops()
+
+        """
+        When: A ConnectedGraph is constructed for it with include_if_branches
+        Then: The Scan holds the If, and the If, not the Scan, holds the branch ops
+        """
+        assert [op.name for op in ops["the_scan"].subgraph_ops] == ["b_if", "b_add"]
+        assert sorted(op.name for op in ops["b_if"].subgraph_ops) == ["e_neg", "t_relu"]
+
 
 class TestOrderedOps:
     @pytest.mark.parametrize(
@@ -446,6 +533,8 @@ class TestOrderedOps:
             models_for_tests.nested_scan_model(),
             models_for_tests.sibling_scans_model(),
             models_for_tests.if_model(),
+            models_for_tests.chained_if_model(),
+            models_for_tests.if_in_scan_model(),
         ),
     )
     def test_every_op_is_ordered(self, model):
@@ -459,6 +548,27 @@ class TestOrderedOps:
         """
         print(f"All ops: {cg.get_all_ops()} and ordered ops: {cg.ordered_ops}")
         assert {op.name for op in cg.ordered_ops} == set(cg.get_all_ops())
+
+    @pytest.mark.parametrize(
+        "make_model",
+        [
+            models_for_tests.if_model,
+            models_for_tests.chained_if_model,
+            models_for_tests.if_in_scan_model,
+        ],
+    )
+    def test_every_if_branch_op_is_ordered_ahead_of_its_if(self, make_model):
+        cg = ConnectedGraph(make_model(), include_if_branches=True)
+        position = {op.name: index for index, op in enumerate(cg.ordered_ops)}
+
+        """
+        When: A ConnectedGraph is constructed for it with include_if_branches
+        Then: No op is dropped, and each If's branch ops come before it
+        """
+        assert set(position) == set(cg.get_all_ops())
+        for op in cg.get_all_ops().values():
+            for branch_op in op.subgraph_ops:
+                assert position[branch_op.name] < position[op.name]
 
     def test_a_body_is_placed_by_the_op_that_runs_it_not_by_any_edge(self):
         """A model with compute either side of a Scan"""

@@ -12,7 +12,7 @@ class Op(_Op):
     """Subclass Op inherited from aimet_onnx.common.connected_graph.operation.Op"""
 
     _parameters: Dict[str, Tuple[Product, Optional[str]]]
-    _subgraph_ops: List["Op"]
+    _subgraphs: Dict[str, List["Op"]]
 
     def __init__(
         self,
@@ -36,7 +36,7 @@ class Op(_Op):
         self._parameters = {}
         self.transposed_params = False
         self.domain = domain
-        self._subgraph_ops = []
+        self._subgraphs = {}
 
     def add_param(self, param: str, product: Product, product_type: Optional[str]):
         """Add a parameter product to parameters dictionary"""
@@ -53,8 +53,22 @@ class Op(_Op):
         Returns the ops this op runs inside its own body, in the order they run.
         A control-flow op carries its body as a graph-valued attribute.
         """
-        return self._subgraph_ops
+        return [op for ops in self._subgraphs.values() for op in ops]
 
-    def add_subgraph_op(self, op: "Op"):
-        """Record that ``op`` belongs to one of this op's subraphs"""
-        self._subgraph_ops.append(op)
+    @property
+    def subgraphs(self) -> Dict[str, List["Op"]]:
+        """
+        Returns the ops of each of this op's bodies, keyed by the attribute carrying it,
+        e.g. ``body`` for Scan, ``then_branch`` and ``else_branch`` for If.
+        A body holding no op is still listed:
+
+            cond -> If -> y       then_branch: h -> Add -> t_o
+                                  else_branch: zeros (initializer, no op)
+
+            If.subgraphs == {"then_branch": [Add], "else_branch": []}
+        """
+        return self._subgraphs
+
+    def add_subgraph(self, attr_name: str, ops: List["Op"]):
+        """Record that ``ops`` make up the body ``attr_name`` of this op"""
+        self._subgraphs[attr_name] = list(ops)
