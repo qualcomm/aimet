@@ -48,12 +48,15 @@ class OmqQuantizeDequantize:
         self._cached_foll_scale = None
         self.enabled = True
         self.num_repeats = 1
+        self.num_key_value_heads = 1
 
     def is_initialized(self):
         """Set to True for Non QuantizeDequantize Object to prevent from init."""
         return True
 
-    def register_let_params(self, prev_scale=None, foll_scale=None, num_repeats=1):
+    def register_let_params(
+        self, prev_scale=None, foll_scale=None, num_repeats=1, num_key_value_heads=1
+    ):
         """Set prev_scale and foll_scale to LET pairs."""
         if prev_scale is not None:
             self.prev_scale = prev_scale
@@ -64,6 +67,7 @@ class OmqQuantizeDequantize:
         # foll_scale has the correct shape in let_modules. We will repeat the prev_scale num_repeats times to match the dimension.
         # Ex pair:  self_attn.v_proj and self_attn.o_prj  for llama in gqa
         self.num_repeats = num_repeats
+        self.num_key_value_heads = num_key_value_heads
 
     def fold_let_params(self, module, key):
         """Fold let scale in this quantizer to module.weight."""
@@ -118,9 +122,12 @@ class OmqQuantizeDequantize:
             # For some pairs prev_layer out channel != foll_layer in channel. In such cases assert that
             # foll_scale has the correct shape in let_modules. We will repeat the prev_scale num_repeats times to match the dimension.
             # Ex pair: self_attn.v_proj and self_attn.o_prj  for llama in gqa
+            # Repeat whole KV heads, preserving the channel order within each head.
             foll_scale = torch.repeat_interleave(
-                self.foll_scale, dim=0, repeats=self.num_repeats
-            )
+                self.foll_scale.reshape(self.num_key_value_heads, -1),
+                dim=0,
+                repeats=self.num_repeats,
+            ).flatten()
             weight = weight * foll_scale
 
         return weight
