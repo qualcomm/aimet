@@ -122,13 +122,13 @@ else:
     from deepspeed import __version__ as deepspeed_version
     from packaging import version
 
-    if version.parse(deepspeed_version) >= version.parse("0.19.8"):
+    if version.parse(deepspeed_version) == version.parse("0.19.8"):
         msg = [
             "-----------------------------------------------------------------",
-            f"  Detected deepspeed {deepspeed_version} (>= 0.19.8).",
+            "  Detected deepspeed 0.19.8.",
             "  Deepspeed 0.19.8 has a known issue with ZeRO3 that causes a crash when used with AIMET QuantizationSimModel.",
             "  If you need to use ZeRO3 with AIMET, please consider switching to a different deepspeed version.",
-            "  For more information, see https://github.com/deepspeedai/DeepSpeed/issues/8879",
+            "  For more information, https://github.com/deepspeedai/DeepSpeed/issues/8639",
             "-----------------------------------------------------------------",
         ]
         _logger.warning("\n".join(msg))
