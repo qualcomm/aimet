@@ -501,8 +501,24 @@ hold every group.
 It is meant for a plain quantsim. Keep the backbone recipe to `Calibration`
 (or `model.encodings` saved from one); after `SpinQuant`, `AdaScale` or
 `SeqMSE` the ranking describes the transformed model. This is not checked.
-Visual/audio encoders are not swept. Example:
-[qwen3_0.6b_sensitivity.yaml](configs/qwen3_0.6b_sensitivity.yaml).
+Visual/audio encoders are not swept. The pass uses no metrics, so top-level
+`metrics` can be omitted; the row then has no baseline accuracy. Example:
+
+```yaml
+model:
+  model_id: Qwen/Qwen3-0.6B
+  sequence_length: 2048
+  context_length: 4096
+recipe:
+  backbone:
+    - name: Calibration
+      dataset:
+        name: Wikitext
+        split: train
+analysis:
+  name: QuantizerSensitivity
+  mode: weights
+```
 
 ### Datasets
 
