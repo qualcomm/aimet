@@ -126,6 +126,9 @@ SELECT
          ELSE t.components->'visual'->>'recipe_name'
        END AS "Visual Recipe",
 
+       -- Analysis pass (ONNX-only, so taken from the ONNX row)
+       COALESCE(o.analysis->>'name', '—')              AS "Analyses",
+
        -- Accuracy columns: torch results
        ROUND((t.accuracy_results->'PPL'->>'result')::numeric, 2)      AS "Torch PPL",
        ROUND((t.accuracy_results->'MMMU'->>'result')::numeric, 4)     AS "Torch MMMU",
@@ -315,7 +318,10 @@ SELECT
        t.environment->'commit_sha'  AS "commit SHA",
        t.run_group                  AS "run_group",
 
-	   o.export						AS "export"
+	   o.export						AS "export",
+	   -- Results zip (config, profiling data, analysis report; no model data).
+	   -- NULL when the row has no export or predates the results bucket.
+	   NULLIF(o.report, '')                   AS "report"
 
     FROM genai_laboratory t
     JOIN genai_laboratory o

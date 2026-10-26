@@ -107,11 +107,12 @@ SELECT
          END
        ) AS "Recipe Pipeline (Torch → ONNX)",
 
+       -- Analysis pass (ONNX-only, so taken from the ONNX row)
+       COALESCE(o.analysis->>'name', '—')              AS "Analyses",
+
        -- Accuracy columns (from ONNX row)
        ROUND((o.accuracy_results->'PPL'->>'result')::numeric, 2)      AS "PPL",
-       ROUND((o.accuracy_results->'TinyMMLU'->>'result')::numeric, 4) AS "TinyMMLU",
        ROUND((o.accuracy_results->'MMLU'->>'result')::numeric, 4)     AS "MMLU",
-       ROUND((o.accuracy_results->'MMLU1000'->>'result')::numeric, 4) AS "MMLU1000",
 
        -- Recipe details: Torch recipe(...) → ONNX recipe(...)
        CONCAT(
@@ -243,7 +244,10 @@ SELECT
        t.environment->'commit_sha'  AS "commit SHA",
        t.run_group                  AS "run_group",
 
-	   o.export 					AS "export"
+	   o.export 					AS "export",
+	   -- Results zip (config, profiling data, analysis report; no model data).
+	   -- NULL when the row has no export or predates the results bucket.
+	   NULLIF(o.report, '')                   AS "report"
 
     FROM genai_laboratory t
     JOIN genai_laboratory o

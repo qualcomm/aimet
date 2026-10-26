@@ -13,9 +13,11 @@ dashboard questions, and the ingest Lambda source.
 
 Test/quantization results are exported, uploaded to a **staging S3 bucket**, and
 an **ingest Lambda** parses each upload — writing structured rows into a
-**Postgres (RDS)** database and copying the raw artifact to a **long-term S3
-bucket**. A **Metabase** instance (Docker on EC2) reads the database and serves
-dashboards through a public **Application Load Balancer**.
+**Postgres (RDS)** database, copying each model export zip to the **artifacts
+S3 bucket** and a zip of that export's results (config, profiling data,
+analysis report), without the model data, to the **results S3 bucket**. A **Metabase**
+instance (Docker on EC2) reads the database and serves dashboards through a
+public **Application Load Balancer**.
 
 ![Data flow](./diagrams/data-flow.svg)
 
@@ -36,7 +38,8 @@ dashboards through a public **Application Load Balancer**.
 1. **Upload** → staging S3 bucket (objects auto-expire after 1 day).
 2. **Trigger** → `s3:ObjectCreated:*` invokes the ingest Lambda.
 3. **Ingest** → Lambda parses the export, inserts rows into Postgres, and copies
-   the artifact to the long-term bucket.
+   each model zip to the artifacts bucket and its results zip to the results
+   bucket (both under `exports/`).
 4. **Serve** → Metabase queries Postgres; the ALB exposes the dashboards.
 
 ## Common tasks

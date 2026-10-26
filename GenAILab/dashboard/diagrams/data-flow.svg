@@ -42,7 +42,12 @@
   <!-- Artifact bucket -->
   <rect class="box store" x="600" y="130" width="150" height="60"/>
   <text x="675" y="154" class="lbl" text-anchor="middle">S3 artifacts</text>
-  <text x="675" y="172" class="sub" text-anchor="middle">long-term store</text>
+  <text x="675" y="172" class="sub" text-anchor="middle">export zips</text>
+
+  <!-- Results bucket -->
+  <rect class="box store" x="600" y="205" width="150" height="60"/>
+  <text x="675" y="229" class="lbl" text-anchor="middle">S3 results</text>
+  <text x="675" y="247" class="sub" text-anchor="middle">results zips, no model data</text>
 
   <!-- Metabase EC2 -->
   <rect class="box compute" x="390" y="240" width="150" height="60"/>
@@ -68,10 +73,12 @@
   <text x="576" y="70" class="edgelbl" text-anchor="middle">rows</text>
   <path class="edge" d="M540,110 L598,150"/>
   <text x="576" y="140" class="edgelbl" text-anchor="middle">artifact</text>
+  <path class="edge" d="M540,125 L598,225"/>
+  <text x="590" y="200" class="edgelbl" text-anchor="end">results</text>
 
   <!-- read edge RDS -> Metabase -->
   <path class="edge" d="M620,90 C560,180 520,200 480,238"/>
-  <text x="600" y="200" class="edgelbl" text-anchor="middle">SELECT :5432</text>
+  <text x="500" y="200" class="edgelbl" text-anchor="end">SELECT :5432</text>
 
   <!-- bottom row (right to left) -->
   <path class="edge" d="M388,270 L342,270"/>
@@ -80,12 +87,12 @@
   <text x="165" y="262" class="edgelbl" text-anchor="middle">HTTP</text>
 
   <!-- legend -->
-  <rect x="600" y="250" width="14" height="14" class="store"/>
-  <text x="620" y="262" class="sub">storage</text>
-  <rect x="690" y="250" width="14" height="14" class="compute"/>
-  <text x="710" y="262" class="sub">compute</text>
-  <rect x="600" y="272" width="14" height="14" class="edgebox"/>
-  <text x="620" y="284" class="sub">ingress</text>
-  <rect x="690" y="272" width="14" height="14" class="actor"/>
-  <text x="710" y="284" class="sub">actor</text>
+  <rect x="600" y="300" width="14" height="14" class="store"/>
+  <text x="620" y="312" class="sub">storage</text>
+  <rect x="690" y="300" width="14" height="14" class="compute"/>
+  <text x="710" y="312" class="sub">compute</text>
+  <rect x="600" y="322" width="14" height="14" class="edgebox"/>
+  <text x="620" y="334" class="sub">ingress</text>
+  <rect x="690" y="322" width="14" height="14" class="actor"/>
+  <text x="710" y="334" class="sub">actor</text>
 </svg>

@@ -199,11 +199,47 @@ runs:
       if: always()
       shell: bash
       run: |
-        for export_dir in GenAILab/artifacts/exports GenAILab/artifacts/secondary_exports; do
+        for pair in exports:results secondary_exports:secondary_results; do
+          export_dir="GenAILab/artifacts/${pair%%:*}"
+          results_dir="GenAILab/artifacts/${pair##*:}"
           if [ -d "$export_dir" ]; then
+            # Ship each model's analysis-pass report in its own export zip. The
+            # export's profiling_data.csv holds that model's row only; its report
+            # path is relative to the results dir, so copying the folder to the
+            # same relative path keeps it valid inside the export.
+            python3 - "$results_dir" "$export_dir" << 'PY_EOF'
+        import csv, json, shutil, sys
+        from pathlib import Path
+
+        csv.field_size_limit(sys.maxsize)
+        results_dir, export_dir = Path(sys.argv[1]), Path(sys.argv[2])
+        for csv_path in export_dir.glob("*/profiling_data.csv"):
+            with open(csv_path, newline="") as f:
+                row = next(csv.DictReader(f), {})
+            analysis = row.get("analysis", "").strip().strip('"').replace('""', '"')
+            report = json.loads(analysis).get("report") if analysis else None
+            if not report:
+                continue
+            report_dir = Path(report).parent
+            if not (results_dir / report_dir).is_dir():
+                print(f"Warning: {results_dir / report_dir} not found; zipping without it")
+                continue
+            shutil.copytree(results_dir / report_dir, csv_path.parent / report_dir)
+        PY_EOF
             cd "$export_dir"
             for dir in */; do
-              zip -1 -r "${dir%/}.zip" "$dir" &
+              dir="${dir%/}"
+              # *.lock: the profiler's file locks for profiling_data.*
+              zip -1 -r "$dir.zip" "$dir" -x "*.lock" &
+              # The same export's results only, without model data
+              results=()
+              for f in "$dir/config.yaml" "$dir/profiling_data.csv" \
+                "$dir/profiling_data.json" "$dir/analysis"; do
+                [ -e "$f" ] && results+=("$f")
+              done
+              if [ "${#results[@]}" -gt 0 ]; then
+                zip -1 -r "${dir}_results.zip" "${results[@]}" -x "*.lock" &
+              fi
             done
             wait
             cd -
@@ -222,22 +258,30 @@ runs:
       if: always()
       shell: bash
       run: |
-        aws s3 cp GenAILab/artifacts/exports/ \
-          s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}/${{ inputs.variant }}/ \
+        BUCKET_PREFIX="s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}"
+        # The ingest Lambda moves each <export>.zip to the artifacts bucket and
+        # each <export>_results.zip to the results bucket.
+        aws s3 cp GenAILab/artifacts/exports/ "$BUCKET_PREFIX/${{ inputs.variant }}/" \
           --recursive --exclude "*" --include "*.zip" --no-progress
-        # *.md / *.html: analysis-pass reports and plots under results/analysis/.
-        aws s3 cp GenAILab/artifacts/results/ \
-          s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}/${{ inputs.variant }}/ \
-          --recursive --exclude "*" --include "*.json" --include "*.csv" \
-          --include "*.md" --include "*.html" --no-progress
+        aws s3 cp GenAILab/artifacts/results/ "$BUCKET_PREFIX/${{ inputs.variant }}/" \
+          --recursive --exclude "*" --include "run_metadata.json" --no-progress
         # Secondary ONNX results/exports under onnx/ prefix
-        if [ -d GenAILab/artifacts/secondary_results ]; then
-          aws s3 cp GenAILab/artifacts/secondary_results/ \
-            s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}/onnx/ \
-            --recursive --exclude "*" --include "*.json" --include "*.csv" --no-progress
-        fi
         if [ -d GenAILab/artifacts/secondary_exports ]; then
-          aws s3 cp GenAILab/artifacts/secondary_exports/ \
-            s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}/onnx/ \
+          aws s3 cp GenAILab/artifacts/secondary_exports/ "$BUCKET_PREFIX/onnx/" \
             --recursive --exclude "*" --include "*.zip" --no-progress
+        fi
+        if [ -d GenAILab/artifacts/secondary_results ]; then
+          aws s3 cp GenAILab/artifacts/secondary_results/ "$BUCKET_PREFIX/onnx/" \
+            --recursive --exclude "*" --include "run_metadata.json" --no-progress
+        fi
+
+        # The run's CSV triggers the ingest Lambda, which only moves what is
+        # already in staging, so it goes up last.
+        if [ -f GenAILab/artifacts/results/profiling_data.csv ]; then
+          aws s3 cp GenAILab/artifacts/results/profiling_data.csv \
+            "$BUCKET_PREFIX/${{ inputs.variant }}/" --no-progress
+        fi
+        if [ -f GenAILab/artifacts/secondary_results/profiling_data.csv ]; then
+          aws s3 cp GenAILab/artifacts/secondary_results/profiling_data.csv \
+            "$BUCKET_PREFIX/onnx/" --no-progress
         fi

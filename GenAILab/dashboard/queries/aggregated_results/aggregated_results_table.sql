@@ -286,11 +286,12 @@ SELECT
 
      COALESCE(model_modifiers->>'dtype', 'float32') AS "Dtype",
 
+     -- Analysis pass run on top of the baseline metrics ('—' when none ran)
+     COALESCE(analysis->>'name', '—')  AS "Analyses",
+
      -- Accuracy columns
      ROUND((accuracy_results->'PPL'->>'result')::numeric, 2)      AS "PPL",
-     ROUND((accuracy_results->'TinyMMLU'->>'result')::numeric, 4) AS "TinyMMLU",
      ROUND((accuracy_results->'MMLU'->>'result')::numeric, 4)     AS "MMLU",
-     ROUND((accuracy_results->'MMLU1000'->>'result')::numeric, 4) AS "MMLU1000",
      ROUND((accuracy_results->'AutogradedPrompts'->>'result')::numeric, 4) AS "AutogradedPrompts",
      ROUND((accuracy_results->'Grace'->>'result')::numeric, 4) AS "Grace",
      ROUND((accuracy_results->'MMMU'->>'result')::numeric, 4)     AS "MMMU",

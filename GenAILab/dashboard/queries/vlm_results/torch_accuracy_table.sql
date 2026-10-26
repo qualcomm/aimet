@@ -110,12 +110,13 @@ SELECT
          ELSE components->'visual'->>'recipe_name'
        END AS "Visual Recipe",
 
+       -- Analysis pass run on top of the baseline metrics ('—' when none ran)
+       COALESCE(analysis->>'name', '—')                AS "Analyses",
+
        -- Accuracy columns
        ROUND((accuracy_results->'PPL'->>'result')::numeric, 2)      AS "PPL",
-       ROUND((accuracy_results->'TinyMMLU'->>'result')::numeric, 4) AS "TinyMMLU",
        ROUND((accuracy_results->'MMMU'->>'result')::numeric, 4)     AS "MMMU",
        ROUND((accuracy_results->'MMLU'->>'result')::numeric, 4)     AS "MMLU",
-       ROUND((accuracy_results->'MMLU1000'->>'result')::numeric, 4) AS "MMLU1000",
 	   accuracy_results->'AutogradedPrompts'->>'result' AS "AutogradedPrompts",
 	   accuracy_results->'AutogradedMultimodalPrompts'->>'result' AS "AutogradedMultimodalPrompts",
 	   ROUND((accuracy_results->'Grace'->>'result')::numeric, 4) AS "Grace",
@@ -244,6 +245,9 @@ SELECT
        environment->'commit_sha'                        AS "commit SHA",
 
 	   export											AS "export",
+	   -- Results zip (config, profiling data, analysis report; no model data).
+	   -- NULL when the row has no export or predates the results bucket.
+	   NULLIF(report, '')                     AS "report",
 
 	   -- Row identity for a per-run report link. NULL on pre-cutover rows, so a
 	   -- link built from it renders inert instead of matching every legacy row.
