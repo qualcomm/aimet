@@ -20,6 +20,8 @@ from aimet_torch.experimental.export._utils import (
     _refresh_output_specs,
     _refresh_output_specs_ctx,
     _is_torch_ao_qdq_node,
+    _is_aimet_qdq_node,
+    _get_aimet_qdq_module,
 )
 from aimet_torch.experimental.export.qnn import _qnn_decompositions
 from aimet_torch.experimental.backends import BackendDescription
@@ -140,13 +142,13 @@ class ExportedProgram(torch.export.ExportedProgram):
         if target_backend:
             backend_description = BackendDescription.from_backend_id(target_backend)
             with _refresh_output_specs_ctx(self):
-                newly_added_qtzrs = backend_description.configure(
+                backend_description.configure(
                     self.graph_module, param_bw, activation_bw
                 )
         else:
             # If target backend is not specified, fall back to legacy behavior
             # This is only to keep CI happy. In the future, we will require target backend to be specified.
-            newly_added_qtzrs = self._add_missing_quantizers(param_bw, activation_bw)
+            self._add_missing_quantizers(param_bw, activation_bw)
 
         # Step 2. Enter compute_encodings mode and yield control back to user to
         # calibrate encodings of the newly added quantizers. While the control
@@ -155,9 +157,15 @@ class ExportedProgram(torch.export.ExportedProgram):
         with aimet_torch.nn.compute_encodings(self.module()):
             yield
 
+        newly_added_qtzrs = [
+            node.name
+            for node in self.graph_module.graph.nodes
+            if _is_aimet_qdq_node(node)
+        ]
+
         # Step 3. Inline QuantizeDequantize modules into torch.ao Q/DQ operators
         # (torch.ops.quantized_decomposed.(de)quantize_per_*)
-        self._inline_qdq(newly_added_qtzrs)
+        self._inline_qdq()
 
         # Step 4. Post-processing
         _post_process(self)
@@ -166,17 +174,13 @@ class ExportedProgram(torch.export.ExportedProgram):
 
         print(
             "Added and calibrated encodings for the following missing quantizers:"
-            f"\n{list(newly_added_qtzrs.keys())}"
+            f"\n{newly_added_qtzrs}"
         )
 
     @_refresh_output_specs
-    def _add_missing_quantizers(
-        self, param_bw: int, activation_bw: int
-    ) -> dict[str, QuantizeDequantize]:
+    def _add_missing_quantizers(self, param_bw: int, activation_bw: int):
         graph_module = self.graph_module
         graph = graph_module.graph
-
-        newly_added_qtzrs: dict[str, QuantizeDequantize] = {}
 
         def replace(args, old: torch.fx.Node, new: torch.fx.Node):
             return _fx_map_arg(args, lambda arg: new if arg is old else arg)
@@ -225,7 +229,7 @@ class ExportedProgram(torch.export.ExportedProgram):
             if not val.dtype.is_floating_point:
                 continue
 
-            if node.name in newly_added_qtzrs:
+            if _is_aimet_qdq_node(node):
                 continue
 
             if _is_torch_ao_qdq_node(node):
@@ -264,22 +268,19 @@ class ExportedProgram(torch.export.ExportedProgram):
                 user.args = replace(user.args, old=node, new=output_qdq_node)
                 user.kwargs = replace(user.kwargs, old=node, new=output_qdq_node)
 
-            newly_added_qtzrs[output_qdq_node.name] = output_qdq
-
         # Recompile the graph
         graph_module.recompile()
-        return newly_added_qtzrs
 
     @torch.no_grad()
     @_refresh_output_specs
-    def _inline_qdq(self, newly_added_qtzrs: dict[str, QuantizeDequantize]):
+    def _inline_qdq(self):
         """
         Inline AIMET QuantizeDequantize nodes into torch.ops.quantized_decomposed.(de)quantize_per_*
         """
         uncalibrated_qtzrs = [
             name
-            for name, qtzr in newly_added_qtzrs.items()
-            if not qtzr.is_initialized()
+            for name, qtzr in self.graph_module.named_modules()
+            if isinstance(qtzr, QuantizeDequantize) and not qtzr.is_initialized()
         ]
 
         if uncalibrated_qtzrs:
@@ -341,10 +342,9 @@ class ExportedProgram(torch.export.ExportedProgram):
             self.graph.erase_node(qdq_node)
 
         for qdq_node in self.graph_module.graph.nodes:
-            if qdq_node.name not in newly_added_qtzrs:
+            qtzr = _get_aimet_qdq_module(qdq_node)
+            if not qtzr:
                 continue
-
-            qtzr = newly_added_qtzrs[qdq_node.name]
             encoding = qtzr.get_encodings()
             scale = encoding.scale
             zero_point = -encoding.offset.to(torch.int32)

@@ -100,6 +100,11 @@ def module(request):
     indirect=True,
 )
 def test_fully_quantized(module):
+    """
+    Given: nn.Module included in quantization IR
+    When: compute missing encodings with target backend specified
+    Then: All nodes in the graph should be quantized with the correct dtype
+    """
     example_inputs = (torch.randn(1, 3, 10, 10),)
     ep = torch.export.export(module, example_inputs)
     ep = AIMETExportedProgram.from_torch_exported_program(ep)
@@ -117,12 +122,30 @@ def test_fully_quantized(module):
         activation_dtype=torch.uint16,
     )
 
-    (output_dq,) = ep.graph.output_node().all_input_nodes
-
     if isinstance(module, torch.nn.Softmax):
+        """
+        Softmax output should be set to [0, 1] range after quantization
+        """
+        (output_dq,) = ep.graph.output_node().all_input_nodes
         min, max = _get_min_max_range(output_dq)
         assert min == 0.0
         assert np.allclose(max, 1.0)
-    elif isinstance(module, torch.nn.ReLU):
+
+    if isinstance(module, torch.nn.ReLU):
+        """
+        Relu output should be set to [0, ?] range after quantization
+        """
+        (output_dq,) = ep.graph.output_node().all_input_nodes
         min, _ = _get_min_max_range(output_dq)
         assert min == 0.0
+
+    if isinstance(module, (torch.nn.ReLU, custom.Mean)):
+        """
+        Relu and ReduceMean's input range should be euqal to the output range
+        """
+        (input,) = ep.graph.find_nodes(op="placeholder")
+        (input_q,) = input.users
+        (output_dq,) = ep.graph.output_node().all_input_nodes
+        input_range = _get_min_max_range(input_q)
+        output_range = _get_min_max_range(output_dq)
+        assert input_range == output_range

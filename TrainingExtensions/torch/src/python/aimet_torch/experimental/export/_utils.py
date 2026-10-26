@@ -147,6 +147,7 @@ def _remove_dangling_nodes(ep: ExportedProgram):
 
     ep.graph.eliminate_dead_code()
     ep.graph_module.recompile()
+    ep.graph_module.delete_all_unused_submodules()
 
     # Clean up graph_signature and state_dict
     ep.graph_signature.input_specs = [

@@ -16,7 +16,7 @@ from aimet_torch.common.experimental.backends.schema import (  # pylint: disable
     OpSignature as _OpSignature,
     Argument as _Argument,
     FixedRange as _FixedRange,
-    EqualRange,
+    EqualRange as _EqualRange,
 )
 from aimet_torch.experimental.export._utils import (
     _is_multi_output_op,
@@ -43,13 +43,57 @@ class FixedRange(_FixedRange):
             return
 
         if not isinstance(qdq_module, QuantizeDequantize):
-            raise TypeError(f"Expected QuantizeDequantize, got {type(qdq_module)}")
+            raise RuntimeError(f"Expected QuantizeDequantize, got {type(qdq_module)}")
 
         qdq_module.set_range(self.min, self.max)
         qdq_module.allow_overwrite(
             min=self.min is None,
             max=self.max is None,
         )
+
+
+@dataclass(frozen=True)
+class EqualRange(_EqualRange):
+    # Overwrite parent type hint
+    arg1: "Argument"
+    arg2: "Argument"
+
+    def apply(self, qdq_nodes: dict["Argument", torch.fx.Node]):
+        qdq_node_1 = qdq_nodes.get(self.arg1, None)
+        qdq_node_2 = qdq_nodes.get(self.arg2, None)
+
+        if qdq_node_1 and qdq_node_2 and qdq_node_1.graph is not qdq_node_2.graph:
+            raise RuntimeError(
+                "Cannot apply EqualRange constraint between nodes "
+                f"in different graphs: {qdq_node_1} and {qdq_node_2}"
+            )
+
+        qdq_module_1 = _get_aimet_qdq_module(qdq_node_1)
+        qdq_module_2 = _get_aimet_qdq_module(qdq_node_2)
+
+        if not qdq_module_1 and not qdq_module_2:
+            # qdq_module=None indicatese this argument is not quantized.
+            # Skip applying constraints
+            return
+
+        if (qdq_module_1 is None) != (qdq_module_2 is None):
+            raise RuntimeError(
+                "Cannot apply EqualRange constraint between a quantized and a non-quantized argument"
+            )
+
+        # At this point, both qdq_module_1 and qdq_module_2 are not None
+        if not (
+            isinstance(qdq_module_1, QuantizeDequantize)
+            and isinstance(qdq_module_2, QuantizeDequantize)
+        ):
+            raise RuntimeError(
+                f"Expected QuantizeDequantize, got {type(qdq_module_1)} and {type(qdq_module_2)}"
+            )
+
+        # torch.fx.Node's `target` attribute (str) indicates the name of nn.Module
+        # associated with this node. Overwriting one node's `target` attribute with another's
+        # will make them share the same underlying QuantizeDequantize module.
+        qdq_node_1.target = qdq_node_2.target
 
 
 @dataclass(frozen=True)
@@ -137,7 +181,7 @@ class OpSchema(_OpSchema):
 
         return True
 
-    def configure_node(self, node: torch.fx.Node) -> dict[str, QuantizeDequantize]:
+    def configure_node(self, node: torch.fx.Node):
         """
         Insert QuantizeDequantize or FloatQuantizeDequantize nodes as specified in the schema.
 
@@ -158,10 +202,6 @@ class OpSchema(_OpSchema):
             node (torch.fx.Node): Main node to be configured.
                 Corresponds to "conv2d" in the example above.
 
-        Returns:
-            dict[str, QuantizeDequantize]: A dictionary mapping the names of the newly created QDQ nodes
-                to their corresponding QuantizeDequantize modules.
-
         Local Variables:
             target_node (torch.fx.Node): The node to which the QDQ will be attached.
                 Corresponds to "input", "weight", "bias", and "conv2d" in the example above.
@@ -181,7 +221,6 @@ class OpSchema(_OpSchema):
         else:
             raise RuntimeError("Node is not part of a GraphModule")
 
-        newly_added_qtzrs: dict[str, QuantizeDequantize] = {}
         quantization_specs: dict[Argument, torch.fx.Node] = {
             arg_spec: target_node
             for arg_spec, target_node in zip(
@@ -222,10 +261,7 @@ class OpSchema(_OpSchema):
                 user.args = replace(user.args, old=target_node, new=qdq_node)
                 user.kwargs = replace(user.kwargs, old=target_node, new=qdq_node)
 
-            newly_added_qtzrs[qdq_node.name] = qdq_module
-
         self.apply_constraints(node)
-        return newly_added_qtzrs
 
     def apply_constraints(self, node: torch.fx.Node):
         qdq_nodes: dict[Argument, torch.fx.Node] = {
@@ -243,10 +279,19 @@ class OpSchema(_OpSchema):
             )
 
         self._apply_fixed_range_constraints(qdq_nodes)
+        self._apply_equal_range_constraints(qdq_nodes)
 
     def _apply_fixed_range_constraints(self, qdq_nodes: dict[Argument, torch.fx.Node]):
         for constraint in self.value_constraints:
             if isinstance(constraint, FixedRange):
+                constraint.apply(qdq_nodes)
+
+    def _apply_equal_range_constraints(
+        self,
+        qdq_nodes: dict[Argument, torch.fx.Node],
+    ):
+        for constraint in self.value_constraints:
+            if isinstance(constraint, EqualRange):
                 constraint.apply(qdq_nodes)
 
 
@@ -308,12 +353,11 @@ class BackendDescription:
         graph_module: torch.fx.GraphModule,
         weight_bw: int,
         activation_bw: int,
-    ) -> dict[str, QuantizeDequantize]:
+    ):
         """
         Configure graph module for quantization according to the backend description.
         """
         graph = graph_module.graph
-        newly_added_qtzrs: dict[str, QuantizeDequantize] = {}
 
         for node in graph.nodes:
             # Exclude multi-output ops which returns tuple of tensors.
@@ -359,7 +403,7 @@ class BackendDescription:
             if not val.dtype.is_floating_point:
                 continue
 
-            if node.name in newly_added_qtzrs:
+            if _is_aimet_qdq_node(node):
                 continue
 
             if _is_torch_ao_qdq_node(node):
@@ -374,8 +418,9 @@ class BackendDescription:
             schema: OpSchema = self.get_schema(
                 node.target, weight_bw=weight_bw, activation_bw=activation_bw
             )
-            newly_added_qtzrs |= schema.configure_node(node)
+            schema.configure_node(node)
 
         # Recompile the graph
+        graph_module.graph.eliminate_dead_code()
         graph_module.recompile()
-        return newly_added_qtzrs
+        graph_module.delete_all_unused_submodules()
