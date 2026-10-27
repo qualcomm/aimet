@@ -46,7 +46,9 @@ from ..utils import AimetLogger
 __all__ = [
     "_ParamUtils",
     "_add_onnx_qdq_nodes",
+    "_add_onnx_qdq_nodes_ir",
     "_convert_version",
+    "_convert_version_ir",
     "_convert_version_with_external_weights",
     "_derive_const_rescale_op_output_encodings",
     "_derive_data_movement_op_encodings",
@@ -54,6 +56,7 @@ __all__ = [
     "_all_op_schemas",
     "_finalize_graph_changes",
     "_get_all_constants",
+    "_get_all_constants_ir",
     "_get_effective_encoding",
     "_get_node_attribute",
     "_is_grid_equivariant_op",
