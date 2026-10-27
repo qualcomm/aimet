@@ -7,10 +7,12 @@ import json
 
 import numpy as np
 import onnx
+import onnx_ir
 import onnxruntime as ort
 import pytest
 from onnx import helper, numpy_helper
 
+from aimet_onnx import ir_utils
 import aimet_onnx.quantsim as quantsim
 from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
 from aimet_onnx.quantsim import QuantizationSimModel, _quantize_subgraphs_enabled
@@ -590,6 +592,27 @@ class TestSubgraphQuantizerRemoval:
         assert body_matmul().input[1] == "bw"
         for exp, act in zip(expected, sim.session.run(None, inputs)):
             assert np.array_equal(act, exp)
+
+
+def test_remove_aimet_quantizers_from_scan_bodies():
+    sim = _sim(models_for_tests.sibling_scans_model())
+    ir_model = onnx_ir.from_proto(sim.model.model)
+    scan_bodies = [
+        node.attributes["body"].as_graph()
+        for node in ir_model.graph
+        if node.op_type == "Scan"
+    ]
+    assert any(
+        node.op_type == "QcQuantizeOp" for graph in scan_bodies for node in graph
+    )
+
+    ir_utils.remove_aimet_quantizers(ir_model)
+
+    assert not any(
+        node.op_type == "QcQuantizeOp"
+        for graph in [ir_model.graph, *scan_bodies]
+        for node in graph
+    )
 
 
 class TestSubgraphExport:

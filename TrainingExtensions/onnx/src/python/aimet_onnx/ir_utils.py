@@ -8,6 +8,8 @@ from typing import Optional, Tuple
 import numpy as np
 import onnx_ir
 
+from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive_ir
+
 #: ONNX QDQ node types. Unlike ``QcQuantizeOp`` these come in pairs, so removing
 #: them takes a use-redirect per node rather than a single output->input map.
 _ONNX_QDQ_TYPES = frozenset(("QuantizeLinear", "DequantizeLinear"))
@@ -108,11 +110,16 @@ def _remove_onnx_qdq(model: onnx_ir.Model) -> None:
 def remove_aimet_quantizers(model: onnx_ir.Model):
     """Remove AIMET ``QcQuantizeOp`` nodes, rewiring consumers to the source tensor."""
     _remove_passthrough_nodes(
-        [node for node in model.graph.all_nodes() if node.op_type == "QcQuantizeOp"]
+        [
+            node
+            for graph in _iterate_graphs_recursive_ir(model.graph)
+            for node in graph
+            if node.op_type == "QcQuantizeOp"
+        ]
     )
 
 
-def _remove_passthrough_nodes(nodes: list) -> None:
+def _remove_passthrough_nodes(nodes: list[onnx_ir.Node]) -> None:
     """Delete single-in/single-out ``nodes``, redirecting their uses to input 0.
 
     A graph output produced by a pass-through must be re-pointed at the source

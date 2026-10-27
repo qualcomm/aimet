@@ -9,7 +9,18 @@
 from collections import deque, defaultdict
 import functools
 import itertools
-from typing import Iterable, Optional, Sequence, Dict, List, Tuple, Union, Mapping, Set
+import logging
+from typing import (
+    Iterable,
+    Optional,
+    Sequence,
+    Dict,
+    List,
+    Tuple,
+    Union,
+    Mapping,
+    Set,
+)
 import math
 
 import os
@@ -26,6 +37,7 @@ from onnx.external_data_helper import (
     _get_all_tensors,
 )
 from onnx.defs import OpSchema
+from onnxscript import version_converter
 import onnx_ir
 
 from . import opset10, opset13, opset19, opset21, opset23, opset25
@@ -38,6 +50,7 @@ __all__ = [
     "_convert_version_with_external_weights",
     "_derive_const_rescale_op_output_encodings",
     "_derive_data_movement_op_encodings",
+    "_derive_data_movement_op_encodings_ir",
     "_all_op_schemas",
     "_finalize_graph_changes",
     "_get_all_constants",
@@ -49,10 +62,12 @@ __all__ = [
     "_is_metadata_op",
     "_iterate_graph_nodes_recursive",
     "_iterate_graphs_recursive",
+    "_iterate_graphs_recursive_ir",
     "_onnx_to_qnn_ir",
     "_remove_onnx_qdq_nodes",
     "contains_tensor_type",
     "to_array",
+    "to_array_ir",
 ]
 
 
@@ -1331,6 +1346,12 @@ def _convert_version(
     return model
 
 
+def _convert_version_ir(model: onnx_ir.Model, target_opset_version: int) -> None:
+    version_converter.convert_version(
+        model, target_version=target_opset_version, fallback=True
+    )
+
+
 def _remove_onnx_qdq_nodes(
     model: onnx.ModelProto,
     base_dir: str = "",
@@ -2036,6 +2057,35 @@ def _encoding_equal(enc1: Mapping | None, enc2: Mapping | None) -> bool:
     )
 
 
+def _get_reduce_axes(
+    node: onnx.NodeProto, constants: Mapping[str, onnx.TensorProto]
+) -> Optional[np.ndarray]:
+    """Return the static ``axes`` of a Reduce* node, or None if they aren't static.
+
+    ``axes`` is the optional second input since opset 18 and an attribute before that.
+    """
+    if len(node.input) > 1 and node.input[1]:
+        if node.input[1] not in constants:
+            return None
+        return to_array(constants[node.input[1]])
+    attr = next((attr for attr in node.attribute if attr.name == "axes"), None)
+    return np.array(attr.ints) if attr is not None else None
+
+
+def _get_reduce_axes_ir(
+    node: onnx_ir.Node,
+    constants: Mapping[str, onnx_ir.Value],
+) -> Optional[np.ndarray]:
+    """IR-native counterpart of :func:`_get_reduce_axes`."""
+    axes_value = node.inputs[1] if len(node.inputs) > 1 else None
+    if axes_value is not None:
+        if axes_value.name not in constants:
+            return None
+        return to_array_ir(constants[axes_value.name])
+    axes_attr = node.attributes.get("axes")
+    return np.array(axes_attr.as_ints()) if axes_attr is not None else None
+
+
 def _is_htp_masked_softmax_reducemin(
     node: onnx.NodeProto,
     consumers: Mapping[str, List[onnx.NodeProto]],
@@ -2058,14 +2108,10 @@ def _is_htp_masked_softmax_reducemin(
     if node.op_type != "ReduceMin":
         return False
 
-    reducemin_axes = node.input[1]
-
-    if reducemin_axes not in constants:
-        return False
-
-    reducemin_axes = to_array(constants[reducemin_axes])
-
-    if not (reducemin_axes.size == 1 and reducemin_axes.item() in (-1, 3)):
+    reducemin_axes = _get_reduce_axes(node, constants)
+    if reducemin_axes is None or not (
+        reducemin_axes.size == 1 and reducemin_axes.item() in (-1, 3)
+    ):
         return False
 
     if node.output[0] not in consumers or len(consumers[node.output[0]]) != 1:
@@ -2111,6 +2157,57 @@ def _is_htp_masked_softmax_reducemin(
         return False
 
     return True
+
+
+def _is_htp_masked_softmax_reducemin_ir(
+    node: onnx_ir.Node,
+    constants: Mapping[str, onnx_ir.Value],
+) -> bool:
+    """IR-native counterpart of :func:`_is_htp_masked_softmax_reducemin`."""
+    if node.op_type != "ReduceMin":
+        return False
+
+    axes = _get_reduce_axes_ir(node, constants)
+    if axes is None or not (axes.size == 1 and axes.item() in (-1, 3)):
+        return False
+
+    reduce_output = node.outputs[0]
+    reduce_consumers = reduce_output.consumers()
+    if len(reduce_consumers) != 1:
+        return False
+    (add,) = reduce_consumers
+    if add.op_type != "Add":
+        return False
+
+    add_consumers = add.outputs[0].consumers()
+    if len(add_consumers) != 1:
+        return False
+
+    # Look the bias up in `constants` rather than reading const_value directly, so a
+    # constant routed through Identity nodes is still recognized.
+    bias_value = next(
+        (value for value in add.inputs if value is not reduce_output), None
+    )
+    if bias_value is None or bias_value.name not in constants:
+        return False
+    bias = to_array_ir(constants[bias_value.name])
+    if bias.size != 1 or bias.item() > -20:
+        return False
+
+    (where,) = add_consumers
+    if where.op_type != "Where":
+        return False
+
+    where_consumers = where.outputs[0].consumers()
+    if len(where_consumers) != 1:
+        return False
+
+    (softmax,) = where_consumers
+    if softmax.op_type != "Softmax":
+        return False
+
+    axis = softmax.attributes.get("axis")
+    return (axis.as_int() if axis is not None else None) in (-1, 3)
 
 
 def _derive_data_movement_op_encodings(
@@ -2238,6 +2335,130 @@ def _derive_data_movement_op_encodings(
         encodings |= enc
 
     return {key: enc for key, enc in new_encodings.items()}
+
+
+def _derive_data_movement_op_encodings_ir(
+    model: onnx_ir.Model,
+    encodings: Mapping[str, Mapping],
+) -> dict[str, dict]:
+    graphs = list(_iterate_graphs_recursive_ir(model.graph))
+    data_movement_ops = [
+        node
+        for graph in graphs
+        for node in graph
+        if _is_grid_equivariant_op(node.op_type, domain=node.domain)
+        or (node.domain, node.op_type) in _CLIPPING_OPS
+        or (node.domain, node.op_type) in _PADDING_OPS
+        or (node.domain, node.op_type) in _SELECTOR_OPS
+    ]
+
+    new_encodings = {}
+    constants = _get_all_constants_ir(model.graph)
+
+    def derive_encoding(node: onnx_ir.Node):
+        derived_encodings = {}
+
+        # Skip deriving encodings if node is a ReduceMin node within HTP MaskedSoftmax
+        # subgraph. This is a temporary workaround for GenAI Notebooks relying
+        # on aimet-torch which doesn't support MaskedSoftmax as supergroup yet.
+        # In aimet-torch, even if the user manually removed all intermediate quantizers
+        # within MaskedSoftmax subgraph, ReduceMin's output encoding will be
+        # re-populated during export since it is a grid-preserving op. As a result,
+        # this intermediate encoding prevents QAIRT Quantizer V2 (IRQV2) from
+        # pattern-matching MaskedSoftmax subgraph as supergroup.
+        # TODO(#7434): Remove this workaround once aimet-torch supports MaskedSoftmax as supergroup
+        if _is_htp_masked_softmax_reducemin_ir(node, constants):
+            return derived_encodings
+
+        input_values = [
+            value
+            for index, value in enumerate(node.inputs)
+            if _is_float_input(node.op_type, index)
+        ]
+        input_names = [
+            (value.name if value is not None else "") or "" for value in input_values
+        ]
+        output_names = [
+            output.name or ""
+            for index, output in enumerate(node.outputs)
+            if _is_float_output(node.op_type, index)
+        ]
+
+        if node.op_type == "Pad":
+            # Some models containing ``y = Pad(x, -inf)`` rely their accuracy on
+            # the fact that y always inherits x's encoding. Although technically
+            # this is a bug, we keep this as a temporary workaround for those models.
+            # TODO: Remove this once Pad is properly treated as grid-equivariant
+            can_propagate_forward = node.inputs[0].name in encodings
+        else:
+            can_propagate_forward = all(
+                _encoding_equal(
+                    encodings.get(input_name), encodings.get(input_names[0])
+                )
+                for input_name in input_names[1:]
+            )
+
+        can_propagate_backward = all(
+            _encoding_equal(encodings.get(output_name), encodings.get(output_names[0]))
+            for output_name in output_names[1:]
+        )
+
+        for input_value, output_name in itertools.product(input_values, output_names):
+            input_name = (input_value.name if input_value is not None else "") or ""
+            input_encoding = encodings.get(input_name)
+            output_encoding = encodings.get(output_name)
+
+            if input_encoding and output_encoding:
+                # Both input and output encoding already exists; skip
+                continue
+
+            # Only per-tensor encodings can be safely propagated through data movement ops
+            # because some data movement ops such as Reshape and Transpose can't reuse
+            # the same channel/block axes across inputs and outputs
+            if (
+                output_encoding
+                and output_encoding.get("axis") is None
+                and can_propagate_backward
+            ):
+                if input_value is None or len(input_value.consumers()) > 1:
+                    # If input has more than one consumer or if there are more than one output,
+                    # it is NOT safe to reuse output encoding for input quantization
+                    continue
+                derived_encodings.update({input_name: output_encoding.copy()})
+                continue
+
+        for output_name in output_names:
+            # Always propagate first input forward. This only matters for
+            # Pad ops due to special handling above. All other ops will have
+            # identical encodings for all inputs if `can_propagate_forward`.
+            # TODO: Revisit this once Pad is properly treated as grid-equivariant
+            input_encoding = encodings.get(input_names[0])
+            # Only per-tensor encodings can be safely propagated through data movement ops
+            # because some data movement ops such as Reshape and Transpose can't reuse
+            # the same channel/block axes across inputs and outputs
+            if (
+                input_encoding
+                and input_encoding.get("axis") is None
+                and can_propagate_forward
+                and encodings.get(output_name) is None
+            ):
+                derived_encodings.update({output_name: input_encoding.copy()})
+                continue
+
+        return derived_encodings
+
+    for node in data_movement_ops:
+        derived = derive_encoding(node)
+        new_encodings |= derived
+        encodings |= derived
+
+    # Repeat in reverse-DFS order
+    for node in reversed(data_movement_ops):
+        derived = derive_encoding(node)
+        new_encodings |= derived
+        encodings |= derived
+
+    return {key: encoding for key, encoding in new_encodings.items()}
 
 
 def _get_effective_encoding(

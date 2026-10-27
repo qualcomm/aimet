@@ -54,16 +54,21 @@ from aimet_onnx.common.defs import (
 )
 from aimet_onnx.common.onnx._utils import (
     _add_onnx_qdq_nodes,
+    _add_onnx_qdq_nodes_ir,
     _remove_onnx_qdq_nodes,
     _is_grid_preserving_op,
     _is_grid_equivariant_op,
     _derive_data_movement_op_encodings,
+    _derive_data_movement_op_encodings_ir,
     _is_htp_interpolation_op,
     _get_all_constants,
+    _get_all_constants_ir,
     _iterate_graph_nodes_recursive,
     _iterate_graphs_recursive,
+    _iterate_graphs_recursive_ir,
     contains_tensor_type,
     to_array,
+    to_array_ir,
 )
 from aimet_onnx.graph_passes.cleanup import remove_duplicate_qdq_pairs
 from aimet_onnx.common.quantsim import (
@@ -85,7 +90,7 @@ from aimet_onnx.common.utils import (
 )
 from aimet_onnx.common.quantsim_config.quantsim_config import _config_file_aliases
 from aimet_onnx.common.connected_graph.product import Product
-from aimet_onnx.common.onnx._utils import _convert_version
+from aimet_onnx.common.onnx._utils import _convert_version, _convert_version_ir
 from aimet_onnx import utils
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.meta.utils import (
@@ -2886,9 +2891,10 @@ class QuantizationSimModel:
     def _to_onnx_qdq(
         self, prequantize_constants: bool, force_activation_as: str | None
     ) -> onnx.ModelProto:
+        ir_model = onnx_ir.from_proto(self.model.model)
         lstm_int32_cell_states = [
             name
-            for name, qtzr in self._lstm_cell_state_quantizers()
+            for name, qtzr in self._lstm_cell_state_quantizers_ir(ir_model.graph)
             if qtzr.enabled and qtzr.bitwidth == 32
         ]
 
@@ -2979,21 +2985,19 @@ class QuantizationSimModel:
                 onnx_opset_version,
             )
 
-        model_copy = onnx.ModelProto()
-        model_copy.CopyFrom(self.model.model)
-
         # _get_qdq_parameters applies each param quantizer via quantize_dequantize, which
         # needs a valid encoding. Compute encodings for any param quantizers that aren't
         # initialized yet so we don't fold with garbage scales/offsets (or raise on export
         # before compute_encodings was called).
         self._compute_param_encodings(overwrite=False)
 
-        self._overwrite_parameters(model_copy, self._get_qdq_parameters())
+        self._overwrite_parameters_ir(
+            ir_model.graph, self._get_qdq_parameters(ir_model.graph)
+        )
 
         aimet_qc_quantize_nodes = [
             node
-            for graph in _iterate_graphs_recursive(model_copy.graph)
-            for node in graph.node
+            for node in ir_model.graph.all_nodes()
             if node.op_type == "QcQuantizeOp"
             and node.domain in ("aimet.customop.cpu", "aimet.customop.cuda")
         ]
@@ -3015,7 +3019,7 @@ class QuantizationSimModel:
         }
 
         for aimet_node in aimet_qc_quantize_nodes:
-            input_name = aimet_node.input[0]
+            input_name = aimet_node.inputs[0].name
             qtzr = self.qc_quantize_op_dict[input_name]
             encodings = qtzr.export_encodings("2.0.0")
 
@@ -3035,19 +3039,17 @@ class QuantizationSimModel:
 
                 # Affine quantizer
                 # Replace QcQuantizeOp with onnx::QuantizeLinear and DequantizeLinear
-                qdq_node_info["input_names"].append(aimet_node.input[0])
-                qdq_node_info["output_names"].append(aimet_node.output[0])
+                qdq_node_info["input_names"].append(input_name)
+                qdq_node_info["output_names"].append(aimet_node.outputs[0].name)
                 qdq_node_info["node_name_prefixes"].append(aimet_node.name)
                 qdq_node_info["encodings"].append(encodings)
-                qdq_node_info["float_types"].append(
-                    self.activation_dtypes[aimet_node.input[0]]
-                )
+                qdq_node_info["float_types"].append(self.activation_dtypes[input_name])
 
-        self.remove_quantizers(model_copy)
+        ir_utils.remove_aimet_quantizers(ir_model)
 
         if self._export_data_movement_op_output_quantizers:
-            derived_encodings = _derive_data_movement_op_encodings(
-                model_copy,
+            derived_encodings = _derive_data_movement_op_encodings_ir(
+                ir_model,
                 dict(zip(qdq_node_info["input_names"], qdq_node_info["encodings"])),
             )
             # When exporting to ONNX QDQ, int32 encodings cannot be propagated
@@ -3068,29 +3070,27 @@ class QuantizationSimModel:
                 )
 
         # Note: Must inline supergroups before version conversion, since version_converter does not handle functions
-        ir_model = onnx_ir.from_proto(model_copy)
         if any(is_fused_supergroup(node) for node in ir_model.graph.all_nodes()):
             inline_all_supergroups(ir_model)
-            model_copy = onnx_ir.to_proto(ir_model)
 
         if onnx_opset_version < desired_onnx_opset_version:
-            model_copy = _convert_version(model_copy, desired_onnx_opset_version)
+            _convert_version_ir(ir_model, desired_onnx_opset_version)
 
-        model_copy = _add_onnx_qdq_nodes(
-            model_copy,
+        ir_model = _add_onnx_qdq_nodes_ir(
+            ir_model,
             **qdq_node_info,
             onnx_opset=desired_onnx_opset_version,
             prequantize_constants=prequantize_constants,
         )
 
         # Add metadata property to indicate the model is exported by AIMET and its version
-        prop = model_copy.metadata_props.add()
-        prop.key = "producer"
-        prop.value = f"aimet-onnx {aimet_onnx.__version__}"
+        ir_model.metadata_props["producer"] = f"aimet-onnx {aimet_onnx.__version__}"
 
-        return model_copy
+        return onnx_ir.to_proto(ir_model)
 
-    def _get_qdq_parameters(self):
+    def _get_qdq_parameters(
+        self, graph: Optional[onnx_ir.Graph] = None
+    ) -> Dict[str, np.ndarray]:
         """
         Compute the quantize-dequantize'd value of every foldable parameter.
 
@@ -3108,8 +3108,13 @@ class QuantizationSimModel:
         * params whose QcQuantizeOp node was already removed (e.g. a prior fold) are
           skipped, which keeps re-folding a no-op.
 
+        :param graph: IR graph to read QcQuantizeOp nodes and parameter values from.
+            Defaults to a no-copy ``onnx_ir`` view of ``self.model.model``.
         :return: Mapping of parameter name to its quantize-dequantize'd value.
         """
+        if graph is None:
+            graph = onnx_ir.from_proto(self.model.model).graph
+
         # Names of parameters (weights/biases) tracked by the connected graph whose
         # quantizers are sub-int32.
         param_names = {
@@ -3120,24 +3125,24 @@ class QuantizationSimModel:
             and self.qc_quantize_op_dict[product.name].bitwidth <= 32
         }
 
-        # Map every static value (initializer / Constant node) to its TensorProto once, so
+        # Map every static value (initializer / Constant node) to its Value once, so
         # the per-parameter lookups below are O(1). Scanning the whole graph per parameter
         # would be quadratic and dominate export time on large models.
-        constants = _get_all_constants(self.model.model)
+        constants = _get_all_constants_ir(graph)
 
         qdq_parameters = {}
-        for node in _iterate_graph_nodes_recursive(self.model.model.graph):
-            if node.op_type != "QcQuantizeOp" or node.input[0] not in param_names:
+        for node in graph.all_nodes():
+            if node.op_type != "QcQuantizeOp" or node.inputs[0].name not in param_names:
                 continue
 
-            param_name = node.input[0]
+            param_name = node.inputs[0].name
             quantizer = self.qc_quantize_op_dict[param_name]
 
             # Skip disabled quantizers, and int32+ params (simulated in fp32, unreliable).
             if not quantizer.enabled or quantizer.bitwidth >= 32:
                 continue
 
-            param_value = to_array(constants[param_name])
+            param_value = to_array_ir(constants[param_name])
 
             if (
                 quantizer.data_type == QuantizationDataType.float
@@ -3151,6 +3156,66 @@ class QuantizationSimModel:
                 qdq_parameters[param_name] = quantizer.quantize_dequantize(param_value)
 
         return qdq_parameters
+
+    @staticmethod
+    def _overwrite_parameters_ir(
+        graph: onnx_ir.Graph, parameters: Dict[str, np.ndarray]
+    ):
+        """IR-native counterpart of :meth:`_overwrite_parameters`."""
+        parameters = dict(parameters)
+
+        # Params can be declared inside Scan bodies
+        initializer_values = {
+            name: value
+            for subgraph in _iterate_graphs_recursive_ir(graph)
+            for name, value in subgraph.initializers.items()
+            if name in parameters
+        }
+        constant_values = {
+            node.outputs[0].name: node.outputs[0]
+            for node in graph.all_nodes()
+            if node.op_type == "Constant" and node.outputs[0].name in parameters
+        }
+
+        found = set(initializer_values) | set(constant_values)
+        not_found = parameters.keys() - found
+        if not_found:
+            raise RuntimeError(f"Couldn't find parameters: {list(not_found)}")
+
+        for name, value in constant_values.items():
+            node = value.producer()
+            if any(
+                attr_name in ("value_string", "value_strings")
+                for attr_name in node.attributes
+            ):
+                raise RuntimeError(f"String constant {node.name} can't be quantized")
+
+        for name, value in initializer_values.items():
+            ir_utils.set_static_tensor(value, parameters[name])
+
+        for name, value in constant_values.items():
+            node = value.producer()
+            # Constant node should have exactly one attr set
+            attr_name = next(iter(node.attributes))
+            qdq_param = parameters[name]
+            if attr_name == "value":
+                ir_utils.set_static_tensor(value, qdq_param)
+            elif attr_name == "value_float":
+                node.attributes["value_float"] = onnx_ir.AttrFloat32(
+                    "value_float", float(qdq_param)
+                )
+            elif attr_name == "value_floats":
+                node.attributes["value_floats"] = onnx_ir.AttrFloat32s(
+                    "value_floats", qdq_param.astype(np.float32).tolist()
+                )
+            elif attr_name == "value_int":
+                node.attributes["value_int"] = onnx_ir.AttrInt64(
+                    "value_int", int(qdq_param)
+                )
+            elif attr_name == "value_ints":
+                node.attributes["value_ints"] = onnx_ir.AttrInt64s(
+                    "value_ints", qdq_param.astype(np.int64).tolist()
+                )
 
     @staticmethod
     def _overwrite_parameters(
@@ -3411,6 +3476,107 @@ class QuantizationSimModel:
             return [node for node in path if not is_disabled_quantizer(node)]
 
         return None
+
+    def _get_path_to_effective_quantizer_ir(
+        self, value: onnx_ir.Value
+    ) -> Optional[List[onnx_ir.Node]]:
+        """IR-native counterpart of :meth:`_get_path_to_effective_quantizer`."""
+        producer = value.producer()
+        path = [producer]
+
+        def is_disabled_quantizer(node: Optional[onnx_ir.Node]):
+            return (
+                node is not None
+                and node.op_type == "QcQuantizeOp"
+                and not self.qc_quantize_op_dict[node.inputs[0].name].enabled
+            )
+
+        def is_enabled_quantizer(node: Optional[onnx_ir.Node]):
+            return (
+                node is not None
+                and node.op_type == "QcQuantizeOp"
+                and self.qc_quantize_op_dict[node.inputs[0].name].enabled
+            )
+
+        def is_float_to_float_cast(node: Optional[onnx_ir.Node]):
+            if node is None or node.op_type != "Cast":
+                return False
+
+            input_value = node.inputs[0]
+            if (
+                self.activation_dtypes.get(input_value.name)
+                not in data_types_to_quantize
+            ):
+                # Outputs of QcQuantizeOps are always float dtype
+                producer = input_value.producer()
+                if producer is None or producer.op_type != "QcQuantizeOp":
+                    return False
+
+            to_attr = node.attributes.get("to")
+            if to_attr is None:
+                return False
+
+            output_type = onnx.helper.tensor_dtype_to_np_dtype(to_attr.as_int())
+            return output_type in data_types_to_quantize
+
+        while (
+            producer is not None
+            and producer.inputs
+            and producer.inputs[0] is not None
+            and (
+                _is_grid_preserving_op(producer.op_type, domain=producer.domain)
+                or is_disabled_quantizer(producer)
+                or is_float_to_float_cast(producer)
+            )
+        ):
+            producer = producer.inputs[0].producer()
+            path += [producer]
+
+        if is_enabled_quantizer(producer):
+            return [node for node in path if not is_disabled_quantizer(node)]
+
+        return None
+
+    def _lstm_cell_state_quantizers_ir(
+        self, graph: onnx_ir.Graph
+    ) -> Iterable[Tuple[str, QcQuantizeOp]]:
+        """IR-native counterpart of :meth:`_lstm_cell_state_quantizers`."""
+        for node in graph.all_nodes():
+            if node.op_type != "LSTM":
+                continue
+
+            Y_c = node.outputs[2] if len(node.outputs) >= 3 else None
+            initial_c = node.inputs[6] if len(node.inputs) >= 7 else None
+
+            if Y_c is not None:
+                Y_c_qtzr = self.qc_quantize_op_dict.get(Y_c.name)
+                if Y_c_qtzr:
+                    yield Y_c.name, Y_c_qtzr
+
+            if initial_c is not None:
+                path = self._get_path_to_effective_quantizer_ir(initial_c)
+                if path:
+                    *_, qc_quantize_op_node = path
+                    initial_c_name = qc_quantize_op_node.inputs[0].name
+                else:
+                    # No quantizer is enabled for initial_c. In this case,
+                    # interpret the closest disabled quantizer (if any)
+                    # as the initial_c quantizer.
+                    producer = initial_c.producer()
+
+                    while producer is not None and _is_grid_preserving_op(
+                        producer.op_type, domain=producer.domain
+                    ):
+                        producer = producer.inputs[0].producer()
+
+                    if producer is not None and producer.op_type == "QcQuantizeOp":
+                        initial_c_name = producer.inputs[0].name
+                    else:
+                        initial_c_name = initial_c.name
+
+                initial_c_qtzr = self.qc_quantize_op_dict.get(initial_c_name)
+                if initial_c_qtzr:
+                    yield initial_c_name, initial_c_qtzr
 
     def _tie_rnn_hidden_state_quantizers(self):
         """

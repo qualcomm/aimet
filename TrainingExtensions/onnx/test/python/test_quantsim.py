@@ -30,6 +30,10 @@ import onnx
 import onnx_ir
 import onnxruntime as ort
 from onnxruntime.quantization.onnx_model import ONNXModel
+from onnxscript.version_converter import _c_api_utils as onnxscript_c_api
+from onnxscript.version_converter._version_converter import (
+    SUPPORTED_MIN_ONNX_OPSET as ONNXSCRIPT_MIN_OPSET,
+)
 import pytest
 
 from aimet_onnx.common import libpymo
@@ -40,6 +44,7 @@ from aimet_onnx.common.defs import (
     qtype,
 )
 from aimet_onnx.common.onnx._utils import (
+    _convert_version_ir,
     _convert_version_with_external_weights,
     _remove_onnx_qdq_nodes,
 )
@@ -9648,7 +9653,8 @@ def test_from_onnx_qdq_excess_encodings(
 @pytest.mark.skip_on_windows_amd64(
     "insufficient disk for large ONNX export on Windows AMD64 runner"
 )
-def test_to_onnx_qdq_large_model(tmp_dir):
+@pytest.mark.parametrize("input_model_opset", [13, 18, 20])
+def test_to_onnx_qdq_large_model(tmp_dir, input_model_opset):
     seed = 200
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -9666,13 +9672,16 @@ def test_to_onnx_qdq_large_model(tmp_dir):
             path,
             input_names=["input"],
             output_names=["output"],
+            opset_version=input_model_opset,
             dynamo=False,
         )
 
         """
-        Given: Model that exceeds 2GB
+        Given: Model that exceeds 2GB, exported at an explicit opset below the
+               int4/int16 minimum (21), so QDQ export must upgrade the opset.
         """
         model = onnx.load_model(path, load_external_data=True)
+        assert model.opset_import[0].version == input_model_opset
         sim = QuantizationSimModel(
             model,
             param_type=aimet_onnx.int4,
@@ -9684,9 +9693,19 @@ def test_to_onnx_qdq_large_model(tmp_dir):
         for constants_flag in [True, False]:
             """
             When: Export large model to onnx QDQ
-            Then: Output of the pure onnx model should be equal to that of sim.session
+            Then:
+              1. Opset is upgraded to 21
+              2. Upgrade takes the ONNX C API fallback only below onnxscript's supported minimum
+              3. Output of the pure onnx model should be equal to that of sim.session
             """
-            qdq_model = sim.to_onnx_qdq(prequantize_constants=constants_flag)
+            with patch(
+                "onnxscript.version_converter._c_api_utils.call_onnx_api",
+                wraps=onnxscript_c_api.call_onnx_api,
+            ) as c_api:
+                qdq_model = sim.to_onnx_qdq(prequantize_constants=constants_flag)
+
+            assert qdq_model.opset_import[0].version == 21
+            assert c_api.called == (input_model_opset < ONNXSCRIPT_MIN_OPSET)
 
             onnx.save_model(
                 qdq_model,
@@ -9760,6 +9779,62 @@ def test_convert_version_with_external_weights(
     sess_2 = ort.InferenceSession(model_path)
     (out_2,) = sess_2.run(None, input)
 
+    assert np.all(out_1 == out_2)
+
+
+@pytest.mark.parametrize("source_opset", [11, 18])
+@pytest.mark.parametrize("save_as_external_data", [False, True])
+def test_convert_version_ir_with_external_weights(
+    source_opset, save_as_external_data, tmp_dir
+):
+    """
+    Given: Model at source_opset with large weights in external data
+    When: _convert_version_ir upgrades the IR model to opset 21 and it is saved
+    Then:
+      1. Source opset 11 takes the ONNX C API fallback; 18 is converted by onnxscript
+      2. Converted model is at opset 21 and keeps its external-data references
+      3. Converted model produces the same output as the original
+    """
+    model = standalone_gemm(in_channels=64, out_channels=64, opset_version=source_opset)
+    input = make_dummy_input(model)
+    model_path = str(os.path.join(tmp_dir, "model.onnx"))
+    converted_path = str(os.path.join(tmp_dir, "converted.onnx"))
+
+    onnx.save_model(
+        model,
+        model_path,
+        save_as_external_data=save_as_external_data,
+        size_threshold=0,
+        convert_attribute=True,
+    )
+    sess_1 = ort.InferenceSession(model_path)
+    (out_1,) = sess_1.run(None, input)
+
+    ir_model = onnx_ir.load(model_path)
+    with patch(
+        "onnxscript.version_converter._c_api_utils.call_onnx_api",
+        wraps=onnxscript_c_api.call_onnx_api,
+    ) as c_api:
+        _convert_version_ir(ir_model, 21)
+    assert c_api.called == (source_opset < ONNXSCRIPT_MIN_OPSET)
+
+    assert ir_model.graph.opset_imports[""] == 21
+    onnx_ir.save(
+        ir_model,
+        converted_path,
+        external_data=os.path.basename(converted_path) + ".data"
+        if save_as_external_data
+        else None,
+        size_threshold_bytes=0,
+    )
+    converted = onnx.load_model(converted_path, load_external_data=False)
+    assert converted.opset_import[0].version == 21
+    assert any(uses_external_data(t) for t in _get_all_tensors(converted)) == (
+        save_as_external_data
+    )
+
+    sess_2 = ort.InferenceSession(converted_path)
+    (out_2,) = sess_2.run(None, input)
     assert np.all(out_1 == out_2)
 
 
