@@ -15,7 +15,7 @@ torchvision
 accelerate<1.10.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
 datasets>=2.18.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
 onnxruntime-extensions; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
-onnxsim<0.6.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
+onnxsim>=0.7.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
 peft<0.19.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
 safetensors<=0.5.3; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
 transformers==5.7.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
