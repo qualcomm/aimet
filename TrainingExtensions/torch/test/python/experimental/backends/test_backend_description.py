@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import itertools
+from functools import lru_cache
 import numpy as np
 import yaml
 import torch
 from torch.export import ExportedProgram
+from torch.export.graph_signature import InputSpec
 import pytest
 from aimet_torch.nn.modules import custom
 from aimet_torch.experimental.export._utils import (
@@ -53,10 +55,16 @@ def _assert_node_fully_quantized(
         return
 
     for producer in node.all_input_nodes:
-        assert _is_torch_ao_dq_node(producer)
+        if _output_can_be_quantized(ep, producer):
+            assert _is_torch_ao_dq_node(producer)
+
+    if not _output_can_be_quantized(ep, node):
+        return
 
     for user in node.users:
-        if node.meta["val"].is_floating_point():
+        fake_output = node.meta["val"]
+
+        if fake_output.is_floating_point():
             assert _is_torch_ao_q_node(user)
         else:
             assert _is_torch_ao_dq_node(user)
@@ -79,9 +87,20 @@ def _assert_node_fully_quantized(
             assert qtype == activation_dtype
 
 
+def _output_can_be_quantized(ep: ExportedProgram, node: torch.fx.Node) -> bool:
+    fake_output = node.meta["val"]
+    return (
+        isinstance(fake_output, torch.Tensor)
+        and fake_output.numel() > 0
+        and fake_output.is_floating_point()
+        and not _is_running_mean(ep, node)
+        and not _is_running_var(ep, node)
+    )
+
+
 def _is_weight_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
     return (
-        node.target in ep.state_dict
+        node in _get_input_specs(ep)
         and "weight" in node.name
         and "scale" not in node.name
         and "zero_point" not in node.name
@@ -90,11 +109,41 @@ def _is_weight_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
 
 def _is_bias_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
     return (
-        node.target in ep.state_dict
+        node in _get_input_specs(ep)
         and "bias" in node.name
         and "scale" not in node.name
         and "zero_point" not in node.name
     )
+
+
+def _is_running_mean(ep: ExportedProgram, node: torch.fx.Node) -> bool:
+    return (
+        node in _get_input_specs(ep)
+        and "running_mean" in node.name
+        and "scale" not in node.name
+        and "zero_point" not in node.name
+    )
+
+
+def _is_running_var(ep: ExportedProgram, node: torch.fx.Node) -> bool:
+    return (
+        node in _get_input_specs(ep)
+        and "running_var" in node.name
+        and "scale" not in node.name
+        and "zero_point" not in node.name
+    )
+
+
+@lru_cache(maxsize=16)
+def _get_input_specs(ep: ExportedProgram) -> dict[torch.fx.Node, InputSpec]:
+    input_specs = {
+        input_spec.arg.name: input_spec for input_spec in ep.graph_signature.input_specs
+    }
+    return {
+        node: input_spec
+        for node in ep.graph.nodes
+        if (input_spec := input_specs.get(node.target))
+    }
 
 
 def _get_min_max_range(node: torch.fx.Node) -> tuple[float, float]:
@@ -127,6 +176,14 @@ def module(request):
                 torch.nn.Softmax(),
                 custom.Mean(),
             ).eval()
+        case torch.nn.BatchNorm2d:
+            return torch.nn.BatchNorm2d(
+                num_features=3,
+                eps=1e-5,
+                momentum=0.1,
+                affine=True,
+                track_running_stats=True,
+            ).eval()
         case _:
             raise NotImplementedError
 
@@ -139,6 +196,7 @@ def module(request):
         torch.nn.Softmax,
         custom.Mean,
         torch.nn.Sequential,
+        torch.nn.BatchNorm2d,
     ],
     indirect=True,
 )
@@ -155,8 +213,14 @@ def test_fully_quantized(tmp_path, module):
     with ep.compute_missing_encodings(
         param_bw=8, activation_bw=16, target_backend="htp_v69"
     ):
-        output = ep.module()(*example_inputs)
-        assert isinstance(output, Q.DequantizedTensor)
+        outputs = ep.module()(*example_inputs)
+
+        if isinstance(outputs, torch.Tensor):
+            outputs = (outputs,)
+
+        for output in outputs:
+            if output.numel() > 0:
+                assert isinstance(output, Q.DequantizedTensor)
 
     # Make sure ExportedProgram object can be saved and loaded correctly
     torch.export.save(ep, tmp_path / "ep.pt2")

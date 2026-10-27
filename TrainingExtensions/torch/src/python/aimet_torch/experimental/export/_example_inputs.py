@@ -31,29 +31,22 @@ def _log_softmax_example_inputs():
 
 @register_example_inputs(torch.ops.aten._native_batch_norm_legit.default)
 def _native_batch_norm_legit_example_inputs():
-    return (
-        torch.randn(2, 3, 4, 4),
-        torch.ones(3),
-        torch.zeros(3),
-        torch.ones(3),
-        torch.zeros(3),
-        False,
-        0.1,
-        1e-5,
-    ), {}
+    return (torch.randn(2, 3, 4, 4),), {
+        "weight": torch.ones(3),
+        "bias": torch.zeros(3),
+        "running_mean": torch.zeros(3),
+        "running_var": torch.ones(3),
+        "training": False,
+        "momentum": 0.1,
+        "eps": 1e-5,
+    }
 
 
 @register_example_inputs(torch.ops.aten._native_batch_norm_legit_no_training.default)
 def _native_batch_norm_legit_no_training_example_inputs():
-    return (
-        torch.randn(2, 3, 4, 4),
-        torch.ones(3),
-        torch.zeros(3),
-        torch.ones(3),
-        torch.zeros(3),
-        0.1,
-        1e-5,
-    ), {}
+    args, kwargs = _native_batch_norm_legit_example_inputs()
+    kwargs.pop("training")
+    return args, kwargs
 
 
 @register_example_inputs(torch.ops.aten._prelu_kernel.default)

@@ -19,7 +19,6 @@ from aimet_torch.common.experimental.backends.schema import (  # pylint: disable
     EqualRange as _EqualRange,
 )
 from aimet_torch.experimental.export._utils import (
-    _is_multi_output_op,
     _is_grid_preserving_op,
     _is_torch_ao_qdq_node,
     _is_aimet_qdq_node,
@@ -235,10 +234,22 @@ class OpSchema(_OpSchema):
             )
         }
 
-        if isinstance(node.meta["val"], torch.Tensor):
-            quantization_specs |= {self.signature.outputs[0]: node}
+        if isinstance(node.meta["val"], (tuple, list)):
+            # Node returns a list of tensors.
+            # In this case, `node` will be followed by getitem nodes for each output tensor as below
+            #
+            #                              +-------> getitem --------> y0
+            #   x -> node -> (y0, y1, y2) -+-------> getitem --------> y1
+            #                              +-------> getitem --------> y2
+            #                                  (`all_output_nodes`)
+            all_output_nodes = list(node.users)
         else:
-            raise NotImplementedError(f"Node {node} returns tuple of Tensors")
+            all_output_nodes = [node]
+
+        quantization_specs |= {
+            arg_spec: target_node
+            for arg_spec, target_node in zip(self.signature.outputs, all_output_nodes)
+        }
 
         for arg_spec, target_node in quantization_specs.items():
             if not arg_spec.qtype:
@@ -276,14 +287,25 @@ class OpSchema(_OpSchema):
             for arg_spec, qdq_node in zip(self.signature.inputs, node.all_input_nodes)
             if _is_aimet_qdq_node(qdq_node)
         }
-        if isinstance(node.meta["val"], torch.Tensor) and len(node.users) == 1:
-            (output_qdq_node,) = node.users
-            if _is_aimet_qdq_node(output_qdq_node):
-                qdq_nodes |= {self.signature.outputs[0]: output_qdq_node}
+
+        if isinstance(node.meta["val"], (tuple, list)):
+            # Node returns a list of tensors.
+            # In this case, `node` will be followed by getitem nodes for each output tensor as below
+            #
+            #                                     +-------> getitem --------> QDQ -> y0
+            #   x -> QDQ -> node -> (y0, y1, y2) -+-------> getitem --------> QDQ -> y1
+            #                                     +-------> getitem --------> QDQ -> y2
+            #                                         (`all_output_nodes`)
+            all_output_nodes = list(node.users)
         else:
-            raise NotImplementedError(
-                f"Node {node} returns tuple of Tensors or has multiple users"
-            )
+            all_output_nodes = [node]
+
+        qdq_nodes |= {
+            arg_spec: qdq_node
+            for arg_spec, output_node in zip(self.signature.outputs, all_output_nodes)
+            if len(output_node.users) == 1
+            and _is_aimet_qdq_node(qdq_node := next(iter(output_node.users)))
+        }
 
         self._apply_fixed_range_constraints(qdq_nodes)
         self._apply_equal_range_constraints(qdq_nodes)
@@ -377,15 +399,6 @@ class BackendDescription:
         schema_not_found: set[torch._ops.OpOverload | str] = set()
 
         for node in graph_module.graph.nodes:
-            # Exclude multi-output ops which returns tuple of tensors.
-            # QDQ for each output will be attached to the the succeeding getitem node
-            #
-            #                                      ┌─ getitem -> y0 -> QDQ
-            # ... -> QDQ -> split -> (y0, y1, y2) ─┼─ getitem -> y1 -> QDQ
-            #                                      └─ getitem -> y2 -> QDQ
-            if _is_multi_output_op(node):
-                continue
-
             # getitem output will inherit the previous node's input encoding
             # if the previous node is a grid-preserving op (aka data movement op)
             if node.target is operator.getitem and _is_grid_preserving_op(
@@ -399,16 +412,6 @@ class BackendDescription:
                 torch.ops.aten.relu,
                 torch.ops.aten.relu_,
             ):
-                continue
-
-            val = node.meta.get("val", None)
-
-            # Exclude non-tensors from quantization
-            if not isinstance(val, torch.Tensor):
-                continue
-
-            # Exclude non-floating point tensors from quantization
-            if not val.dtype.is_floating_point:
                 continue
 
             if _is_aimet_qdq_node(node):

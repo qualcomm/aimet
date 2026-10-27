@@ -35,10 +35,12 @@ del _qualcomm_aten_ir_op_names, _qualcomm_aten_ir_ops
 
 # fmt: off
 _tensor_roles = {
-    #   op_type    | arg_name   | role
-    # ---------------------------------
-    ("aten::conv2d", "weight"): "weight",
-    ("aten::conv2d", "bias"  ): "bias",
+    #   op_type                                  | arg_name  | role
+    # -------------------------------------------------------------------
+    ("aten::conv2d",                               "weight"): "weight",
+    ("aten::conv2d",                               "bias"  ): "bias",
+    ("aten::_native_batch_norm_legit_no_training", "weight"): "weight",
+    ("aten::_native_batch_norm_legit_no_training", "bias"  ): "bias",
 }
 # fmt: on
 

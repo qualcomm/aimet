@@ -86,3 +86,39 @@ ops:
     value_contraints:
       tie:
         - [tensors, "$ret[0]"]
+
+  - op_type: aten::_native_batch_norm_legit_no_training
+    type_constraints:
+      # W8A8
+      - input: uint8
+        weight: int8[channel_axis=0]
+        bias: int32[channel_axis=0]
+        running_mean: null
+        running_var: null
+        momentum: null
+        eps: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is always an empty tensor
+        $ret[2]: null  # ret[2] is always an empty tensor
+      # W8A16
+      - input: uint16
+        weight: int8[channel_axis=0]
+        bias: int32[channel_axis=0]
+        running_mean: null
+        running_var: null
+        momentum: null
+        eps: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is always an empty tensor
+        $ret[2]: null  # ret[2] is always an empty tensor
+      # W8A16
+      - input: uint16
+        weight: int16[channel_axis=0]
+        bias: int32[channel_axis=0]
+        running_mean: null
+        running_var: null
+        momentum: null
+        eps: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is always an empty tensor
+        $ret[2]: null  # ret[2] is always an empty tensor
