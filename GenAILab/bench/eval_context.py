@@ -20,10 +20,9 @@ class EvaluationContext:
 
     *   **FP results** are keyed by a hash of the full model config and
         persisted to disk via the underlying :class:`DiskBackedFPCache`.  They
-        are therefore shared across quantization recipes *and* across pytest
-        sessions.
-    *   **Quant results** are held in-memory only and scoped to a single test
-        invocation (one recipe).
+        are therefore shared across quantization recipes *and* across runs.
+    *   **Quant results** are held in-memory only and scoped to a single
+        experiment (one recipe).
 
     Metrics interact with this object using plain ``collection_name`` strings
     (e.g. ``"mmlu_logits"``).  The context handles key construction internally
@@ -62,8 +61,7 @@ class EvaluationContext:
     def get_or_compute_fp(self, collection_name: str, compute_fn: Callable[[], Any]):
         """Return FP results for *collection_name*, computing and caching if absent.
 
-        Results are persisted to disk so subsequent runs (even across pytest
-        sessions) that use the same model config will get a cache hit.
+        Results are persisted to disk so subsequent runs that use the same model config will get a cache hit.
         """
         key = (self._model_hash, collection_name)
         return self._fp_cache.get_or_compute(key, compute_fn, metadata=self._model_dict)

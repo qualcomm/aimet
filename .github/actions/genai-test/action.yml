@@ -119,7 +119,7 @@ runs:
         source .venv/bin/activate
         export PYTHONPATH=$PYTHONPATH:$(pwd)
         hf auth login --token ${{ inputs.huggingface-token }}
-        pytest -s GenAILab/bench/${{ inputs.variant }}/test_genai.py \
+        python -m GenAILab --framework ${{ inputs.variant }} \
           --config "${{ inputs.config }}" \
           --force-export
 
@@ -154,7 +154,7 @@ runs:
 
         . .venv/bin/activate
         export PYTHONPATH=$PYTHONPATH:$(pwd)
-        pytest -s GenAILab/bench/onnx/test_genai.py \
+        python -m GenAILab --framework onnx \
           --config "$OUT_FILE" \
           --results-dir GenAILab/artifacts/secondary_results \
           --export-dir GenAILab/artifacts/secondary_exports \

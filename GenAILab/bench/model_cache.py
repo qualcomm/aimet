@@ -1,7 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Disk-backed cache for ONNX model exports that persists across pytest sessions."""
+"""Disk-backed cache for ONNX model exports that persists across runs."""
 
 import hashlib
 import json

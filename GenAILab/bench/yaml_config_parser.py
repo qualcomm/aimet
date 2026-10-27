@@ -370,7 +370,7 @@ class YAMLConfigParser:
 
         The pass's ``__init__`` keyword arguments are its config kwargs; see
         ``bench/analysis.py``. Passes are registered only by the runner
-        that can execute them (``bench/onnx/test_genai.py`` imports
+        that can execute them (``bench/onnx/run_genai.py`` imports
         ``bench/onnx/analysis_passes.py``).
         """
         cls.analysis_lookup[pass_cls.__name__] = pass_cls

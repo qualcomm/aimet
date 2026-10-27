@@ -108,8 +108,8 @@ class DistanceMetric(EvaluationMetric):
     across multiple distance metrics without redundant forward passes.
 
     FP results are persisted to disk and shared across quantization recipes
-    and pytest sessions.  Quant results are cached in-memory for the duration
-    of a single test.
+    and runs.  Quant results are cached in-memory for the duration of a
+    single experiment.
     """
 
     @classmethod

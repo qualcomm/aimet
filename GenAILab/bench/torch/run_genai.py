@@ -1,11 +1,10 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""GenAI test runner"""
+"""GenAI experiment runner (torch)"""
 
 import contextlib
 import uuid
-import pytest
 import torch
 import gc
 import os
@@ -37,22 +36,21 @@ from GenAILab.bench.torch import quant_recipes  # noqa: F401 — triggers regist
 from GenAILab.qai_hub_lm.backends.torch.generator_utils import generator_factory
 
 
-def test_llm_quantization(
-    test_config,
+def run_experiment(
+    doc: dict,
+    *,
     fp_cache: DiskBackedFPCache,
     recipe_cache,
     export_dir,
     results_dir,
 ):
-    if test_config is None:
-        pytest.skip("No GenAI test parameters provided.")
-    if "analysis" in test_config:
+    if "analysis" in doc:
         raise ValueError(
             "The 'analysis' config section is only supported with the ONNX framework."
         )
     set_seed(42)
 
-    config = YAMLConfigParser.parse_document(test_config, export_base_dir=export_dir)
+    config = YAMLConfigParser.parse_document(doc, export_base_dir=export_dir)
     print(config)
 
     eval_ctx = EvaluationContext(fp_cache=fp_cache, model_config=config.model)

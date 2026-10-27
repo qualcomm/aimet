@@ -5,7 +5,6 @@ AIMET's GenAI laboratory provides an easy way to evaluate large models against q
 ## Prerequisites
 
 - Either AIMET-Torch or AIMET-ONNX
-- pytest
 - HuggingFace transformers and datasets
 - See `requirements.txt` for full list
 
@@ -44,7 +43,13 @@ python -m GenAILab --framework torch --config cfg.yaml --online --wait
 python -m GenAILab --framework torch --config cfg.yaml --download <run_id>
 ```
 
-All extra arguments are forwarded to pytest for local runs (e.g. `-v`, `-k`).
+Every experiment in the config runs even if an earlier one fails; the run exits non-zero if any failed. For local debugging:
+
+```bash
+python -m GenAILab --framework onnx --config cfg.yaml \
+    --fail-fast                             # Stop after the first failed experiment
+    --pdb                                   # Drop into the debugger on failure
+```
 
 ## Config File Format
 
@@ -81,7 +86,7 @@ GenAILab/artifacts/
 
 ### Results
 
-Each test run appends to `profiling_data.json` and `profiling_data.csv` in the results directory. The JSON format is hierarchical (keyed by model type), while the CSV is a flat table with JSON-encoded columns suitable for PostgreSQL ingestion. Both files use file locking for process-safe concurrent writes.
+Each experiment appends to `profiling_data.json` and `profiling_data.csv` in the results directory. The JSON format is hierarchical (keyed by model type), while the CSV is a flat table with JSON-encoded columns suitable for PostgreSQL ingestion. Both files use file locking for process-safe concurrent writes.
 
 Results include model configuration, precision settings, per-step resource utilization (GPU memory, elapsed time), metric scores, and environment metadata (CUDA version, GPU name, pip freeze, git SHA).
 
@@ -134,7 +139,6 @@ Caches exported ONNX models so that repeated ONNX evaluation runs don't require 
 ```
 GenAILab/
 ├── __main__.py                 # CLI entry point
-├── conftest.py                 # Pytest fixtures (caches, directories)
 ├── CONFIG.md                   # Full config schema reference
 ├── bench/                      # The harness: config -> quantize -> evaluate -> report
 │   ├── yaml_config_parser.py   # Config parsing and the plugin registry
@@ -149,8 +153,9 @@ GenAILab/
 │   ├── fp_cache.py             # FP-output cache
 │   ├── recipe_cache.py         # Recipe-chain checkpoint cache
 │   ├── export.py               # Export utilities
-│   ├── torch/                  # Torch entry point + quant_recipes.py
-│   └── onnx/                   # ONNX entry point + quant_recipes.py
+│   ├── runner.py               # Runs each experiment in a config
+│   ├── torch/                  # run_genai.py (torch experiment) + quant_recipes.py
+│   └── onnx/                   # run_genai.py (ONNX experiment) + quant_recipes.py
 ├── qai_hub_lm/                 # The model layer
 │   ├── schema/                 # Pydantic config schema (stdlib-only import island,
 │   │                           #   rsync'd verbatim into AI Hub Models)

@@ -1,7 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Disk-backed cache for FP model results that persists across pytest sessions."""
+"""Disk-backed cache for FP model results that persists across runs."""
 
 import json
 import shutil
@@ -15,7 +15,7 @@ import torch
 class DiskBackedFPCache:
     """Two-layer (disk + in-memory) cache for FP model outputs.
 
-    Cached data is written to disk so it survives across pytest sessions.
+    Cached data is written to disk so it survives across runs.
     On cache hit, data is lazily loaded from disk into memory on first access,
     then served from memory for subsequent accesses within the same session.
 

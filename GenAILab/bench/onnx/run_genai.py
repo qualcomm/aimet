@@ -1,11 +1,10 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""GenAI test runner"""
+"""GenAI experiment runner (onnx)"""
 
 import contextlib
 import warnings
-import pytest
 import torch
 import gc
 import os
@@ -89,19 +88,18 @@ def _check_bf16_supported(config):
         raise ValueError("dtype 'bfloat16' cannot load precomputed encodings.")
 
 
-def test_llm_quantization(
-    test_config,
+def run_experiment(
+    doc: dict,
+    *,
     model_cache: DiskBackedModelCache,
     fp_cache: DiskBackedFPCache,
     recipe_cache,
     export_dir,
     results_dir,
 ):
-    if test_config is None:
-        pytest.skip("No GenAI test parameters provided.")
     set_seed(42)
 
-    config = YAMLConfigParser.parse_document(test_config, export_base_dir=export_dir)
+    config = YAMLConfigParser.parse_document(doc, export_base_dir=export_dir)
     print(config)
 
     eval_ctx = EvaluationContext(fp_cache=fp_cache, model_config=config.model)

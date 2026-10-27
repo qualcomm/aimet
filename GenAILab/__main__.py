@@ -16,8 +16,8 @@ Usage:
     # Download results from a previous online run
     python -m GenAILab --framework torch --config cfg.yaml --download <run_id>
 
-    # All extra arguments are forwarded to pytest (local runs only)
-    python -m GenAILab --framework onnx --config cfg.yaml --force-export -v
+    # Stop at the first failed experiment and debug it (local runs only)
+    python -m GenAILab --framework onnx --config cfg.yaml --fail-fast --pdb
 """
 
 import argparse
@@ -30,6 +30,8 @@ import sys
 import tempfile
 import time
 import warnings
+
+from GenAILab.bench.runner import add_run_arguments
 
 
 def main():
@@ -58,58 +60,20 @@ def main():
         help="Download results from a previous online run and merge into local results",
     )
 
-    pytest_group = parser.add_argument_group(
-        "pytest options", "Forwarded to pytest (local runs only)"
+    run_group = parser.add_argument_group(
+        "run options", "Forwarded to the experiment runner (local runs only)"
     )
-    pytest_group.add_argument(
-        "--force-export",
-        action="store_true",
-        default=False,
-        help="Force export of all artifacts (default: %(default)s)",
-    )
-    pytest_group.add_argument(
-        "--export-dir",
-        default="GenAILab/artifacts/exports",
-        help="Base directory for exported model artifacts (default: %(default)s)",
-    )
-    pytest_group.add_argument(
-        "--results-dir",
-        default="GenAILab/artifacts/results",
-        help="Directory for profiling results (default: %(default)s)",
-    )
-    pytest_group.add_argument(
-        "--fp-cache-dir",
-        default="GenAILab/artifacts/cache/fp",
-        help="Directory for FP results cache (default: %(default)s)",
-    )
-    pytest_group.add_argument(
-        "--clear-fp-cache",
-        action="store_true",
-        default=False,
-        help="Clear the FP cache before running (default: %(default)s)",
-    )
-    pytest_group.add_argument(
-        "--model-cache-dir",
-        default="GenAILab/artifacts/cache/model",
-        help="Directory for ONNX model cache (default: %(default)s)",
-    )
-    pytest_group.add_argument(
-        "--clear-model-cache",
-        action="store_true",
-        default=False,
-        help="Clear the model cache before running (default: %(default)s)",
-    )
+    run_actions = add_run_arguments(run_group)
 
-    args, extra = parser.parse_known_args()
+    args = parser.parse_args()
 
     if args.download:
         download_results(args)
     elif args.online:
-        pytest_opts = _build_pytest_args(args)
-        if pytest_opts or extra:
-            discarded = pytest_opts + extra
+        discarded = _build_run_args(args, run_actions)
+        if discarded:
             warnings.warn(
-                f"Pytest arguments {discarded} are ignored in --online mode. "
+                f"Run options {discarded} are ignored in --online mode. "
                 "Only --framework, --config, and --branch are forwarded to "
                 "GitHub Actions."
             )
@@ -117,43 +81,39 @@ def main():
     else:
         if args.wait:
             sys.exit("Error: --wait requires --online.")
-        run_local(args, extra)
+        run_local(args, run_actions)
 
 
-def _build_pytest_args(args):
-    """Reconstruct pytest flags from parsed args."""
-    pytest_args = []
-    if args.force_export:
-        pytest_args.append("--force-export")
-    if args.export_dir != "GenAILab/artifacts/exports":
-        pytest_args.extend(["--export-dir", args.export_dir])
-    if args.results_dir != "GenAILab/artifacts/results":
-        pytest_args.extend(["--results-dir", args.results_dir])
-    if args.fp_cache_dir != "GenAILab/artifacts/cache/fp":
-        pytest_args.extend(["--fp-cache-dir", args.fp_cache_dir])
-    if args.clear_fp_cache:
-        pytest_args.append("--clear-fp-cache")
-    if args.model_cache_dir != "GenAILab/artifacts/cache/model":
-        pytest_args.extend(["--model-cache-dir", args.model_cache_dir])
-    if args.clear_model_cache:
-        pytest_args.append("--clear-model-cache")
-    return pytest_args
+def _build_run_args(args, run_actions):
+    """Reconstruct the runner flags whose values differ from their defaults."""
+    run_args = []
+    for action in run_actions:
+        value = getattr(args, action.dest)
+        if value == action.default:
+            continue
+        flag = action.option_strings[0]
+        if action.nargs == 0:  # store_true flag
+            run_args.append(flag)
+        else:
+            run_args.extend([flag, str(value)])
+    return run_args
 
 
-def run_local(args, extra_pytest_args):
+def run_local(args, run_actions):
     frameworks = ["torch", "onnx"] if args.framework == "both" else [args.framework]
-    forwarded = _build_pytest_args(args)
+    forwarded = _build_run_args(args, run_actions)
+    # One process per framework keeps the torch and ONNX runs from sharing
+    # (and fragmenting) host and device memory.
     for framework in frameworks:
         cmd = [
             sys.executable,
             "-m",
-            "pytest",
-            "-s",
-            f"GenAILab/bench/{framework}/test_genai.py",
+            "GenAILab.bench.runner",
+            "--framework",
+            framework,
             "--config",
             args.config,
             *forwarded,
-            *extra_pytest_args,
         ]
         ret = subprocess.call(cmd)
         if ret != 0:

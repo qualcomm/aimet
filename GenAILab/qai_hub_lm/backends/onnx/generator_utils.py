@@ -1,7 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Utilities for instantiating a Generator object in onnx/test_genai.py"""
+"""Utilities for instantiating a Generator object in onnx/run_genai.py"""
 
 import contextlib
 import gc
