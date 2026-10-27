@@ -122,3 +122,87 @@ ops:
         $ret[0]: uint16
         $ret[1]: null  # ret[1] is always an empty tensor
         $ret[2]: null  # ret[2] is always an empty tensor
+
+  - op_type: aten::min.dim
+    type_constraints:
+      - self: uint8
+        dim: null
+        keepdim: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is integer indices
+      - self: uint16
+        dim: null
+        keepdim: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is integer indices
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::max.dim
+    type_constraints:
+      - self: uint8
+        dim: null
+        keepdim: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is integer indices
+      - self: uint16
+        dim: null
+        keepdim: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is integer indices
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::max_pool2d_with_indices
+    type_constraints:
+      - self: uint8
+        kernel_size: null
+        stride: null
+        padding: null
+        dilation: null
+        ceil_mode: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is integer indices
+      - self: uint16
+        kernel_size: null
+        stride: null
+        padding: null
+        dilation: null
+        ceil_mode: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is integer indices
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::max_pool3d_with_indices
+    type_constraints:
+      - self: uint8
+        kernel_size: null
+        stride: null
+        padding: null
+        dilation: null
+        ceil_mode: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is integer indices
+      - self: uint16
+        kernel_size: null
+        stride: null
+        padding: null
+        dilation: null
+        ceil_mode: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is integer indices
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::split_with_sizes
+    type_constraints:
+      - "*": uint8
+      - "*": uint16
+    value_contraints:
+      tie:
+        - ["*"]

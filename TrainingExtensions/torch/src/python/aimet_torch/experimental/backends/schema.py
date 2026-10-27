@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # pylint: disable=protected-access
-import operator
 from dataclasses import dataclass
 from pathlib import Path
 import yaml
@@ -19,7 +18,6 @@ from aimet_torch.common.experimental.backends.schema import (  # pylint: disable
     EqualRange as _EqualRange,
 )
 from aimet_torch.experimental.export._utils import (
-    _is_grid_preserving_op,
     _is_torch_ao_qdq_node,
     _is_aimet_qdq_node,
     _get_aimet_qdq_module,
@@ -399,21 +397,6 @@ class BackendDescription:
         schema_not_found: set[torch._ops.OpOverload | str] = set()
 
         for node in graph_module.graph.nodes:
-            # getitem output will inherit the previous node's input encoding
-            # if the previous node is a grid-preserving op (aka data movement op)
-            if node.target is operator.getitem and _is_grid_preserving_op(
-                node.all_input_nodes[0]
-            ):
-                continue
-
-            # Exclude grid-preserving ops (aka data movement ops) if its input is already quantized.
-            # This is to avoid redundant quantize-dequantize pairs around data movement ops.
-            if _is_grid_preserving_op(node) and node.target.overloadpacket not in (
-                torch.ops.aten.relu,
-                torch.ops.aten.relu_,
-            ):
-                continue
-
             if _is_aimet_qdq_node(node):
                 continue
 

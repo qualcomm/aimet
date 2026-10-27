@@ -70,6 +70,34 @@ def _concretize_wildcard_type_constraint(
     return concrete_type_constraint
 
 
+def _concretize_wildcard_tie_group(
+    aten_schema: torch.FunctionSchema,
+    tie_group: list[str],
+) -> list[str]:
+    """Replace wildcard argument name in the tie constraint with the actual argument names from the ATen schema."""
+    if "*" not in tie_group:
+        return tie_group
+
+    if len(tie_group) > 1:
+        raise ValueError(
+            f"{_fullname(aten_schema)}: tie constraint {tie_group} contains a wildcard '*' "
+            "and must not contain any other argument names"
+        )
+
+    concrete_input_names = [
+        arg.name for arg in aten_schema.arguments if _is_tensor_type(arg)
+    ]
+    concrete_output_names = [
+        f"$ret[{i}]"
+        for i, ret in enumerate(aten_schema.returns)
+        if _is_tensor_type(ret)
+    ]
+    return [
+        *concrete_input_names,
+        *concrete_output_names,
+    ]
+
+
 def _validate_against_aten_schema(
     aten_schema: torch.FunctionSchema,
     type_constraint: dict,
@@ -158,7 +186,9 @@ def parse_aten_op(op_entry: dict) -> dict[str, set[OpSchema]]:
         ) + tuple(
             EqualRange(arg1=args[arg1_name], arg2=args[arg2_name])
             for tie_group in tie_constraints
-            for arg1_name, arg2_name in itertools.combinations(tie_group, 2)
+            for arg1_name, arg2_name in itertools.combinations(
+                _concretize_wildcard_tie_group(torch_schema, tie_group), 2
+            )
         )
 
         domain, op_type = op_type_fullname.split("::")

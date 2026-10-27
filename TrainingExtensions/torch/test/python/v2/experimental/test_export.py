@@ -108,7 +108,7 @@ def test_export(model_factory, compile: bool, tmp_path: Path):
     model = model_factory(pretrained=False).requires_grad_(False).eval()
     model = prepare_model(model)
     x = torch.randn(1, 3, 224, 224)
-    sim = QuantizationSimModel(model, x, default_param_bw=4, config_file="htp_v81")
+    sim = QuantizationSimModel(model, x, default_param_bw=4, config_file="htp_v69")
 
     with pytest.raises(RuntimeError):
         # Before computing encodings, export should raise error
@@ -227,7 +227,7 @@ def test_shared_weight(tmp_path: Path):
     # Share weights between the two linear layers
     model[1].weight = model[0].weight
     x = torch.randn(1, 20)
-    sim = aimet_torch.QuantizationSimModel(model, x, config_file="htp_v81")
+    sim = aimet_torch.QuantizationSimModel(model, x, config_file="htp_v69")
     sim.compute_encodings(lambda model: model(x))
 
     ep = aimet_torch.experimental.export.export(sim.model, (x,))
@@ -265,7 +265,7 @@ def test_triton(tmp_path: Path):
         torch.nn.ReLU(),
     )
     x = torch.randn(1, 3, 32, 32)
-    sim = aimet_torch.QuantizationSimModel(model, x, config_file="htp_v81")
+    sim = aimet_torch.QuantizationSimModel(model, x, config_file="htp_v69")
     sim.compute_encodings(lambda model: model(x))
 
     with Q.affine.set_backend("torch_builtins"):
@@ -304,6 +304,7 @@ def test_triton(tmp_path: Path):
         assert torch.equal(ep_builtin.module()(x), ep_triton.module()(x))
 
 
+@pytest.mark.parallel
 def test_fp_model():
     """
     When: Export a non-quantized model with aimet_torch.export.export
@@ -325,10 +326,7 @@ def test_fp_model():
 @pytest.mark.parametrize(
     "device", ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"]
 )
-@pytest.mark.parametrize("target_backend", [None, "htp_v69"])
-def test_compute_missing_encodings(
-    tmp_path: Path, device: str, target_backend: str | None
-):
+def test_compute_missing_encodings(tmp_path: Path, device: str):
     """
     Given: Model with functional ops
     When: Export with aimet_torch.export.export and compute missing encodings
@@ -349,7 +347,7 @@ def test_compute_missing_encodings(
     ep = AimetExportedProgram.from_torch_exported_program(ep)
 
     with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend=target_backend
+        param_bw=8, activation_bw=16, target_backend="htp_v69"
     ):
         output = ep.module()(*example_inputs)
         assert isinstance(output, Q.DequantizedTensor)
@@ -477,7 +475,9 @@ def test_multi_output_grid_preserving_ops(op: Callable[[torch.Tensor], Any]):
     ep = aimet_torch.experimental.export.export(model, (x,))
     ep = AimetExportedProgram.from_torch_exported_program(ep)
 
-    with ep.compute_missing_encodings(param_bw=8, activation_bw=16):
+    with ep.compute_missing_encodings(
+        param_bw=8, activation_bw=16, target_backend="htp_v69"
+    ):
         _ = ep.module()(x)
 
     input_dq = next(
@@ -531,14 +531,16 @@ def test_compute_missing_encodings_with_constant():
         AddConstantTensor(),
     )
     example_inputs = (torch.randn(10),)
-    sim = QuantizationSimModel(model, example_inputs, config_file="htp_v81")
+    sim = QuantizationSimModel(model, example_inputs, config_file="htp_v69")
     sim.compute_encodings(lambda model: model(*example_inputs))
 
     _ = torch.export.export(sim.model, example_inputs)
     ep = aimet_torch.experimental.export.export(sim.model, example_inputs)
     ep = AimetExportedProgram.from_torch_exported_program(ep)
 
-    with ep.compute_missing_encodings(param_bw=8, activation_bw=16):
+    with ep.compute_missing_encodings(
+        param_bw=8, activation_bw=16, target_backend="htp_v69"
+    ):
         _ = ep.module()(*example_inputs)
 
     mul_node = next(
@@ -575,6 +577,7 @@ def test_compute_missing_encodings_with_constant():
     )
 
 
+@pytest.mark.parallel
 def test_dynamic_shape():
     fp_model = conv_relu()
     x = torch.randn(2, 3, 32, 32)
@@ -591,7 +594,9 @@ def test_dynamic_shape():
 
     ep = AimetExportedProgram.from_torch_exported_program(ep)
 
-    with ep.compute_missing_encodings(param_bw=8, activation_bw=16):
+    with ep.compute_missing_encodings(
+        param_bw=8, activation_bw=16, target_backend="htp_v69"
+    ):
         # Should still work with different batch size
         for batch_size in [1, 3, 4]:
             _ = ep.module()(torch.randn(batch_size, 3, 32, 32))
@@ -622,7 +627,7 @@ def test_preserve_graph_signature():
     x = torch.randn(3, 3)
     _ = torch.randn(3, 3)
     z = torch.randn(3, 3)
-    sim = aimet_torch.QuantizationSimModel(model, (x, _, z), config_file="htp_v81")
+    sim = aimet_torch.QuantizationSimModel(model, (x, _, z), config_file="htp_v69")
     sim.compute_encodings(lambda m: m(x, _, z))
 
     ep = aimet_torch.experimental.export.export(sim.model, (x, _, z))
@@ -637,7 +642,9 @@ def test_preserve_graph_signature():
     assert user_inputs[2].arg.name == "z"
 
     ep = AimetExportedProgram.from_torch_exported_program(ep)
-    with ep.compute_missing_encodings(param_bw=8, activation_bw=16):
+    with ep.compute_missing_encodings(
+        param_bw=8, activation_bw=16, target_backend="htp_v69"
+    ):
         _ = ep.module()(x, _, z)
 
     assert user_inputs[0].arg.name == "x"

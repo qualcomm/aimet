@@ -343,3 +343,54 @@ value_contraints:
             ),
         ),
     }
+
+    yaml_config = yaml.safe_load("""
+op_type: aten::split_with_sizes
+type_constraints:
+  - "*": uint8
+  - "*": uint16
+value_contraints:
+  tie:
+    - ["*"]
+""")
+    schemas = parse_aten_op(yaml_config)
+    assert len(schemas) == 1
+    schemas = schemas.pop("aten::split_with_sizes")
+    assert schemas == {
+        OpSchema(
+            signature=OpSignature(
+                domain="aten",
+                op_type="split_with_sizes",
+                inputs=(
+                    Argument(name="self", qtype=qtype("uint8")),
+                    Argument(name="split_sizes", qtype=None),
+                    Argument(name="dim", qtype=None),
+                ),
+                outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+            ),
+            value_constraints=(
+                EqualRange(
+                    arg1=Argument(name="self", qtype=qtype("uint8")),
+                    arg2=Argument(name="$ret[0]", qtype=qtype("uint8")),
+                ),
+            ),
+        ),
+        OpSchema(
+            signature=OpSignature(
+                domain="aten",
+                op_type="split_with_sizes",
+                inputs=(
+                    Argument(name="self", qtype=qtype("uint16")),
+                    Argument(name="split_sizes", qtype=None),
+                    Argument(name="dim", qtype=None),
+                ),
+                outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+            ),
+            value_constraints=(
+                EqualRange(
+                    arg1=Argument(name="self", qtype=qtype("uint16")),
+                    arg2=Argument(name="$ret[0]", qtype=qtype("uint16")),
+                ),
+            ),
+        ),
+    }
