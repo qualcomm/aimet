@@ -46,8 +46,9 @@ type_constraints:
     groups: n/a
     $ret[0]: uint16
 """)
-    schemas: set[OpSchema] = parse_aten_op(yaml_config)
-    assert len(schemas) == 3
+    schemas = parse_aten_op(yaml_config)
+    assert len(schemas) == 1
+    schemas = schemas.pop("aten::conv2d")
     assert schemas == {
         # W8A8 per-channel
         OpSchema(
@@ -139,7 +140,8 @@ value_contraints:
     - $ret[0]: {min: 0.0, max: 1.0}
 """)
     schemas = parse_aten_op(yaml_config)
-    assert len(schemas) == 2
+    assert len(schemas) == 1
+    schemas = schemas.pop("aten::_softmax")
     assert schemas == {
         OpSchema(
             signature=OpSignature(
@@ -193,7 +195,8 @@ value_contraints:
     - [self, "$ret[0]"]
 """)
     schemas = parse_aten_op(yaml_config)
-    assert len(schemas) == 2
+    assert len(schemas) == 1
+    schemas = schemas.pop("aten::relu")
     assert schemas == {
         OpSchema(
             signature=OpSignature(
@@ -249,7 +252,8 @@ value_contraints:
     - [self, "$ret[0]"]
 """)
     schemas = parse_aten_op(yaml_config)
-    assert len(schemas) == 2
+    assert len(schemas) == 1
+    schemas = schemas.pop("aten::mean")
     assert schemas == {
         OpSchema(
             signature=OpSignature(
@@ -301,7 +305,8 @@ value_contraints:
     - [tensors, "$ret[0]"]
 """)
     schemas = parse_aten_op(yaml_config)
-    assert len(schemas) == 2
+    assert len(schemas) == 1
+    schemas = schemas.pop("aten::cat")
     assert schemas == {
         OpSchema(
             signature=OpSignature(

@@ -325,7 +325,10 @@ def test_fp_model():
 @pytest.mark.parametrize(
     "device", ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"]
 )
-def test_compute_missing_encodings(device: str, tmp_path: Path):
+@pytest.mark.parametrize("target_backend", [None, "htp_v69"])
+def test_compute_missing_encodings(
+    tmp_path: Path, device: str, target_backend: str | None
+):
     """
     Given: Model with functional ops
     When: Export with aimet_torch.export.export and compute missing encodings
@@ -345,7 +348,9 @@ def test_compute_missing_encodings(device: str, tmp_path: Path):
 
     ep = AimetExportedProgram.from_torch_exported_program(ep)
 
-    with ep.compute_missing_encodings(param_bw=8, activation_bw=16):
+    with ep.compute_missing_encodings(
+        param_bw=8, activation_bw=16, target_backend=target_backend
+    ):
         output = ep.module()(*example_inputs)
         assert isinstance(output, Q.DequantizedTensor)
 

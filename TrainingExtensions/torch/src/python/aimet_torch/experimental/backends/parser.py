@@ -43,10 +43,43 @@ _tensor_roles = {
 # fmt: on
 
 
+def _is_tensor_type(arg: torch.Argument) -> bool:
+    type_str = str(arg.type)
+    return type_str in ("Tensor", "List[Tensor]", "Optional[Tensor]")
+
+
+def _concretize_wildcard_type_constraint(
+    aten_schema: torch.FunctionSchema,
+    type_constraint: dict,
+) -> dict:
+    """Replace wildcard argument names in the type constraint with the actual argument names from the ATen schema."""
+    if "*" not in type_constraint:
+        return type_constraint
+
+    wildcard_value = type_constraint["*"]
+    concrete_type_constraint = {
+        arg.name: wildcard_value if _is_tensor_type(arg) else "n/a"
+        for arg in aten_schema.arguments
+    }
+    concrete_type_constraint |= {
+        f"$ret[{i}]": wildcard_value if _is_tensor_type(ret) else "n/a"
+        for i, ret in enumerate(aten_schema.returns)
+    }
+    return concrete_type_constraint
+
+
 def _validate_against_aten_schema(
     aten_schema: torch.FunctionSchema,
     type_constraint: dict,
 ) -> None:
+    if "*" in type_constraint:
+        if len(type_constraint) > 1:
+            raise ValueError(
+                f"{_fullname(aten_schema)}: type constraint {type_constraint} contains a wildcard '*' "
+                "and must not contain any other argument names"
+            )
+        return
+
     expected_names = [
         *(arg.name for arg in aten_schema.arguments),
         *(f"$ret[{i}]" for i, _ in enumerate(aten_schema.returns)),
@@ -60,20 +93,27 @@ def _validate_against_aten_schema(
         )
 
     for arg in itertools.chain(aten_schema.arguments, aten_schema.returns):
-        type_str = str(arg.type)
-        is_tensor_type = type_str in ("Tensor", "List[Tensor]", "Optional[Tensor]")
-        is_wildcard = type_constraint.get(arg.name, "n/a").strip() == "n/a"
+        is_tensor_type = _is_tensor_type(arg)
+        qtype_specified = type_constraint.get(arg.name, "n/a").strip() != "n/a"
 
-        if not is_tensor_type and not is_wildcard:
+        if not is_tensor_type and qtype_specified:
             raise ValueError(
-                f"{_fullname(aten_schema)}: tensor {arg.name!r} (type: {type_str}) is not a Tensor argument "
+                f"{_fullname(aten_schema)}: tensor {arg.name!r} (type: {arg.type}) is not a Tensor argument "
                 f"and must not declare a qtype, got {type_constraint.get(arg.name)!r}"
             )
 
 
-def parse_aten_op(op_entry: dict) -> set[OpSchema]:
-    schemas = set()
+def parse_aten_op(op_entry: dict) -> dict[str, set[OpSchema]]:
     op_type_fullname = op_entry["op_type"]
+
+    # Wildcard: Match with all ATen ops
+    if op_type_fullname == "*":
+        schemas = {}
+        for schema in _all_qualcomm_aten_function_schemas.values():
+            schemas |= parse_aten_op({**op_entry, "op_type": _fullname(schema)})
+        return schemas
+    else:
+        schemas = {op_type_fullname: set()}
 
     torch_schema = _all_qualcomm_aten_function_schemas.get(op_type_fullname)
     if torch_schema is None:
@@ -88,6 +128,9 @@ def parse_aten_op(op_entry: dict) -> set[OpSchema]:
 
     for type_constraint in op_entry["type_constraints"]:
         _validate_against_aten_schema(torch_schema, type_constraint)
+        type_constraint = _concretize_wildcard_type_constraint(
+            torch_schema, type_constraint
+        )
 
         args = {
             arg_name: Argument(
@@ -125,6 +168,8 @@ def parse_aten_op(op_entry: dict) -> set[OpSchema]:
             inputs=inputs,
             outputs=outputs,
         )
-        schemas.add(OpSchema(signature=signature, value_constraints=value_constraints))
+        schemas[op_type_fullname].add(
+            OpSchema(signature=signature, value_constraints=value_constraints)
+        )
 
     return schemas

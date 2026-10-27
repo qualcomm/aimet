@@ -1,7 +1,9 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import itertools
 import numpy as np
+import yaml
 import torch
 from torch.export import ExportedProgram
 import pytest
@@ -15,6 +17,7 @@ import aimet_torch.quantization as Q
 from aimet_torch.experimental.export.exported_program import (
     ExportedProgram as AIMETExportedProgram,
 )
+from aimet_torch.experimental.backends.schema import BackendDescription, qtype
 
 
 def _assert_graph_fully_quantized(
@@ -193,3 +196,37 @@ def test_fully_quantized(tmp_path, module):
         input_range = _get_min_max_range(input_q)
         output_range = _get_min_max_range(output_dq)
         assert input_range == output_range
+
+
+def test_wildcard_overwrite():
+    yaml_config = yaml.safe_load("""
+name: test
+ops:
+  - op_type: "*"
+    type_constraints:
+      - {"*": "uint8"}
+  - op_type: "aten::relu"
+    type_constraints:
+      - {"*": "uint16"}
+""")
+    bd = BackendDescription.from_yaml(yaml_config)
+
+    for (domain, op_type), schemas in bd.all_ops.items():
+        expected_qtype = (
+            qtype("uint16") if (domain, op_type) == ("aten", "relu") else qtype("uint8")
+        )
+        assert all(
+            arg_spec.qtype in (None, expected_qtype)
+            for schema in schemas
+            for arg_spec in itertools.chain(
+                schema.signature.inputs, schema.signature.outputs
+            )
+        )
+        # To prevent trivial test passing
+        assert any(
+            arg_spec.qtype == expected_qtype
+            for schema in schemas
+            for arg_spec in itertools.chain(
+                schema.signature.inputs, schema.signature.outputs
+            )
+        )

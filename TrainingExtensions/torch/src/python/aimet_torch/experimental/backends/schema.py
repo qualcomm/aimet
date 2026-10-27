@@ -321,19 +321,27 @@ class BackendDescription:
 
     @classmethod
     def from_backend_id(cls, backend_id: str) -> "BackendDescription":
-        from aimet_torch.experimental.backends.parser import parse_aten_op
-
         with open(Path(__file__).parent / f"{backend_id}.yaml", "r") as f:
             yaml_config = yaml.safe_load(f)
 
-        all_ops = set()
+        return cls.from_yaml(yaml_config)
 
+    @classmethod
+    def from_yaml(cls, yaml_config: dict) -> "BackendDescription":
+        from aimet_torch.experimental.backends.parser import parse_aten_op
+
+        all_ops: dict[str, set[OpSchema]] = {}
+
+        # Parse wildcard first and overwrite it with specific ops later
         for op_entry in yaml_config["ops"]:
             if op_entry["op_type"] == "*":
-                continue
-            all_ops |= parse_aten_op(op_entry)
+                all_ops |= parse_aten_op(op_entry)
 
-        return cls(all_ops, name=yaml_config.get("name", None))
+        for op_entry in yaml_config["ops"]:
+            if op_entry["op_type"] != "*":
+                all_ops |= parse_aten_op(op_entry)
+
+        return cls(set.union(*all_ops.values()), name=yaml_config.get("name", None))
 
     def get_schema(
         self,
@@ -345,13 +353,13 @@ class BackendDescription:
         schemas = self.all_ops.get((domain, op_type), None)
 
         if not schemas:
-            raise ValueError(f"Op {op.name()} not found in backend {self.name}")
+            raise _OpNotFound(f"Op {op.name()} not found in backend {self.name}")
 
         for schema in schemas:
             if schema.exact_match(op, weight_bw, activation_bw):
                 return schema
 
-        raise ValueError(
+        raise _SchemaNotFound(
             f"Op {op.name()} found in backend {self.name}, but no matching schema found"
         )
 
@@ -364,9 +372,11 @@ class BackendDescription:
         """
         Configure graph module for quantization according to the backend description.
         """
-        graph = graph_module.graph
+        matched_schemas: dict[torch.fx.Node, OpSchema] = {}
+        op_not_found: set[torch._ops.OpOverload | str] = set()
+        schema_not_found: set[torch._ops.OpOverload | str] = set()
 
-        for node in graph.nodes:
+        for node in graph_module.graph.nodes:
             # Exclude multi-output ops which returns tuple of tensors.
             # QDQ for each output will be attached to the the succeeding getitem node
             #
@@ -413,12 +423,56 @@ class BackendDescription:
             if not isinstance(node.target, torch._ops.OpOverload):
                 continue
 
-            schema: OpSchema = self.get_schema(
-                node.target, weight_bw=weight_bw, activation_bw=activation_bw
-            )
+            try:
+                schema: OpSchema = self.get_schema(
+                    node.target, weight_bw=weight_bw, activation_bw=activation_bw
+                )
+                matched_schemas[node] = schema
+            except _OpNotFound:
+                op_not_found.add(node.target)
+            except _SchemaNotFound:
+                schema_not_found.add(node.target)
+
+        if op_not_found or schema_not_found:
+            self._throw_not_found_error(op_not_found, schema_not_found)
+
+        for node, schema in matched_schemas.items():
             schema.configure_node(node)
 
         # Recompile the graph
         graph_module.graph.eliminate_dead_code()
         graph_module.recompile()
         graph_module.delete_all_unused_submodules()
+
+    def _throw_not_found_error(
+        self,
+        op_not_found: set[torch._ops.OpOverload | str],
+        schema_not_found: set[torch._ops.OpOverload | str],
+    ):
+        def listify(targets: set[torch._ops.OpOverload | str]) -> list[str]:
+            return [
+                f"  - {op_type}"
+                for op_type in sorted(str(target) for target in targets)
+            ]
+
+        msg = []
+
+        if op_not_found:
+            msg += [
+                "Following ops are not defined in quantization IR:",
+                *listify(op_not_found),
+            ]
+
+        if schema_not_found:
+            msg += [
+                f"Following ops are supported in quantization IR, but no matching schema found for {self.name}:",
+                *listify(schema_not_found),
+            ]
+
+        raise RuntimeError("\n".join(msg))
+
+
+class _OpNotFound(RuntimeError): ...
+
+
+class _SchemaNotFound(RuntimeError): ...
