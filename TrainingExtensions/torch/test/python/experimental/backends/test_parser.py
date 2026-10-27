@@ -1,6 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import pytest
 import yaml
 
 from aimet_torch.experimental.backends.parser import parse_aten_op
@@ -18,8 +19,8 @@ def test_aten_op_schema_parsing():
     yaml_config = yaml.safe_load("""
 op_type: aten::conv1d | aten::conv2d | aten::conv3d
 type_constraints:
-  # W8A8
-  - input: uint8
+  w8a8:
+    input: uint8
     weight: int8[channel_axis=0]
     bias: int32[channel_axis=0]
     stride: null
@@ -27,8 +28,8 @@ type_constraints:
     dilation: null
     groups: null
     $ret[0]: uint8
-  # W8A16
-  - input: uint16
+  w8a16:
+    input: uint16
     weight: int8[channel_axis=0]
     bias: int32[channel_axis=0]
     stride: null
@@ -36,8 +37,8 @@ type_constraints:
     dilation: null
     groups: null
     $ret[0]: uint16
-  # W16A16
-  - input: uint16
+  w16a16:
+    input: uint16
     weight: int16[channel_axis=0]
     bias: int32[channel_axis=0]
     stride: null
@@ -74,6 +75,7 @@ type_constraints:
                         Argument(name="groups", qtype=None),
                     ),
                     outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                    tag="w8a8",
                 ),
                 value_constraints=(),
             ),
@@ -100,6 +102,7 @@ type_constraints:
                         Argument(name="groups", qtype=None),
                     ),
                     outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                    tag="w8a16",
                 ),
                 value_constraints=(),
             ),
@@ -126,6 +129,7 @@ type_constraints:
                         Argument(name="groups", qtype=None),
                     ),
                     outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                    tag="w16a16",
                 ),
                 value_constraints=(),
             ),
@@ -134,11 +138,13 @@ type_constraints:
     yaml_config = yaml.safe_load("""
 op_type: aten::_softmax
 type_constraints:
-  - self: uint8
+  a8:
+    self: uint8
     dim: null
     half_to_float: null
     $ret[0]: uint8
-  - self: uint16
+  a16:
+    self: uint16
     dim: null
     half_to_float: null
     $ret[0]: uint16
@@ -160,6 +166,7 @@ value_contraints:
                     Argument(name="half_to_float", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                tag="a8",
             ),
             value_constraints=(
                 FixedRange(
@@ -177,6 +184,7 @@ value_contraints:
                     Argument(name="half_to_float", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                tag="a16",
             ),
             value_constraints=(
                 FixedRange(
@@ -191,9 +199,11 @@ value_contraints:
     yaml_config = yaml.safe_load("""
 op_type: aten::relu
 type_constraints:
-  - self: uint8
+  a8:
+    self: uint8
     $ret[0]: uint8
-  - self: uint16
+  a16:
+    self: uint16
     $ret[0]: uint16
 value_contraints:
   fix:
@@ -211,6 +221,7 @@ value_contraints:
                 op_type="relu",
                 inputs=(Argument(name="self", qtype=qtype("uint8")),),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                tag="a8",
             ),
             value_constraints=(
                 FixedRange(
@@ -230,6 +241,7 @@ value_contraints:
                 op_type="relu",
                 inputs=(Argument(name="self", qtype=qtype("uint16")),),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                tag="a16",
             ),
             value_constraints=(
                 FixedRange(
@@ -248,10 +260,12 @@ value_contraints:
     yaml_config = yaml.safe_load("""
 op_type: aten::mean
 type_constraints:
-  - self: uint8
+  a8:
+    self: uint8
     dtype: null
     $ret[0]: uint8
-  - self: uint16
+  a16:
+    self: uint16
     dtype: null
     $ret[0]: uint16
 value_contraints:
@@ -271,6 +285,7 @@ value_contraints:
                     Argument(name="dtype", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                tag="a8",
             ),
             value_constraints=(
                 EqualRange(
@@ -288,6 +303,7 @@ value_contraints:
                     Argument(name="dtype", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                tag="a16",
             ),
             value_constraints=(
                 EqualRange(
@@ -301,10 +317,12 @@ value_contraints:
     yaml_config = yaml.safe_load("""
 op_type: aten::cat
 type_constraints:
-  - tensors: uint8
+  a8:
+    tensors: uint8
     dim: null
     $ret[0]: uint8
-  - tensors: uint16
+  a16:
+    tensors: uint16
     dim: null
     $ret[0]: uint16
 value_contraints:
@@ -324,6 +342,7 @@ value_contraints:
                     Argument(name="dim", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                tag="a8",
             ),
             value_constraints=(
                 EqualRange(
@@ -341,6 +360,7 @@ value_contraints:
                     Argument(name="dim", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                tag="a16",
             ),
             value_constraints=(
                 EqualRange(
@@ -354,8 +374,10 @@ value_contraints:
     yaml_config = yaml.safe_load("""
 op_type: aten::split_with_sizes
 type_constraints:
-  - "*": uint8
-  - "*": uint16
+  a8:
+    "*": uint8
+  a16:
+    "*": uint16
 value_contraints:
   tie:
     - ["*"]
@@ -374,6 +396,7 @@ value_contraints:
                     Argument(name="dim", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                tag="a8",
             ),
             value_constraints=(
                 EqualRange(
@@ -392,6 +415,7 @@ value_contraints:
                     Argument(name="dim", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                tag="a16",
             ),
             value_constraints=(
                 EqualRange(
@@ -401,3 +425,15 @@ value_contraints:
             ),
         ),
     }
+
+
+def test_aten_op_invalid_tag():
+    yaml_config = yaml.safe_load("""
+op_type: aten::relu
+type_constraints:
+  w4a4:
+    self: uint8
+    $ret[0]: uint8
+""")
+    with pytest.raises(ValueError, match="invalid quantization profile"):
+        parse_aten_op(yaml_config)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # pylint: disable=protected-access
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 import yaml
@@ -138,52 +139,18 @@ class OpSignature(_OpSignature):
     # Overwrite parent type hint
     inputs: tuple[Argument, ...]
     outputs: tuple[Argument, ...]
+    tag: str  # Name of the quantization profile (e.g. "w8a8", "w8a16", "a16")
+
+    @classmethod
+    @lru_cache(None)
+    def allowed_tags(cls):
+        return {"w8a8", "w8a16", "w16a16", "a8", "a16", "a8xa8", "a16xa8"}
 
 
 @dataclass(frozen=True)
 class OpSchema(_OpSchema):
     # Overwrite parent type hint
     signature: OpSignature
-
-    def exact_match(
-        self,
-        op: torch._ops.OpOverload,
-        weight_bw: int,
-        activation_bw: int,
-        per_channel_quantization: bool = True,
-    ) -> bool:
-        domain, op_type = op.name().split("::")
-
-        if (domain, op_type) != (self.signature.domain, self.signature.op_type):
-            return False
-
-        for arg in self.signature.inputs + self.signature.outputs:
-            if arg.role == "weight":
-                if not arg.qtype:
-                    return False
-
-                if arg.qtype.dtype not in (f"int{weight_bw}", f"uint{weight_bw}"):
-                    return False
-
-                if per_channel_quantization == (arg.qtype.channel_axis is None):
-                    return False
-
-            if arg.role == "bias":
-                if not arg.qtype:
-                    return False
-
-                if per_channel_quantization == (arg.qtype.channel_axis is None):
-                    return False
-
-            if (
-                arg.role is None
-                and arg.qtype
-                and arg.qtype.dtype
-                not in (f"int{activation_bw}", f"uint{activation_bw}")
-            ):
-                return False
-
-        return True
 
     def configure_node(self, node: torch.fx.Node):
         """
@@ -362,33 +329,29 @@ class BackendDescription:
 
         return cls(set.union(*all_ops.values()), name=yaml_config.get("name", None))
 
-    def get_schema(
-        self,
-        op: torch._ops.OpOverload,
-        weight_bw: int,
-        activation_bw: int,
-    ) -> OpSchema:
+    def get_schema(self, op: torch._ops.OpOverload, tags: list[str]) -> OpSchema:
+        """
+        Get the schema for a given operator and a list of tags.
+
+        Args:
+            op (torch._ops.OpOverload): The operator for which to retrieve the schema.
+            tags (list[str]): List of tags to match against the schema's tag, sorted in order of preference.
+                Each tag can be one of "w8a16", "a16", "a16xa16", "a16xa8", etc.
+        """
         domain, op_type = op.name().split("::")
         schemas = self.all_ops.get((domain, op_type), None)
 
         if not schemas:
             raise _OpNotFound(f"Op {op.name()} not found in backend {self.name}")
 
-        # Match schemas with per-channel quantization first, then fallback to per-tensor quantization
-        for schema in schemas:
-            if schema.exact_match(
-                op, weight_bw, activation_bw, per_channel_quantization=True
-            ):
-                return schema
-
-        for schema in schemas:
-            if schema.exact_match(
-                op, weight_bw, activation_bw, per_channel_quantization=False
-            ):
-                return schema
+        for tag in tags:
+            for schema in schemas:
+                if schema.signature.tag == tag:
+                    return schema
 
         raise _SchemaNotFound(
-            f"Op {op.name()} found in backend {self.name}, but no matching schema found"
+            f"Op {op.name()} found in backend {self.name}, "
+            f"but no matching schema found for tags {tags}."
         )
 
     def configure(
@@ -400,6 +363,14 @@ class BackendDescription:
         """
         Configure graph module for quantization according to the backend description.
         """
+        if weight_bw == 8 and activation_bw == 16:
+            w8a16_profile = {
+                "*": ["w8a16", "a16"],
+                "aten::matmul": ["a16xa16", "a16xa8"],
+            }
+        else:
+            raise NotImplementedError
+
         matched_schemas: dict[torch.fx.Node, OpSchema] = {}
         op_not_found: set[torch._ops.OpOverload | str] = set()
         schema_not_found: set[torch._ops.OpOverload | str] = set()
@@ -418,9 +389,8 @@ class BackendDescription:
                 continue
 
             try:
-                schema: OpSchema = self.get_schema(
-                    node.target, weight_bw=weight_bw, activation_bw=activation_bw
-                )
+                tags = w8a16_profile.get(node.target.name(), w8a16_profile["*"])
+                schema: OpSchema = self.get_schema(node.target, tags)
                 matched_schemas[node] = schema
             except _OpNotFound:
                 op_not_found.add(node.target)

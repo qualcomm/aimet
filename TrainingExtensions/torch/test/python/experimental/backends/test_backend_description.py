@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import itertools
+import operator
 from functools import lru_cache
 import numpy as np
 import yaml
@@ -10,6 +11,7 @@ from torch.export import ExportedProgram
 from torch.export.graph_signature import InputSpec
 import pytest
 from aimet_torch.nn.modules import custom
+from aimet_torch.experimental.backends import OpSchema, BackendDescription
 from aimet_torch.experimental.export._utils import (
     _is_torch_ao_q_node,
     _is_torch_ao_dq_node,
@@ -24,134 +26,82 @@ from aimet_torch.experimental.backends.schema import BackendDescription, qtype
 
 def _assert_graph_fully_quantized(
     ep: ExportedProgram,
-    expected_weight_dtype: torch.dtype,
-    expected_bias_dtype: torch.dtype,
-    expected_activation_dtype: torch.dtype,
-    expected_channel_axis: int,
+    w8a16_op_schemas: dict[str, OpSchema],
 ):
-    for node in ep.graph.nodes:
-        _assert_node_fully_quantized(
-            ep,
-            node,
-            expected_weight_dtype,
-            expected_bias_dtype,
-            expected_activation_dtype,
-            expected_channel_axis,
-        )
-
-
-def _assert_node_fully_quantized(
-    ep: ExportedProgram,
-    node: torch.fx.Node,
-    expected_weight_dtype: torch.dtype,
-    expected_bias_dtype: torch.dtype,
-    expected_activation_dtype: torch.dtype,
-    expected_channel_axis: int,
-):
-    if _is_torch_ao_qdq_node(node):
-        return
-
-    if all(
-        _is_torch_ao_qdq_node(user) and node in user.args[1:3] for user in node.users
-    ):
-        # Current node is 2nd (scale) or 3rd (zero_point) input of QDQ node.
-        return
-
-    for producer in node.all_input_nodes:
-        if _output_can_be_quantized(ep, producer):
-            assert _is_torch_ao_dq_node(producer)
-
-    if not _output_can_be_quantized(ep, node):
-        return
-
-    for user in node.users:
-        fake_output = node.meta["val"]
-
-        if fake_output.is_floating_point():
-            assert _is_torch_ao_q_node(user)
-        else:
-            assert _is_torch_ao_dq_node(user)
-
-        *_, qtype = user.args
-
-        if _is_weight_node(ep, node):
-            assert qtype == expected_weight_dtype
-            assert (
-                user.target
-                == torch.ops.quantized_decomposed.dequantize_per_channel.default
-            )
-            _, _, _, channel_axis, *_ = user.args
-            assert channel_axis == expected_channel_axis
-        elif _is_bias_node(ep, node):
-            assert qtype == expected_bias_dtype
-            assert (
-                user.target
-                == torch.ops.quantized_decomposed.dequantize_per_channel.default
-            )
-            _, _, _, channel_axis, *_ = user.args
-            # NOTE: Bias is 1D, so its channel axis is always 0
-            assert channel_axis == 0
-        else:
-            assert qtype == expected_activation_dtype
-
-
-def _output_can_be_quantized(ep: ExportedProgram, node: torch.fx.Node) -> bool:
-    fake_output = node.meta["val"]
-    return (
-        isinstance(fake_output, torch.Tensor)
-        and fake_output.numel() > 0
-        and fake_output.is_floating_point()
-        and not _is_running_mean(ep, node)
-        and not _is_running_var(ep, node)
-    )
-
-
-def _is_weight_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
-    return (
-        node in _get_input_specs(ep)
-        and "weight" in node.name
-        and "scale" not in node.name
-        and "zero_point" not in node.name
-    )
-
-
-def _is_bias_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
-    return (
-        node in _get_input_specs(ep)
-        and "bias" in node.name
-        and "scale" not in node.name
-        and "zero_point" not in node.name
-    )
-
-
-def _is_running_mean(ep: ExportedProgram, node: torch.fx.Node) -> bool:
-    return (
-        node in _get_input_specs(ep)
-        and "running_mean" in node.name
-        and "scale" not in node.name
-        and "zero_point" not in node.name
-    )
-
-
-def _is_running_var(ep: ExportedProgram, node: torch.fx.Node) -> bool:
-    return (
-        node in _get_input_specs(ep)
-        and "running_var" in node.name
-        and "scale" not in node.name
-        and "zero_point" not in node.name
-    )
-
-
-@lru_cache(maxsize=16)
-def _get_input_specs(ep: ExportedProgram) -> dict[torch.fx.Node, InputSpec]:
-    input_specs = {
-        input_spec.arg.name: input_spec for input_spec in ep.graph_signature.input_specs
-    }
-    return {
-        node: input_spec
+    quantizable_nodes = [
+        node
         for node in ep.graph.nodes
-        if (input_spec := input_specs.get(node.target))
-    }
+        if node.op != "placeholder"
+        and node.op != "output"
+        and node.target != operator.getitem
+        and not _is_torch_ao_qdq_node(node)
+    ]
+    assert quantizable_nodes, "No quantizable nodes found in the graph"
+
+    for node in quantizable_nodes:
+        assert node.target.name() in w8a16_op_schemas
+        expected_schema = w8a16_op_schemas[node.target.name()]
+        _assert_op_schema(node, expected_schema)
+
+
+def _assert_op_schema(node: torch.fx.Node, expected_schema: OpSchema):
+    for input_node, arg_spec in zip(node.args, expected_schema.signature.inputs):
+        if not arg_spec.qtype:
+            continue
+        assert isinstance(input_node, torch.fx.Node)
+        *_, qtype = input_node.args
+        expected_qtype = getattr(torch, arg_spec.qtype.dtype)
+        assert qtype == expected_qtype
+
+        if arg_spec.qtype.channel_axis is None:
+            assert input_node.target.overloadpacket in (
+                torch.ops.quantized_decomposed.quantize_per_tensor,
+                torch.ops.quantized_decomposed.dequantize_per_tensor,
+            )
+        else:
+            assert input_node.target.overloadpacket in (
+                torch.ops.quantized_decomposed.quantize_per_channel,
+                torch.ops.quantized_decomposed.dequantize_per_channel,
+            )
+            _, _, _, channel_axis, *_ = input_node.args
+            assert channel_axis == arg_spec.qtype.channel_axis
+
+    if isinstance(node.meta["val"], (tuple, list)):
+        # Node returns a list of tensors.
+        # In this case, `node` will be followed by getitem nodes for each output tensor as below
+        #
+        #                              +-------> getitem --------> y0
+        #   x -> node -> (y0, y1, y2) -+-------> getitem --------> y1
+        #                              +-------> getitem --------> y2
+        #                                  (`all_output_nodes`)
+        all_output_nodes = list(node.users)
+    else:
+        all_output_nodes = [node]
+
+    for output_node, ret_spec in zip(
+        all_output_nodes, expected_schema.signature.outputs
+    ):
+        if not ret_spec.qtype:
+            continue
+        assert isinstance(output_node, torch.fx.Node)
+        (q,) = output_node.users
+        assert _is_torch_ao_q_node(q)
+        *_, qtype = q.args
+        expected_qtype = getattr(torch, ret_spec.qtype.dtype)
+        assert qtype == expected_qtype
+
+        if ret_spec.qtype.channel_axis is None:
+            assert q.target.overloadpacket in (
+                torch.ops.quantized_decomposed.quantize_per_tensor,
+                torch.ops.quantized_decomposed.dequantize_per_tensor,
+            )
+        else:
+            assert q.target.overloadpacket in (
+                torch.ops.quantized_decomposed.quantize_per_channel,
+                torch.ops.quantized_decomposed.dequantize_per_channel,
+            )
+            _, _, _, channel_axis, *_ = q.args
+            assert channel_axis == ret_spec.qtype.channel_axis
 
 
 def _get_min_max_range(node: torch.fx.Node) -> tuple[float, float]:
@@ -184,6 +134,8 @@ def module(request):
         case torch.nn.Softmax:
             return cls().eval()
         case custom.Sin | custom.Cos | torch.nn.Tanh:
+            return cls().eval()
+        case custom.MatMul:
             return cls().eval()
         case custom.Mean:
             return cls().eval()
@@ -219,8 +171,21 @@ def example_inputs(module):
             return (torch.randn(1, 3, 10, 10, 10),)
         case torch.nn.Linear():
             return (torch.randn(1, 3, 10),)
+        case custom.MatMul():
+            return (torch.randn(10, 10), torch.randn(10, 10))
         case _:
             return (torch.randn(1, 3, 10, 10),)
+
+
+@pytest.fixture(scope="session")
+def w8a16_op_schemas():
+    htp_v69 = BackendDescription.from_backend_id("htp_v69")
+    return {
+        f"{domain}::{op_type}": schema
+        for (domain, op_type), schemas in htp_v69.all_ops.items()
+        for schema in schemas
+        if schema.signature.tag in ("w8a16", "a16", "a16xa8")
+    }
 
 
 @pytest.mark.parametrize(
@@ -239,6 +204,7 @@ def example_inputs(module):
         custom.Sin,
         custom.Cos,
         torch.nn.Tanh,
+        custom.MatMul,
         custom.Mean,
         torch.nn.BatchNorm2d,
         torch.nn.LayerNorm,
@@ -247,7 +213,7 @@ def example_inputs(module):
     ],
     indirect=True,
 )
-def test_fully_quantized(tmp_path, module, example_inputs):
+def test_fully_quantized(tmp_path, module, example_inputs, w8a16_op_schemas):
     """
     Given: nn.Module included in quantization IR
     When: compute missing encodings with target backend specified
@@ -271,22 +237,7 @@ def test_fully_quantized(tmp_path, module, example_inputs):
     # Make sure ExportedProgram object can be saved and loaded correctly
     torch.export.save(ep, tmp_path / "ep.pt2")
     ep = torch.export.load(tmp_path / "ep.pt2")
-
-    if isinstance(
-        module,
-        (torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d),
-    ):
-        expected_channel_axis = 1
-    else:
-        expected_channel_axis = 0
-
-    _assert_graph_fully_quantized(
-        ep,
-        expected_weight_dtype=torch.int8,
-        expected_bias_dtype=torch.int32,
-        expected_activation_dtype=torch.uint16,
-        expected_channel_axis=expected_channel_axis,
-    )
+    _assert_graph_fully_quantized(ep, w8a16_op_schemas)
 
     if isinstance(module, (torch.nn.Softmax, custom.Sin, custom.Cos, torch.nn.Tanh)):
         """
@@ -323,10 +274,10 @@ name: test
 ops:
   - op_type: "*"
     type_constraints:
-      - {"*": "uint8"}
+      a8: {"*": "uint8"}
   - op_type: "aten::relu"
     type_constraints:
-      - {"*": "uint16"}
+      a16: {"*": "uint16"}
 """)
     bd = BackendDescription.from_yaml(yaml_config)
 

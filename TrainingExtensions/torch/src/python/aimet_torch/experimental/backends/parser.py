@@ -179,7 +179,13 @@ def parse_aten_op(op_entry: dict) -> dict[str, set[OpSchema]]:
     fix_constraints = value_constraints_config.get("fix") or []
     tie_constraints = value_constraints_config.get("tie") or []
 
-    for type_constraint in op_entry["type_constraints"]:
+    for tag, type_constraint in op_entry["type_constraints"].items():
+        if tag not in OpSignature.allowed_tags():
+            raise ValueError(
+                f"{op_type_fullname}: invalid quantization profile {tag!r}. "
+                f"Allowed profiles are: {sorted(OpSignature.allowed_tags())}"
+            )
+
         _validate_against_aten_schema(torch_schema, type_constraint)
         type_constraint = _concretize_wildcard_type_constraint(
             torch_schema, type_constraint
@@ -222,6 +228,7 @@ def parse_aten_op(op_entry: dict) -> dict[str, set[OpSchema]]:
             op_type=op_type,
             inputs=inputs,
             outputs=outputs,
+            tag=tag,
         )
         schemas[op_type_fullname].add(
             OpSchema(signature=signature, value_constraints=value_constraints)
