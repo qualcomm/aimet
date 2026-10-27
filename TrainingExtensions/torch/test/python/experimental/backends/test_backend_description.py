@@ -24,26 +24,29 @@ from aimet_torch.experimental.backends.schema import BackendDescription, qtype
 
 def _assert_graph_fully_quantized(
     ep: ExportedProgram,
-    weight_dtype: torch.dtype,
-    bias_dtype: torch.dtype,
-    activation_dtype: torch.dtype,
+    expected_weight_dtype: torch.dtype,
+    expected_bias_dtype: torch.dtype,
+    expected_activation_dtype: torch.dtype,
+    expected_channel_axis: int,
 ):
     for node in ep.graph.nodes:
         _assert_node_fully_quantized(
             ep,
             node,
-            weight_dtype=weight_dtype,
-            bias_dtype=bias_dtype,
-            activation_dtype=activation_dtype,
+            expected_weight_dtype,
+            expected_bias_dtype,
+            expected_activation_dtype,
+            expected_channel_axis,
         )
 
 
 def _assert_node_fully_quantized(
     ep: ExportedProgram,
     node: torch.fx.Node,
-    weight_dtype: torch.dtype,
-    bias_dtype: torch.dtype,
-    activation_dtype: torch.dtype,
+    expected_weight_dtype: torch.dtype,
+    expected_bias_dtype: torch.dtype,
+    expected_activation_dtype: torch.dtype,
+    expected_channel_axis: int,
 ):
     if _is_torch_ao_qdq_node(node):
         return
@@ -72,19 +75,24 @@ def _assert_node_fully_quantized(
         *_, qtype = user.args
 
         if _is_weight_node(ep, node):
-            assert qtype == weight_dtype
+            assert qtype == expected_weight_dtype
             assert (
                 user.target
                 == torch.ops.quantized_decomposed.dequantize_per_channel.default
             )
+            _, _, _, channel_axis, *_ = user.args
+            assert channel_axis == expected_channel_axis
         elif _is_bias_node(ep, node):
-            assert qtype == bias_dtype
+            assert qtype == expected_bias_dtype
             assert (
                 user.target
                 == torch.ops.quantized_decomposed.dequantize_per_channel.default
             )
+            _, _, _, channel_axis, *_ = user.args
+            # NOTE: Bias is 1D, so its channel axis is always 0
+            assert channel_axis == 0
         else:
-            assert qtype == activation_dtype
+            assert qtype == expected_activation_dtype
 
 
 def _output_can_be_quantized(ep: ExportedProgram, node: torch.fx.Node) -> bool:
@@ -161,11 +169,21 @@ def module(request):
     cls = request.param
 
     match cls:
-        case torch.nn.Conv2d:
+        case torch.nn.Conv1d | torch.nn.Conv2d | torch.nn.Conv3d:
             return cls(3, 3, 3).eval()
-        case torch.nn.ReLU:
+        case (
+            torch.nn.ConvTranspose1d
+            | torch.nn.ConvTranspose2d
+            | torch.nn.ConvTranspose3d
+        ):
+            return cls(3, 3, 3).eval()
+        case torch.nn.Linear:
+            return cls(10, 10).eval()
+        case torch.nn.ReLU | torch.nn.PReLU:
             return cls().eval()
         case torch.nn.Softmax:
+            return cls().eval()
+        case custom.Sin | custom.Cos | torch.nn.Tanh:
             return cls().eval()
         case custom.Mean:
             return cls().eval()
@@ -176,6 +194,10 @@ def module(request):
                 torch.nn.Softmax(),
                 custom.Mean(),
             ).eval()
+        case torch.nn.LayerNorm:
+            return cls(10).eval()
+        case torch.nn.InstanceNorm2d:
+            return cls(num_features=3, affine=True).eval()
         case torch.nn.BatchNorm2d:
             return torch.nn.BatchNorm2d(
                 num_features=3,
@@ -188,25 +210,49 @@ def module(request):
             raise NotImplementedError
 
 
+@pytest.fixture
+def example_inputs(module):
+    match module:
+        case torch.nn.Conv1d() | torch.nn.ConvTranspose1d():
+            return (torch.randn(1, 3, 10),)
+        case torch.nn.Conv3d() | torch.nn.ConvTranspose3d():
+            return (torch.randn(1, 3, 10, 10, 10),)
+        case torch.nn.Linear():
+            return (torch.randn(1, 3, 10),)
+        case _:
+            return (torch.randn(1, 3, 10, 10),)
+
+
 @pytest.mark.parametrize(
     "module",
     [
+        torch.nn.Conv1d,
         torch.nn.Conv2d,
+        torch.nn.Conv3d,
+        torch.nn.ConvTranspose1d,
+        torch.nn.ConvTranspose2d,
+        torch.nn.ConvTranspose3d,
+        torch.nn.Linear,
         torch.nn.ReLU,
+        torch.nn.PReLU,
         torch.nn.Softmax,
+        custom.Sin,
+        custom.Cos,
+        torch.nn.Tanh,
         custom.Mean,
-        torch.nn.Sequential,
         torch.nn.BatchNorm2d,
+        torch.nn.LayerNorm,
+        torch.nn.InstanceNorm2d,
+        torch.nn.Sequential,
     ],
     indirect=True,
 )
-def test_fully_quantized(tmp_path, module):
+def test_fully_quantized(tmp_path, module, example_inputs):
     """
     Given: nn.Module included in quantization IR
     When: compute missing encodings with target backend specified
     Then: All nodes in the graph should be quantized with the correct dtype
     """
-    example_inputs = (torch.randn(1, 3, 10, 10),)
     ep = torch.export.export(module, example_inputs)
     ep = AIMETExportedProgram.from_torch_exported_program(ep)
 
@@ -226,14 +272,23 @@ def test_fully_quantized(tmp_path, module):
     torch.export.save(ep, tmp_path / "ep.pt2")
     ep = torch.export.load(tmp_path / "ep.pt2")
 
+    if isinstance(
+        module,
+        (torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d),
+    ):
+        expected_channel_axis = 1
+    else:
+        expected_channel_axis = 0
+
     _assert_graph_fully_quantized(
         ep,
-        weight_dtype=torch.int8,
-        bias_dtype=torch.int32,
-        activation_dtype=torch.uint16,
+        expected_weight_dtype=torch.int8,
+        expected_bias_dtype=torch.int32,
+        expected_activation_dtype=torch.uint16,
+        expected_channel_axis=expected_channel_axis,
     )
 
-    if isinstance(module, torch.nn.Softmax):
+    if isinstance(module, (torch.nn.Softmax, custom.Sin, custom.Cos, torch.nn.Tanh)):
         """
         Softmax output should be set to [0, 1] range after quantization
         """

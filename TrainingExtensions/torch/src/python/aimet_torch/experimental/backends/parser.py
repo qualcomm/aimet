@@ -35,12 +35,28 @@ del _qualcomm_aten_ir_op_names, _qualcomm_aten_ir_ops
 
 # fmt: off
 _tensor_roles = {
-    #   op_type                                  | arg_name  | role
+    #                                    op_type | arg_name | role
     # -------------------------------------------------------------------
-    ("aten::conv2d",                               "weight"): "weight",
-    ("aten::conv2d",                               "bias"  ): "bias",
+    (                              "aten::conv1d", "weight"): "weight",
+    (                              "aten::conv1d", "bias"  ): "bias",
+    (                              "aten::conv2d", "weight"): "weight",
+    (                              "aten::conv2d", "bias"  ): "bias",
+    (                              "aten::conv3d", "weight"): "weight",
+    (                              "aten::conv3d", "bias"  ): "bias",
+    (                    "aten::conv_transpose1d", "weight"): "weight",
+    (                    "aten::conv_transpose1d", "bias"  ): "bias",
+    (              "aten::conv_transpose2d.input", "weight"): "weight",
+    (              "aten::conv_transpose2d.input", "bias"  ): "bias",
+    (              "aten::conv_transpose3d.input", "weight"): "weight",
+    (              "aten::conv_transpose3d.input", "bias"  ): "bias",
+    (                              "aten::linear", "weight"): "weight",
+    (                              "aten::linear", "bias"  ): "bias",
     ("aten::_native_batch_norm_legit_no_training", "weight"): "weight",
     ("aten::_native_batch_norm_legit_no_training", "bias"  ): "bias",
+    (                       "aten::instance_norm", "weight"): "weight",
+    (                       "aten::instance_norm", "bias"  ): "bias",
+    (                   "aten::native_layer_norm", "weight"): "weight",
+    (                   "aten::native_layer_norm", "bias"  ): "bias",
 }
 # fmt: on
 
@@ -135,6 +151,13 @@ def _validate_against_aten_schema(
 
 def parse_aten_op(op_entry: dict) -> dict[str, set[OpSchema]]:
     op_type_fullname = op_entry["op_type"]
+
+    # Syntactic sugar: "op_a | op_b" expands to multiple op entries sharing the same constraints
+    if "|" in op_type_fullname:
+        schemas = {}
+        for name in op_type_fullname.split("|"):
+            schemas |= parse_aten_op({**op_entry, "op_type": name.strip()})
+        return schemas
 
     # Wildcard: Match with all ATen ops
     if op_type_fullname == "*":

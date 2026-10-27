@@ -16,7 +16,7 @@ from aimet_torch.experimental.backends.schema import (
 
 def test_aten_op_schema_parsing():
     yaml_config = yaml.safe_load("""
-op_type: aten::conv2d
+op_type: aten::conv1d | aten::conv2d | aten::conv3d
 type_constraints:
   # W8A8
   - input: uint8
@@ -47,82 +47,89 @@ type_constraints:
     $ret[0]: uint16
 """)
     schemas = parse_aten_op(yaml_config)
-    assert len(schemas) == 1
-    schemas = schemas.pop("aten::conv2d")
-    assert schemas == {
-        # W8A8 per-channel
-        OpSchema(
-            signature=OpSignature(
-                domain="aten",
-                op_type="conv2d",
-                inputs=(
-                    Argument(name="input", qtype=qtype("uint8")),
-                    Argument(
-                        name="weight",
-                        qtype=qtype("int8", channel_axis=0),
-                        role="weight",
+    assert len(schemas) == 3
+
+    for op_type in ("conv1d", "conv2d", "conv3d"):
+        assert schemas.pop(f"aten::{op_type}") == {
+            # W8A8 per-channel
+            OpSchema(
+                signature=OpSignature(
+                    domain="aten",
+                    op_type=op_type,
+                    inputs=(
+                        Argument(name="input", qtype=qtype("uint8")),
+                        Argument(
+                            name="weight",
+                            qtype=qtype("int8", channel_axis=0),
+                            role="weight",
+                        ),
+                        Argument(
+                            name="bias",
+                            qtype=qtype("int32", channel_axis=0),
+                            role="bias",
+                        ),
+                        Argument(name="stride", qtype=None),
+                        Argument(name="padding", qtype=None),
+                        Argument(name="dilation", qtype=None),
+                        Argument(name="groups", qtype=None),
                     ),
-                    Argument(
-                        name="bias", qtype=qtype("int32", channel_axis=0), role="bias"
-                    ),
-                    Argument(name="stride", qtype=None),
-                    Argument(name="padding", qtype=None),
-                    Argument(name="dilation", qtype=None),
-                    Argument(name="groups", qtype=None),
+                    outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
                 ),
-                outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
+                value_constraints=(),
             ),
-            value_constraints=(),
-        ),
-        # W8A16 per-channel
-        OpSchema(
-            signature=OpSignature(
-                domain="aten",
-                op_type="conv2d",
-                inputs=(
-                    Argument(name="input", qtype=qtype("uint16")),
-                    Argument(
-                        name="weight",
-                        qtype=qtype("int8", channel_axis=0),
-                        role="weight",
+            # W8A16 per-channel
+            OpSchema(
+                signature=OpSignature(
+                    domain="aten",
+                    op_type=op_type,
+                    inputs=(
+                        Argument(name="input", qtype=qtype("uint16")),
+                        Argument(
+                            name="weight",
+                            qtype=qtype("int8", channel_axis=0),
+                            role="weight",
+                        ),
+                        Argument(
+                            name="bias",
+                            qtype=qtype("int32", channel_axis=0),
+                            role="bias",
+                        ),
+                        Argument(name="stride", qtype=None),
+                        Argument(name="padding", qtype=None),
+                        Argument(name="dilation", qtype=None),
+                        Argument(name="groups", qtype=None),
                     ),
-                    Argument(
-                        name="bias", qtype=qtype("int32", channel_axis=0), role="bias"
-                    ),
-                    Argument(name="stride", qtype=None),
-                    Argument(name="padding", qtype=None),
-                    Argument(name="dilation", qtype=None),
-                    Argument(name="groups", qtype=None),
+                    outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
                 ),
-                outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                value_constraints=(),
             ),
-            value_constraints=(),
-        ),
-        # W16A16 per-channel
-        OpSchema(
-            signature=OpSignature(
-                domain="aten",
-                op_type="conv2d",
-                inputs=(
-                    Argument(name="input", qtype=qtype("uint16")),
-                    Argument(
-                        name="weight",
-                        qtype=qtype("int16", channel_axis=0),
-                        role="weight",
+            # W16A16 per-channel
+            OpSchema(
+                signature=OpSignature(
+                    domain="aten",
+                    op_type=op_type,
+                    inputs=(
+                        Argument(name="input", qtype=qtype("uint16")),
+                        Argument(
+                            name="weight",
+                            qtype=qtype("int16", channel_axis=0),
+                            role="weight",
+                        ),
+                        Argument(
+                            name="bias",
+                            qtype=qtype("int32", channel_axis=0),
+                            role="bias",
+                        ),
+                        Argument(name="stride", qtype=None),
+                        Argument(name="padding", qtype=None),
+                        Argument(name="dilation", qtype=None),
+                        Argument(name="groups", qtype=None),
                     ),
-                    Argument(
-                        name="bias", qtype=qtype("int32", channel_axis=0), role="bias"
-                    ),
-                    Argument(name="stride", qtype=None),
-                    Argument(name="padding", qtype=None),
-                    Argument(name="dilation", qtype=None),
-                    Argument(name="groups", qtype=None),
+                    outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
                 ),
-                outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
+                value_constraints=(),
             ),
-            value_constraints=(),
-        ),
-    }
+        }
 
     yaml_config = yaml.safe_load("""
 op_type: aten::_softmax

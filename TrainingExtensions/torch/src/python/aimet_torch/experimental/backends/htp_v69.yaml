@@ -7,86 +7,6 @@ ops:
       - "*": uint8
       - "*": uint16
 
-  - op_type: aten::conv2d
-    type_constraints:
-      # W8A8
-      - input: uint8
-        weight: int8[channel_axis=0]
-        bias: int32[channel_axis=0]
-        stride: null
-        padding: null
-        dilation: null
-        groups: null
-        $ret[0]: uint8
-      # W8A16
-      - input: uint16
-        weight: int8[channel_axis=0]
-        bias: int32[channel_axis=0]
-        stride: null
-        padding: null
-        dilation: null
-        groups: null
-        $ret[0]: uint16
-      # W16A16
-      - input: uint16
-        weight: int16[channel_axis=0]
-        bias: int32[channel_axis=0]
-        stride: null
-        padding: null
-        dilation: null
-        groups: null
-        $ret[0]: uint16
-
-  - op_type: aten::_softmax
-    type_constraints:
-      - self: uint8
-        dim: null
-        half_to_float: null
-        $ret[0]: uint8
-      - self: uint16
-        dim: null
-        half_to_float: null
-        $ret[0]: uint16
-    value_contraints:
-      fix:
-        - $ret[0]: {min: 0.0, max: 1.0}
-
-  - op_type: aten::relu
-    type_constraints:
-      - self: uint8
-        $ret[0]: uint8
-      - self: uint16
-        $ret[0]: uint16
-    value_contraints:
-      fix:
-        - $ret[0]: {min: 0.0}
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::mean
-    type_constraints:
-      - self: uint8
-        dtype: null
-        $ret[0]: uint8
-      - self: uint16
-        dtype: null
-        $ret[0]: uint16
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::cat
-    type_constraints:
-      - tensors: uint8
-        dim: null
-        $ret[0]: uint8
-      - tensors: uint16
-        dim: null
-        $ret[0]: uint16
-    value_contraints:
-      tie:
-        - [tensors, "$ret[0]"]
-
   - op_type: aten::_native_batch_norm_legit_no_training
     type_constraints:
       # W8A8
@@ -123,86 +43,243 @@ ops:
         $ret[1]: null  # ret[1] is always an empty tensor
         $ret[2]: null  # ret[2] is always an empty tensor
 
-  - op_type: aten::min.dim
+  - op_type: aten::_softmax
     type_constraints:
       - self: uint8
         dim: null
-        keepdim: null
+        half_to_float: null
         $ret[0]: uint8
-        $ret[1]: null  # ret[1] is integer indices
       - self: uint16
         dim: null
-        keepdim: null
+        half_to_float: null
         $ret[0]: uint16
-        $ret[1]: null  # ret[1] is integer indices
     value_contraints:
-      tie:
-        - [self, "$ret[0]"]
+      fix:
+        - $ret[0]: {min: 0.0, max: 1.0}
 
-  - op_type: aten::max.dim
-    type_constraints:
-      - self: uint8
-        dim: null
-        keepdim: null
-        $ret[0]: uint8
-        $ret[1]: null  # ret[1] is integer indices
-      - self: uint16
-        dim: null
-        keepdim: null
-        $ret[0]: uint16
-        $ret[1]: null  # ret[1] is integer indices
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::max_pool2d_with_indices
-    type_constraints:
-      - self: uint8
-        kernel_size: null
-        stride: null
-        padding: null
-        dilation: null
-        ceil_mode: null
-        $ret[0]: uint8
-        $ret[1]: null  # ret[1] is integer indices
-      - self: uint16
-        kernel_size: null
-        stride: null
-        padding: null
-        dilation: null
-        ceil_mode: null
-        $ret[0]: uint16
-        $ret[1]: null  # ret[1] is integer indices
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::max_pool3d_with_indices
-    type_constraints:
-      - self: uint8
-        kernel_size: null
-        stride: null
-        padding: null
-        dilation: null
-        ceil_mode: null
-        $ret[0]: uint8
-        $ret[1]: null  # ret[1] is integer indices
-      - self: uint16
-        kernel_size: null
-        stride: null
-        padding: null
-        dilation: null
-        ceil_mode: null
-        $ret[0]: uint16
-        $ret[1]: null  # ret[1] is integer indices
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::split_with_sizes
+  - op_type: aten::cat | aten::split_with_sizes
     type_constraints:
       - "*": uint8
       - "*": uint16
     value_contraints:
       tie:
         - ["*"]
+
+  - op_type: aten::conv1d | aten::conv2d | aten::conv3d
+    type_constraints:
+      # W8A8
+      - input: uint8
+        weight: int8[channel_axis=0]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        dilation: null
+        groups: null
+        $ret[0]: uint8
+      # W8A16
+      - input: uint16
+        weight: int8[channel_axis=0]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        dilation: null
+        groups: null
+        $ret[0]: uint16
+      # W16A16
+      - input: uint16
+        weight: int16[channel_axis=0]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        dilation: null
+        groups: null
+        $ret[0]: uint16
+
+  - op_type: aten::conv_transpose1d | aten::conv_transpose2d.input | aten::conv_transpose3d.input
+    type_constraints:
+      # W8A8
+      - input: uint8
+        weight: int8[channel_axis=1]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        output_padding: null
+        groups: null
+        dilation: null
+        $ret[0]: uint8
+      # W8A16
+      - input: uint16
+        weight: int8[channel_axis=1]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        output_padding: null
+        groups: null
+        dilation: null
+        $ret[0]: uint16
+      # W16A16
+      - input: uint16
+        weight: int16[channel_axis=1]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        output_padding: null
+        groups: null
+        dilation: null
+        $ret[0]: uint16
+
+  - op_type: aten::cos | aten::sin | aten::tanh
+    type_constraints:
+      - self: uint8
+        $ret[0]: uint8
+      - self: uint16
+        $ret[0]: uint16
+    value_contraints:
+      fix:
+        - $ret[0]: {min: 0.0, max: 1.0}
+
+  - op_type: aten::instance_norm
+    type_constraints:
+      # W8A8
+      - input: uint8
+        weight: uint8
+        bias: int32
+        running_mean: null
+        running_var: null
+        use_input_stats: null
+        momentum: null
+        eps: null
+        cudnn_enabled: null
+        $ret[0]: uint8
+      # W8A16
+      - input: uint16
+        weight: uint8
+        bias: int32
+        running_mean: null
+        running_var: null
+        use_input_stats: null
+        momentum: null
+        eps: null
+        cudnn_enabled: null
+        $ret[0]: uint16
+      # W16A16
+      - input: uint16
+        weight: uint16
+        bias: int32
+        running_mean: null
+        running_var: null
+        use_input_stats: null
+        momentum: null
+        eps: null
+        cudnn_enabled: null
+        $ret[0]: uint16
+
+  - op_type: aten::linear
+    type_constraints:
+      # W8A8
+      - input: uint8
+        weight: int8[channel_axis=0]
+        bias: int32[channel_axis=0]
+        $ret[0]: uint8
+      # W8A16
+      - input: uint16
+        weight: int8[channel_axis=0]
+        bias: int32[channel_axis=0]
+        $ret[0]: uint16
+      # W16A16
+      - input: uint16
+        weight: int16[channel_axis=0]
+        bias: int32[channel_axis=0]
+        $ret[0]: uint16
+
+  - op_type: aten::max.dim | aten::min.dim
+    type_constraints:
+      - self: uint8
+        dim: null
+        keepdim: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is integer indices
+      - self: uint16
+        dim: null
+        keepdim: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is integer indices
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::max_pool2d_with_indices | aten::max_pool3d_with_indices
+    type_constraints:
+      - self: uint8
+        kernel_size: null
+        stride: null
+        padding: null
+        dilation: null
+        ceil_mode: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is integer indices
+      - self: uint16
+        kernel_size: null
+        stride: null
+        padding: null
+        dilation: null
+        ceil_mode: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is integer indices
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::mean
+    type_constraints:
+      - self: uint8
+        dtype: null
+        $ret[0]: uint8
+      - self: uint16
+        dtype: null
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::native_layer_norm
+    type_constraints:
+      # W8A8
+      - input: uint8
+        normalized_shape: null
+        weight: uint8
+        bias: int32
+        eps: null
+        $ret[0]: uint8
+        $ret[1]: null  # ret[1] is intermediate statistics
+        $ret[2]: null  # ret[2] is intermediate statistics
+      # W8A16
+      - input: uint16
+        normalized_shape: null
+        weight: uint8
+        bias: int32
+        eps: null
+        $ret[0]: uint16
+        $ret[1]: null  # ret[1] is intermediate statistics
+        $ret[2]: null  # ret[2] is intermediate statistics
+      # W16A16: Not supported in HTP V69
+      # - input: uint16
+      #   normalized_shape: null
+      #   weight: int16
+      #   bias: int32
+      #   eps: null
+      #   $ret[0]: uint16
+      #   $ret[1]: null  # ret[1] is intermediate statistics
+      #   $ret[2]: null  # ret[2] is intermediate statistics
+
+  - op_type: aten::relu
+    type_constraints:
+      - self: uint8
+        $ret[0]: uint8
+      - self: uint16
+        $ret[0]: uint16
+    value_contraints:
+      fix:
+        - $ret[0]: {min: 0.0}
+      tie:
+        - [self, "$ret[0]"]

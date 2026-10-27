@@ -227,9 +227,8 @@ class OpSchema(_OpSchema):
 
         quantization_specs: dict[Argument, torch.fx.Node] = {
             arg_spec: target_node
-            for arg_spec, target_node in zip(
-                self.signature.inputs, node.all_input_nodes
-            )
+            for arg_spec, target_node in zip(self.signature.inputs, node.args)
+            if isinstance(target_node, torch.fx.Node)
         }
 
         if isinstance(node.meta["val"], (tuple, list)):
@@ -282,8 +281,8 @@ class OpSchema(_OpSchema):
     def apply_constraints(self, node: torch.fx.Node):
         qdq_nodes: dict[Argument, torch.fx.Node] = {
             arg_spec: qdq_node
-            for arg_spec, qdq_node in zip(self.signature.inputs, node.all_input_nodes)
-            if _is_aimet_qdq_node(qdq_node)
+            for arg_spec, qdq_node in zip(self.signature.inputs, node.args)
+            if isinstance(qdq_node, torch.fx.Node) and _is_aimet_qdq_node(qdq_node)
         }
 
         if isinstance(node.meta["val"], (tuple, list)):
@@ -375,8 +374,17 @@ class BackendDescription:
         if not schemas:
             raise _OpNotFound(f"Op {op.name()} not found in backend {self.name}")
 
+        # Match schemas with per-channel quantization first, then fallback to per-tensor quantization
         for schema in schemas:
-            if schema.exact_match(op, weight_bw, activation_bw):
+            if schema.exact_match(
+                op, weight_bw, activation_bw, per_channel_quantization=True
+            ):
+                return schema
+
+        for schema in schemas:
+            if schema.exact_match(
+                op, weight_bw, activation_bw, per_channel_quantization=False
+            ):
                 return schema
 
         raise _SchemaNotFound(
