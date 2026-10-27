@@ -15,6 +15,7 @@ import math
 import os
 import tempfile
 
+import ml_dtypes
 import numpy as np
 import onnx
 from onnx import ModelProto, NodeProto, TensorProto
@@ -2331,7 +2332,15 @@ def _derive_const_rescale_op_output_encodings(
 def to_array(tensor: onnx.TensorProto, base_dir: str = "") -> np.ndarray:
     had_raw_data = tensor.HasField("raw_data")
     try:
-        return onnx.numpy_helper.to_array(tensor, base_dir=base_dir)
+        array = onnx.numpy_helper.to_array(tensor, base_dir=base_dir)
+        if (
+            tensor.data_type == onnx.TensorProto.BFLOAT16
+            and array.dtype != ml_dtypes.bfloat16
+        ):
+            # onnx < 1.19 returns the raw bfloat16 bits as a uint16 array rather than
+            # bfloat16 values, so arithmetic on it is silently wrong. Reinterpret the bits.
+            array = array.view(np.uint16).view(ml_dtypes.bfloat16)
+        return array
     finally:
         # onnx.numpy_helper.to_array() populates raw_data for external tensors.
         # As a result, the subsequent onnx.save_model() attempts to rewrite

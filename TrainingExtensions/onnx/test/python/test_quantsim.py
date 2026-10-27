@@ -164,6 +164,22 @@ def _compare_encodings(dst, src):
     )
 
 
+def _encodings_by_name(encodings: dict, encoding_version: str) -> dict:
+    """Flatten an exported encodings file into ``{tensor name: encoding}``."""
+    if encoding_version == "2.0.0":
+        return {enc["name"]: enc for enc in encodings["encodings"]}
+    return {
+        enc["name"]: enc
+        for section in ("param_encodings", "activation_encodings")
+        for enc in encodings[section]
+    }
+
+
+def _scales(encoding: dict, scale_key: str) -> np.ndarray:
+    """Per-channel (or per-tensor) scales of one exported encoding, as a flat array."""
+    return np.asarray(encoding[scale_key], dtype=np.float64).ravel()
+
+
 def _default_callback(session):
     session.run(
         None,
@@ -2962,6 +2978,71 @@ class TestQuantSim:
                 outputs = binding.get_outputs()
                 assert [o.device_name() for o in outputs] == ["cuda"]
                 assert [o.data_type() for o in outputs] == [output_type]
+
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("encoding_version", ["1.0.0", "2.0.0"])
+    def test_export_with_bfloat16_inputs_and_outputs(self, tmp_dir, encoding_version):
+        """
+        Given: Calibrated sims of a bfloat16-I/O model and its float32 equivalent
+        When: Export both
+        Then: The bfloat16 model is exported with bfloat16 graph I/O and no quantizers,
+              and its encodings match the float32 model's up to bfloat16 precision
+        """
+        if not "CUDAExecutionProvider" in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+
+        rng = np.random.default_rng(0)
+        fp32_inputs = [
+            {"input": rng.standard_normal((4, 16)).astype(np.float32)} for _ in range(4)
+        ]
+        bf16_inputs = [
+            {"input": item["input"].astype(ml_dtypes.bfloat16)} for item in fp32_inputs
+        ]
+
+        encodings = {}
+        for name, model, inputs in (
+            ("fp32", models_for_tests.simple_mlp_model(torch.float32), fp32_inputs),
+            (
+                "bf16",
+                models_for_tests.simple_mlp_model(
+                    torch.bfloat16, io_dtype=torch.bfloat16
+                ),
+                bf16_inputs,
+            ),
+        ):
+            sim = QuantizationSimModel(
+                model,
+                providers=CUDA_PROVIDERS,
+                param_type=aimet_onnx.int8,
+                activation_type=aimet_onnx.int8,
+                quant_scheme=QuantScheme.min_max,
+            )
+            sim.compute_encodings(inputs)
+            sim.export(tmp_dir, name, encoding_version=encoding_version)
+            with open(os.path.join(tmp_dir, f"{name}.encodings")) as f:
+                encodings[name] = _encodings_by_name(json.load(f), encoding_version)
+
+        exported = onnx.load(os.path.join(tmp_dir, "bf16.onnx"))
+        assert all(
+            io.type.tensor_type.elem_type == onnx.TensorProto.BFLOAT16
+            for io in (*exported.graph.input, *exported.graph.output)
+        )
+        assert not any(node.op_type == "QcQuantizeOp" for node in exported.graph.node)
+        ort.InferenceSession(
+            os.path.join(tmp_dir, "bf16.onnx"), providers=CUDA_PROVIDERS
+        )
+
+        assert encodings["bf16"].keys() == encodings["fp32"].keys()
+        for name, fp32_enc in encodings["fp32"].items():
+            bf16_enc = encodings["bf16"][name]
+            assert bf16_enc.keys() == fp32_enc.keys(), name
+            scale_key = "y_scale" if encoding_version == "2.0.0" else "scale"
+            np.testing.assert_allclose(
+                _scales(bf16_enc, scale_key),
+                _scales(fp32_enc, scale_key),
+                rtol=0.02,
+                err_msg=name,
+            )
 
     def test_matmul_v73_higher_exception_rule(self, tmp_dir):
         model = models_for_tests.model_with_exceptional_ops()

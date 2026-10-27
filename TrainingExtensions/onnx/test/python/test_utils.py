@@ -14,6 +14,7 @@ import pytest
 
 import copy
 
+import ml_dtypes
 import numpy as np
 from onnx import numpy_helper, helper, TensorProto
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
@@ -1265,6 +1266,33 @@ class TestDuplicateSharedInitializers:
         init_names = {init.name for init in model.graph.initializer}
         assert "scale_copy_1" not in init_names
         assert "zp_copy_1" not in init_names
+
+
+@pytest.mark.parametrize("raw", [True, False], ids=["raw_data", "int32_data"])
+def test_to_array_bfloat16_returns_values(raw):
+    """
+    Given: A bfloat16 TensorProto, stored as raw_data or int32_data
+    When: Read with to_array
+    Then: The result holds bfloat16 values, not the raw uint16 bits
+          (onnx < 1.19 returns the bits)
+    """
+    from aimet_onnx.common.onnx._utils import to_array
+
+    values = np.array([0.0786, -0.1756, 1.5, 0.0], dtype=ml_dtypes.bfloat16)
+    if raw:
+        tensor = helper.make_tensor(
+            "t", TensorProto.BFLOAT16, values.shape, values.tobytes(), raw=True
+        )
+    else:
+        tensor = helper.make_tensor(
+            "t", TensorProto.BFLOAT16, values.shape, values.astype(np.float32)
+        )
+
+    array = to_array(tensor)
+
+    assert array.dtype == ml_dtypes.bfloat16
+    np.testing.assert_array_equal(array.astype(np.float32), values.astype(np.float32))
+    assert tensor.HasField("raw_data") == raw
 
 
 class TestORTInferenceSession:
