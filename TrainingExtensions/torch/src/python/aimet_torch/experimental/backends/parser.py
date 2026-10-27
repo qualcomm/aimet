@@ -58,11 +58,11 @@ def _concretize_wildcard_type_constraint(
 
     wildcard_value = type_constraint["*"]
     concrete_type_constraint = {
-        arg.name: wildcard_value if _is_tensor_type(arg) else "n/a"
+        arg.name: wildcard_value if _is_tensor_type(arg) else None
         for arg in aten_schema.arguments
     }
     concrete_type_constraint |= {
-        f"$ret[{i}]": wildcard_value if _is_tensor_type(ret) else "n/a"
+        f"$ret[{i}]": wildcard_value if _is_tensor_type(ret) else None
         for i, ret in enumerate(aten_schema.returns)
     }
     return concrete_type_constraint
@@ -94,7 +94,7 @@ def _validate_against_aten_schema(
 
     for arg in itertools.chain(aten_schema.arguments, aten_schema.returns):
         is_tensor_type = _is_tensor_type(arg)
-        qtype_specified = type_constraint.get(arg.name, "n/a").strip() != "n/a"
+        qtype_specified = type_constraint.get(arg.name)
 
         if not is_tensor_type and qtype_specified:
             raise ValueError(
@@ -137,7 +137,7 @@ def parse_aten_op(op_entry: dict) -> dict[str, set[OpSchema]]:
                 name=arg_name,
                 qtype=(
                     qtype.from_str(type_str)
-                    if (type_str := type_constraint.get(arg_name, "n/a")) != "n/a"
+                    if (type_str := type_constraint.get(arg_name))
                     else None
                 ),
                 role=_tensor_roles.get((op_type_fullname, arg_name)),

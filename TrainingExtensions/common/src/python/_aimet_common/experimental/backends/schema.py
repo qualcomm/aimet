@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TypeAlias, Type, TypeVar
 
 
+# Matches patterns such as "int8[channel_axis=0]"
 _TYPE_STR_PATTERN = re.compile(r"^(?P<dtype>\w+)(?:\[(?P<attrs>.*)\])?$")
 _T = TypeVar("_T", bound="qtype")
 
@@ -16,22 +17,66 @@ class qtype:
     channel_axis: int | None = None
     block_axis: int | None = None
 
+    _allowed_dtypes = {
+        "int2",
+        # "uint2",
+        "int4",
+        # "uint4",
+        "int8",
+        "uint8",
+        "int16",
+        "uint16",
+        "int32",
+        # "float4",
+        # "float8",
+        # "float",
+    }
+    _allowed_attributes = {
+        "channel_axis": int,
+    }
+
     @classmethod
     def from_str(cls: Type[_T], type_str: str) -> _T:
         match = _TYPE_STR_PATTERN.match(type_str.strip())
+
         if match is None:
-            raise ValueError(f"Invalid type string: {type_str!r}")
+            raise ValueError(f"Invalid type string: {type_str}")
+
+        dtype_str = match.group("dtype")
+
+        if dtype_str not in cls._allowed_dtypes:
+            raise ValueError(
+                f"Invalid dtype {dtype_str}. Allowed dtypes are: {cls._allowed_dtypes}"
+            )
 
         attrs = {}
         if match.group("attrs"):
             for pair in match.group("attrs").split(","):
                 key, value = pair.split("=")
-                attrs[key.strip()] = int(value.strip())
+
+                key = key.strip()
+                value = value.strip()
+                value_type = cls._allowed_attributes.get(key)
+
+                if not value_type:
+                    raise ValueError(
+                        f"Invalid attribute {key}. "
+                        f"Allowed attributes are: {cls._allowed_attributes.keys()}"
+                    )
+
+                try:
+                    value = value_type(value)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Invalid value {value} for attribute {key}. "
+                        f"Expected type: {value_type.__name__}"
+                    ) from e
+
+                attrs[key] = value
 
         return cls(
             dtype=match.group("dtype"),
             channel_axis=attrs.get("channel_axis"),
-            block_axis=attrs.get("block_axis"),
         )
 
 

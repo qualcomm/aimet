@@ -50,10 +50,10 @@ ops:
   - op_type: ReduceMean
     type_constraints:
       - data: uint8
-        axes: n/a  # integer input; not quantizable
+        axes: null  # integer input; not quantizable
         reduced: uint8
       - data: uint16
-        axes: n/a  # integer input; not quantizable
+        axes: null  # integer input; not quantizable
         reduced: uint16
     value_contraints:
       tie:

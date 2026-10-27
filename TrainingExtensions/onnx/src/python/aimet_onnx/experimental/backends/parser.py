@@ -45,12 +45,12 @@ def _validate_against_onnx_schema(
             param.type_str, {param.type_str}
         )
         can_be_float = bool(allowed_type_strs & _FLOAT_ONNX_TYPE_STRS)
-        is_wildcard = type_constraint.get(param.name, "n/a").strip() == "n/a"
+        is_wildcard = type_constraint.get(param.name) is None
 
         if can_be_float and is_wildcard:
             raise ValueError(
                 f"{onnx_schema.name}: tensor {param.name!r} can be FLOAT/FLOAT16/BFLOAT16 and "
-                f"must declare an explicit qtype, got a wildcard ('n/a')"
+                f"must declare an explicit qtype, got null"
             )
 
         if not can_be_float and not is_wildcard:
@@ -85,7 +85,7 @@ def parse_onnx_op(op_entry: dict) -> set[OpSchema]:
                 name=arg_name,
                 qtype=(
                     qtype.from_str(type_str)
-                    if (type_str := type_constraint.get(arg_name, "n/a")) != "n/a"
+                    if (type_str := type_constraint.get(arg_name))
                     else None
                 ),
             )

@@ -22,28 +22,28 @@ type_constraints:
   - input: uint8
     weight: int8[channel_axis=0]
     bias: int32[channel_axis=0]
-    stride: n/a
-    padding: n/a
-    dilation: n/a
-    groups: n/a
+    stride: null
+    padding: null
+    dilation: null
+    groups: null
     $ret[0]: uint8
   # W8A16
   - input: uint16
     weight: int8[channel_axis=0]
     bias: int32[channel_axis=0]
-    stride: n/a
-    padding: n/a
-    dilation: n/a
-    groups: n/a
+    stride: null
+    padding: null
+    dilation: null
+    groups: null
     $ret[0]: uint16
   # W16A16
   - input: uint16
     weight: int16[channel_axis=0]
     bias: int32[channel_axis=0]
-    stride: n/a
-    padding: n/a
-    dilation: n/a
-    groups: n/a
+    stride: null
+    padding: null
+    dilation: null
+    groups: null
     $ret[0]: uint16
 """)
     schemas = parse_aten_op(yaml_config)
@@ -128,12 +128,12 @@ type_constraints:
 op_type: aten::_softmax
 type_constraints:
   - self: uint8
-    dim: n/a
-    half_to_float: n/a
+    dim: null
+    half_to_float: null
     $ret[0]: uint8
   - self: uint16
-    dim: n/a
-    half_to_float: n/a
+    dim: null
+    half_to_float: null
     $ret[0]: uint16
 value_contraints:
   fix:
@@ -242,10 +242,10 @@ value_contraints:
 op_type: aten::mean
 type_constraints:
   - self: uint8
-    dtype: n/a
+    dtype: null
     $ret[0]: uint8
   - self: uint16
-    dtype: n/a
+    dtype: null
     $ret[0]: uint16
 value_contraints:
   tie:
@@ -295,10 +295,10 @@ value_contraints:
 op_type: aten::cat
 type_constraints:
   - tensors: uint8
-    dim: n/a
+    dim: null
     $ret[0]: uint8
   - tensors: uint16
-    dim: n/a
+    dim: null
     $ret[0]: uint16
 value_contraints:
   tie:

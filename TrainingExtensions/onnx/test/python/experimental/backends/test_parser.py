@@ -179,10 +179,10 @@ value_contraints:
 op_type: ReduceMean
 type_constraints:
   - data: uint8
-    axes: n/a
+    axes: null
     reduced: uint8
   - data: uint16
-    axes: n/a
+    axes: null
     reduced: uint16
 value_contraints:
   tie:
