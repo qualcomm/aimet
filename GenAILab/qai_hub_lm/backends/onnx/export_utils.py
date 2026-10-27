@@ -14,6 +14,7 @@ import onnx
 import glob
 from transformers import AutoConfig
 from huggingface_hub import HfApi
+from huggingface_hub.errors import RepositoryNotFoundError
 
 from GenAILab.qai_hub_lm.transforms.exportable_moe import (
     forced_expert_activation,
@@ -37,7 +38,7 @@ def is_huggingface_ckpt(model_id: str) -> bool:
     try:
         _ = hf_api.model_info(model_id)
         return True
-    except Exception:
+    except RepositoryNotFoundError:
         return False
 
 
