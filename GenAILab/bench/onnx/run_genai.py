@@ -52,17 +52,17 @@ def _disable_onnx_quantizers(quantsim):
             op.enabled = True
 
 
-# Recipes that evaluate the float model, with no quantization.
-_BF16_SUPPORTED_RECIPES = {"RemoveQuantization", "Skip"}
+# Recipes validated on bf16 models: float evaluation and plain calibration.
+_BF16_SUPPORTED_RECIPES = {"RemoveQuantization", "Skip", "Calibration"}
 
 
 def _check_bf16_supported(config):
     """Fail fast on bf16 configs the ONNX flow cannot run yet.
 
     A bf16 model is wrapped in a regular QuantizationSimModel, but only float
-    evaluation is supported so far: quantization recipes, pre-sim techniques,
-    analysis passes and VLMs are rejected here rather than failing deep inside
-    AIMET.
+    evaluation and plain calibration are supported so far: other quantization
+    recipes, pre-sim techniques, analysis passes and VLMs are rejected here
+    rather than failing deep inside AIMET.
     """
     if not torch.cuda.is_available():
         raise ValueError(
@@ -78,9 +78,9 @@ def _check_bf16_supported(config):
     ]
     if unsupported:
         raise ValueError(
-            f"dtype 'bfloat16' supports float evaluation only (quantizing "
-            f"bfloat16 graphs is not supported yet); unsupported recipe steps: "
-            f"{unsupported}. Use RemoveQuantization or Skip."
+            f"dtype 'bfloat16' supports only the "
+            f"{sorted(_BF16_SUPPORTED_RECIPES)} recipes so far; unsupported "
+            f"recipe steps: {unsupported}."
         )
     if config.analysis is not None:
         raise ValueError("dtype 'bfloat16' does not support analysis passes yet.")

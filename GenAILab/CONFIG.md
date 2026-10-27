@@ -325,7 +325,7 @@ Any other top-level key produces `ValueError: Unrecognized sections in config`.
 | `encodings`       | no       | str            | —       | Path to pre-computed encodings. When present, the default recipe becomes `Skip` instead of `RemoveQuantization`. |
 | `image_size`      | no       | list[int]      | —       | VLM-only. `[height, width]` for vision encoder inputs. |
 | `audio_frames`    | no       | int            | —       | Audio-model-only. Padded mel-frame count fixing the audio encoder's traced/exported shape — the audio analogue of `image_size`. Mel frames run at 100/s (10 ms hop at 16 kHz), so 800 frames = 8 s. The valid values and the resulting audio-token count are **per model** — see [Audio models](#audio-asr-model). Omitted, each model class uses its own default (800 for both Qwen3-ASR and Gemma4). |
-| `dtype`           | no       | str            | —       | Model dtype override (e.g. `float16`, `bfloat16`); resolved via `getattr(torch, dtype)`. ONNX accepts `float32`, `float16` and `bfloat16`. ONNX `bfloat16` supports float evaluation only for now (quantizing bf16 graphs is not supported yet): it requires CUDA, a text-only LLM, and a recipe of only `RemoveQuantization`/`Skip`, with no `analysis` or `encodings`. |
+| `dtype`           | no       | str            | —       | Model dtype override (e.g. `float16`, `bfloat16`); resolved via `getattr(torch, dtype)`. ONNX accepts `float32`, `float16` and `bfloat16`. ONNX `bfloat16` supports float evaluation and plain calibration only for now: it requires CUDA, a text-only LLM, and a recipe of only `RemoveQuantization`/`Skip`/`Calibration`, with no `analysis` or `encodings`. |
 
 `model` must be a dict (single model per document). A list raises an error.
 
