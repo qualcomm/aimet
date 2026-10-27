@@ -164,6 +164,7 @@ jobs:
     with:
       variants: ${{ needs.variants.outputs.matrix }}
       build-windows-wheel: false
+      build-macos-wheel: false
     secrets: inherit
 
   call-run-unit-acceptance-tests:
@@ -182,6 +183,7 @@ jobs:
       run_acceptance_tests: ${{ matrix.RUN_ACCEPTANCE_TESTS == 'ON' }}
       pip_index: ${{ matrix.PIP_INDEX }}
       include_windows_tests: false
+      include_macos_tests: false
 
     secrets: inherit
 

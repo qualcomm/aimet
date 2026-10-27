@@ -71,9 +71,9 @@ runs:
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "UV_LINK_MODE=symlink" >> $GITHUB_ENV
 
-    - name: Create uv environment (Linux)
+    - name: Create uv environment (Linux/macOS)
       shell: bash
       if: runner.os != 'Windows'
       run: |
-        uv venv --python "${{ inputs.VER_PYTHON }}" "${{ inputs.ENV_NAME }}"
+        uv venv --native-tls --python "${{ inputs.VER_PYTHON }}" "${{ inputs.ENV_NAME }}"
         . "./${{ inputs.ENV_NAME }}/bin/activate"

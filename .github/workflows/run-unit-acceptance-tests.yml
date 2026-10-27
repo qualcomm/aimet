@@ -40,6 +40,15 @@ on:
         required: false
         type: boolean
         default: false
+      include_macos_tests:
+        required: false
+        type: boolean
+        default: false
+      include_linux_tests:
+        description: "Run the Ubuntu test job at all"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   parse_python_versions:
@@ -61,7 +70,7 @@ jobs:
     needs: [parse_python_versions]
     # CUDA variants need a real GPU; CPU-only variants stay on the CPU pool.
     runs-on: ${{ inputs.ver_cuda != '' && 'mlops-ci-gpu-large' || 'mlops-ci-cpu' }}
-    if: ${{ inputs.run_unit_tests || inputs.run_acceptance_tests }}
+    if: ${{ inputs.include_linux_tests && (inputs.run_unit_tests || inputs.run_acceptance_tests) }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.parse_python_versions.outputs.python_versions) }}
@@ -133,7 +142,7 @@ jobs:
                 --index-strategy unsafe-best-match
           done
 
-          # TODO(temporary): cap onnxruntime(-gpu) at <=1.26 so onnx-cpu and
+          # TODO #8090: cap onnxruntime(-gpu) at <=1.26 so onnx-cpu and
           # onnx-gpu test against comparable ORT versions. Needed because
           # onnxruntime-gpu>=1.27 requires CUDA 13/cuDNN 9, but our GPU runners'
           # driver (575.57.08, CUDA 12.9 API) only supports CUDA 12.x.
@@ -264,7 +273,7 @@ jobs:
           python -m pip install uv
 
           # Install aimet-onnx
-          # TODO(temporary): cap onnxruntime at <=1.26, matching the Linux
+          # TODO #8090: cap onnxruntime at <=1.26, matching the Linux
           # onnx-cpu/onnx-gpu legs, so all three test against comparable ORT
           # versions. See the "Install test dependencies" step in test_on_linux.
           $wheel = Get-ChildItem -Path downloads -Filter "aimet_onnx*.whl" | Select-Object -First 1 -ExpandProperty FullName
@@ -294,4 +303,76 @@ jobs:
           # Run tests
           $pytest_args = "not cuda"
           Invoke-Expression "pytest -m `"$pytest_args`" .\\NightlyTests\\onnx -n 8"
+
+  test_on_macos:
+    name: Run AIMET unit and acceptance tests on macOS (ARM64)
+    runs-on: aimet-mac-arm64
+    if: inputs.include_macos_tests && inputs.env_name == 'onnx-cpu' && (inputs.run_unit_tests || inputs.run_acceptance_tests)
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: "onnx-cpu-macos-arm64-wheel"
+          path: "downloads"
+
+      - name: Download compiled C++ unit tests
+        if: inputs.run_unit_tests
+        uses: actions/download-artifact@v4
+        with:
+          name: "onnx-cpu-macos-arm64-tests"
+          path: "downloads"
+
+      - uses: ./.github/actions/setup-uv-env
+        with:
+          ENV_NAME: "onnx-cpu"
+          VER_PYTHON: "3.12"
+
+      - name: Install AIMET-ONNX wheel
+        run: |
+          set -x
+
+          # Activate uv environment
+          . ./onnx-cpu/bin/activate
+
+          # Install aimet-onnx
+          # TODO #8090: cap onnxruntime at <=1.26, matching the Linux
+          # onnx-cpu/onnx-gpu legs, so all three test against comparable ORT
+          # versions. See the "Install test dependencies" step in test_on_linux.
+          wheel=$(find downloads -name "aimet_onnx*.whl" | head -n 1)
+          uv pip install --native-tls "$wheel[test]" "onnxruntime<=1.26" --extra-index-url="https://download.pytorch.org/whl/cpu" --index-strategy unsafe-best-match
+
+      - name: Run Unit tests
+        if: inputs.run_unit_tests
+        run: |
+          set -x
+
+          # Activate uv environment
+          . ./onnx-cpu/bin/activate
+
+          # Run compiled C++ unit tests (ModelOptimizations/DlQuantization)
+          for target in $(find downloads -name "*Test"); do
+              chmod +x $target
+              $target
+          done
+
+          # Run Python unit tests
+          pytest -m "not cuda" -n 8 TrainingExtensions/common/test/python
+          # TODO: #6211 Move torch to onnx tests out of unit tests
+          pytest -m "not cuda" -n 8 TrainingExtensions/onnx/test/python --ignore TrainingExtensions/onnx/test/python/test_torch_to_onnx.py
+
+      - name: Run Acceptance tests
+        if: inputs.run_acceptance_tests
+        run: |
+          set -x
+
+          # Activate uv environment
+          . ./onnx-cpu/bin/activate
+
+          # Run tests
+          pytest -m "not cuda" NightlyTests/onnx -n 8
 

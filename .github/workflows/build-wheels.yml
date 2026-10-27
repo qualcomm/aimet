@@ -6,13 +6,22 @@ on:
       variants:
         required: true
         type: string
+      build-linux-wheel:
+        required: false
+        type: boolean
+        default: true
       build-windows-wheel:
+        required: false
+        type: boolean
+        default: false
+      build-macos-wheel:
         required: false
         type: boolean
         default: false
 
 jobs:
   build-linux:
+    if: inputs.build-linux-wheel == true
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.variants) }}
@@ -161,3 +170,62 @@ jobs:
             dist/aimet*.whl
           if-no-files-found: error
           retention-days: 30
+
+  build-macos:
+    runs-on: aimet-mac-arm64
+    if: inputs.build-macos-wheel == true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install macOS build dependencies
+        run: scripts/posix/install_macos_deps.sh
+
+      - uses: ./.github/actions/setup-uv-env
+        with:
+          ENV_NAME: "onnx-cpu"
+          VER_PYTHON: "3.12"
+
+      - name: "Build AIMET ONNX-CPU wheel package for macOS (arm64)"
+        run: |
+          set -x
+
+          # Activate uv environment
+          . ./onnx-cpu/bin/activate
+
+          # Install dev requirements
+          uv pip compile --native-tls --output-file dev_requirements.txt --extra dev pyproject.toml
+          uv pip install --native-tls -r dev_requirements.txt
+
+          # Additional dependencies for macOS build
+          uv pip install --native-tls onnxruntime==1.19.2 onnx build pybind11
+
+          # Pin a deployment target lower than the runner's live macOS version
+          # (otherwise scikit-build-core/CMake default to it, producing a wheel
+          # tagged e.g. macosx_27_0_arm64 that pip refuses to install on any
+          # older mac even though the binary itself only links system libs).
+          export MACOSX_DEPLOYMENT_TARGET=15.0
+          export CMAKE_ARGS="-DENABLE_CUDA=OFF -DENABLE_TORCH=OFF -DENABLE_ONNX=ON -DENABLE_TESTS=ON -DPIP_INDEX=pypi -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0"
+
+          rm -rf build dist wheelhouse
+
+          python -m build --wheel --no-isolation .
+
+      - name: Upload AIMET macOS wheel file
+        uses: actions/upload-artifact@v4
+        with:
+          name: "onnx-cpu-macos-arm64-wheel"
+          path: |
+            dist/aimet*.whl
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload compiled C++ unit tests (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: "onnx-cpu-macos-arm64-tests"
+          path: build/**/MoDl*Test
+          if-no-files-found: error
+          retention-days: 1

@@ -7,6 +7,22 @@ on:
 
   # Run the workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      enable_linux:
+        description: "Build and test the Linux wheel"
+        required: false
+        type: boolean
+        default: true
+      enable_windows:
+        description: "Build and test the Windows wheel"
+        required: false
+        type: boolean
+        default: true
+      enable_macos:
+        description: "Build and test the macOS (arm64) wheel"
+        required: false
+        type: boolean
+        default: true
 
   # Call workflow from other workflows
   workflow_call:
@@ -15,6 +31,21 @@ on:
         description: "Branch to run nightly tests on"
         required: true
         type: string
+      enable_linux:
+        description: "Build and test the Linux wheel"
+        required: false
+        type: boolean
+        default: true
+      enable_windows:
+        description: "Build and test the Windows wheel"
+        required: false
+        type: boolean
+        default: true
+      enable_macos:
+        description: "Build and test the macOS (arm64) wheel"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   pre-commit-check:
@@ -144,7 +175,14 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-      build-windows-wheel: true
+      # inputs.enable_* is null on a schedule trigger, which has no mechanism to
+      # supply inputs at all; null coerces the same as false, so without the
+      # event_name check the nightly cron would build nothing. workflow_dispatch
+      # and workflow_call both declare these inputs with default: true, so
+      # inputs.enable_* is only ever null in the schedule case.
+      build-linux-wheel: ${{ github.event_name == 'schedule' || inputs.enable_linux }}
+      build-windows-wheel: ${{ github.event_name == 'schedule' || inputs.enable_windows }}
+      build-macos-wheel: ${{ github.event_name == 'schedule' || inputs.enable_macos }}
     secrets: inherit
 
   call-unit-acceptance-tests:
@@ -163,7 +201,9 @@ jobs:
       run_unit_tests: ${{ matrix.RUN_UNIT_TESTS == 'ON' }}
       run_acceptance_tests: ${{ matrix.RUN_ACCEPTANCE_TESTS == 'ON' }}
       pip_index: ${{ matrix.PIP_INDEX }}
-      include_windows_tests: true
+      include_linux_tests: ${{ github.event_name == 'schedule' || inputs.enable_linux }}
+      include_windows_tests: ${{ github.event_name == 'schedule' || inputs.enable_windows }}
+      include_macos_tests: ${{ github.event_name == 'schedule' || inputs.enable_macos }}
     secrets: inherit
 
   notify_slack:
