@@ -21,36 +21,22 @@ type_constraints:
   # W8A8
   - X: uint8
     W: int8[channel_axis=0]
-    B: int32
+    B: int32[channel_axis=0]
     Y: uint8
   # W8A16
   - X: uint16
     W: int8[channel_axis=0]
-    B: int32
+    B: int32[channel_axis=0]
     Y: uint16
   # W16A16
   - X: uint16
     W: int16[channel_axis=0]
-    B: int32
+    B: int32[channel_axis=0]
     Y: uint16
 """)
     schemas: set[OpSchema] = parse_onnx_op(yaml_config)
-    assert len(schemas) == 6
+    assert len(schemas) == 3
     assert schemas == {
-        # W8A8 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
-        OpSchema(
-            signature=OpSignature(
-                domain="onnx",
-                op_type="Conv",
-                inputs=(
-                    Argument(name="X", qtype=qtype("uint8")),
-                    Argument(name="W", qtype=qtype("int8")),
-                    Argument(name="B", qtype=qtype("int32")),
-                ),
-                outputs=(Argument(name="Y", qtype=qtype("uint8")),),
-            ),
-            value_constraints=(),
-        ),
         # W8A8 per-channel
         OpSchema(
             signature=OpSignature(
@@ -59,23 +45,9 @@ type_constraints:
                 inputs=(
                     Argument(name="X", qtype=qtype("uint8")),
                     Argument(name="W", qtype=qtype("int8", channel_axis=0)),
-                    Argument(name="B", qtype=qtype("int32")),
+                    Argument(name="B", qtype=qtype("int32", channel_axis=0)),
                 ),
                 outputs=(Argument(name="Y", qtype=qtype("uint8")),),
-            ),
-            value_constraints=(),
-        ),
-        # W8A16 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
-        OpSchema(
-            signature=OpSignature(
-                domain="onnx",
-                op_type="Conv",
-                inputs=(
-                    Argument(name="X", qtype=qtype("uint16")),
-                    Argument(name="W", qtype=qtype("int8")),
-                    Argument(name="B", qtype=qtype("int32")),
-                ),
-                outputs=(Argument(name="Y", qtype=qtype("uint16")),),
             ),
             value_constraints=(),
         ),
@@ -87,21 +59,7 @@ type_constraints:
                 inputs=(
                     Argument(name="X", qtype=qtype("uint16")),
                     Argument(name="W", qtype=qtype("int8", channel_axis=0)),
-                    Argument(name="B", qtype=qtype("int32")),
-                ),
-                outputs=(Argument(name="Y", qtype=qtype("uint16")),),
-            ),
-            value_constraints=(),
-        ),
-        # W16A16 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
-        OpSchema(
-            signature=OpSignature(
-                domain="onnx",
-                op_type="Conv",
-                inputs=(
-                    Argument(name="X", qtype=qtype("uint16")),
-                    Argument(name="W", qtype=qtype("int16")),
-                    Argument(name="B", qtype=qtype("int32")),
+                    Argument(name="B", qtype=qtype("int32", channel_axis=0)),
                 ),
                 outputs=(Argument(name="Y", qtype=qtype("uint16")),),
             ),
@@ -115,7 +73,7 @@ type_constraints:
                 inputs=(
                     Argument(name="X", qtype=qtype("uint16")),
                     Argument(name="W", qtype=qtype("int16", channel_axis=0)),
-                    Argument(name="B", qtype=qtype("int32")),
+                    Argument(name="B", qtype=qtype("int32", channel_axis=0)),
                 ),
                 outputs=(Argument(name="Y", qtype=qtype("uint16")),),
             ),

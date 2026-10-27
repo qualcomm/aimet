@@ -3,6 +3,7 @@
 
 import numpy as np
 import torch
+from torch.export import ExportedProgram
 import pytest
 from aimet_torch.nn.modules import custom
 from aimet_torch.experimental.export._utils import (
@@ -17,13 +18,14 @@ from aimet_torch.experimental.export.exported_program import (
 
 
 def _assert_graph_fully_quantized(
-    graph: torch.fx.Graph,
+    ep: ExportedProgram,
     weight_dtype: torch.dtype,
     bias_dtype: torch.dtype,
     activation_dtype: torch.dtype,
 ):
-    for node in graph.nodes:
+    for node in ep.graph.nodes:
         _assert_node_fully_quantized(
+            ep,
             node,
             weight_dtype=weight_dtype,
             bias_dtype=bias_dtype,
@@ -32,15 +34,19 @@ def _assert_graph_fully_quantized(
 
 
 def _assert_node_fully_quantized(
+    ep: ExportedProgram,
     node: torch.fx.Node,
     weight_dtype: torch.dtype,
     bias_dtype: torch.dtype,
     activation_dtype: torch.dtype,
 ):
-    if node.target in (
-        torch.ops.quantized_decomposed.quantize_per_tensor.default,
-        torch.ops.quantized_decomposed.dequantize_per_tensor.default,
+    if _is_torch_ao_qdq_node(node):
+        return
+
+    if all(
+        _is_torch_ao_qdq_node(user) and node in user.args[1:3] for user in node.users
     ):
+        # Current node is 2nd (scale) or 3rd (zero_point) input of QDQ node.
         return
 
     for producer in node.all_input_nodes:
@@ -53,13 +59,39 @@ def _assert_node_fully_quantized(
             assert _is_torch_ao_dq_node(user)
 
         *_, qtype = user.args
-        assert qtype == (
-            weight_dtype
-            if node.name.startswith("p_weight")
-            else bias_dtype
-            if node.name.startswith("p_bias")
-            else activation_dtype
-        )
+
+        if _is_weight_node(ep, node):
+            assert qtype == weight_dtype
+            assert (
+                user.target
+                == torch.ops.quantized_decomposed.dequantize_per_channel.default
+            )
+        elif _is_bias_node(ep, node):
+            assert qtype == bias_dtype
+            assert (
+                user.target
+                == torch.ops.quantized_decomposed.dequantize_per_channel.default
+            )
+        else:
+            assert qtype == activation_dtype
+
+
+def _is_weight_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
+    return (
+        node.target in ep.state_dict
+        and "weight" in node.name
+        and "scale" not in node.name
+        and "zero_point" not in node.name
+    )
+
+
+def _is_bias_node(ep: ExportedProgram, node: torch.fx.Node) -> bool:
+    return (
+        node.target in ep.state_dict
+        and "bias" in node.name
+        and "scale" not in node.name
+        and "zero_point" not in node.name
+    )
 
 
 def _get_min_max_range(node: torch.fx.Node) -> tuple[float, float]:
@@ -85,6 +117,13 @@ def module(request):
             return cls().eval()
         case custom.Mean:
             return cls().eval()
+        case torch.nn.Sequential:
+            return torch.nn.Sequential(
+                torch.nn.Conv2d(3, 3, 3),
+                torch.nn.ReLU(),
+                torch.nn.Softmax(),
+                custom.Mean(),
+            ).eval()
         case _:
             raise NotImplementedError
 
@@ -96,10 +135,11 @@ def module(request):
         torch.nn.ReLU,
         torch.nn.Softmax,
         custom.Mean,
+        torch.nn.Sequential,
     ],
     indirect=True,
 )
-def test_fully_quantized(module):
+def test_fully_quantized(tmp_path, module):
     """
     Given: nn.Module included in quantization IR
     When: compute missing encodings with target backend specified
@@ -115,8 +155,12 @@ def test_fully_quantized(module):
         output = ep.module()(*example_inputs)
         assert isinstance(output, Q.DequantizedTensor)
 
+    # Make sure ExportedProgram object can be saved and loaded correctly
+    torch.export.save(ep, tmp_path / "ep.pt2")
+    ep = torch.export.load(tmp_path / "ep.pt2")
+
     _assert_graph_fully_quantized(
-        ep.graph,
+        ep,
         weight_dtype=torch.int8,
         bias_dtype=torch.int32,
         activation_dtype=torch.uint16,

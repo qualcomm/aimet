@@ -12,7 +12,7 @@ ops:
       # W8A8
       - input: uint8
         weight: int8[channel_axis=0]
-        bias: int32
+        bias: int32[channel_axis=0]
         stride: n/a
         padding: n/a
         dilation: n/a
@@ -21,7 +21,7 @@ ops:
       # W8A16
       - input: uint16
         weight: int8[channel_axis=0]
-        bias: int32
+        bias: int32[channel_axis=0]
         stride: n/a
         padding: n/a
         dilation: n/a
@@ -30,7 +30,7 @@ ops:
       # W16A16
       - input: uint16
         weight: int16[channel_axis=0]
-        bias: int32
+        bias: int32[channel_axis=0]
         stride: n/a
         padding: n/a
         dilation: n/a

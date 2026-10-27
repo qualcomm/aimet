@@ -153,7 +153,7 @@ class OpSchema(_OpSchema):
         op: torch._ops.OpOverload,
         weight_bw: int,
         activation_bw: int,
-        per_channel_quantization: bool = False,
+        per_channel_quantization: bool = True,
     ) -> bool:
         domain, op_type = op.name().split("::")
 
@@ -166,6 +166,13 @@ class OpSchema(_OpSchema):
                     return False
 
                 if arg.qtype.dtype not in (f"int{weight_bw}", f"uint{weight_bw}"):
+                    return False
+
+                if per_channel_quantization == (arg.qtype.channel_axis is None):
+                    return False
+
+            if arg.role == "bias":
+                if not arg.qtype:
                     return False
 
                 if per_channel_quantization == (arg.qtype.channel_axis is None):
@@ -381,15 +388,6 @@ class BackendDescription:
             if _is_grid_preserving_op(node) and node.target.overloadpacket not in (
                 torch.ops.aten.relu,
                 torch.ops.aten.relu_,
-            ):
-                continue
-
-            # Nodes followed by relu will inherit output encoding from relu
-            if all(
-                isinstance(user.target, torch._ops.OpOverload)
-                and user.target.overloadpacket
-                in (torch.ops.aten.relu, torch.ops.aten.relu_)
-                for user in node.users
             ):
                 continue
 

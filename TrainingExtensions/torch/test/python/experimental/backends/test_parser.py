@@ -21,7 +21,7 @@ type_constraints:
   # W8A8
   - input: uint8
     weight: int8[channel_axis=0]
-    bias: int32
+    bias: int32[channel_axis=0]
     stride: n/a
     padding: n/a
     dilation: n/a
@@ -30,7 +30,7 @@ type_constraints:
   # W8A16
   - input: uint16
     weight: int8[channel_axis=0]
-    bias: int32
+    bias: int32[channel_axis=0]
     stride: n/a
     padding: n/a
     dilation: n/a
@@ -39,7 +39,7 @@ type_constraints:
   # W16A16
   - input: uint16
     weight: int16[channel_axis=0]
-    bias: int32
+    bias: int32[channel_axis=0]
     stride: n/a
     padding: n/a
     dilation: n/a
@@ -47,26 +47,8 @@ type_constraints:
     $ret[0]: uint16
 """)
     schemas: set[OpSchema] = parse_aten_op(yaml_config)
-    assert len(schemas) == 6
+    assert len(schemas) == 3
     assert schemas == {
-        # W8A8 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
-        OpSchema(
-            signature=OpSignature(
-                domain="aten",
-                op_type="conv2d",
-                inputs=(
-                    Argument(name="input", qtype=qtype("uint8")),
-                    Argument(name="weight", qtype=qtype("int8"), role="weight"),
-                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
-                    Argument(name="stride", qtype=None),
-                    Argument(name="padding", qtype=None),
-                    Argument(name="dilation", qtype=None),
-                    Argument(name="groups", qtype=None),
-                ),
-                outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
-            ),
-            value_constraints=(),
-        ),
         # W8A8 per-channel
         OpSchema(
             signature=OpSignature(
@@ -79,31 +61,15 @@ type_constraints:
                         qtype=qtype("int8", channel_axis=0),
                         role="weight",
                     ),
-                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
+                    Argument(
+                        name="bias", qtype=qtype("int32", channel_axis=0), role="bias"
+                    ),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
                     Argument(name="groups", qtype=None),
                 ),
                 outputs=(Argument(name="$ret[0]", qtype=qtype("uint8")),),
-            ),
-            value_constraints=(),
-        ),
-        # W8A16 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
-        OpSchema(
-            signature=OpSignature(
-                domain="aten",
-                op_type="conv2d",
-                inputs=(
-                    Argument(name="input", qtype=qtype("uint16")),
-                    Argument(name="weight", qtype=qtype("int8"), role="weight"),
-                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
-                    Argument(name="stride", qtype=None),
-                    Argument(name="padding", qtype=None),
-                    Argument(name="dilation", qtype=None),
-                    Argument(name="groups", qtype=None),
-                ),
-                outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
             ),
             value_constraints=(),
         ),
@@ -119,25 +85,9 @@ type_constraints:
                         qtype=qtype("int8", channel_axis=0),
                         role="weight",
                     ),
-                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
-                    Argument(name="stride", qtype=None),
-                    Argument(name="padding", qtype=None),
-                    Argument(name="dilation", qtype=None),
-                    Argument(name="groups", qtype=None),
-                ),
-                outputs=(Argument(name="$ret[0]", qtype=qtype("uint16")),),
-            ),
-            value_constraints=(),
-        ),
-        # W16A16 per-tensor (NOTE: per-tensor is trivially supported if per-channel is supported)
-        OpSchema(
-            signature=OpSignature(
-                domain="aten",
-                op_type="conv2d",
-                inputs=(
-                    Argument(name="input", qtype=qtype("uint16")),
-                    Argument(name="weight", qtype=qtype("int16"), role="weight"),
-                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
+                    Argument(
+                        name="bias", qtype=qtype("int32", channel_axis=0), role="bias"
+                    ),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),
@@ -159,7 +109,9 @@ type_constraints:
                         qtype=qtype("int16", channel_axis=0),
                         role="weight",
                     ),
-                    Argument(name="bias", qtype=qtype("int32"), role="bias"),
+                    Argument(
+                        name="bias", qtype=qtype("int32", channel_axis=0), role="bias"
+                    ),
                     Argument(name="stride", qtype=None),
                     Argument(name="padding", qtype=None),
                     Argument(name="dilation", qtype=None),

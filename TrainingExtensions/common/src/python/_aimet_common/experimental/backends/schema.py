@@ -3,10 +3,11 @@
 
 import re
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import TypeAlias, Type, TypeVar
 
 
 _TYPE_STR_PATTERN = re.compile(r"^(?P<dtype>\w+)(?:\[(?P<attrs>.*)\])?$")
+_T = TypeVar("_T", bound="qtype")
 
 
 @dataclass(frozen=True)
@@ -16,7 +17,7 @@ class qtype:
     block_axis: int | None = None
 
     @classmethod
-    def from_str(cls, type_str: str) -> "list[qtype]":
+    def from_str(cls: Type[_T], type_str: str) -> _T:
         match = _TYPE_STR_PATTERN.match(type_str.strip())
         if match is None:
             raise ValueError(f"Invalid type string: {type_str!r}")
@@ -27,19 +28,11 @@ class qtype:
                 key, value = pair.split("=")
                 attrs[key.strip()] = int(value.strip())
 
-        parsed = cls(
+        return cls(
             dtype=match.group("dtype"),
             channel_axis=attrs.get("channel_axis"),
             block_axis=attrs.get("block_axis"),
         )
-
-        # Per-channel/per-block quantization trivially supports the per-tensor case,
-        # so a specified axis implicitly also allows the axis-less (per-tensor) qtype.
-        options = [parsed]
-        if parsed.channel_axis is not None or parsed.block_axis is not None:
-            options.append(cls(dtype=parsed.dtype))
-
-        return options
 
 
 @dataclass(frozen=True)

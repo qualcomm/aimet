@@ -170,7 +170,7 @@ def _insert_placeholder(
     val: torch.Tensor,
     node_name: str,
     tensor_name: str,
-    consumers: Iterable[torch.fx.Node],
+    consumers: Iterable[torch.fx.Node] = (),
 ):
     with ExitStack() as stack:
         for consumer in consumers:

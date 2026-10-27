@@ -9,7 +9,7 @@ import torch
 from torch._C import _fx_map_arg
 from torch.export.graph_signature import TensorArgument
 import aimet_torch
-from aimet_torch.quantization.affine import QuantizeDequantize
+from aimet_torch.quantization.affine import QuantizeDequantize, AffineEncoding
 from aimet_torch.experimental.export.export import _post_process
 from aimet_torch.experimental.export._utils import (
     _is_grid_preserving_op,
@@ -290,65 +290,112 @@ class ExportedProgram(torch.export.ExportedProgram):
                 "calibration dataset inside the context manager."
             )
 
+        for qdq_node in self.graph_module.graph.nodes:
+            if _is_aimet_qdq_node(qdq_node):
+                self._inline_aimet_qdq_node(qdq_node)
+
+    def _inline_aimet_qdq_node(self, qdq_node: torch.fx.Node):
+        """
+        Inline AIMET QuantizeDequantize node by replacing it with canonical
+        torch.ops.quantize_decomposed.quantize and dequantize nodes.
+        """
+
         from torch.fx.passes.shape_prop import _extract_tensor_metadata
         from aimet_torch.quantization.affine.backends.torch_builtins import _get_dtype
 
-        def _inline_qdq(
-            qdq_node: torch.fx.Node,
-            scale: torch.Tensor,
-            zero_point: torch.Tensor,
-            qmin: int,
-            qmax: int,
-        ):
-            dtype = _get_dtype(qmin, qmax)
+        qtzr = _get_aimet_qdq_module(qdq_node)
+        if not isinstance(qtzr, QuantizeDequantize):
+            raise RuntimeError(
+                f"Node {qdq_node.name} is not an AIMET QuantizeDequantize node"
+            )
 
-            if scale.dim() == zero_point.dim() == 0:
-                scale = scale.item()
-                zero_point = zero_point.item()
-            else:
+        if not qtzr.is_initialized():
+            raise RuntimeError(f"Quantizer {qdq_node.name} is not calibrated.")
+
+        encoding: AffineEncoding = qtzr.get_encodings()
+        scale = encoding.scale
+        zero_point = -encoding.offset.to(torch.int32)
+        qmin = encoding.qmin
+        qmax = encoding.qmax
+        dtype = _get_dtype(qmin, qmax)
+
+        if scale.shape != zero_point.shape:
+            raise ValueError(
+                f"Scale and zero_point must have the same shape, "
+                f"but got scale.shape={scale.shape} and zero_point.shape={zero_point.shape}"
+            )
+
+        if scale.dim() == zero_point.dim() == 0:
+            q = torch.ops.quantized_decomposed.quantize_per_tensor.default
+            dq = torch.ops.quantized_decomposed.dequantize_per_tensor.default
+            qtzn_args = (
+                scale.item(),
+                zero_point.item(),
+                qmin,
+                qmax,
+                dtype,
+            )
+        else:
+            non_singleton_axes = [
+                axis for axis, dim in enumerate(scale.shape) if dim > 1
+            ]
+            if len(non_singleton_axes) > 1:
                 raise NotImplementedError(
-                    "Per-channel quantization is not supported yet"
+                    "Block-wise quantization is not supported yet"
+                )
+            else:
+                (channel_axis,) = non_singleton_axes or [0]
+
+            q = torch.ops.quantized_decomposed.quantize_per_channel.default
+            dq = torch.ops.quantized_decomposed.dequantize_per_channel.default
+
+            with self.graph.inserting_before(qdq_node):
+                scale_node = _insert_placeholder(
+                    self,
+                    scale.flatten(),
+                    node_name=f"{qdq_node.name}_scale",
+                    tensor_name=f"{qdq_node.name}_scale",
+                )
+                zero_point_node = _insert_placeholder(
+                    self,
+                    zero_point.flatten(),
+                    node_name=f"{qdq_node.name}_zero_point",
+                    tensor_name=f"{qdq_node.name}_zero_point",
                 )
 
-            (input_node,) = qdq_node.all_input_nodes
+            qtzn_args = (
+                scale_node,
+                zero_point_node,
+                channel_axis,
+                qmin,
+                qmax,
+                dtype,
+            )
 
-            with self.graph.inserting_after(qdq_node):
-                q_node = self.graph.create_node(
-                    op="call_function",
-                    target=torch.ops.quantized_decomposed.quantize_per_tensor.default,
-                    args=(*qdq_node.args, scale, zero_point, qmin, qmax, dtype),
-                    kwargs=qdq_node.kwargs.copy(),
-                    name=f"{input_node.name}_q",
-                )
-                q_node.meta["val"] = input_node.meta["val"].to(dtype, copy=True)
-                q_node.meta["tensor_meta"] = _extract_tensor_metadata(
-                    q_node.meta["val"]
-                )
+        (input_node,) = qdq_node.all_input_nodes
 
-            with self.graph.inserting_after(q_node):
-                dq_node = self.graph.create_node(
-                    op="call_function",
-                    target=torch.ops.quantized_decomposed.dequantize_per_tensor.default,
-                    args=(q_node, scale, zero_point, qmin, qmax, dtype),
-                    kwargs=qdq_node.kwargs.copy(),
-                    name=f"{input_node.name}_dq",
-                )
-                dq_node.meta["val"] = input_node.meta["val"].clone()
-                dq_node.meta["tensor_meta"] = _extract_tensor_metadata(
-                    dq_node.meta["val"]
-                )
+        with self.graph.inserting_after(qdq_node):
+            q_node = self.graph.create_node(
+                op="call_function",
+                target=q,
+                args=(*qdq_node.args, *qtzn_args),
+                name=f"{input_node.name}_q",
+            )
+            q_node.meta["val"] = input_node.meta["val"].to(dtype, copy=True)
+            q_node.meta["tensor_meta"] = _extract_tensor_metadata(q_node.meta["val"])
 
-            qdq_node.replace_all_uses_with(dq_node)
-            self.graph.erase_node(qdq_node)
+        with self.graph.inserting_after(q_node):
+            dq_node = self.graph.create_node(
+                op="call_function",
+                target=dq,
+                args=(q_node, *qtzn_args),
+                name=f"{input_node.name}_dq",
+            )
+            dq_node.meta["val"] = input_node.meta["val"].clone()
+            dq_node.meta["tensor_meta"] = _extract_tensor_metadata(dq_node.meta["val"])
 
-        for qdq_node in self.graph_module.graph.nodes:
-            qtzr = _get_aimet_qdq_module(qdq_node)
-            if not qtzr:
-                continue
-            encoding = qtzr.get_encodings()
-            scale = encoding.scale
-            zero_point = -encoding.offset.to(torch.int32)
-            _inline_qdq(qdq_node, scale, zero_point, encoding.qmin, encoding.qmax)
+        qdq_node.replace_all_uses_with(dq_node)
+        self.graph.erase_node(qdq_node)
 
     def _is_static_tensor(self, node: torch.fx.Node) -> bool:
         if node.op != "placeholder":

@@ -80,38 +80,38 @@ def parse_onnx_op(op_entry: dict) -> set[OpSchema]:
     for type_constraint in op_entry["type_constraints"]:
         _validate_against_onnx_schema(onnx_schema, type_constraint)
 
-        per_arg_options = [
-            [(arg_name, None)]
-            if type_constraint[arg_name].strip() == "n/a"
-            else [(arg_name, qt) for qt in qtype.from_str(type_constraint[arg_name])]
-            for arg_name in input_names + output_names
-        ]
-
-        for combo in itertools.product(*per_arg_options):
-            args = {name: Argument(name=name, qtype=qt) for name, qt in combo}
-
-            value_constraints = tuple(
-                FixedRange(
-                    arg=args[fix_arg_name],
-                    min=bounds.get("min"),
-                    max=bounds.get("max"),
-                )
-                for fix_entry in fix_constraints
-                for fix_arg_name, bounds in fix_entry.items()
-            ) + tuple(
-                EqualRange(arg1=args[arg1_name], arg2=args[arg2_name])
-                for tie_group in tie_constraints
-                for arg1_name, arg2_name in itertools.combinations(tie_group, 2)
+        args = {
+            arg_name: Argument(
+                name=arg_name,
+                qtype=(
+                    qtype.from_str(type_str)
+                    if (type_str := type_constraint.get(arg_name, "n/a")) != "n/a"
+                    else None
+                ),
             )
+            for arg_name in itertools.chain(input_names, output_names)
+        }
 
-            signature = OpSignature(
-                domain="onnx",
-                op_type=op_type,
-                inputs=tuple(args[name] for name in input_names),
-                outputs=tuple(args[name] for name in output_names),
+        value_constraints = tuple(
+            FixedRange(
+                arg=args[fix_arg_name],
+                min=bounds.get("min"),
+                max=bounds.get("max"),
             )
-            schemas.add(
-                OpSchema(signature=signature, value_constraints=value_constraints)
-            )
+            for fix_entry in fix_constraints
+            for fix_arg_name, bounds in fix_entry.items()
+        ) + tuple(
+            EqualRange(arg1=args[arg1_name], arg2=args[arg2_name])
+            for tie_group in tie_constraints
+            for arg1_name, arg2_name in itertools.combinations(tie_group, 2)
+        )
+
+        signature = OpSignature(
+            domain="onnx",
+            op_type=op_type,
+            inputs=tuple(args[name] for name in input_names),
+            outputs=tuple(args[name] for name in output_names),
+        )
+        schemas.add(OpSchema(signature=signature, value_constraints=value_constraints))
 
     return schemas
