@@ -199,11 +199,12 @@ jobs:
           elif [ "${{ inputs.ver_torch }}" != "" ] ; then
               PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
           fi
-          PYTEST_ARGS="not blah"
+          # Select all tests on GPU runners; skip cuda tests on CPU runners.
+          PYTEST_ARGS=()
           if [ "${{ inputs.ver_cuda }}" = "" ] ; then
-              PYTEST_ARGS="not cuda"
+              PYTEST_ARGS=(-m "not cuda")
           fi
-          python -m pytest -m "$PYTEST_ARGS" $PYTEST_TARGETS -c pyproject.toml -n 8
+          python -m pytest "${PYTEST_ARGS[@]}" $PYTEST_TARGETS -c pyproject.toml -n 8
       - name: Run Acceptance tests
         if: inputs.run_acceptance_tests
         run: |
@@ -222,11 +223,12 @@ jobs:
               uv pip install wget
               python ./NightlyTests/torch/dependencies.py ./NightlyTests/torch/resnet18_eval_scores.csv
           fi
-          PYTEST_ARGS="not blah"
+          # Select all tests on GPU runners; skip cuda tests on CPU runners.
+          PYTEST_ARGS=()
           if [ "${{ inputs.ver_cuda }}" = "" ] ; then
-              PYTEST_ARGS="not cuda"
+              PYTEST_ARGS=(-m "not cuda")
           fi
-          python -m pytest -m "$PYTEST_ARGS" $PYTEST_TARGETS -c pyproject.toml
+          python -m pytest "${PYTEST_ARGS[@]}" $PYTEST_TARGETS -c pyproject.toml
 
   test_on_windows:
     name: Run AIMET unit and acceptance tests on Windows (${{ matrix.arch }})
