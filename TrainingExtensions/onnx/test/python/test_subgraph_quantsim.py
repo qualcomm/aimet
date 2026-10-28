@@ -342,20 +342,23 @@ class TestSubgraphQuantizerInsertion:
         )
 
     @pytest.mark.parametrize("make_model, _", BODY_QUANTIZERS)
-    def test_body_inputs_quantized_as_graph_inputs(self, make_model, _):
+    def test_body_inputs_share_boundary_quantizers(self, make_model, _):
         """A model with Scan bodies"""
         model = make_model()
         body_inputs = {inp.name for body in _bodies(model) for inp in body.input}
         sim = _sim(model)
+        qtzrs = sim.qc_quantize_op_dict
 
         """
         When: QuantizationSimModel is created with subgraph quantization
-        Then: Body inputs read in the body are quantized, and like graph inputs,
-              their quantizers are disabled by default
+        Then: Body inputs read in the body are quantized, each sharing the quantizer of a
+              tensor outside the bodies' inputs (the scanned input or the carry), so that
+              they are quantized whenever the value they take is
         """
-        quantized = body_inputs & set(sim.qc_quantize_op_dict)
+        quantized = body_inputs & set(qtzrs)
         assert quantized
-        assert not any(sim.qc_quantize_op_dict[name].enabled for name in quantized)
+        outside = {id(qtzr) for name, qtzr in qtzrs.items() if name not in body_inputs}
+        assert all(id(qtzrs[name]) in outside for name in quantized)
 
     @pytest.mark.parametrize("make_model, _", BODY_QUANTIZERS)
     def test_body_outputs_read_quantized_tensors(self, make_model, _):
@@ -912,7 +915,14 @@ class TestSubgraphStaticTensors:
             for node in body.node
         )
         onnx.checker.check_model(qdq, full_check=True)
-        actual = ort.InferenceSession(qdq.SerializeToString()).run(None, inputs)
+        # ORT otherwise fuses Q/DQ around ops into integer kernels, which round differently
+        sess_options = ort.SessionOptions()
+        sess_options.graph_optimization_level = (
+            ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        )
+        actual = ort.InferenceSession(qdq.SerializeToString(), sess_options).run(
+            None, inputs
+        )
         for exp, act in zip(sim.session.run(None, inputs), actual):
             assert np.array_equal(act, exp)
 
@@ -1264,14 +1274,15 @@ SCAN_TIES = [
     (
         lambda: models_for_tests.scan_model(num_carries=2, with_capture=True),
         [
-            ["init0", "b_co0", "final0"],
-            ["init1", "b_co1", "final1"],
+            ["init0", "b_c0", "b_co0", "final0"],
+            ["init1", "b_c1", "b_co1", "final1"],
             ["b_scaled", "ys"],
+            ["xs", "b_x"],
         ],
     ),
     (
         models_for_tests.wrapped_scan_model,
-        [["state_in", "b_sum", "state_out", "ys"]],
+        [["state_in", "b_c", "b_sum", "state_out", "ys"], ["xs", "b_x"]],
     ),
 ]
 
@@ -1300,7 +1311,8 @@ class TestSubgraphScanTies:
 
         """
         When: QuantizationSimModel is created with subgraph quantization
-        Then: 1) Initial state, carry-out and final state of a carry share one quantizer
+        Then: 1) Initial state, carry-in, carry-out and final state of a carry share one
+                 quantizer, and a scanned input shares it with its body input
               2) A scan output shares the quantizer of the body output stacked into it
               3) Different groups keep different quantizers
               4) After calibration, each group has one enabled encoding
@@ -1317,3 +1329,22 @@ class TestSubgraphScanTies:
         for group in groups:
             assert qtzrs[group[0]].enabled
             assert qtzrs[group[0]].get_encodings()
+
+    @pytest.mark.parametrize("make_model, _", SCAN_TIES)
+    def test_body_inputs_exported(self, make_model, _):
+        """A calibrated sim of a model with Scan bodies"""
+        model = make_model()
+        sim = _sim(model)
+        sim.compute_encodings([_inputs(model)])
+
+        """
+        When: The sim is exported to onnx QDQ
+        Then: Every body input is quantized in the body, so ops in the body read only
+              quantized values
+        """
+        qdq = sim.to_onnx_qdq()
+        (body,) = _bodies(qdq)
+        quantized = {
+            node.input[0] for node in body.node if node.op_type == "QuantizeLinear"
+        }
+        assert {inp.name for inp in body.input} <= quantized

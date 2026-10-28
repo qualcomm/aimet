@@ -3659,15 +3659,19 @@ class QuantizationSimModel:
         """
         Tie the quantizers on the boundary of each Scan to the quantizers of its body outputs:
 
-        * initial state, carry-out and final state of a carry share the carry-out quantizer
+        * initial state, carry-in, carry-out and final state of a carry share the carry-out quantizer
+        * a scanned input's body input shares the quantizer of the scanned input
         * a scan output shares the quantizer of the body output stacked into it
 
                 init --> Q_co-+                  +--> Q_co --> final
                   xs --> Q_xs-+--> Scan(body) ---+
                                                  +--> Q_y  --> ys
 
-                body: ... --> Q_co --> carry-out
-                      ... --> Q_y  --> scan output
+                body: carry-in --> Q_co --> ... --> Q_co --> carry-out
+                      x        --> Q_xs --> ... --> Q_y  --> scan output
+
+        Body inputs are otherwise quantized like graph inputs, with disabled quantizers, which
+        leaves them unquantized in the exported model although every value they take is quantized.
 
         NOTE: Scan (opset >= 9) lists states before scanned tensors in its inputs, outputs and body alike.
         Only applies with subgraph quantization, since bodies are not quantized otherwise.
@@ -3709,6 +3713,15 @@ class QuantizationSimModel:
                     tie(self.qc_quantize_op_dict.get(node.output[i]), body_qtzr)
                     if i < num_carries:
                         tie(effective_quantizer(node.input[i]), body_qtzr)
+                        tie(self.qc_quantize_op_dict.get(body.input[i].name), body_qtzr)
+
+                for i in range(num_carries, len(node.input)):
+                    outer_qtzr = effective_quantizer(node.input[i])
+                    # Slicing along the scan axis moves the channel axis
+                    if outer_qtzr and not outer_qtzr.quant_info.usePerChannelMode:
+                        tie(
+                            self.qc_quantize_op_dict.get(body.input[i].name), outer_qtzr
+                        )
 
         # tie() only updates the dict; point the graph's quantize nodes at the shared quantizers
         self._set_quantizers(self.qc_quantize_op_dict, rebuild_session=False)
