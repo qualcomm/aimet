@@ -160,6 +160,16 @@ per_channel_8b_test_set = VectorSetForTest(
 )
 
 
+def _ste_clamp(x, qmin, qmax):
+    """Clamp that passes gradient on the closed interval [qmin, qmax], as the backends do.
+
+    torch.clamp's gradient at exactly qmin/qmax is version-dependent (1 before torch 2.14,
+    0 from 2.14), so the reference must not depend on it.
+    """
+    in_range = (x >= qmin) & (x <= qmax)
+    return torch.where(in_range, x, x.detach().clamp(qmin, qmax))
+
+
 class AutogradQuantizationModule(torch.nn.Module):
     def __init__(self, scale, offset, qmin, qmax):
         super().__init__()
@@ -169,7 +179,7 @@ class AutogradQuantizationModule(torch.nn.Module):
         self.offset = torch.nn.Parameter(offset.clone())
 
     def forward(self, x):
-        return torch.clamp(
+        return _ste_clamp(
             ste_round(x / self.scale) - ste_round(self.offset), self.qmin, self.qmax
         )
 
@@ -193,7 +203,7 @@ class AutogradQuantDequantModule(torch.nn.Module):
         self.offset = torch.nn.Parameter(offset.clone())
 
     def forward(self, x):
-        x_q = torch.clamp(
+        x_q = _ste_clamp(
             ste_round(x / self.scale) - ste_round(self.offset), self.qmin, self.qmax
         )
         x_dq = (x_q + ste_round(self.offset)) * self.scale
