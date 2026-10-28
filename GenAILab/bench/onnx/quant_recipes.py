@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from tqdm import tqdm
 import itertools
 
+import ml_dtypes
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -107,13 +108,21 @@ def _prefill_inputs(
     if num_iterations is not None:
         dataloader = itertools.islice(dataloader, num_iterations)
 
+    def _tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
+        tensor = tensor.cpu().detach()
+        if tensor.dtype == torch.bfloat16:
+            # numpy has no bfloat16; reinterpret the raw bits as ml_dtypes.bfloat16,
+            # which AIMET-ONNX accepts for bf16 graph inputs.
+            return tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+        return tensor.numpy()
+
     def _to_numpy(
         prepared: dict[str, torch.Tensor] | tuple[torch.Tensor, ...],
     ) -> dict[str, np.ndarray]:
         if not isinstance(prepared, dict):
             prepared = kwargs_to_dict(input_names, *prepared)
         return {
-            k: v.cpu().detach().numpy()
+            k: _tensor_to_numpy(v)
             for k, v in prepared.items()
             if isinstance(v, torch.Tensor)
         }

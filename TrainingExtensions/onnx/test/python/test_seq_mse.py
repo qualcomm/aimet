@@ -7,6 +7,7 @@ import time
 import pytest
 from unittest.mock import MagicMock
 from functools import partial
+import ml_dtypes
 import onnx
 import torch
 import torch.nn.functional as F
@@ -947,6 +948,76 @@ def test_seq_mse_skips_weightless_dynamic_matmul(tmp_dir):
 
     assert sim.qc_quantize_op_dict["w0"].is_encoding_frozen()
     assert not sim.qc_quantize_op_dict["state"].is_encoding_frozen()
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("block_size", [None, 8])
+def test_seq_mse_with_bfloat16_model(io_dtype, block_size):
+    """
+    Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+    When: Apply sequential MSE with per-channel or LPBQ weight quantizers
+    Then: Every weight encoding is optimized and frozen, and stays close to that of the
+          equivalent float32 model
+    """
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        pytest.skip("CUDA EP not available")
+
+    rng = np.random.default_rng(0)
+    fp32_inputs = [
+        {"input": rng.standard_normal((4, 16)).astype(np.float32)} for _ in range(4)
+    ]
+
+    def run_seq_mse(model, inputs):
+        sim = QuantizationSimModel(
+            model,
+            quant_scheme=QuantScheme.post_training_tf,
+            default_activation_bw=16,
+            default_param_bw=4,
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        if block_size is not None:
+            set_grouped_blockwise_quantization_for_weights(
+                sim,
+                op_types=("MatMul", "Gemm"),
+                bitwidth=4,
+                decompressed_bw=8,
+                block_size=block_size,
+                strict=True,
+            )
+        apply_seq_mse(sim, inputs, num_candidates=8)
+        return sim
+
+    bf16_inputs = (
+        fp32_inputs
+        if io_dtype == torch.float32
+        else [
+            {"input": item["input"].astype(ml_dtypes.bfloat16)} for item in fp32_inputs
+        ]
+    )
+    fp32_sim = run_seq_mse(
+        models_for_tests.simple_mlp_model(torch.float32), fp32_inputs
+    )
+    bf16_sim = run_seq_mse(
+        models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype),
+        bf16_inputs,
+    )
+
+    for name in ("fc1.weight", "fc2.weight"):
+        bf16_quantizer = bf16_sim.qc_quantize_op_dict[name]
+        assert bf16_quantizer.is_encoding_frozen(), name
+        fp32_max = np.array(
+            [e.max for e in fp32_sim.qc_quantize_op_dict[name].get_encodings()]
+        )
+        bf16_max = np.array([e.max for e in bf16_quantizer.get_encodings()])
+        # bfloat16 rounding can tip a channel to a neighboring candidate (1/8 of its range).
+        assert np.allclose(fp32_max, bf16_max, atol=0.15 * np.abs(fp32_max).max()), name
+
+    """
+    When: Calibrate activations after sequential MSE
+    Then: The sim runs end-to-end on bfloat16 inputs
+    """
+    bf16_sim.compute_encodings(bf16_inputs)
 
 
 def test_temporarily_disable_grouped_block_quantizers():

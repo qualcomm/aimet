@@ -52,15 +52,15 @@ def _disable_onnx_quantizers(quantsim):
             op.enabled = True
 
 
-# Recipes validated on bf16 models: float evaluation and plain calibration.
-_BF16_SUPPORTED_RECIPES = {"RemoveQuantization", "Skip", "Calibration"}
+# Recipes validated on bf16 models: float evaluation, calibration and SeqMSE.
+_BF16_SUPPORTED_RECIPES = {"RemoveQuantization", "Skip", "Calibration", "SeqMSE"}
 
 
 def _check_bf16_supported(config):
     """Fail fast on bf16 configs the ONNX flow cannot run yet.
 
     A bf16 model is wrapped in a regular QuantizationSimModel, but only float
-    evaluation and plain calibration are supported so far: other quantization
+    evaluation, calibration and SeqMSE are supported so far: other quantization
     recipes, pre-sim techniques, analysis passes and VLMs are rejected here
     rather than failing deep inside AIMET.
     """

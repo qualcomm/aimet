@@ -32,6 +32,9 @@ from aimet_onnx.utils import (
     OrtInferenceSession,
     get_torch_device,
     map_np_dtype_to_torch,
+    _BFLOAT16,
+    _onnx_element_type,
+    _run_session_to_numpy,
 )
 from aimet_onnx.sequential_mse.dependency_graph import DependencyNode, DependencyGraph
 from aimet_onnx.sequential_mse.transform import (
@@ -583,16 +586,14 @@ class SequentialMse:
 
                     # Bind all inputs
                     for name, data in sim_inputs.items():
-                        inp_ort_value = onnxruntime.OrtValue.ortvalue_from_numpy(
-                            data[batch_idx],
-                            device_type=device_type,
-                            device_id=device_id,
+                        inp_ort_value = _ortvalue_from_numpy(
+                            data[batch_idx], device_type, device_id
                         )
                         binding.bind_input(
                             name=name,
                             device_type=device_type,
                             device_id=device_id,
-                            element_type=data[batch_idx].dtype,
+                            element_type=_onnx_element_type(data[batch_idx].dtype),
                             shape=data[batch_idx].shape,
                             buffer_ptr=inp_ort_value.data_ptr(),
                         )
@@ -613,7 +614,7 @@ class SequentialMse:
                             name=out_name,
                             device_type=device_type,
                             device_id=device_id,
-                            element_type=out_dtype,
+                            element_type=_onnx_element_type(out_dtype),
                             shape=out_shape,
                             buffer_ptr=shared_tensor.data_ptr(),
                         )
@@ -772,7 +773,7 @@ class SequentialMse:
             input_batch = {}
             for name, data in inputs.items():
                 input_batch[name] = data[i]
-            output = session.run(None, input_batch)
+            output = _run_session_to_numpy(session, input_batch)
             if len(outputs) == 0:
                 outputs = [[] for _ in range(len(output))]
             for idx, out in enumerate(output):
@@ -1141,6 +1142,22 @@ def _rechunk_seq_inputs(
     return new_sim_inputs, new_all_out_shapes, new_all_out_dtypes
 
 
+def _ortvalue_from_numpy(
+    array: np.ndarray, device_type: str, device_id: int
+) -> onnxruntime.OrtValue:
+    """
+    Copy ``array`` to an OrtValue on the given device, as a buffer to bind by pointer.
+
+    ``OrtValue.ortvalue_from_numpy`` rejects bfloat16 arrays, so those are copied as their
+    raw bits; the bfloat16 element type is given when the buffer is bound.
+    """
+    if array.dtype == _BFLOAT16:
+        array = np.ascontiguousarray(array).view(np.uint16)
+    return onnxruntime.OrtValue.ortvalue_from_numpy(
+        array, device_type=device_type, device_id=device_id
+    )
+
+
 def _infer_out_shapes_and_dtypes(
     session: OrtInferenceSession, data: Dict[str, List[torch.Tensor]]
 ) -> Tuple[List, List]:
@@ -1163,7 +1180,7 @@ def _infer_out_shapes_and_dtypes(
 
     for batch_idx in range(dataset_len):
         input_batch = {name: array_list[batch_idx] for name, array_list in data.items()}
-        outputs = session.run(None, input_batch)
+        outputs = _run_session_to_numpy(session, input_batch)
         all_out_shapes.append([out.shape for out in outputs])
         all_out_dtypes.append([out.dtype for out in outputs])
         del outputs

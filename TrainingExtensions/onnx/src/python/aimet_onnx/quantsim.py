@@ -27,7 +27,6 @@ from functools import wraps
 import json
 import re
 import warnings
-import ml_dtypes
 import numpy as np
 import onnx
 import onnx_ir
@@ -110,6 +109,7 @@ from aimet_onnx.qc_quantize_op import (
 )
 from aimet_onnx.quantsim_config.quantsim_config import QuantSimConfigurator
 from aimet_onnx.utils import (
+    _BFLOAT16,
     build_session,
     make_dummy_input,
     add_hook_to_get_activation,
@@ -168,9 +168,6 @@ _fuse_supergroups = True
 
 # Experimental: also quantize tensors inside Scan bodies.
 _quantize_subgraphs = False
-
-# Not helper.tensor_dtype_to_np_dtype(BFLOAT16): onnx < 1.19 maps that to float32.
-_BFLOAT16 = np.dtype(ml_dtypes.bfloat16)
 
 data_types_to_quantize = [np.float32, np.float16, _BFLOAT16]
 

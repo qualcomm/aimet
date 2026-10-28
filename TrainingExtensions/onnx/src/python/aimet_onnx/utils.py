@@ -14,11 +14,12 @@ from typing import Dict, Iterable, List, Set, Union, Tuple, Callable, Optional, 
 from contextlib import contextmanager
 import os
 import pickle
+import ml_dtypes
 import numpy as np
 import torch
 import onnx
 from onnx import helper, numpy_helper
-from onnxruntime import SessionOptions, InferenceSession
+from onnxruntime import SessionOptions, InferenceSession, OrtValue
 import shutil
 from aimet_onnx.common import libquant_info
 from aimet_onnx.common import libpymo
@@ -46,6 +47,9 @@ else:
     )
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Utils)
+
+# Not helper.tensor_dtype_to_np_dtype(BFLOAT16): onnx < 1.19 maps that to float32.
+_BFLOAT16 = np.dtype(ml_dtypes.bfloat16)
 
 
 class _NOT_SPECIFIED:
@@ -277,14 +281,15 @@ def make_dummy_input(model: ModelProto, dynamic_size: int = 1) -> Dict[str, np.n
             else:
                 # Else, axis has a fixed dimension size stored in dim.dim_value
                 shape.append(dim.dim_value)
+        np_dtype = (
+            _BFLOAT16
+            if dtype == TensorProto.BFLOAT16
+            else helper.tensor_dtype_to_np_dtype(dtype)
+        )
         if shape:
-            input_dict[name] = np.random.randn(*shape).astype(
-                helper.tensor_dtype_to_np_dtype(dtype)
-            )
+            input_dict[name] = np.random.randn(*shape).astype(np_dtype)
         else:
-            input_dict[name] = np.array(np.random.randn(*shape)).astype(
-                helper.tensor_dtype_to_np_dtype(dtype)
-            )
+            input_dict[name] = np.array(np.random.randn(*shape)).astype(np_dtype)
     return input_dict
 
 
@@ -832,12 +837,52 @@ def map_np_dtype_to_torch(np_dtype: np.dtype) -> torch.dtype:
         np.float64: torch.float64,
         np.int32: torch.int32,
         np.int64: torch.int64,
+        ml_dtypes.bfloat16: torch.bfloat16,
     }
 
     try:
         return dtype_map[np_dtype.type]
     except KeyError as exc:
         raise ValueError(f"Unsupported dtype: {np_dtype}") from exc
+
+
+def _onnx_element_type(np_dtype: np.dtype) -> Union[int, np.dtype]:
+    """
+    ``element_type`` to pass to ``IOBinding.bind_input``/``bind_output`` for ``np_dtype``.
+
+    ORT cannot map ``ml_dtypes.bfloat16`` to a tensor type, so bfloat16 is given as its
+    ONNX TensorProto code instead.
+    """
+    if np_dtype == _BFLOAT16:
+        return TensorProto.BFLOAT16
+    return np_dtype
+
+
+def _run_session_to_numpy(
+    session: InferenceSession, inputs: Dict[str, np.ndarray]
+) -> List[np.ndarray]:
+    """
+    ``session.run(None, inputs)`` that also accepts and returns bfloat16 arrays.
+
+    ``InferenceSession.run`` cannot convert bfloat16 tensors to or from numpy, so they are
+    passed as OrtValues and read back through DLPack as ``ml_dtypes.bfloat16`` arrays.
+    """
+    ort_inputs = {
+        name: OrtValue.ortvalue_from_numpy_with_onnx_type(
+            np.ascontiguousarray(value).view(np.uint16), TensorProto.BFLOAT16
+        )
+        if value.dtype == _BFLOAT16
+        else OrtValue.ortvalue_from_numpy(np.ascontiguousarray(value))
+        for name, value in inputs.items()
+    }
+    outputs = []
+    for output in session.run_with_ort_values(None, ort_inputs):
+        if output.data_type() == "tensor(bfloat16)":
+            bits = torch.from_dlpack(output._ortvalue).view(torch.int16)  # pylint: disable=protected-access
+            outputs.append(bits.cpu().numpy().view(_BFLOAT16))
+        else:
+            outputs.append(output.numpy())
+    return outputs
 
 
 def map_torch_dtype_to_np(torch_dtype: torch.dtype) -> np.dtype:
