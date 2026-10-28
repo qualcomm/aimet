@@ -396,7 +396,9 @@ def _fill_missing_node_names(model: onnx.ModelProto):
 
     # The top-level graph is walked first, so its nodes keep their names on a clash.
     nodes = (
-        node for graph in _iterate_graphs_recursive(model.graph) for node in graph.node
+        node
+        for graph in _iterate_graphs_recursive(model.graph, include_if=True)
+        for node in graph.node
     )
     for node in nodes:
         if node.name and node.name not in seen:

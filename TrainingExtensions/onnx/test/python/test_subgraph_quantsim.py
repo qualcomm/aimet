@@ -214,6 +214,56 @@ class TestSubgraphQuantizerInsertion:
         assert e_mm.input[1] == "w_else_qdq"
 
     @pytest.mark.parametrize(
+        "names",
+        [
+            ["", ""],
+            # The branch MatMuls clash with top-level nodes, which keep their names
+            ["the_if", "pre"],
+        ],
+    )
+    def test_if_branch_node_names_filled(self, names):
+        """weighted_if_model, whose branch MatMul names are missing or not unique"""
+
+        def make_model(names):
+            model = models_for_tests.weighted_if_model()
+            branches = _if_branches(model)
+            branches["the_if", "then_branch"].node[0].name = names[0]
+            branches["the_if", "else_branch"].node[0].name = names[1]
+            return model
+
+        named = _sim(models_for_tests.weighted_if_model())
+        sim = _sim(make_model(names))
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: 1) Every node has a unique name, top-level nodes keep theirs
+              2) Every op is in the connected graph
+              3) Every quantizer is configured as when the nodes are uniquely named
+        """
+        # 1)
+        nodes = [
+            node
+            for graph in _iterate_graphs_recursive(
+                sim.model.model.graph, include_if=True
+            )
+            for node in graph.node
+            if node.op_type != "QcQuantizeOp"
+        ]
+        assert all(node.name for node in nodes)
+        assert len({node.name for node in nodes}) == len(nodes)
+        assert {"pre", "the_if"} <= {node.name for node in nodes}
+
+        # 2)
+        assert len(sim.connected_graph.get_all_ops()) == len(
+            named.connected_graph.get_all_ops()
+        )
+
+        # 3)
+        assert {
+            name: qtzr.enabled for name, qtzr in sim.qc_quantize_op_dict.items()
+        } == {name: qtzr.enabled for name, qtzr in named.qc_quantize_op_dict.items()}
+
+    @pytest.mark.parametrize(
         "make_model",
         [
             models_for_tests.if_model,
