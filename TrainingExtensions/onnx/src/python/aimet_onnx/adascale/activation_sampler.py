@@ -10,6 +10,7 @@ import onnx_ir
 
 from aimet_onnx.utils import (
     OrtInferenceSession,
+    _run_session_to_numpy,
 )
 
 
@@ -76,7 +77,8 @@ class ActivationSampler:
             # https://github.com/microsoft/onnxruntime/issues/21922
             act_output = model_inputs[activation_name]
         else:
-            act_output = session.run([activation_name], model_inputs)[0]
+            # The session's only output is activation_name (see create_session).
+            act_output = _run_session_to_numpy(session, model_inputs)[0]
         return act_output
 
     def sample_and_place_all_acts_on_cpu(self, dataset) -> List:

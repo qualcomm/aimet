@@ -31,6 +31,10 @@ from onnx2torch.node_converters.registry import (
     OperationDescription,
     _CONVERTER_REGISTRY,
 )
+from onnx2torch.onnx_tensor import OnnxTensor
+
+from aimet_onnx.common.onnx._utils import to_array
+from aimet_onnx.utils import _numpy_to_torch
 
 # onnx2torch passes converters only (node, graph), not the model's opset imports, which
 # converters that build a sub-model (e.g. Scan body) need. convert_model() records them
@@ -58,6 +62,22 @@ def _opset_imports(graph: OnnxGraph) -> List[OperatorSetIdProto]:
         helper.make_opsetid(domain, version)
         for domain, version in opset_imports.items()
     ]
+
+
+# Stock OnnxTensor reads tensors with onnx.numpy_helper.to_array, which returns the raw
+# bits of a bfloat16 tensor as uint16 on onnx < 1.19 (so bf16 weights convert to large
+# integer-valued floats), and an ml_dtypes.bfloat16 array on newer onnx, which
+# torch.from_numpy rejects. Read bf16 tensors as bf16 values on every onnx version.
+def _onnx_tensor_to_numpy(self: OnnxTensor):
+    return to_array(self.proto).copy()
+
+
+def _onnx_tensor_to_torch(self: OnnxTensor) -> torch.Tensor:
+    return _numpy_to_torch(self.to_numpy())
+
+
+OnnxTensor.to_numpy = _onnx_tensor_to_numpy
+OnnxTensor.to_torch = _onnx_tensor_to_torch
 
 
 class OnnxMatmul(nn.Module, OnnxToTorchModule):  # pylint: disable=missing-class-docstring

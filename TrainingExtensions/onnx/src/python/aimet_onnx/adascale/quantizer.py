@@ -50,8 +50,10 @@ class WeightQdq(torch.nn.Module):
         self.block_size = block_size
         self.zero_point_shift = zero_point_shift or 0.0
 
+        # Keep min/max in fp32 even for fp16/bf16 weights; bf16 would round the
+        # encodings loaded from the sim by up to ~0.2%.
         min_tensor, max_tensor = self.compute_min_max_tensors(
-            weight_tensor, self.shape, self._get_num_steps()
+            weight_tensor.detach().float(), self.shape, self._get_num_steps()
         )
 
         self.register_parameter("min", torch.nn.Parameter(min_tensor))

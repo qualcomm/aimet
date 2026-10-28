@@ -11,6 +11,8 @@ import numpy as np
 
 from torch.utils._pytree import tree_map
 
+from aimet_onnx.utils import _numpy_to_torch
+
 
 def derive_symmetric_qmin_qmax(bitwidth: int) -> tuple[int, int]:
     """
@@ -247,7 +249,7 @@ def get_encoding_shape_with_blocks(
 
 
 def convert_to_torch(obj: list):
-    return [torch.from_numpy(t) if isinstance(t, np.ndarray) else t for t in obj]
+    return [_numpy_to_torch(t) if isinstance(t, np.ndarray) else t for t in obj]
 
 
 def change_tensor_device_placement(input_data, device: torch.device):

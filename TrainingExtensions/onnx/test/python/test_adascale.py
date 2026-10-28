@@ -6,8 +6,11 @@ import copy
 import shutil
 import warnings
 from unittest.mock import Mock, patch
+import ml_dtypes
 import numpy as np
+import onnxruntime as ort
 import torch
+import onnx
 from onnx import numpy_helper, load_model
 import onnx_ir
 import onnx_ir.passes.common
@@ -37,10 +40,12 @@ from aimet_onnx.llm_topology import (
     LlmTopology,
 )
 from aimet_onnx.adascale.model_converter import (
+    get_pt_block,
     required_extra_block_inputs,
     _retarget_fp16_casts_to_bf16,
     upcast_fp16_block_to_bf16,
 )
+from .models import models_for_tests
 from .utils import (
     add_genai_tests_path,
     force_random_weight_init,
@@ -1139,6 +1144,119 @@ class TestAdascaleQuantizer:
                 assert diff_pct < max_allowed_diff_pct
 
 
+def test_get_pt_block_reads_bfloat16_weights():
+    """
+    Given: A bfloat16 ONNX model
+    When: Convert it to a PyTorch block
+    Then: The block holds the model's bfloat16 weight values, not their raw bits
+    """
+    model = models_for_tests.simple_mlp_model(torch.bfloat16)
+    ir_model = onnx_ir.from_proto(model)
+    pt_block, param_map = get_pt_block(ir_model, (["input"], ["output"]))
+
+    weights = dict(pt_block.named_parameters())
+    for pt_name, onnx_name in param_map.items():
+        expected = ir_model.graph.initializers[onnx_name].const_value.numpy()
+        weight = weights[f"{pt_name}.weight"]
+        assert weight.dtype == torch.bfloat16
+        # Gemm(transB=1) stores the weight in nn.Linear's (out, in) layout
+        assert np.array_equal(
+            weight.detach().float().numpy(), expected.astype(np.float32)
+        )
+
+
+def test_weight_qdq_keeps_fp32_range_for_bfloat16_weight():
+    """
+    Given: A bfloat16 weight
+    When: Create an AdaScale weight quantizer for it
+    Then: The quantizer's min/max are kept in float32, so loading an encoding from
+          the sim does not round it to bfloat16
+    """
+    weight = torch.randn(8, 16).to(torch.bfloat16)
+    qdq = AdaScaleLinearWeightQdq(weight, (8, 1), bitwidth=4)
+    assert qdq.min.dtype == qdq.max.dtype == torch.float32
+
+    max_val = torch.full((8, 1), 0.2113)
+    qdq.set_range(-max_val, max_val)
+    assert torch.equal(qdq.max, max_val)
+    assert qdq(weight).dtype == torch.bfloat16
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+def test_adascale_with_bfloat16_model(io_dtype):
+    """
+    Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+    When: Apply AdaScale
+    Then: Every weight is updated and stays bfloat16, its encoding is frozen, and the
+          encodings stay close to those of the equivalent float32 model
+    """
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        pytest.skip("CUDA EP not available")
+
+    rng = np.random.default_rng(0)
+    fp32_inputs = [
+        {"input": rng.standard_normal((64, 16)).astype(np.float32)} for _ in range(4)
+    ]
+    weight_names = ("fc1.weight", "fc2.weight")
+
+    def run_adascale(model, inputs):
+        sim = QuantizationSimModel(
+            model,
+            param_type="int4",
+            activation_type="int16",
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        sim._compute_param_encodings(overwrite=False)
+        # The block spans both Gemms, from the first Gemm's input to the last's output
+        gemms = [node for node in model.graph.node if node.op_type == "Gemm"]
+        block_end_points = [(gemms[0].input[0], gemms[-1].output[0])]
+        original_weights = {
+            init.name: numpy_helper.to_array(init).copy()
+            for init in sim.model.model.graph.initializer
+        }
+        AdaScale._apply_adascale(sim, inputs, block_end_points, num_iterations=50)
+        return sim, original_weights
+
+    # Round the float32 model's weights to bfloat16 so both models start equal
+    fp32_model = models_for_tests.simple_mlp_model(torch.float32)
+    for init in fp32_model.graph.initializer:
+        rounded = numpy_helper.to_array(init).astype(ml_dtypes.bfloat16)
+        init.CopyFrom(numpy_helper.from_array(rounded.astype(np.float32), init.name))
+    bf16_inputs = (
+        fp32_inputs
+        if io_dtype == torch.float32
+        else [
+            {"input": item["input"].astype(ml_dtypes.bfloat16)} for item in fp32_inputs
+        ]
+    )
+    fp32_sim, _ = run_adascale(fp32_model, fp32_inputs)
+    bf16_sim, original_weights = run_adascale(
+        models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype),
+        bf16_inputs,
+    )
+
+    initializers = {init.name: init for init in bf16_sim.model.model.graph.initializer}
+    for name in weight_names:
+        assert initializers[name].data_type == onnx.TensorProto.BFLOAT16
+        assert not np.array_equal(
+            numpy_helper.to_array(initializers[name]), original_weights[name]
+        ), name
+        bf16_quantizer = bf16_sim.qc_quantize_op_dict[name]
+        assert bf16_quantizer.is_encoding_frozen(), name
+        fp32_max = np.array(
+            [e.max for e in fp32_sim.qc_quantize_op_dict[name].get_encodings()]
+        )
+        bf16_max = np.array([e.max for e in bf16_quantizer.get_encodings()])
+        assert np.allclose(fp32_max, bf16_max, atol=0.03 * np.abs(fp32_max).max()), name
+
+    """
+    When: Calibrate activations after AdaScale
+    Then: The sim runs end-to-end on bfloat16 inputs
+    """
+    bf16_sim.compute_encodings(bf16_inputs)
+
+
 @pytest.mark.parallel
 class TestRequiredExtraBlockInputs:
     """Unit tests for ``required_extra_block_inputs`` — the graph inputs a block
@@ -1387,10 +1505,21 @@ def test_adascale_block_topologies(config_attr, backend, detect_kwargs, _):
 @pytest.mark.skip_on_windows_amd64(
     "insufficient disk for large ONNX export on Windows AMD64 runner"
 )
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float16,
+        # ORT's CPU EP has too few bfloat16 kernels to run the model
+        pytest.param(torch.bfloat16, marks=pytest.mark.cuda),
+    ],
+    ids=["fp32", "fp16", "bf16"],
+)
 def test_adascale_e2e(
     add_genai_tests_path, offline_hf_configs, dtype, small_model: bool = True
 ):
+    if dtype == torch.bfloat16 and not torch.cuda.is_available():
+        pytest.skip("CUDA not available")
     from transformers import AutoConfig
     from GenAILab.qai_hub_lm.backends.onnx.llm import LLM_ONNX
     from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
@@ -1442,7 +1571,11 @@ def test_adascale_e2e(
 
         # Float inputs must match the exported graph's float dtype (fp16 when
         # ``dtype=torch.float16``); ORT rejects a dtype mismatch on session run.
-        float_np_dtype = np.float16 if dtype == torch.float16 else np.float32
+        float_np_dtype = {
+            torch.float32: np.float32,
+            torch.float16: np.float16,
+            torch.bfloat16: ml_dtypes.bfloat16,
+        }[dtype]
         inputs = {
             "input_ids": np.random.randint(0, 100, size=(1, 16), dtype=np.int32),
             "attention_mask": np.random.randint(0, 100, size=(1, 1, 16, 32)).astype(
@@ -1461,11 +1594,13 @@ def test_adascale_e2e(
             weight_array = numpy_helper.to_array(initializer)
             original_weights[initializer.name] = weight_array.copy()
 
+        # Two iterations move the weights by ~0.15%, under half a bfloat16 step, so
+        # bfloat16 weights would round back to their original values.
         AdaScale.apply_adascale(
             sim,
             [inputs],
             adascale_model_config_dict["qwen2"],
-            num_iterations=2,
+            num_iterations=20 if dtype == torch.bfloat16 else 2,
             topology=topology,
         )
 
