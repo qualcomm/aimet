@@ -19,6 +19,8 @@ safetensors
 scikit-learn
 scipy
 tensorboard
-torch
-torchvision
+# torch 2.15 defaults to CUDA 13, which the CI GPU runners' driver does not support yet
+torch<2.15
+# torchvision 0.29.2 has no cu126 build; its PyPI wheel needs CUDA 13
+torchvision<0.29.2
 tqdm

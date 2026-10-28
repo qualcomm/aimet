@@ -9,7 +9,8 @@ pytest<9.2.0
 pytest-extra-durations
 pytest-xdist
 pytorch-ignite
-torchvision
+# torchvision 0.29.2 has no cu126 build; its PyPI wheel needs CUDA 13
+torchvision<0.29.2
 
 # Excluded on Windows ARM64 (no wheels available)
 accelerate<1.10.0; sys_platform != 'win32' or platform_machine not in 'ARM64,aarch64'
