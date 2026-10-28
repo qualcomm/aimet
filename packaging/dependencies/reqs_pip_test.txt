@@ -5,7 +5,7 @@ onnx
 protobuf<7
 pydantic
 pylint<4
-pytest
+pytest<9.2.0
 pytest-extra-durations
 pytest-xdist
 pytorch-ignite
