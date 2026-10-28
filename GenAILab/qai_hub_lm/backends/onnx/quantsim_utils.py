@@ -46,8 +46,12 @@ def quantize_embedding_weights(embedding: torch.nn.Module, n_bits: int):
 
     Derives scale and offset from the min/max of the weight tensor, quantizes
     to ``n_bits`` integers, then dequantizes back to a regular float tensor.
+    The math runs in float32 so low-precision weights (e.g. bfloat16, which
+    cannot represent integers above 256 exactly) still land on the integer
+    grid; the result is cast back to the original dtype.
     """
-    w = embedding.weight.data
+    orig_dtype = embedding.weight.dtype
+    w = embedding.weight.data.float()
     qmin = -(2 ** (n_bits - 1))
     qmax = 2 ** (n_bits - 1) - 1
     w_min = w.min()
@@ -55,7 +59,7 @@ def quantize_embedding_weights(embedding: torch.nn.Module, n_bits: int):
     scale = (w_max - w_min) / (qmax - qmin)
     offset = torch.round(w_min / scale) - qmin
     w_q = torch.clamp(torch.round(w / scale + offset), qmin, qmax)
-    embedding.weight.data = (w_q - offset) * scale
+    embedding.weight.data = ((w_q - offset) * scale).to(orig_dtype)
 
 
 def get_ort_providers(

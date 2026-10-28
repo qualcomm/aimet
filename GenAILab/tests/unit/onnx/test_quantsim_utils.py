@@ -105,6 +105,26 @@ class TestGetOrtProviders:
         assert providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
 
+class TestQuantizeEmbeddingWeights:
+    def test_bfloat16_matches_float32(self):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import (
+            quantize_embedding_weights,
+        )
+
+        # An asymmetric range (as in real embeddings) gives a nonzero offset,
+        # which bfloat16 arithmetic cannot add and subtract back exactly.
+        torch.manual_seed(0)
+        weight = (torch.randn(1024, 64) * 0.05).clamp(-0.3, 0.2).to(torch.bfloat16)
+        fp32_emb = torch.nn.Embedding.from_pretrained(weight.float())
+        bf16_emb = torch.nn.Embedding.from_pretrained(weight.clone())
+
+        quantize_embedding_weights(fp32_emb, 16)
+        quantize_embedding_weights(bf16_emb, 16)
+
+        assert bf16_emb.weight.dtype == torch.bfloat16
+        torch.testing.assert_close(bf16_emb.weight, fp32_emb.weight.to(torch.bfloat16))
+
+
 class TestAttributePatch:
     def test_sets_and_restores_attribute(self):
         from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import AttributePatch
