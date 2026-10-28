@@ -67,7 +67,7 @@ each package is obtained per platform.
      - Prebuilt wheel (x86-64, ARM64)
    * - macOS (Apple Silicon)
      - Prebuilt wheel
-     - Build from source
+     - Prebuilt wheel (ARM64, macOS 15+)
 
 .. note::
     aimet-torch is pure Python (``py310-none-any``), so one wheel installs on
@@ -128,6 +128,12 @@ without needing a version-specific URL.
         .. parsed-literal::
 
             python -m pip install |download_url|\ |version|/aimet_onnx-|version|\ |win_arm64_whl_suffix|
+
+        macOS (Apple Silicon/ARM64), CPU only, requires macOS 15 or later:
+
+        .. parsed-literal::
+
+            python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\ |macos_arm64_whl_suffix|
 
     .. tab-item:: PyTorch
         :sync: torch
@@ -229,4 +235,5 @@ To do so, follow the steps outlined for building the latest AIMET codebase manua
 .. |whl_suffix| replace:: \-cp310-abi3-manylinux_2_34_x86_64.whl
 .. |win_amd64_whl_suffix| replace:: \-cp310-abi3-win_amd64.whl
 .. |win_arm64_whl_suffix| replace:: \-cp310-abi3-win_arm64.whl
+.. |macos_arm64_whl_suffix| replace:: \-cp310-abi3-macosx_15_0_arm64.whl
 .. |download_url| replace:: \https://github.com/qualcomm/aimet/releases/download/

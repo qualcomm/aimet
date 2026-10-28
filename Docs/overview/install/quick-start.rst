@@ -15,9 +15,10 @@ Tested platform
 
 aimet-torch and aimet-onnx have been validated on the following platform:
 
-* 64-bit Intel x86-compatible processor
 * Python 3.10+
-* Ubuntu 22.04 and above, or Windows 10/11 (x86-64, ARM64)
+* Ubuntu 22.04 and above (64-bit Intel x86-compatible processor)
+* Windows 10/11 (x86-64, ARM64)
+* macOS 15 and above (Apple Silicon)
 * For GPU variants:
     * Nvidia GPU card (Compute capability 5.2 or later)
     * Nvidia driver version 455 or later (using the latest driver is recommended; both CUDA and cuDNN are supported)

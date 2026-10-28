@@ -131,6 +131,39 @@ jobs:
       deploy: true
     secrets: inherit
 
+  release_aimet_onnx_macos_to_pypi:
+    if: inputs.push_to_pypi
+    name: "Push AIMET ONNX macOS wheel to PyPI"
+    needs: build_wheels_and_test
+    uses: ./.github/workflows/pypi-release-pipeline.yml
+    with:
+      # build_wheels_and_test already produced and tested this exact wheel.
+      variant-id: onnx-cpu-macos-arm64
+      deploy: true
+    secrets: inherit
+
+  release_aimet_onnx_windows_x64_to_pypi:
+    if: inputs.push_to_pypi
+    name: "Push AIMET ONNX Windows x64 wheel to PyPI"
+    needs: build_wheels_and_test
+    uses: ./.github/workflows/pypi-release-pipeline.yml
+    with:
+      # build_wheels_and_test already produced and tested this exact wheel.
+      variant-id: onnx-cpu-win-x64
+      deploy: true
+    secrets: inherit
+
+  release_aimet_onnx_windows_arm64_to_pypi:
+    if: inputs.push_to_pypi
+    name: "Push AIMET ONNX Windows ARM64 wheel to PyPI"
+    needs: build_wheels_and_test
+    uses: ./.github/workflows/pypi-release-pipeline.yml
+    with:
+      # build_wheels_and_test already produced and tested this exact wheel.
+      variant-id: onnx-cpu-win-arm64
+      deploy: true
+    secrets: inherit
+
   release_to_github:
     if: inputs.push_to_github || inputs.push_docs
     name: "Release AIMET on Github"
@@ -257,7 +290,7 @@ jobs:
 
   notify_release_on_slack:
     name: Announce release on internal channels
-    needs: [ release_aimet_torch_to_pypi, release_aimet_onnx_to_pypi, release_to_github ]
+    needs: [ release_aimet_torch_to_pypi, release_aimet_onnx_to_pypi, release_aimet_onnx_macos_to_pypi, release_aimet_onnx_windows_x64_to_pypi, release_aimet_onnx_windows_arm64_to_pypi, release_to_github ]
     runs-on: ubuntu-latest
     steps:
       - uses: slackapi/slack-github-action@v1.25.0
