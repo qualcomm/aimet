@@ -8071,6 +8071,9 @@ def test_encodings_to_onnx_qdq_unmatched_encoding(tmp_dir):
            encodings came from different exports of the graph
     When: Converted to QDQ
     Then: It raises, since there is nothing to attach the encoding to
+    When: Converted to QDQ with strict=False
+    Then: The unmatched encoding is skipped with a warning, and the rest convert exactly as
+          they would without it
     """
     np.random.seed(0)
     torch.manual_seed(0)
@@ -8078,12 +8081,21 @@ def test_encodings_to_onnx_qdq_unmatched_encoding(tmp_dir):
     sim = QuantizationSimModel(model, config_file="htp_v81")
     sim.compute_encodings([{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}])
     encodings = _export_encodings(sim, tmp_dir, "1.0.0")
+    expected = encodings_to_onnx_qdq(model, copy.deepcopy(encodings))
     encodings["param_encodings"].append(
         dict(encodings["param_encodings"][0], name="onnx::MatMul_does_not_exist")
     )
 
     with pytest.raises(RuntimeError, match="not found in the model"):
         encodings_to_onnx_qdq(model, encodings)
+
+    with patch.object(aimet_onnx.quantsim.logger, "warning") as mock_warning:
+        qdq_model = encodings_to_onnx_qdq(model, encodings, strict=False)
+
+    qdq_model = encodings_to_onnx_qdq(model, encodings, strict=False)
+
+    assert qdq_model == expected
+    assert "onnx::MatMul_does_not_exist" in str(mock_warning.call_args)
 
 
 def test_encodings_to_onnx_qdq_preserves_output_names(tmp_dir):

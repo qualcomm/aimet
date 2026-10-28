@@ -4476,6 +4476,7 @@ def encodings_to_onnx_qdq(
     *,
     prequantize_constants: bool = False,
     force_activation_as: Optional[Literal["unsigned", "signed"]] = "unsigned",
+    strict: bool = True,
 ) -> onnx.ModelProto:
     """
     Convert an ONNX model and its AIMET encodings into an ONNX QDQ model.
@@ -4489,7 +4490,8 @@ def encodings_to_onnx_qdq(
     plain-cast float encodings are omitted with a warning, whether they name a parameter or an
     activation. Scaled float formats such as FP8 do carry a scale, and are emitted as Q/DQ.
 
-    An encoding naming a tensor that is not in the model is an error.
+    An encoding naming a tensor that is not in the model is an error, unless ``strict`` is
+    False.
 
     Args:
         model: ONNX model as a :class:`ModelProto` or :class:`ONNXModel`, or a path to one.
@@ -4501,6 +4503,8 @@ def encodings_to_onnx_qdq(
         force_activation_as: Cast all activation encodings to signed or unsigned, a
             workaround for QNN converter limitations. Pass None to leave them as-is.
             (default: "unsigned")
+        strict: If True, raise on an encoding naming a tensor that is not in the model. If
+            False, skip such encodings with a warning. (default: True)
 
     Returns:
         The equivalent ONNX QDQ model.
@@ -4622,10 +4626,13 @@ def encodings_to_onnx_qdq(
         qdq_node_info["encodings"].append(qdq_encoding)
 
     if unmatched:
-        raise RuntimeError(
+        msg = (
             f"The following encoding names were present in the encodings to load but not "
             f"found in the model: {sorted(unmatched)}"
         )
+        if strict:
+            raise RuntimeError(msg)
+        logger.warning("%s. Skipping them.", msg)
 
     derived_encodings = _derive_data_movement_op_encodings(
         model, dict(zip(qdq_node_info["input_names"], qdq_node_info["encodings"]))
