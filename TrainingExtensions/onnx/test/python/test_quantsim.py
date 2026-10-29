@@ -5,6 +5,7 @@
 from collections import defaultdict
 import contextlib
 import copy
+import io
 import itertools
 import json
 import logging
@@ -2985,6 +2986,103 @@ class TestQuantSim:
                 assert [o.data_type() for o in outputs] == [output_type]
 
     @pytest.mark.cuda
+    def test_bfloat16_model_defaults_to_cuda(self):
+        """
+        Given: A bfloat16 model, and a float32 one
+        When: Build a sim without providers
+        Then: The bfloat16 sim runs on CUDA, which it needs for bfloat16 kernels, and
+              calibrates; the float32 sim keeps the CPU default
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+
+        bf16_sim = QuantizationSimModel(
+            models_for_tests.simple_mlp_model(torch.bfloat16),
+            param_type=aimet_onnx.int8,
+            activation_type=aimet_onnx.int16,
+        )
+        assert bf16_sim.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        bf16_sim.compute_encodings(
+            [{"input": np.random.randn(4, 16).astype(np.float32)}]
+        )
+
+        fp32_sim = QuantizationSimModel(
+            models_for_tests.simple_mlp_model(torch.float32)
+        )
+        assert fp32_sim.providers == ["CPUExecutionProvider"]
+
+    def test_bfloat16_model_without_cuda_warns(self, caplog):
+        """
+        Given: A bfloat16 model, with no CUDA execution provider available
+        When: Build a sim without providers
+        Then: It warns that the CPU execution provider lacks bfloat16 kernels
+        """
+        with (
+            patch.object(
+                ort, "get_available_providers", return_value=["CPUExecutionProvider"]
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            providers = aimet_onnx.quantsim._default_providers(
+                models_for_tests.simple_mlp_model(torch.bfloat16)
+            )
+        assert providers == ["CPUExecutionProvider"]
+        assert "lacks bfloat16 kernels" in caplog.text
+
+    @pytest.mark.cuda
+    def test_observe_bfloat16_activation_dtypes(self):
+        """
+        Given: A bfloat16 model that strict shape inference rejects (a bfloat16
+               ConstantOfShape below opset 20), so the sim falls back to observing
+               activation dtypes by running the model
+        When: Build a sim on CUDA
+        Then: The fallback runs on the sim's providers and reads the bfloat16 activations
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+
+        class _ZerosLikeModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc = torch.nn.Linear(16, 16)
+
+            def forward(self, x):
+                h = self.fc(x.bfloat16())
+                # Exports as a bfloat16 ConstantOfShape
+                return (h + torch.zeros(h.shape[0], 16, dtype=torch.bfloat16)).float()
+
+        buffer = io.BytesIO()
+        torch.onnx.export(
+            _ZerosLikeModel().bfloat16().eval(),
+            torch.randn(4, 16),
+            buffer,
+            input_names=["input"],
+            output_names=["output"],
+            opset_version=17,
+            dynamo=False,
+            dynamic_axes={"input": {0: "batch"}},
+        )
+        model = onnx.load_from_string(buffer.getvalue())
+
+        with patch.object(
+            QuantizationSimModel,
+            "_observe_activation_dtypes",
+            autospec=True,
+            side_effect=QuantizationSimModel._observe_activation_dtypes,
+        ) as observe:
+            sim = QuantizationSimModel(
+                model,
+                param_type=aimet_onnx.int8,
+                activation_type=aimet_onnx.int16,
+                providers=CUDA_PROVIDERS,
+            )
+        assert observe.called
+        assert np.dtype(ml_dtypes.bfloat16) in set(sim.activation_dtypes.values())
+        assert any(
+            sim.qc_quantize_op_dict[name].enabled for name in sim.activation_names
+        )
+
+    @pytest.mark.cuda
     @pytest.mark.parametrize("encoding_version", ["1.0.0", "2.0.0"])
     def test_export_with_bfloat16_inputs_and_outputs(self, tmp_dir, encoding_version):
         """
@@ -4596,6 +4694,27 @@ class TestQuantSim:
         assert (
             sim._get_enabled_quantizer("intermediate")
             is sim.qc_quantize_op_dict["input"]
+        )
+
+    @pytest.mark.parametrize(
+        "elem_type, expected",
+        [
+            (onnx.TensorProto.FLOAT, np.float32),
+            (onnx.TensorProto.FLOAT16, np.float16),
+            (onnx.TensorProto.BFLOAT16, ml_dtypes.bfloat16),
+            (onnx.TensorProto.INT32, np.int32),
+            (onnx.TensorProto.STRING, np.object_),
+        ],
+    )
+    def test_onnx_type_to_np_dtype(self, elem_type, expected):
+        """
+        Given: An ONNX element type, e.g. a Cast's ``to`` attribute
+        When: Map it to a numpy dtype
+        Then: BFLOAT16 maps to bfloat16 on every onnx version, not float32 as
+              ``onnx.helper.tensor_dtype_to_np_dtype`` gives on onnx < 1.19
+        """
+        assert aimet_onnx.quantsim._onnx_type_to_np_dtype(elem_type) == np.dtype(
+            expected
         )
 
     def test_get_enabled_quantizer_stops_at_non_float_cast(self):

@@ -110,6 +110,7 @@ from aimet_onnx.qc_quantize_op import (
 from aimet_onnx.quantsim_config.quantsim_config import QuantSimConfigurator
 from aimet_onnx.utils import (
     _BFLOAT16,
+    _run_session_to_numpy,
     build_session,
     make_dummy_input,
     add_hook_to_get_activation,
@@ -434,7 +435,9 @@ class QuantizationSimModel:
         dummy_input (Dict[str, np.ndarray], optional): Sample input to the model. Only needed for non shape-inferable models with parameterized shapes
         user_onnx_libs (List[str], optional): List of paths to all compiled ONNX custom ops libraries
         providers (List, optional): Onnxruntime execution providers to use when building InferenceSession.
-            If `None`, default provider is "CPUExecutionProvider"
+            If `None`, default provider is "CPUExecutionProvider". For a model with bfloat16
+            tensors, the default is CUDA (if available) then CPU, since ORT's CPU EP lacks many
+            bfloat16 kernels.
         path (str, optional): Directory to save temporary artifacts.
         session_options_kwargs (Dict[str, Any], optional): Attributes to set on the sim's
             ``onnxruntime.SessionOptions`` (e.g. ``{{"intra_op_num_threads": 2}}``). An unknown
@@ -496,7 +499,7 @@ class QuantizationSimModel:
             )
 
         if providers is None:
-            providers = ["CPUExecutionProvider"]
+            providers = _default_providers(model.model)
 
         op_domain = "aimet.customop.cpu"
         for provider in providers:
@@ -998,14 +1001,15 @@ class QuantizationSimModel:
         hooks = []
         for name in activations:
             hooks.append(add_hook_to_get_activation(self.model.model, name))
+        # The sim's providers, not just CPU: ORT's CPU EP lacks many bfloat16 kernels
         sess = OrtInferenceSession(
             self.model.model,
-            ["CPUExecutionProvider"],
+            self.providers,
             session_options=self._ort_session_options,
             path=self._path,
             save_as_external_data=True,
         )
-        outputs = sess.run(None, dummy_input)
+        outputs = _run_session_to_numpy(sess, dummy_input)
 
         activation_dtypes = {}
         for idx, node in enumerate(self.model.graph().output):
@@ -3455,8 +3459,7 @@ class QuantizationSimModel:
             if to_attr is None:
                 return False
 
-            output_type = onnx.helper.tensor_dtype_to_np_dtype(to_attr)
-            return output_type in data_types_to_quantize
+            return _onnx_type_to_np_dtype(to_attr) in data_types_to_quantize
 
         while (
             producer
@@ -3515,8 +3518,7 @@ class QuantizationSimModel:
             if to_attr is None:
                 return False
 
-            output_type = onnx.helper.tensor_dtype_to_np_dtype(to_attr.as_int())
-            return output_type in data_types_to_quantize
+            return _onnx_type_to_np_dtype(to_attr.as_int()) in data_types_to_quantize
 
         while (
             producer is not None
@@ -4390,6 +4392,38 @@ def _num_scales(encoding: Any) -> int:
     return int(np.asarray(scale).size)
 
 
+def _onnx_type_to_np_dtype(elem_type: int) -> Optional[np.dtype]:
+    """
+    numpy dtype of an ONNX TensorProto element type, or None if numpy has none.
+
+    Not ``helper.tensor_dtype_to_np_dtype`` alone: onnx < 1.19 maps BFLOAT16 to float32.
+    """
+    if elem_type == onnx.TensorProto.BFLOAT16:
+        return _BFLOAT16
+    try:
+        return helper.tensor_dtype_to_np_dtype(elem_type)
+    except KeyError:
+        return None
+
+
+def _default_providers(model: onnx.ModelProto) -> List[str]:
+    """
+    Execution providers for a sim built without ``providers``.
+
+    CPU, except for a model with bfloat16 tensors: ORT's CPU EP lacks bfloat16 kernels for
+    most ops (e.g. Gemm, MatMul, Conv), so a bfloat16 sim gets CUDA first when available.
+    """
+    if contains_tensor_type(model, onnx.TensorProto.BFLOAT16):
+        if "CUDAExecutionProvider" in ort.get_available_providers():
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        logger.warning(
+            "The model has bfloat16 tensors but CUDAExecutionProvider is not available. "
+            "ORT's CPU execution provider lacks bfloat16 kernels for many ops, so building "
+            "the sim may fail."
+        )
+    return ["CPUExecutionProvider"]
+
+
 def _tensor_float_type(model: onnx.ModelProto, name: str) -> np.dtype:
     """
     The float dtype of a tensor, used as the dtype of the scale emitted alongside it.
@@ -5094,12 +5128,7 @@ def _ort_type_to_np_dtype(ort_type: str) -> Optional[np.dtype]:
         elem_type = onnx.TensorProto.DataType.Value(match.group(1).upper())
     except ValueError:
         return None
-    if elem_type == onnx.TensorProto.BFLOAT16:
-        return _BFLOAT16
-    try:
-        return helper.tensor_dtype_to_np_dtype(elem_type)
-    except KeyError:
-        return None
+    return _onnx_type_to_np_dtype(elem_type)
 
 
 def _output_device(session: ort.InferenceSession) -> Tuple[str, int]:
