@@ -263,6 +263,51 @@ class TestUtils:
         psnr_eval_fn = utils.make_psnr_eval_fn(fp_session, inputs, output_indices=None)
         assert psnr_eval_fn(fp_session) > 0
 
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+    def test_make_psnr_eval_fn_bfloat16(self, io_dtype):
+        """
+        Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+        When: Build a PSNR callback with the default output indices
+        Then: bfloat16 outputs count as float outputs, and the sim's PSNR is close to that
+              of the equivalent float32 model
+        """
+        if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        rng = np.random.default_rng(0)
+        fp32_inputs = [
+            {"input": rng.standard_normal((4, 16)).astype(np.float32)} for _ in range(2)
+        ]
+
+        def sim_psnr(model, inputs):
+            fp_session = utils.OrtInferenceSession(model, providers)
+            psnr_eval_fn = utils.make_psnr_eval_fn(fp_session, inputs)
+            sim = QuantizationSimModel(
+                model, param_type="int8", activation_type="int16", providers=providers
+            )
+            sim.compute_encodings(inputs)
+            assert psnr_eval_fn(fp_session) == 100.0
+            return psnr_eval_fn(sim.session)
+
+        bf16_inputs = (
+            fp32_inputs
+            if io_dtype == torch.float32
+            else [
+                {"input": item["input"].astype(ml_dtypes.bfloat16)}
+                for item in fp32_inputs
+            ]
+        )
+        fp32_psnr = sim_psnr(
+            models_for_tests.simple_mlp_model(torch.float32), fp32_inputs
+        )
+        bf16_psnr = sim_psnr(
+            models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype),
+            bf16_inputs,
+        )
+        # bfloat16 weights round differently, so the sims differ by a fraction of a dB
+        assert abs(bf16_psnr - fp32_psnr) < 3.0
+
     def test_make_psnr_eval_fn_no_float_outputs(self):
         model = models_for_tests.gather_op_with_int_data_model()
         fp_session = onnxruntime.InferenceSession(model.SerializeToString())

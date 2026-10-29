@@ -750,13 +750,13 @@ def make_psnr_eval_fn(
     NOTE: To run inference through ORT, we need inputs in following format:
      [{input1: sample1, ...}, {input1: sample2, ...}, ...]
 
-     By default, all float32 and float16 outputs are compared and the minimum PSNR
-     is returned.
+     By default, all float32, float16 and bfloat16 outputs are compared and the minimum
+     PSNR is returned. Inputs and outputs may be bfloat16 (``ml_dtypes.bfloat16``).
 
     :param fp_session: ORT inference session for floating-point model
     :param inputs: The model input samples
     :param output_indices: Index or list of indices of output tensors to compare.
-     If omitted or None, uses all float32 and float16 outputs
+     If omitted or None, uses all float32, float16 and bfloat16 outputs
     :return: PSNR callback
     """
     inputs = list(inputs)
@@ -768,7 +768,7 @@ def make_psnr_eval_fn(
         float_output_indices = [
             idx
             for idx, out in enumerate(fp_session.get_outputs())
-            if out.type in {"tensor(float)", "tensor(float16)"}
+            if out.type in {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}
         ]
         if output_indices is _NOT_SPECIFIED and float_output_indices != [0]:
             warnings.warn(
@@ -785,7 +785,7 @@ def make_psnr_eval_fn(
 
         output_indices = float_output_indices
 
-    fp_outputs = [fp_session.run(None, inp) for inp in inputs]
+    fp_outputs = [_run_session_to_numpy(fp_session, inp) for inp in inputs]
 
     def psnr_eval_fn(session: InferenceSession):
         """
@@ -794,7 +794,7 @@ def make_psnr_eval_fn(
         :param session: ORT inference session
         :return: PSNR value
         """
-        sim_outputs = [session.run(None, inp) for inp in inputs]
+        sim_outputs = [_run_session_to_numpy(session, inp) for inp in inputs]
         psnrs = []
 
         for idx in output_indices:

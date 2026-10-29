@@ -4,13 +4,20 @@
 import pytest
 import tempfile
 import warnings
+import ml_dtypes
+import numpy as np
 import onnxruntime
+import torch
 
 from aimet_onnx.common.defs import QuantizationDataType
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx import analyze_per_layer_sensitivity
 from aimet_onnx import int8, int16, float16, int4, qtype
-from aimet_onnx.utils import make_dummy_input, make_psnr_eval_fn
+from aimet_onnx.utils import (
+    OrtInferenceSession,
+    make_dummy_input,
+    make_psnr_eval_fn,
+)
 from aimet_onnx.lite_mp import flip_layers_to_higher_precision
 from .models import models_for_tests
 
@@ -139,6 +146,64 @@ class TestLiteMp:
             flip_layers_to_higher_precision(
                 sim, layer_sensitivity_dict, override_precision=precision
             )
+
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("override_precision", [int16, float16])
+    @pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+    def test_flip_bfloat16_model(self, io_dtype, override_precision):
+        """
+        Given: An int8 sim of a model computing in bfloat16, with float32 or bfloat16 graph
+               inputs/outputs
+        When: Rank its layers with the default PSNR callback and flip half of them to
+              override_precision
+        Then: Every layer with quantizers is ranked, the most sensitive layers' quantizers
+              get the override precision, and the sim's PSNR improves after recalibration
+        """
+        if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        model = models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype)
+        rng = np.random.default_rng(0)
+        np_dtype = np.float32 if io_dtype == torch.float32 else ml_dtypes.bfloat16
+        inputs = [
+            {"input": rng.standard_normal((8, 16)).astype(np_dtype)} for _ in range(2)
+        ]
+
+        psnr_eval_fn = make_psnr_eval_fn(OrtInferenceSession(model, providers), inputs)
+        sim = QuantizationSimModel(
+            model, param_type=int8, activation_type=int8, providers=providers
+        )
+        sim.compute_encodings(inputs)
+        psnr_before = psnr_eval_fn(sim.session)
+
+        layer_sensitivity_dict = analyze_per_layer_sensitivity(
+            sim, eval_fn=psnr_eval_fn
+        )
+        cg_ops = sim.connected_graph.get_all_ops()
+
+        def op_quantizers(layer_name):
+            inputs_q, outputs_q, params_q = sim.get_op_quantizers(cg_ops[layer_name])
+            return [q for q in [*inputs_q, *outputs_q, *params_q.values()] if q.enabled]
+
+        # Only layers with quantizers are ranked, e.g. not the trailing Cast
+        assert set(layer_sensitivity_dict) == {
+            name for name in cg_ops if op_quantizers(name)
+        }
+        flip_layers_to_higher_precision(
+            sim,
+            layer_sensitivity_dict,
+            percent_to_flip=50,
+            override_precision=override_precision,
+        )
+
+        flipped = sorted(layer_sensitivity_dict, key=layer_sensitivity_dict.get)[:2]
+        expected = override_precision.to_legacy_repr()
+        for layer_name in flipped:
+            for quantizer in op_quantizers(layer_name):
+                assert (quantizer.data_type, quantizer.bitwidth) == expected, layer_name
+
+        sim.compute_encodings(inputs)
+        assert psnr_eval_fn(sim.session) > psnr_before + 3
 
 
 def test_multi_output_psnr_eval_fn():

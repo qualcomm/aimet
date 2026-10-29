@@ -3,13 +3,16 @@
 
 """Tests for aimet_onnx.analysis.sensitivity (GenAILab-free, tiny ONNX model)."""
 
+import ml_dtypes
+import numpy as np
 import onnxruntime
 import pytest
+import torch
 
 from aimet_onnx.quantsim import QuantizationSimModel, compute_encodings
 from aimet_onnx import int8, int16
 from aimet_onnx.lite_mp import flip_layers_to_higher_precision
-from aimet_onnx.utils import make_dummy_input, make_psnr_eval_fn
+from aimet_onnx.utils import OrtInferenceSession, make_dummy_input, make_psnr_eval_fn
 from aimet_onnx.analysis import (
     SensitivityMetric,
     make_topk_logit_psnr_metric,
@@ -203,3 +206,35 @@ class TestTopkLogitPsnrMetric:
         assert metric.higher_is_worse is False
         score = metric(sim.session)
         assert isinstance(score, float)
+
+    @pytest.mark.cuda
+    def test_bfloat16_logits(self):
+        """
+        Given: Model computing in bfloat16, with bfloat16 graph inputs/outputs
+        When: Evaluate the top-k logit PSNR metric on its sim
+        Then: It returns a PSNR, close to that of the equivalent float32 model
+        """
+        if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        rng = np.random.default_rng(0)
+        fp32_inputs = [{"input": rng.standard_normal((4, 16)).astype(np.float32)}]
+
+        def score(model, inputs):
+            fp_session = OrtInferenceSession(model, providers)
+            metric = make_topk_logit_psnr_metric(fp_session, inputs, k=4)
+            sim = QuantizationSimModel(
+                model, param_type="int8", activation_type="int16", providers=providers
+            )
+            sim.compute_encodings(inputs)
+            return metric(sim.session)
+
+        fp32_score = score(
+            models_for_tests.simple_mlp_model(torch.float32), fp32_inputs
+        )
+        bf16_score = score(
+            models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=torch.bfloat16),
+            [{"input": fp32_inputs[0]["input"].astype(ml_dtypes.bfloat16)}],
+        )
+        assert isinstance(bf16_score, float)
+        assert abs(bf16_score - fp32_score) < 3.0

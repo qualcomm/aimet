@@ -37,7 +37,7 @@ import onnxruntime as ort
 from aimet_onnx.common.progress import progress_bar  # pylint: disable=import-error
 
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.utils import disable_quantizers
+from aimet_onnx.utils import _run_session_to_numpy, disable_quantizers
 from aimet_onnx.common.utils import AimetLogger, compute_psnr
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
@@ -92,7 +92,8 @@ def make_topk_logit_psnr_metric(
     The FP logits are captured once, up front, from ``fp_session``.
 
     :param fp_session: ORT inference session for the floating-point model.
-    :param inputs: Iterable of input feed dicts (``{input_name: np.ndarray}``).
+    :param inputs: Iterable of input feed dicts (``{input_name: np.ndarray}``). bfloat16
+        inputs are ``ml_dtypes.bfloat16`` arrays.
     :param k: Number of top FP vocabulary indices to compare per position.
     :param logit_output_index: Index of the logits tensor in the model outputs.
     :return: A :class:`SensitivityMetric` wrapping the top-k logit PSNR eval fn.
@@ -117,7 +118,8 @@ def make_topk_logit_psnr_metric(
     fp_slices: List[np.ndarray] = []
     for feed in inputs:
         fp_arr = np.asarray(
-            fp_session.run(None, feed)[logit_output_index], dtype=np.float32
+            _run_session_to_numpy(fp_session, feed)[logit_output_index],
+            dtype=np.float32,
         )
         effective_k = min(k, fp_arr.shape[-1])
         idx = np.argpartition(fp_arr, -effective_k, axis=-1)[..., -effective_k:]
@@ -129,7 +131,8 @@ def make_topk_logit_psnr_metric(
         qt_slices: List[np.ndarray] = []
         for feed, idx in zip(inputs, topk_indices):
             qt_arr = np.asarray(
-                session.run(None, feed)[logit_output_index], dtype=np.float32
+                _run_session_to_numpy(session, feed)[logit_output_index],
+                dtype=np.float32,
             )
             qt_slices.append(_topk_slices(qt_arr, idx).reshape(-1))
         actual = np.concatenate(qt_slices)
