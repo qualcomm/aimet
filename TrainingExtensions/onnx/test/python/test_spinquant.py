@@ -7,8 +7,11 @@ import shutil
 import warnings
 from types import SimpleNamespace
 from typing import Optional
+from unittest.mock import patch
 
+import ml_dtypes
 import numpy as np
+import onnxruntime as ort
 import scipy.linalg
 import pytest
 import torch
@@ -46,11 +49,16 @@ from .models.style_decoders import (
     LayerNormViTEncoder,
     STRUCTURAL_MODEL_TYPE,
 )
-from .utils import add_genai_tests_path
+from .utils import add_genai_tests_path, force_random_weight_init, offline_hf_configs
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.common.hadamard import get_hadamard_matrix
 from aimet_onnx.ir_utils import static_tensor
-from aimet_onnx.utils import ParamUtils, make_dummy_input
+from aimet_onnx.utils import (
+    OrtInferenceSession,
+    ParamUtils,
+    _run_session_to_numpy,
+    make_dummy_input,
+)
 
 from aimet_onnx.llm_topology.topology import analyze_llm_topology
 from aimet_onnx.llm_topology.topology_types import LlmTopology
@@ -78,11 +86,15 @@ from aimet_onnx.spinquant.transforms import (
 )
 from aimet_onnx.spinquant.passes.r1 import (
     _rotate_backbone,
+    _rotate_external_embedding,
     _rotate_merger_linear2,
     _validate_merger_linear2,
 )
+from aimet_onnx.spinquant.transforms import rotation_primitives
 from aimet_onnx.spinquant.transforms.rotation_primitives import (
     hadamard_rotation_matrix,
+    infer_value_dtypes,
+    insert_online_hadamard_node,
 )
 from aimet_onnx.spinquant import apply_spinquant
 from aimet_onnx.spinquant import is_online_rotation_op
@@ -2046,6 +2058,147 @@ class TestApplySpinquant:
         for name, arr_before in init_before.items():
             arr_after = numpy_helper.to_array(ParamUtils.get_param_by_name(model, name))
             assert np.array_equal(arr_before, arr_after)
+
+
+class TestLowPrecisionGraphs:
+    """SpinQuant on float16 / bfloat16 graphs."""
+
+    @pytest.mark.parametrize(
+        "elem_type", [onnx.TensorProto.FLOAT16, onnx.TensorProto.BFLOAT16]
+    )
+    def test_online_hadamard_matches_untyped_tensor_dtype(self, elem_type):
+        """
+        Given: A low-precision graph whose intermediate tensors carry no type, as in
+               a torch export
+        When: Insert an online Hadamard on an intermediate tensor
+        Then: The Hadamard takes the tensor's dtype, inferred from the graph, and the
+              model leaves the tensor's own type unset
+        """
+        x = onnx.helper.make_tensor_value_info("x", elem_type, [1, 4])
+        y = onnx.helper.make_tensor_value_info("y", elem_type, [1, 4])
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Relu", ["x"], ["hidden"], name="relu"),
+                onnx.helper.make_node("Neg", ["hidden"], ["y"], name="neg"),
+            ],
+            "g",
+            [x],
+            [y],
+        )
+        ir_model = onnx_ir.from_proto(onnx.helper.make_model(graph))
+        hidden = onnx_ir.convenience.create_value_mapping(ir_model.graph)["hidden"]
+        assert hidden.dtype is None
+
+        rotated, node = insert_online_hadamard_node(
+            ir_model,
+            target_value=hidden,
+            consumer_nodes=list(hidden.consumers()),
+            H=hadamard_rotation_matrix(4),
+            name_prefix="spinquant_hidden_R1",
+            value_dtypes=infer_value_dtypes(ir_model),
+        )
+
+        expected = onnx_ir.DataType(elem_type)
+        assert node.inputs[1].const_value.dtype == expected
+        assert rotated.dtype == expected
+        assert hidden.dtype is None
+
+    @pytest.mark.parametrize("decoder_cls", _R3_DECODER_PARAMS)
+    def test_r3_infers_dtypes_once(self, decoder_cls):
+        """
+        Given: A decoder with two attention blocks
+        When: Apply R3, which inserts two online Hadamards per block
+        Then: The graph's dtypes are inferred once for the whole pass, not per Hadamard
+        """
+        model = _export_decoder_with_pkv(decoder_cls())
+        with patch.object(
+            rotation_primitives.ShapeInferencePass,
+            "call",
+            autospec=True,
+            side_effect=rotation_primitives.ShapeInferencePass.call,
+        ) as shape_inference:
+            apply_spinquant(model, enable_r1=False, enable_r3=True)
+
+        assert shape_inference.call_count == 1
+
+    def test_rotate_bfloat16_external_embedding(self):
+        """
+        Given: A bfloat16 embedding tensor
+        When: Rotate it with R1
+        Then: It stays bfloat16 and holds W @ R1, rounded to bfloat16
+        """
+        torch.manual_seed(0)
+        embedding = torch.randn(_VOCAB, _H).to(torch.bfloat16)
+        R1 = hadamard_rotation_matrix(_H)
+        expected = (embedding.double() @ torch.from_numpy(R1)).to(torch.bfloat16)
+
+        _rotate_external_embedding(embedding, R1)
+
+        assert embedding.dtype == torch.bfloat16
+        assert torch.equal(embedding, expected)
+
+    @pytest.mark.cuda
+    @pytest.mark.skip_on_windows_arm64("transformers is not available on Windows ARM64")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_r1_r2_r3_preserves_output(
+        self, add_genai_tests_path, offline_hf_configs, dtype
+    ):
+        """
+        Given: A two-layer Qwen3 exported in float16 / bfloat16
+        When: Apply R1, R2 and R3
+        Then: The model runs, and its output matches the unrotated model's up to
+              rounding the rotated weights to the model's dtype
+        """
+        # ORT's CPU EP has too few bfloat16 kernels to run the model
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        from GenAILab.qai_hub_lm.backends.onnx.llm import LLM_ONNX
+        from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
+            get_model_checkpoint_path,
+        )
+
+        model_id = "Qwen/Qwen3-0.6B"
+        torch.manual_seed(0)
+        cache_dir = get_model_checkpoint_path(model_id)
+        try:
+            with force_random_weight_init(vocab_size=1024):
+                entry = LLM_ONNX.instantiate_float_model(
+                    model_id, 32, 16, small_model=True, dtype=dtype
+                )
+        finally:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+        model = entry.backbone
+
+        float_np_dtype = np.float16 if dtype == torch.float16 else ml_dtypes.bfloat16
+        rng = np.random.default_rng(0)
+        inputs = {
+            "input_ids": rng.integers(0, 1000, (1, 16), dtype=np.int32),
+            "attention_mask": np.zeros((1, 1, 16, 32), dtype=float_np_dtype),
+            "position_ids": np.arange(16, dtype=np.int32).reshape(1, 16),
+        }
+        # An empty KV cache: past K is not rotated by R3, so it must be zero to
+        # leave the output unchanged.
+        for i in range(2):
+            for kind in ("key", "value"):
+                inputs[f"past_{kind}_{i}_in"] = np.zeros(
+                    (1, 8, 16, 128), dtype=float_np_dtype
+                )
+
+        def run(model):
+            session = OrtInferenceSession(model, ["CUDAExecutionProvider"])
+            return _run_session_to_numpy(session, inputs)[0].astype(np.float32)
+
+        logits_before = run(model)
+        topology = analyze_llm_topology(model, entry.config.model_type)
+        apply_spinquant(
+            model, enable_r1=True, enable_r2=True, enable_r3=True, topology=topology
+        )
+        logits_after = run(model)
+
+        # Rounding the rotated weights costs ~0.2% of the logit range in float16
+        # and ~2% in bfloat16, which has 3 fewer mantissa bits
+        atol = (0.005 if dtype == torch.float16 else 0.04) * np.abs(logits_before).max()
+        assert np.allclose(logits_after, logits_before, atol=atol)
 
 
 class TestTopologyArgument:

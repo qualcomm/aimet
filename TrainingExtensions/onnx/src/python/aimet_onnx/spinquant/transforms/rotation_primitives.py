@@ -20,11 +20,12 @@ Storage / role conventions:
     Gather        | [vocab, hidden] | W @ R   (axis -1)
 """
 
-from typing import List, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 import re
 
 import numpy as np
 import onnx_ir
+from onnx_ir.passes.common import ShapeInferencePass
 
 from aimet_onnx.common.hadamard import get_hadamard_matrix
 from aimet_onnx.common.utils import AimetLogger
@@ -195,6 +196,7 @@ def insert_online_hadamard_node(
     consumer_nodes: List[onnx_ir.Node],
     H: np.ndarray,
     name_prefix: str,
+    value_dtypes: Optional[Mapping[str, onnx_ir.DataType]] = None,
 ) -> Tuple[onnx_ir.Value, onnx_ir.Node]:
     """Insert ``MatMul(target_value, H)`` between a producer and chosen consumers.
 
@@ -210,6 +212,9 @@ def insert_online_hadamard_node(
     :param H: Hadamard rotation matrix to insert.
     :param name_prefix: Prefix used to name the inserted initializer / node /
         output tensor (e.g. ``"block0_q"``).
+    :param value_dtypes: Dtypes of ``ir_model``'s values from
+        :func:`infer_value_dtypes`, used when the graph has no type for
+        ``target_value``. Without it, an untyped tensor gets a ``FLOAT`` Hadamard.
     :return: ``(rotated_value, new_node)`` — the new (rotated) tensor and the
         inserted ``MatMul`` node, so callers can wire a quantizer relative to it.
     """
@@ -222,7 +227,7 @@ def insert_online_hadamard_node(
                 f"{[inp.name if inp else None for inp in consumer_node.inputs]}"
             )
 
-    dtype = _rotation_dtype(target_value)
+    dtype = _rotation_dtype(target_value, value_dtypes)
     H = H.astype(dtype.numpy())
 
     initializer_name = f"{name_prefix}_hadamard"
@@ -265,15 +270,49 @@ def insert_online_hadamard_node(
     return rotated_value, new_node
 
 
-def _rotation_dtype(target_value: onnx_ir.Value) -> onnx_ir.DataType:
+def infer_value_dtypes(ir_model: onnx_ir.Model) -> Dict[str, onnx_ir.DataType]:
+    """Return ``{value name: dtype}`` for every value of ``ir_model``'s main graph.
+
+    Exports usually carry no types for intermediate tensors, which
+    :func:`insert_online_hadamard_node` needs to build a Hadamard of matching dtype.
+    Inference runs on a copy, so ``ir_model`` is left as is. It costs a full pass over
+    the graph, so a rotation pass calls this once and reuses the result for every
+    Hadamard it inserts: inserting one does not change the dtype of any existing value.
+
+    :param ir_model: Model whose values to type.
+    :return: Dtype of every value inference could type.
+    """
+    inferred_model = ir_model.clone()
+    # Permissive: torch exports can hold ops the type checker rejects (e.g. a
+    # bfloat16 ConstantOfShape below opset 20) yet still type every tensor.
+    ShapeInferencePass(check_type=False, strict_mode=False, data_prop=False)(
+        inferred_model
+    )
+    return {
+        name: value.dtype
+        for name, value in onnx_ir.convenience.create_value_mapping(
+            inferred_model.graph
+        ).items()
+        if value.dtype is not None
+    }
+
+
+def _rotation_dtype(
+    target_value: onnx_ir.Value,
+    value_dtypes: Optional[Mapping[str, onnx_ir.DataType]],
+) -> onnx_ir.DataType:
     """Return the dtype to cast the Hadamard to so it matches ``target_value``.
 
-    Falls back to ``FLOAT`` when the graph carries no type for the tensor — ORT
-    then raises a clear dtype error at session-build time if that guess is wrong,
+    Uses the graph's type for ``target_value``, else its entry in ``value_dtypes``
+    (see :func:`infer_value_dtypes`). Falls back to ``FLOAT`` when neither has one —
+    ORT then raises a clear dtype error at session-build time if that guess is wrong,
     which is preferable to silently casting weights.
     """
     if target_value.dtype is not None:
         return target_value.dtype
+    if value_dtypes is not None and target_value.name in value_dtypes:
+        return value_dtypes[target_value.name]
+
     _logger.debug(
         "Tensor '%s' carries no dtype; assuming FLOAT for the online Hadamard.",
         target_value.name,

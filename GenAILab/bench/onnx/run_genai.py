@@ -52,13 +52,15 @@ def _disable_onnx_quantizers(quantsim):
             op.enabled = True
 
 
-# Recipes validated on bf16 models: float evaluation, calibration, SeqMSE and AdaScale.
+# Recipes validated on bf16 models: float evaluation, calibration, SeqMSE, AdaScale
+# and SpinQuant.
 _BF16_SUPPORTED_RECIPES = {
     "RemoveQuantization",
     "Skip",
     "Calibration",
     "SeqMSE",
     "AdaScale",
+    "SpinQuant",
 }
 
 
@@ -66,8 +68,8 @@ def _check_bf16_supported(config):
     """Fail fast on bf16 configs the ONNX flow cannot run yet.
 
     A bf16 model is wrapped in a regular QuantizationSimModel, but only float
-    evaluation, calibration, SeqMSE and AdaScale are supported so far: other
-    quantization recipes, pre-sim techniques, analysis passes and VLMs are
+    evaluation, calibration, SeqMSE, AdaScale and SpinQuant are supported so far:
+    other quantization recipes, pre-sim techniques, analysis passes and VLMs are
     rejected here rather than failing deep inside AIMET.
     """
     if not torch.cuda.is_available():

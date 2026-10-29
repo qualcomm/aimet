@@ -22,7 +22,7 @@ Reading vs writing layers:
   (o_proj, down_proj, embed_tokens)
 """
 
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 import numpy as np
 import onnx_ir
@@ -44,6 +44,7 @@ from aimet_onnx.spinquant.passes.base import (
 from aimet_onnx.spinquant.transforms import (
     fuse_norm_layers_into_linears,
     hadamard_rotation_matrix,
+    infer_value_dtypes,
     insert_online_hadamard_node,
     rotate_gather_weight,
     rotate_linear_weight,
@@ -119,8 +120,15 @@ def _rotate_backbone(
     rotate_embeddings_online: bool = False,
 ) -> None:
     """Rotate every weight in ``role_map`` with R1 in-place."""
+    # Online Hadamards need the dtype of the tensor they rotate. Typed once, before
+    # any is inserted: inserting one retypes nothing.
+    value_dtypes = (
+        infer_value_dtypes(ir_model)
+        if rotate_embeddings_online or not role_map.lm_head
+        else None
+    )
     if rotate_embeddings_online:
-        _insert_embedding_hadamard_rotation(ir_model, role_map, R1)
+        _insert_embedding_hadamard_rotation(ir_model, role_map, R1, value_dtypes)
     else:
         for node in role_map.embed_tokens:
             rotate_gather_weight(node, R1)
@@ -130,7 +138,7 @@ def _rotate_backbone(
             rotate_linear_weight(node, R1, is_writing=False)
     else:
         # Headless backbone: no lm_head to absorb R1's inverse.
-        _insert_final_hadamard_rotation(ir_model, role_map, R1)
+        _insert_final_hadamard_rotation(ir_model, role_map, R1, value_dtypes)
 
     for block_idx, block in enumerate(role_map.blocks):
         _logger.debug("Applying R1 to block %d.", block_idx)
@@ -145,7 +153,10 @@ def _rotate_backbone(
 
 
 def _insert_embedding_hadamard_rotation(
-    ir_model: onnx_ir.Model, role_map: IrLlmTopology, R1: np.ndarray
+    ir_model: onnx_ir.Model,
+    role_map: IrLlmTopology,
+    R1: np.ndarray,
+    value_dtypes: Mapping[str, onnx_ir.DataType],
 ) -> None:
     """Place an online Hadamard onto the input embeddings."""
     embedding_tensor = _find_embedding_tensor(role_map)
@@ -166,6 +177,7 @@ def _insert_embedding_hadamard_rotation(
         consumer_nodes=consumer_nodes,
         H=R1,
         name_prefix=f"spinquant_{embedding_tensor.name}_R1",
+        value_dtypes=value_dtypes,
     )
 
 
@@ -189,7 +201,10 @@ def _find_embedding_tensor(role_map: IrLlmTopology) -> onnx_ir.Value:
 
 
 def _insert_final_hadamard_rotation(
-    ir_model: onnx_ir.Model, role_map: IrLlmTopology, R1: np.ndarray
+    ir_model: onnx_ir.Model,
+    role_map: IrLlmTopology,
+    R1: np.ndarray,
+    value_dtypes: Mapping[str, onnx_ir.DataType],
 ) -> None:
     """Splice an online Hadamard onto the last residual add to un-rotate the stream.
 
@@ -209,15 +224,16 @@ def _insert_final_hadamard_rotation(
         consumer_nodes=consumer_nodes,
         H=R1.T,
         name_prefix=f"spinquant_{residual_value.name}_R1",
+        value_dtypes=value_dtypes,
     )
 
 
 def _rotate_external_embedding(embedding: torch.Tensor, R1: np.ndarray) -> None:
     """Rotate an external embedding tensor in-place: ``W <- W @ R1``."""
-    original_device = embedding.device
-    W = embedding.detach().cpu().numpy()
-    W_rot = (W @ R1).astype(W.dtype)
-    embedding.data.copy_(torch.from_numpy(W_rot).to(original_device))
+    # Rotate in float64 with torch: .numpy() rejects bfloat16 tensors.
+    W = embedding.detach().cpu().double()
+    W_rot = W @ torch.from_numpy(R1)
+    embedding.data.copy_(W_rot.to(device=embedding.device, dtype=embedding.dtype))
     _logger.info(
         "Backbone: Rotated external embedding weight with R_L (shape %s).", W.shape
     )

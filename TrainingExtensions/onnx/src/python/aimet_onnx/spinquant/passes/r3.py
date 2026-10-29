@@ -56,6 +56,7 @@ from aimet_onnx.spinquant.passes.base import (
     SpinquantContext,
 )
 from aimet_onnx.spinquant.transforms import (
+    infer_value_dtypes,
     insert_online_hadamard_node,
     hadamard_rotation_matrix,
 )
@@ -103,9 +104,11 @@ class R3RotationPass(RotationPass):
             len(anchors),
         )
 
+        # Typed once for every block: the inserted Hadamards retype nothing.
+        value_dtypes = infer_value_dtypes(ir_model)
         for block_idx, anchor in enumerate(anchors):
-            self._rotate_q_side(ir_model, anchor, head_dim, block_idx)
-            self._rotate_k_side(ir_model, anchor, head_dim, block_idx)
+            self._rotate_q_side(ir_model, anchor, head_dim, block_idx, value_dtypes)
+            self._rotate_k_side(ir_model, anchor, head_dim, block_idx, value_dtypes)
             _logger.debug(
                 "R3 cache %s: inserted Q-side rotation before %s at input %s "
                 "and K-side rotation before %s.",
@@ -116,7 +119,7 @@ class R3RotationPass(RotationPass):
             )
 
     @staticmethod
-    def _rotate_q_side(ir_model, anchor, head_dim, block_idx) -> None:
+    def _rotate_q_side(ir_model, anchor, head_dim, block_idx, value_dtypes) -> None:
         """Insert ``... -> R3 -> QK^T`` on the Q path."""
         h_mat = hadamard_rotation_matrix(head_dim)
         for idx, node in enumerate(anchor.qk_matmul_nodes):
@@ -129,10 +132,11 @@ class R3RotationPass(RotationPass):
                 consumer_nodes=[node],
                 H=h_mat,
                 name_prefix=f"{name_prefix}_R3",
+                value_dtypes=value_dtypes,
             )
 
     @staticmethod
-    def _rotate_k_side(ir_model, anchor, head_dim, block_idx) -> None:
+    def _rotate_k_side(ir_model, anchor, head_dim, block_idx, value_dtypes) -> None:
         """Insert ``... -> R3 -> Concat`` on the current-K path.
 
         R3 is spliced on the current-K edge feeding the past-key Concat so K
@@ -145,6 +149,7 @@ class R3RotationPass(RotationPass):
             consumer_nodes=anchor.k_consumers,
             H=h_mat,
             name_prefix=f"spinquant_block{block_idx}_k_R3",
+            value_dtypes=value_dtypes,
         )
 
 
