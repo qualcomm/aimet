@@ -22,6 +22,7 @@ from aimet_onnx.utils import (
     create_input_dict,
     add_hook_to_get_activation,
     OrtInferenceSession,
+    _run_session_to_numpy,
 )
 
 # pylint: disable=no-name-in-module, ungrouped-imports
@@ -139,7 +140,9 @@ class LayerOutput:
         :param input_dict: input name to input tensor map
         :return: layer-output name to layer-output dictionary
         """
-        activation_values = self.session.run(self.activation_names, input_dict)
+        activation_values = _run_session_to_numpy(
+            self.session, input_dict, self.activation_names
+        )
         return dict(zip(self.sanitized_activation_names, activation_values))
 
     @staticmethod

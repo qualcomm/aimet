@@ -8,7 +8,9 @@ import os.path
 import tempfile
 from pathlib import Path
 from typing import Dict
+import ml_dtypes
 import numpy as np
+import pytest
 import torch
 import onnxruntime as ort
 
@@ -19,7 +21,12 @@ from aimet_onnx.batch_norm_fold import fold_all_batch_norms_to_weight
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.quant_analyzer import QuantAnalyzer
 from aimet_onnx import analyze_per_layer_sensitivity
-from aimet_onnx.utils import make_dummy_input
+from aimet_onnx.utils import (
+    OrtInferenceSession,
+    _run_session_to_numpy,
+    make_dummy_input,
+    make_psnr_eval_fn,
+)
 from .models import models_for_tests
 
 
@@ -498,3 +505,44 @@ class TestQuantAnalyzer:
         filename = os.path.join(tmp_path, "sensitivity_analysis_result")
         analyze_per_layer_sensitivity(sim, eval_callback, filename)
         assert os.path.exists(filename + ".html")
+
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+    def test_analyze_bfloat16_model(self, io_dtype):
+        """
+        Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+        When: Run every QuantAnalyzer analysis, including per-layer MSE
+        Then: Every report is written and each layer's MSE loss is finite and positive
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        model = models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype)
+        np_dtype = np.float32 if io_dtype == torch.float32 else ml_dtypes.bfloat16
+        inputs = {"input": np.random.randn(32, 16).astype(np_dtype)}
+        psnr_eval_fn = make_psnr_eval_fn(
+            OrtInferenceSession(model, ["CUDAExecutionProvider"]), [inputs]
+        )
+        quant_analyzer = QuantAnalyzer(
+            model,
+            inputs,
+            CallbackFunc(lambda session, _: _run_session_to_numpy(session, inputs)),
+            CallbackFunc(lambda session, _: psnr_eval_fn(session)),
+        )
+        quant_analyzer.enable_per_layer_mse_loss([inputs], num_batches=1)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            quant_analyzer.analyze(results_dir=tmp_dir)
+
+            for name in (
+                "per_layer_quant_enabled.json",
+                "per_layer_quant_disabled.json",
+                "per_layer_mse_loss.json",
+            ):
+                assert os.path.isfile(Path(tmp_dir, name)), name
+            assert os.path.exists(Path(tmp_dir, "activations_pdf"))
+            assert os.path.exists(Path(tmp_dir, "weights_pdf"))
+            with open(Path(tmp_dir, "per_layer_mse_loss.json")) as f:
+                mse_loss = json.load(f)
+        assert mse_loss
+        for layer, loss in mse_loss.items():
+            assert np.isfinite(loss) and loss > 0, layer

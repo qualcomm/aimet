@@ -759,7 +759,7 @@ class ModuleData:
             # https://github.com/microsoft/onnxruntime/issues/21922
             outputs = [model_input[self._activation_name]]
         else:
-            outputs = sess.run([self._activation_name], model_input)
+            outputs = _run_session_to_numpy(sess, model_input, [self._activation_name])
         remove_activation_hooks(self._model.model, handle)
 
         return outputs

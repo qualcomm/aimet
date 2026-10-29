@@ -172,8 +172,13 @@ class QuantAnalyzer:
             "config_file": config_file,
         }
 
+        # The same providers as the float model: ORT's CPU EP, the sim's default, lacks
+        # many bfloat16 kernels
         sim = QuantizationSimModel(
-            copy.deepcopy(self._onnx_model), dummy_input=self._dummy_input, **kwargs
+            copy.deepcopy(self._onnx_model),
+            dummy_input=self._dummy_input,
+            providers=_get_providers(),
+            **kwargs,
         )
         sim.compute_encodings(
             self._forward_pass_callback.func, self._forward_pass_callback.args
@@ -217,19 +222,9 @@ class QuantAnalyzer:
         :param model: ONNX model to be evaluated.
         :return: Scaler value representing model performance.
         """
-        if "CUDAExecutionProvider" in ort.get_available_providers():
-            providers = [
-                (
-                    "CUDAExecutionProvider",
-                    {"cudnn_conv_algo_search": _cudnn_conv_algo_search},
-                ),
-                "CPUExecutionProvider",
-            ]
-        else:
-            providers = ["CPUExecutionProvider"]
         session = ort.InferenceSession(
             path_or_bytes=model.SerializeToString(),
-            providers=providers,
+            providers=_get_providers(),
         )
         return self._eval_callback(session)
 
@@ -706,15 +701,7 @@ class QuantAnalyzer:
         :return: MSE loss between fp32 and quantized output activations.
         """
 
-        providers = ["CPUExecutionProvider"]
-        if "CUDAExecutionProvider" in ort.get_available_providers():
-            providers = [
-                (
-                    "CUDAExecutionProvider",
-                    {"cudnn_conv_algo_search": _cudnn_conv_algo_search},
-                ),
-                "CPUExecutionProvider",
-            ]
+        providers = _get_providers()
 
         # output activations collector.
         orig_module_collector = ModuleData(fp32_model, fp32_act_name, providers)
@@ -729,9 +716,14 @@ class QuantAnalyzer:
             model_inputs = utils.create_input_dict(fp32_model.model, model_inputs)
             quantized_out_acts = quant_module_collector.collect_activation(model_inputs)
             fp32_out_acts = orig_module_collector.collect_activation(model_inputs)
+            # In float32: numpy reduces bfloat16 in bfloat16, which loses most of a sum
             loss += mean_squared_error(
-                fp32_out_acts[0].reshape(fp32_out_acts[0].shape[0], -1),
-                quantized_out_acts[0].reshape(fp32_out_acts[0].shape[0], -1),
+                fp32_out_acts[0]
+                .reshape(fp32_out_acts[0].shape[0], -1)
+                .astype(np.float32),
+                quantized_out_acts[0]
+                .reshape(fp32_out_acts[0].shape[0], -1)
+                .astype(np.float32),
             )
             total += fp32_out_acts[0].shape[0]
             batch_index += 1
@@ -740,6 +732,19 @@ class QuantAnalyzer:
 
         average_loss = loss / total
         return float(average_loss)
+
+
+def _get_providers() -> List:
+    """CUDA (if available) then CPU execution providers for QuantAnalyzer's sessions."""
+    if "CUDAExecutionProvider" in ort.get_available_providers():
+        return [
+            (
+                "CUDAExecutionProvider",
+                {"cudnn_conv_algo_search": _cudnn_conv_algo_search},
+            ),
+            "CPUExecutionProvider",
+        ]
+    return ["CPUExecutionProvider"]
 
 
 def analyze_per_layer_sensitivity(

@@ -9,11 +9,18 @@ import shutil
 import tempfile
 
 import torch
+import ml_dtypes
 import numpy as np
 import onnxruntime as ort
+import pytest
 from torch.utils.data import Dataset, DataLoader
 
-from aimet_onnx.utils import make_dummy_input, OrtInferenceSession
+from aimet_onnx.utils import (
+    make_dummy_input,
+    OrtInferenceSession,
+    _run_session_to_numpy,
+)
+from .models import models_for_tests
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.layer_output_utils import LayerOutput, LayerOutputUtil
 from .models.models_for_tests import (
@@ -232,3 +239,32 @@ class TestLayerOutputUtil:
 
         assert len(org_op_list) == len(sim_op_list)
         assert set(org_op_list) == set(sim_op_list)
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+def test_generate_bfloat16_layer_outputs(tmp_dir, io_dtype):
+    """
+    Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+    When: Generate its layer outputs
+    Then: Every layer output is saved with its own dtype's size, bfloat16 ones as 2-byte
+          raw values that read back as the model's output
+    """
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        pytest.skip("CUDA EP not available")
+    model = models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype)
+    np_dtype = np.float32 if io_dtype == torch.float32 else ml_dtypes.bfloat16
+    x = np.random.randn(4, 16).astype(np_dtype)
+
+    LayerOutputUtil(model, tmp_dir).generate_layer_outputs(x)
+
+    outputs_dir = os.path.join(tmp_dir, "outputs", "layer_outputs_0")
+    # fc1 output: [4, 32] in bfloat16
+    fc1 = os.path.join(outputs_dir, "_fc1_Gemm_output_0.raw")
+    assert os.path.getsize(fc1) == 4 * 32 * 2
+    # The graph output, in io_dtype, reads back as the model's output
+    (expected,) = _run_session_to_numpy(
+        OrtInferenceSession(model, providers), {"input": x}
+    )
+    saved = np.fromfile(os.path.join(outputs_dir, "output.raw"), np_dtype)
+    assert np.array_equal(saved, expected.ravel())
