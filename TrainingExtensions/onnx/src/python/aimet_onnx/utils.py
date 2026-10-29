@@ -898,6 +898,18 @@ def _numpy_to_torch(array: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(array)
 
 
+def _torch_to_numpy(tensor: torch.Tensor) -> np.ndarray:
+    """
+    ``tensor.numpy()`` that also accepts ``torch.bfloat16`` tensors.
+
+    numpy has no bfloat16, so the raw bits of a bfloat16 tensor are viewed as an
+    ``ml_dtypes.bfloat16`` array instead. ``tensor`` must be on the CPU.
+    """
+    if tensor.dtype == torch.bfloat16:
+        return tensor.view(torch.int16).numpy().view(_BFLOAT16)
+    return tensor.numpy()
+
+
 def map_torch_dtype_to_np(torch_dtype: torch.dtype) -> np.dtype:
     """
     Maps a PyTorch dtype to the corresponding NumPy dtype.

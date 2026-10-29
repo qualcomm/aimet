@@ -24,6 +24,7 @@ from aimet_onnx.peft.config import (
 )
 from aimet_onnx.ir_utils import get_weight_value, static_tensor
 from aimet_onnx.common.utils import AimetLogger
+from aimet_onnx.utils import _torch_to_numpy
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -32,6 +33,7 @@ _WEIGHT_OPS = ("MatMul", "Gemm", "Conv")
 _SAFETENSORS_DTYPES = {
     "F32": onnx_ir.DataType.FLOAT,
     "F16": onnx_ir.DataType.FLOAT16,
+    "BF16": onnx_ir.DataType.BFLOAT16,
     "F64": onnx_ir.DataType.DOUBLE,
 }
 
@@ -244,8 +246,9 @@ def build_branch_weights(
             slices_by_adapter[rank_slice.adapter].append((path, rank_slice))
 
     for name, targets in slices_by_adapter.items():
+        # Read through torch: safetensors' numpy framework can't read bfloat16.
         with safe_open(
-            str(Path(ckpt_dirs[name]) / WEIGHTS_FILE), framework="np"
+            str(Path(ckpt_dirs[name]) / WEIGHTS_FILE), framework="pt"
         ) as ckpt:
             for path, rank_slice in targets:
                 point = points[path]
@@ -260,14 +263,14 @@ def build_branch_weights(
                         raise ValueError(
                             f"Adapter {name!r}: {key} is {ckpt_dtype} but the base weight is "
                             f"{dtype.name}; re-save the adapter in the base model's dtype "
-                            "(e.g. model.half() before save_pretrained)"
+                            "(e.g. model.half() or model.bfloat16() before save_pretrained)"
                         )
                     _write_slice(
                         name,
                         key,
                         which,
                         point.kind,
-                        ckpt.get_tensor(key),
+                        _torch_to_numpy(ckpt.get_tensor(key)),
                         dest,
                         rank_slice,
                     )

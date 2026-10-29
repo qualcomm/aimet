@@ -27,6 +27,7 @@ The torch peft model is the reference: if our ONNX output matches it, the math i
 
 import io
 
+import ml_dtypes
 import numpy as np
 import onnx
 import onnx_ir
@@ -36,6 +37,7 @@ from onnx import numpy_helper
 
 peft = pytest.importorskip("peft")
 safetensors_numpy = pytest.importorskip("safetensors.numpy")
+safetensors_torch = pytest.importorskip("safetensors.torch")
 torch = pytest.importorskip("torch")
 
 from aimet_onnx.experimental.lora import set_lora_bitwidth
@@ -1036,6 +1038,113 @@ class TestLoadLoraAdapters:
         }
         assert any(v for k, v in external.items() if "lora_" not in k)
         assert not any(v for k, v in external.items() if "lora_" in k)
+
+    def test_bfloat16_adapter_on_bfloat16_base(self, tmp_path):
+        """A bf16 adapter loads onto a bf16 base, through both loaders, with the
+        checkpoint's values kept bit-exact; an fp32 adapter still raises.
+
+        safetensors' numpy reader can't read bf16, so this fails if the checkpoint is read
+        through it.
+        """
+        bf16_base = _tiny_proto(_base_model(dtype=torch.bfloat16))
+        ckpt = _save_adapter(
+            tmp_path,
+            "a",
+            r=4,
+            alpha=8,
+            targets=ALL_LORA_TARGETS,
+            seed=1,
+            dtype=torch.bfloat16,
+        )
+        with pytest.raises(ValueError, match="re-save the adapter"):
+            load_lora_adapters(
+                bf16_base,
+                [("f32", _save_adapter(tmp_path, "f32", 4, 8, ALL_LORA_TARGETS, 1))],
+            )
+
+        lora_model = load_lora_adapters(bf16_base, [("a", ckpt)])
+        _, adapter_inputs = load_lora_adapters_as_inputs(bf16_base, [("a", ckpt)])
+
+        lora_inits = {
+            i.name: numpy_helper.to_array(i)
+            for i in lora_model.graph.initializer
+            if "lora_" in i.name
+        }
+        assert lora_inits and all(
+            i.data_type == onnx.TensorProto.BFLOAT16
+            for i in lora_model.graph.initializer
+            if "lora_" in i.name
+        )
+        # The checkpoint's bf16 values land in the graph unchanged, in the graph's layout
+        torch_ckpt = safetensors_torch.load_file(
+            str(ckpt / "adapter_model.safetensors")
+        )
+        key = "base_model.model.layers.0.q_proj.lora_A.weight"
+        expected = torch_ckpt[key].T.contiguous().view(torch.int16).numpy()
+        got = lora_inits["layers.0.q_proj.lora_A.weight"].view(np.int16)
+        assert np.array_equal(got, expected)
+        inputs = adapter_inputs["a"]
+        assert inputs["layers.0.q_proj.lora_A.weight"].dtype == ml_dtypes.bfloat16
+        assert np.array_equal(
+            inputs["layers.0.q_proj.lora_A.weight"].view(np.int16), expected
+        )
+        assert inputs["lora_scale"].dtype == ml_dtypes.bfloat16
+        assert inputs["lora_scale"].astype(np.float32).tolist() == [2.0]
+
+    @pytest.mark.cuda
+    def test_bfloat16_matches_torch_peft(self, tmp_path):
+        """A bf16 LoRA model gives torch peft's bf16 output, up to bf16 rounding.
+
+        Runs on CUDA (ORT has few bf16 CPU kernels) and on a base without the conv: ORT has no
+        bf16 Conv kernel, with or without LoRA.
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        from aimet_onnx.utils import OrtInferenceSession, _run_session_to_numpy
+
+        linear = ["q_proj", "v_proj", "lm_head"]
+
+        class _NoConv(torch.nn.Module):
+            def __init__(self, dtype):
+                super().__init__()
+                tiny = _base_model(dtype=dtype)
+                self.layers, self.lm_head = tiny.layers, tiny.lm_head
+
+            def forward(self, x):
+                for layer in self.layers:
+                    x = layer(x)
+                return self.lm_head(x)
+
+        ckpt = _save_adapter(
+            tmp_path,
+            "a",
+            r=4,
+            alpha=8,
+            targets=linear,
+            seed=1,
+            dtype=torch.bfloat16,
+            base=_NoConv(torch.float32),
+        )
+        base = _export(
+            _NoConv(torch.bfloat16),
+            (torch.zeros(1, 4, 16, dtype=torch.bfloat16),),
+            ["logits"],
+        )
+        x = torch.from_numpy(_sample_inputs()["x"]).bfloat16()
+
+        lora_model = load_lora_adapters(base, [("a", ckpt)])
+        session = OrtInferenceSession(lora_model, ["CUDAExecutionProvider"])
+        (got,) = _run_session_to_numpy(
+            session, {"x": x.view(torch.int16).numpy().view(ml_dtypes.bfloat16)}
+        )
+
+        reference = peft.PeftModel.from_pretrained(_NoConv(torch.bfloat16), ckpt)
+        with torch.no_grad():
+            expected = reference.eval()(x).float().numpy()
+            base_output = _NoConv(torch.bfloat16)(x).float().numpy()
+        # The adapter matters, and it is applied as torch peft does, up to bf16 rounding
+        assert np.abs(expected - base_output).max() > 0.1
+        np.testing.assert_allclose(got.astype(np.float32), expected, atol=0.02)
 
 
 # ---------------------------------------------------------------------------------------------

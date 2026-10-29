@@ -56,6 +56,7 @@ from aimet_onnx.peft.config import (
     read_adapter,
 )
 from aimet_onnx.peft import peft_utils
+from aimet_onnx.utils import _torch_to_numpy
 
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
@@ -166,7 +167,8 @@ def _load_lora_input(
     """
     info = read_adapter(name, adapter)
     inputs = {}
-    with safe_open(str(Path(adapter) / WEIGHTS_FILE), framework="np") as ckpt:
+    # Read through torch: safetensors' numpy framework can't read bfloat16.
+    with safe_open(str(Path(adapter) / WEIGHTS_FILE), framework="pt") as ckpt:
         keys = set(ckpt.keys())
         missing = sorted(set(mapping.values()) - keys)
         if missing:
@@ -183,7 +185,7 @@ def _load_lora_input(
                 sorted(extra)[0],
             )
         for name, key in mapping.items():
-            tensor = ckpt.get_tensor(key)
+            tensor = _torch_to_numpy(ckpt.get_tensor(key))
             # peft linear A [r, d] / B [m, r] -> the graph's [d, r] / [r, m]
             inputs[name] = (
                 np.ascontiguousarray(tensor.T) if tensor.ndim == 2 else tensor
