@@ -40,6 +40,7 @@ from aimet_onnx.amp.quantizer_groups import (
 from aimet_onnx.quantsim import QuantizationSimModel, load_encodings_to_sim
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.defs import DataLoader
+from aimet_onnx.utils import _run_session_to_numpy
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.MixedPrecision)
 
@@ -122,7 +123,7 @@ class EvalCallbackFactory:
 
 
 def _default_forward_fn(sess: ort.InferenceSession, inputs: Any) -> np.ndarray:
-    output_tensors = sess.run(None, {"input": inputs})[0]
+    output_tensors = _run_session_to_numpy(sess, {"input": inputs})[0]
     return output_tensors
 
 
@@ -184,9 +185,12 @@ def _compute_sqnr(orig_tensor: np.ndarray, noisy_tensor: np.ndarray) -> float:
     """
     assert orig_tensor.shape == noisy_tensor.shape
 
+    # numpy reduces float16/bfloat16 in their own precision, which loses the sum of
+    # many squares (a bfloat16 mean of 1e5 squares of N(0, 1) comes out ~0.04)
+    signal = np.asarray(orig_tensor, dtype=np.float32)
+    noise = signal - np.asarray(noisy_tensor, dtype=np.float32)
+
     # SQNR := E[signal**2] / E[noise**2]
-    signal = orig_tensor
-    noise = orig_tensor - noisy_tensor
     sqnr = (np.power(signal, 2).mean()) / ((np.power(noise, 2).mean()) + 0.0001)
     return float(sqnr)
 

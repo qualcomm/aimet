@@ -14,7 +14,7 @@ from aimet_onnx.meta.connectedgraph import ConnectedGraph, WEIGHT_INDEX
 from aimet_onnx.amp.quantizer_groups import QuantizerGroup
 from aimet_onnx import utils
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_onnx.utils import OrtInferenceSession
+from aimet_onnx.utils import OrtInferenceSession, _run_session_to_numpy
 
 
 def get_activation_shapes(sim: QuantizationSimModel) -> Dict[str, Any]:
@@ -29,14 +29,15 @@ def get_activation_shapes(sim: QuantizationSimModel) -> Dict[str, Any]:
     for name in activations:
         hooks.append(utils.add_hook_to_get_activation(sim.model.model, name))
     dummy_input = utils.make_dummy_input(sim.model.model)
+    # The sim's providers, not just CPU: ORT's CPU EP lacks many bfloat16 kernels.
     # pylint: disable=protected-access
     sess = OrtInferenceSession(
         sim.model.model,
-        ["CPUExecutionProvider"],
+        sim.providers,
         sim._ort_session_options,
         save_as_external_data=sim._use_external_data,
     )
-    outputs = sess.run(None, dummy_input)
+    outputs = _run_session_to_numpy(sess, dummy_input)
     activation_shapes = {}
     for idx, node in enumerate(sim.model.graph().output):
         act_name = node.name

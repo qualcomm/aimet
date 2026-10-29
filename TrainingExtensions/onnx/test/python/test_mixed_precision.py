@@ -7,7 +7,10 @@ import pytest
 import itertools
 import json
 import unittest.mock
+import ml_dtypes
 import numpy as np
+import onnxruntime as ort
+import torch
 import os
 import shutil
 
@@ -18,7 +21,7 @@ from aimet_onnx.amp.mixed_precision_algo import (
     EvalCallbackFactory,
 )
 from aimet_onnx.defs import DataLoader
-from aimet_onnx.utils import make_dummy_input
+from aimet_onnx.utils import OrtInferenceSession, make_dummy_input, make_psnr_eval_fn
 from aimet_onnx.mixed_precision import (
     choose_mixed_precision,
     analyze_mixed_precision_sensitivity,
@@ -930,3 +933,78 @@ class TestAMPv2:
         evaluator = EvalCallbackFactory(_Dataset()).sqnr(sim)
         sqnr = evaluator.func(sim.session, None)
         assert sqnr != 0.0
+
+    def test_compute_sqnr_bfloat16(self):
+        """
+        Given: bfloat16 tensors
+        When: Compute their SQNR
+        Then: It matches the SQNR of the same values in float32. Reducing many squares in
+              bfloat16 would lose most of the sum
+        """
+        rng = np.random.default_rng(0)
+        orig = rng.standard_normal(100_000).astype(ml_dtypes.bfloat16)
+        noisy = (orig.astype(np.float32) + 0.01).astype(ml_dtypes.bfloat16)
+
+        sqnr = _compute_sqnr(orig, noisy)
+
+        expected = _compute_sqnr(orig.astype(np.float32), noisy.astype(np.float32))
+        assert np.isclose(sqnr, expected, rtol=1e-4)
+
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+    def test_amp_bfloat16_model(self, io_dtype):
+        """
+        Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+        When: Analyze its mixed precision sensitivity and apply AMP with a PSNR target
+              halfway between those of int8 and int16 activations
+        Then: AMP meets the target with a mix of int8 and int16 activations, and the
+              built-in SQNR eval callback runs on the bfloat16 graph
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        model = models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype)
+        rng = np.random.default_rng(0)
+        np_dtype = np.float32 if io_dtype == torch.float32 else ml_dtypes.bfloat16
+        inputs = [
+            {"input": rng.standard_normal((8, 16)).astype(np_dtype)} for _ in range(2)
+        ]
+        psnr_eval_fn = make_psnr_eval_fn(OrtInferenceSession(model, providers), inputs)
+
+        def sim_psnr(activation_type):
+            sim = QuantizationSimModel(
+                model,
+                param_type=int8,
+                activation_type=activation_type,
+                providers=providers,
+            )
+            sim.compute_encodings(inputs)
+            return sim, psnr_eval_fn(sim.session)
+
+        _, int16_psnr = sim_psnr(int16)
+        sim, int8_psnr = sim_psnr(int8)
+        assert int16_psnr > int8_psnr + 2
+        target = (int8_psnr + int16_psnr) / 2
+
+        mp_results = analyze_mixed_precision_sensitivity(
+            sim, [(int8, int8), (int8, int16)], psnr_eval_fn, inputs
+        )
+        apply_amp(sim, mp_results, lambda session: psnr_eval_fn(session) >= target)
+
+        assert psnr_eval_fn(sim.session) >= target
+        activation_bitwidths = {
+            sim.qc_quantize_op_dict[name].bitwidth
+            for name in sim.activation_names
+            if sim.qc_quantize_op_dict[name].enabled
+        }
+        assert activation_bitwidths == {8, 16}
+
+        class _Dataset(DataLoader):
+            def __init__(self):
+                super().__init__(inputs[0]["input"], 8, 1)
+
+            def __iter__(self):
+                yield inputs[0]["input"]
+
+        sqnr = EvalCallbackFactory(_Dataset()).sqnr(sim).func(sim.session, None)
+        assert np.isfinite(sqnr) and sqnr > 0
