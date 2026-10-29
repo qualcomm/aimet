@@ -22,7 +22,7 @@ from .utils.layer_cache import (
     LayerCacheDescriptor,
     attention_mask_input_names,
     cache_state_names,
-    AttentionType,
+    kv_length_dynamic_axes,
     _resolve_text_config,
 )
 
@@ -216,12 +216,7 @@ class LLM(ABC):
             name: {2: "sequence_length"}
             for name in attention_mask_input_names(layer_cache_descriptors)
         }
-        for desc in layer_cache_descriptors:
-            i = desc.layer_idx
-            if desc.attention_type == AttentionType.LINEAR:
-                continue
-            axes[f"past_key_{i}_in"] = {2: "kv_cache_length"}
-            axes[f"past_value_{i}_in"] = {2: "kv_cache_length"}
+        axes |= kv_length_dynamic_axes(layer_cache_descriptors)
         return axes
 
     @staticmethod
@@ -346,12 +341,7 @@ class VLM(LLM):
             "position_ids": {2: "sequence_length"},
             "logits": {1: "sequence_length"},
         }
-        for desc in layer_cache_descriptors:
-            i = desc.layer_idx
-            if desc.attention_type == AttentionType.LINEAR:
-                continue
-            axes[f"past_key_{i}_in"] = {2: "kv_cache_length"}
-            axes[f"past_value_{i}_in"] = {2: "kv_cache_length"}
+        axes |= kv_length_dynamic_axes(layer_cache_descriptors)
         return axes
 
     @staticmethod

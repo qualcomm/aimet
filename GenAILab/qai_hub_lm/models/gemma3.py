@@ -16,9 +16,9 @@ except ImportError:
 from .base import VLM
 from .generator import Generator, VLM_Generator
 from .utils.layer_cache import (
-    AttentionType,
     LayerCacheDescriptor,
     attention_mask_input_names,
+    kv_length_dynamic_axes,
 )
 
 
@@ -273,12 +273,7 @@ class Gemma3_VLM(VLM):
         }
         for name in attention_mask_input_names(layer_cache_descriptors):
             axes[name] = {2: "sequence_length"}
-        for desc in layer_cache_descriptors:
-            i = desc.layer_idx
-            if desc.attention_type == AttentionType.LINEAR:
-                continue
-            axes[f"past_key_{i}_in"] = {2: "kv_cache_length"}
-            axes[f"past_value_{i}_in"] = {2: "kv_cache_length"}
+        axes |= kv_length_dynamic_axes(layer_cache_descriptors)
         return axes
 
     @classmethod

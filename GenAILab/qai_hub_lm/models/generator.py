@@ -30,7 +30,10 @@ from .utils.attention_mask import (
 
 from .utils.layer_cache import (
     AttentionType,
+    StateKind,
+    all_states,
     build_layer_cache_descriptors,
+    cache_state_names,
     _resolve_text_config,
 )
 from .utils.rope_embedding import RopeEmbedding, RopeEmbeddingProtocol
@@ -62,7 +65,7 @@ def ordered_dict_replace(
 class _FlatListCache:
     """Lightweight cache wrapper for hybrid attention models.
 
-    Stores the flattened state list (2 tensors per layer) and exposes the
+    Stores the flattened state list (see :func:`all_states`) and exposes the
     ``get_seq_length()`` / ``to_legacy_cache()`` interface expected by
     HuggingFace's generation loop, routing ``get_seq_length`` queries to the
     first full-attention layer.
@@ -75,42 +78,99 @@ class _FlatListCache:
     ):
         self._flat = flat_list
         self._descriptors = descriptors
-        # Find the first full-attention layer index for seq_length queries
-        self._full_attn_idx: int | None = None
-        for desc in descriptors:
-            if desc.attention_type == AttentionType.FULL:
-                self._full_attn_idx = desc.layer_idx
-                break
+        # Flat index of the first full-attention layer's key, for seq_length queries
+        self._full_attn_key_idx = _full_attention_key_index(descriptors)
 
     def get_seq_length(self, layer_idx: int = 0) -> int:
         if not self._flat:
             return 0
-        idx = self._full_attn_idx if self._full_attn_idx is not None else 0
-        tensor = self._flat[idx * 2]  # key tensor for this layer
+        idx = self._full_attn_key_idx if self._full_attn_key_idx is not None else 0
+        tensor = self._flat[idx]
         return tensor.shape[-2] if tensor.ndim >= 3 else 0
 
     def to_legacy_cache(self):
-        return [
-            (self._flat[i], self._flat[i + 1]) for i in range(0, len(self._flat), 2)
-        ]
+        """Per-layer state tuples, followed by any model-level states."""
+        legacy, start = [], 0
+        for desc in self._descriptors:
+            end = start + len(desc.states)
+            legacy.append(tuple(self._flat[start:end]))
+            start = end
+        legacy.extend((t,) for t in self._flat[start:])
+        return legacy
 
     def to_flat_list(self) -> list[torch.Tensor]:
-        """Return the flat ``[k0, v0, k1, v1, ...]`` state list."""
+        """Return the flat state list, in :func:`all_states` order."""
         return list(self._flat)
 
 
 def _flatten_past_key_values(past_key_values) -> list[torch.Tensor]:
-    """Flatten a cache into ``[k0, v0, k1, v1, ...]``.
+    """Flatten a cache into its flat state list, in :func:`all_states` order.
 
-    Handles the ``_FlatListCache`` produced for hybrid (linear + full) models —
-    which stores the flat list directly and is not iterable as (key, value)
-    pairs — as well as legacy caches that iterate as ``(key, value)`` tuples.
+    Handles the ``_FlatListCache`` used for any layout other than plain
+    ``(key, value)`` layers, which stores the flat list directly, as well as
+    legacy caches that iterate as ``(key, value)`` tuples.
     """
     if past_key_values is None or past_key_values.get_seq_length() == 0:
         return []
     if isinstance(past_key_values, _FlatListCache):
         return past_key_values.to_flat_list()
     return [t for layer_kv in past_key_values for t in (layer_kv[0], layer_kv[1])]
+
+
+def _full_attention_key_index(descriptors: list) -> int | None:
+    """Flat index of the first full-attention layer's key state, if any."""
+    start = 0
+    for desc in descriptors:
+        if desc.attention_type == AttentionType.FULL:
+            return start
+        start += len(desc.states)
+    return None
+
+
+def _kv_cache_length(past_key_values: list[torch.Tensor], descriptors: list) -> int:
+    """Number of tokens held by the full-attention KV cache in a flat state list."""
+    if not past_key_values:
+        return 0
+    idx = _full_attention_key_index(descriptors)
+    if idx is None:
+        return past_key_values[0].shape[-2]
+    return past_key_values[idx].shape[-2] if idx < len(past_key_values) else 0
+
+
+def _flat_state_specs(
+    num_states: int, layer_cache_descriptors: list | None
+) -> list[tuple]:
+    """``(state, clip_fn)`` per flat state, in :func:`all_states` order.
+
+    Without descriptors every layer is taken to be a full-attention
+    ``(key, value)`` pair.
+    """
+    if not layer_cache_descriptors:
+        from .utils.layer_cache import CacheState
+
+        kv = CacheState("kv", StateKind.APPEND, (), seq_dim=2)
+        return [(kv, lambda length: length)] * num_states
+
+    specs = [
+        (state, desc.clip_length)
+        for desc in layer_cache_descriptors
+        for state in desc.states
+    ]
+    n_layer = len(specs)
+    specs += [
+        (state, lambda length: length)
+        for state in all_states(layer_cache_descriptors)[n_layer:]
+    ]
+    return specs
+
+
+def _empty_like_state(state, like: torch.Tensor, device) -> torch.Tensor:
+    """An empty past state shaped like *like*: zero-length if it grows."""
+    if state.kind == StateKind.REPLACE:
+        return torch.zeros_like(like)
+    shape = list(like.shape)
+    shape[state.seq_dim] = 0
+    return torch.zeros(shape, device=device, dtype=state.dtype or like.dtype)
 
 
 def get_past_keyval_with_shift(
@@ -124,79 +184,38 @@ def get_past_keyval_with_shift(
     """
     Combine past_key_vals with new_key_vals and clip them so there are no more than `length` tokens worth of context.
 
-    When *layer_cache_descriptors* is provided, per-layer behaviour is applied:
-    - ``"full"`` / ``"sliding_window"`` layers: concatenate and clip to *length*.
-    - ``"linear"`` layers: the new state replaces the old state entirely
-      (no concatenation).
+    Both lists hold every carried state in :func:`all_states` order. When
+    *layer_cache_descriptors* is provided, each state follows its own kind:
+    - APPEND states (KV caches, indexer keys, past positions): concatenate
+      along the state's sequence axis and clip to *length*.
+    - REPLACE states (linear attention): the new state replaces the old one.
+    States with a fixed dtype (e.g. integer positions) keep it.
     """
-    ret = []
+    num_states = max(len(past_key_vals), len(new_key_vals))
+    specs = _flat_state_specs(num_states, layer_cache_descriptors)
 
-    def _get_desc(layer_idx):
-        if layer_cache_descriptors and layer_idx < len(layer_cache_descriptors):
-            return layer_cache_descriptors[layer_idx]
-        return None
-
-    # If there are no past_key_vals create some empty ones in the correct shape
+    # If either side is empty, create empty states in the correct shape
     if len(past_key_vals) == 0:
-        for i in range(0, len(new_key_vals), 2):
-            desc = _get_desc(i // 2)
-            if desc and desc.attention_type == AttentionType.LINEAR:
-                past_key_vals.append(torch.zeros_like(new_key_vals[i]))
-                past_key_vals.append(torch.zeros_like(new_key_vals[i + 1]))
-            else:
-                key_shape = new_key_vals[i].shape
-                key_shape = (key_shape[0], key_shape[1], 0, key_shape[3])
-                past_key_vals.append(torch.zeros(key_shape, device=device))
-
-                value_shape = new_key_vals[i + 1].shape
-                value_shape = (value_shape[0], value_shape[1], 0, value_shape[3])
-                past_key_vals.append(torch.zeros(value_shape, device=device))
-
-    # If there are no new_key_vals create some empty ones in the correct shape
+        for (state, _), new in zip(specs, new_key_vals):
+            past_key_vals.append(_empty_like_state(state, new, device))
     if len(new_key_vals) == 0:
-        for i in range(0, len(past_key_vals), 2):
-            desc = _get_desc(i // 2)
-            if desc and desc.attention_type == AttentionType.LINEAR:
-                new_key_vals.append(torch.zeros_like(past_key_vals[i]))
-                new_key_vals.append(torch.zeros_like(past_key_vals[i + 1]))
-            else:
-                key_shape = past_key_vals[i].shape
-                key_shape = (key_shape[0], key_shape[1], 0, key_shape[3])
-                new_key_vals.append(torch.zeros(key_shape, device=device))
+        for (state, _), past in zip(specs, past_key_vals):
+            new_key_vals.append(_empty_like_state(state, past, device))
 
-                value_shape = past_key_vals[i + 1].shape
-                value_shape = (value_shape[0], value_shape[1], 0, value_shape[3])
-                new_key_vals.append(torch.zeros(value_shape, device=device))
-
-    # Combine past and new values per layer
-    for i in range(0, len(past_key_vals), 2):
-        desc = _get_desc(i // 2)
-
-        if desc and desc.attention_type == AttentionType.LINEAR:
+    ret = []
+    for (state, clip_length), past, new in zip(specs, past_key_vals, new_key_vals):
+        state_dtype = state.dtype or dtype
+        if state.kind == StateKind.REPLACE:
             # Linear attention: state is replaced, not concatenated
-            ret.append(new_key_vals[i].to(device=device, dtype=dtype))
-            ret.append(new_key_vals[i + 1].to(device=device, dtype=dtype))
+            ret.append(new.to(device=device, dtype=state_dtype))
             continue
 
-        # Full or sliding_window: concatenate on sequence dimension and clip
-        clip_len = desc.clip_length(length) if desc else length
-
-        key_cache = torch.cat(
-            [past_key_vals[i].to(device), new_key_vals[i].to(device)],
-            dim=2,
-        )
-        key_cache = key_cache[:, :, -clip_len:, :]
-        val_cache = torch.cat(
-            [
-                past_key_vals[i + 1].to(device),
-                new_key_vals[i + 1].to(device),
-            ],
-            dim=2,
-        )
-        val_cache = val_cache[:, :, -clip_len:, :]
-
-        ret.append(key_cache.to(dtype=dtype))
-        ret.append(val_cache.to(dtype=dtype))
+        # Grows along its sequence axis: concatenate and clip
+        clip_len = clip_length(length)
+        combined = torch.cat([past.to(device), new.to(device)], dim=state.seq_dim)
+        keep_last = [slice(None)] * combined.ndim
+        keep_last[state.seq_dim] = slice(-clip_len, None)
+        ret.append(combined[tuple(keep_last)].to(dtype=state_dtype))
     return ret
 
 
@@ -236,11 +255,12 @@ class Generator(GenerationMixin, torch.nn.Module):
        float-valued: 0 = attend, negative = block.
 
     8. **Input order** — ``input_ids`` | ``inputs_embeds``, attention mask(s),
-       ``position_ids``, then per-layer ``past_key_{i}_in`` /
-       ``past_value_{i}_in``.
+       ``position_ids``, then every carried state in :func:`all_states` order:
+       each layer's states (e.g. ``past_key_{i}_in`` / ``past_value_{i}_in``),
+       then any model-level states.
 
-    9. **Output order** — ``logits (B, seq_len, vocab)``, then per-layer
-       KV states matching the input layer order.
+    9. **Output order** — ``logits (B, seq_len, vocab)``, then the carried
+       states in the same order as the inputs.
 
     If the model is a raw HuggingFace ``PreTrainedModel`` (returns Cache
     objects, not flat tensors), wrap it in ``ONNXExportableModuleWithCache``
@@ -525,25 +545,19 @@ class Generator(GenerationMixin, torch.nn.Module):
         )
 
         # Create dummy KV cache / recurrent state per layer
-        dummy_past_key_values = []
-        for desc in layer_cache_descriptors:
-            shape_a, shape_b = desc.dummy_state_shapes(
-                batch_size, context_length, sequence_length
+        dummy_past_key_values = [
+            torch.zeros(
+                state.dummy_shape(batch_size, context_length - sequence_length),
+                device=device,
+                dtype=state.dtype or torch.float32,
             )
-            dummy_past_key_values.append(torch.zeros(shape_a, device=device))
-            dummy_past_key_values.append(torch.zeros(shape_b, device=device))
+            for state in all_states(layer_cache_descriptors)
+        ]
 
         # Determine current KV cache length (skip linear attention, sliding window attention layers)
-        current_key_value_length = 0
-        if past_key_values and len(past_key_values) > 0:
-            for desc in layer_cache_descriptors:
-                if desc.attention_type == AttentionType.FULL:
-                    state_idx = desc.layer_idx * 2
-                    if state_idx < len(past_key_values):
-                        current_key_value_length = past_key_values[state_idx].shape[-2]
-                    break
-            else:
-                current_key_value_length = past_key_values[0].shape[-2]
+        current_key_value_length = _kv_cache_length(
+            past_key_values, layer_cache_descriptors
+        )
         key_value_padding_length = (
             context_length - sequence_length
         ) - current_key_value_length
@@ -634,14 +648,10 @@ class Generator(GenerationMixin, torch.nn.Module):
         else:
             prepared["attention_mask"] = cm_attention_mask.to(dtype=model.dtype)
         prepared["position_ids"] = position_ids
-        for i, desc in enumerate(layer_cache_descriptors):
-            li = desc.layer_idx
-            if desc.attention_type == AttentionType.LINEAR:
-                prepared[f"conv_state_{li}_in"] = padded_past_key_values[i * 2]
-                prepared[f"recurrent_state_{li}_in"] = padded_past_key_values[i * 2 + 1]
-            else:
-                prepared[f"past_key_{li}_in"] = padded_past_key_values[i * 2]
-                prepared[f"past_value_{li}_in"] = padded_past_key_values[i * 2 + 1]
+        for name, state in zip(
+            cache_state_names(layer_cache_descriptors, "in"), padded_past_key_values
+        ):
+            prepared[name] = state
 
         for k, v in kwargs.items():
             if isinstance(v, torch.Tensor):
@@ -653,14 +663,7 @@ class Generator(GenerationMixin, torch.nn.Module):
     def _output_names_from_descriptors(
         layer_cache_descriptors: list,
     ) -> list[str]:
-        names = ["logits"]
-        for desc in layer_cache_descriptors:
-            i = desc.layer_idx
-            if desc.attention_type == AttentionType.LINEAR:
-                names += [f"conv_state_{i}_out", f"recurrent_state_{i}_out"]
-            else:
-                names += [f"past_key_{i}_out", f"past_value_{i}_out"]
-        return names
+        return ["logits"] + cache_state_names(layer_cache_descriptors, "out")
 
     def parse_model_outputs(
         self,
@@ -706,15 +709,10 @@ class Generator(GenerationMixin, torch.nn.Module):
         # shift global KV cache, concatenate local KV cache
         # For linear attention layers, the state is simply replaced.
         current_key_value_length = 0
-        for desc in self.layer_cache_descriptors:
-            if (
-                desc.attention_type == AttentionType.FULL
-                and global_outputs["past_key_values"]
-            ):
-                current_key_value_length = global_outputs["past_key_values"][
-                    desc.layer_idx * 2
-                ].shape[-2]
-                break
+        if _full_attention_key_index(self.layer_cache_descriptors) is not None:
+            current_key_value_length = _kv_cache_length(
+                global_outputs["past_key_values"], self.layer_cache_descriptors
+            )
 
         global_outputs["past_key_values"] = get_past_keyval_with_shift(
             past_key_vals=global_outputs["past_key_values"],
@@ -744,11 +742,13 @@ class Generator(GenerationMixin, torch.nn.Module):
         # generation loop.  For hybrid models (linear + full attention) we use
         # a lightweight wrapper so that ``get_seq_length()`` queries only the
         # full-attention layers.
-        has_linear = any(
-            d.attention_type == AttentionType.LINEAR
-            for d in self.layer_cache_descriptors
-        )
-        if has_linear:
+        # Only plain (key, value) layers fit a DynamicCache; anything else
+        # (linear state, indexer keys, model-level states) stays flat.
+        descriptors = self.layer_cache_descriptors
+        kv_only = not any(
+            d.attention_type == AttentionType.LINEAR for d in descriptors
+        ) and len(all_states(descriptors)) == 2 * len(descriptors)
+        if not kv_only:
             return _FlatListCache(past_key_values_list, self.layer_cache_descriptors)
         past_key_values = DynamicCache()
         keys = past_key_values_list[::2]

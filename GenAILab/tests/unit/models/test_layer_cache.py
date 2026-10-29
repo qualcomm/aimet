@@ -6,12 +6,18 @@
 from dataclasses import dataclass
 
 import pytest
+import torch
 
 from GenAILab.qai_hub_lm.models.utils.layer_cache import (
+    PAST_POSITION_IDS,
     AttentionType,
     LayerCacheDescriptor,
+    StateKind,
     _resolve_text_config,
+    all_states,
     build_layer_cache_descriptors,
+    cache_state_names,
+    kv_length_dynamic_axes,
 )
 
 
@@ -307,3 +313,81 @@ class TestResolveTextConfig:
 
         cfg = Cfg(text_config={"num_hidden_layers": 8})
         assert _resolve_text_config(cfg) is cfg
+
+
+class TestQwen4ExpStates:
+    """QSA layers carry indexer keys beside K/V, and the model carries past positions."""
+
+    @staticmethod
+    def _cfg(**overrides):
+        @dataclass
+        class Cfg:
+            num_hidden_layers: int = 2
+            num_attention_heads: int = 2
+            num_key_value_heads: int = 1
+            hidden_size: int = 32
+            head_dim: int = 16
+            layer_types: list = None
+            linear_num_key_heads: int = 2
+            linear_num_value_heads: int = 4
+            linear_key_head_dim: int = 8
+            linear_value_head_dim: int = 8
+            linear_conv_kernel_dim: int = 4
+            indexer_head_dim: int = 12
+            ple_layer_ids: list = None
+
+        return Cfg(
+            layer_types=["linear_attention", "qwen_sparse_attention"], **overrides
+        )
+
+    def test_qsa_layer_is_full_attention_with_indexer_keys(self):
+        linear, qsa = build_layer_cache_descriptors(self._cfg())
+        assert qsa.attention_type == AttentionType.FULL
+        assert qsa.indexer_head_dim == 12
+        assert linear.indexer_head_dim is None
+        assert [s.name for s in qsa.states] == [
+            "past_key_1",
+            "past_value_1",
+            "past_indexer_key_1",
+        ]
+        assert qsa.states[2].seq_dim == 1
+
+    def test_state_names_and_dummy_shapes(self):
+        descs = build_layer_cache_descriptors(self._cfg())
+        assert cache_state_names(descs, "in")[-2:] == [
+            "past_indexer_key_1_in",
+            f"{PAST_POSITION_IDS}_in",
+        ]
+        assert descs[1].dummy_state_shapes(2, 32, 8) == (
+            (2, 1, 24, 16),
+            (2, 1, 24, 16),
+            (2, 24, 12),
+        )
+        (positions,) = [s for s in all_states(descs) if s.name == PAST_POSITION_IDS]
+        assert positions.kind == StateKind.APPEND
+        assert positions.dtype is torch.int64
+        assert positions.dummy_shape(2, 24) == (2, 3, 24)
+
+    def test_every_growing_input_is_dynamic(self):
+        axes = kv_length_dynamic_axes(build_layer_cache_descriptors(self._cfg()))
+        assert axes == {
+            "past_key_1_in": {2: "kv_cache_length"},
+            "past_value_1_in": {2: "kv_cache_length"},
+            "past_indexer_key_1_in": {1: "kv_cache_length"},
+            f"{PAST_POSITION_IDS}_in": {2: "kv_cache_length"},
+        }
+
+    def test_models_without_qsa_are_unchanged(self):
+        cfg = self._cfg()
+        cfg.layer_types = ["linear_attention", "full_attention"]
+        descs = build_layer_cache_descriptors(cfg)
+        assert cache_state_names(descs, "in") == [
+            "conv_state_0_in",
+            "recurrent_state_0_in",
+            "past_key_1_in",
+            "past_value_1_in",
+        ]
+
+    def test_ple_is_rejected(self):
+        with pytest.raises(NotImplementedError, match="ple_layer_ids"):
+            build_layer_cache_descriptors(self._cfg(ple_layer_ids=[1]))

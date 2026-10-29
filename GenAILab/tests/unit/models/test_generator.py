@@ -1056,3 +1056,76 @@ class TestSequenceLengthParity:
             out_list = gen_list(input_ids=input_ids)
 
         torch.testing.assert_close(out_int.logits, out_list.logits)
+
+
+# ---------------------------------------------------------------------------
+# get_past_keyval_with_shift / _FlatListCache — variable states per layer
+# ---------------------------------------------------------------------------
+
+
+class TestVariableStatesPerLayer:
+    """Qwen4-Exp: QSA layers carry (key, value, indexer key) and the model carries
+    int64 past positions, so the flat list is no longer two states per layer."""
+
+    @staticmethod
+    def _descs():
+        return [
+            LayerCacheDescriptor(
+                layer_idx=0,
+                attention_type=AttentionType.LINEAR,
+                num_kv_heads=1,
+                head_dim=16,
+                conv_dim=64,
+                conv_kernel_size=4,
+                linear_num_v_heads=4,
+                linear_head_k_dim=8,
+                linear_head_v_dim=8,
+            ),
+            LayerCacheDescriptor(
+                layer_idx=1,
+                attention_type=AttentionType.FULL,
+                num_kv_heads=1,
+                head_dim=16,
+                indexer_head_dim=12,
+            ),
+        ]
+
+    @staticmethod
+    def _states(kv_len, fill=0.0):
+        return [
+            torch.full((1, 64, 4), fill),
+            torch.full((1, 4, 8, 8), fill),
+            torch.full((1, 1, kv_len, 16), fill),
+            torch.full((1, 1, kv_len, 16), fill),
+            torch.full((1, kv_len, 12), fill),
+            torch.arange(kv_len).expand(1, 3, kv_len).clone(),
+        ]
+
+    def test_each_state_follows_its_kind(self):
+        past, new = self._states(5, 1.0), self._states(3, 2.0)
+        result = get_past_keyval_with_shift(
+            past, new, length=6, layer_cache_descriptors=self._descs()
+        )
+        assert torch.equal(result[0], new[0])  # linear state replaced
+        assert torch.equal(result[1], new[1])
+        assert result[2].shape == (1, 1, 6, 16)  # 5 + 3 clipped to 6
+        assert result[4].shape == (1, 6, 12)  # indexer keys grow along dim 1
+        assert result[4][0, :, 0].tolist() == [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
+        # Positions stay integer and grow along dim 2
+        assert result[5].dtype == torch.int64
+        assert result[5][0, 0].tolist() == [2, 3, 4, 0, 1, 2]
+
+    def test_empty_past(self):
+        new = self._states(3, 2.0)
+        result = get_past_keyval_with_shift(
+            [], new, length=8, layer_cache_descriptors=self._descs()
+        )
+        for got, expected in zip(result, new):
+            assert torch.equal(got, expected.to(got.dtype))
+        assert result[5].dtype == torch.int64
+
+    def test_flat_list_cache(self):
+        cache = _FlatListCache(self._states(7), self._descs())
+        assert cache.get_seq_length() == 7
+        legacy = cache.to_legacy_cache()
+        assert [len(layer) for layer in legacy] == [2, 3, 1]
