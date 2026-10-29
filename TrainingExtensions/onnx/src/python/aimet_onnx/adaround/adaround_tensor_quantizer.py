@@ -45,6 +45,12 @@ class AdaroundTensorQuantizer:  # pylint: disable=too-many-instance-attributes
             "Encoding needs to be set before Adaround the weight tensor."
         )
 
+        # bfloat16 can't hold the encoding's delta, or tensor / delta, exactly, which would
+        # put the result off the encoding's grid. Compute in float32 and cast back.
+        output_dtype = tensor.dtype
+        if output_dtype == torch.bfloat16:
+            tensor = tensor.float()
+
         self.broadcast_offset_delta(tensor)
 
         # alpha is the "V" parameter in Equation 2 of the Systems HLD which is defined as a FP32 tensor of the
@@ -82,7 +88,7 @@ class AdaroundTensorQuantizer:  # pylint: disable=too-many-instance-attributes
             tensor_quant + self.broadcasted_offset
         ) * self.broadcasted_delta
 
-        return tensor_dequant
+        return tensor_dequant.to(output_dtype)
 
     def broadcast_offset_delta(self, tensor: torch.Tensor):
         """
@@ -115,6 +121,8 @@ class AdaroundTensorQuantizer:  # pylint: disable=too-many-instance-attributes
         Initializes alpha parameter, same shape as the weight tensor
         :param tensor: The weight tensor to be ada rounded
         """
+        if tensor.dtype == torch.bfloat16:
+            tensor = tensor.float()
         tensor_floor = torch.floor(tensor / self.broadcasted_delta)
 
         tensor = (tensor / self.broadcasted_delta) - tensor_floor

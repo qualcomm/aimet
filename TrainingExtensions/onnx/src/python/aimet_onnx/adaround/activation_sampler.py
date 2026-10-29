@@ -18,6 +18,7 @@ from aimet_onnx.utils import (
     remove_activation_hooks,
     create_input_dict,
     OrtInferenceSession,
+    _run_session_to_numpy,
 )
 
 # pylint: disable=no-name-in-module, ungrouped-imports
@@ -132,7 +133,9 @@ class ActivationSampler:
             # https://github.com/microsoft/onnxruntime/issues/21922
             act_output = model_inputs[activation_name]
         else:
-            act_output = session.run([activation_name], model_inputs)[0]
+            act_output = _run_session_to_numpy(
+                session, model_inputs, [activation_name]
+            )[0]
         return act_output
 
     def sample_and_place_all_acts_on_cpu(self, dataset) -> Tuple:

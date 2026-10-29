@@ -7,7 +7,9 @@
 import copy
 from unittest.mock import patch
 
+import ml_dtypes
 import numpy as np
+import onnxruntime as ort
 import torch
 import pytest
 from onnx import numpy_helper
@@ -16,6 +18,7 @@ import onnx
 import aimet_onnx
 from aimet_onnx import apply_adaround, QuantizationSimModel
 from aimet_onnx.adaround.utils import AdaroundSupportedModules, ModelData
+from aimet_onnx.common.onnx._utils import to_array
 from aimet_onnx.utils import make_dummy_input, ParamUtils
 from .models import models_for_tests
 from .models.models_for_tests import (
@@ -387,6 +390,82 @@ class TestAdaround:
         conv2_weight = sim.connected_graph.ordered_ops[1].inputs[1].name
         assert sim.qc_quantize_op_dict[conv1_weight].is_encoding_frozen()
         assert sim.qc_quantize_op_dict[conv2_weight].is_encoding_frozen()
+
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("io_dtype", [torch.float32, torch.bfloat16])
+    def test_adaround_bfloat16_model(self, io_dtype):
+        """
+        Given: Model computing in bfloat16, with float32 or bfloat16 graph inputs/outputs
+        When: Apply AdaRound
+        Then: Every weight stays bfloat16, its encoding is frozen, and its rounding
+              decisions agree with those AdaRound makes on the same weights in float32
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        rng = np.random.default_rng(0)
+        fp32_inputs = [
+            {"input": rng.standard_normal((64, 16)).astype(np.float32)}
+            for _ in range(4)
+        ]
+        weight_names = ("fc1.weight", "fc2.weight")
+
+        def adaround(model, inputs):
+            sim = QuantizationSimModel(
+                model, param_type="int4", activation_type="int16", providers=providers
+            )
+            weights = {
+                init.name: to_array(init).astype(np.float64)
+                for init in sim.model.model.graph.initializer
+            }
+            np.random.seed(0)
+            torch.manual_seed(0)
+            apply_adaround(sim, inputs, num_iterations=1000)
+            return sim, weights
+
+        # Round the float32 model's weights to bfloat16 so both models start equal
+        fp32_model = models_for_tests.simple_mlp_model(torch.float32)
+        for init in fp32_model.graph.initializer:
+            rounded = to_array(init).astype(ml_dtypes.bfloat16).astype(np.float32)
+            init.CopyFrom(numpy_helper.from_array(rounded, init.name))
+        bf16_inputs = (
+            fp32_inputs
+            if io_dtype == torch.float32
+            else [
+                {"input": item["input"].astype(ml_dtypes.bfloat16)}
+                for item in fp32_inputs
+            ]
+        )
+        fp32_sim, _ = adaround(fp32_model, fp32_inputs)
+        bf16_sim, original = adaround(
+            models_for_tests.simple_mlp_model(torch.bfloat16, io_dtype=io_dtype),
+            bf16_inputs,
+        )
+
+        def rounded_up(sim, name):
+            """Whether the sim's weight quantizer rounds each weight up."""
+            init = ParamUtils.get_param_by_name(sim.model.model, name)
+            delta = np.array(
+                [e.delta for e in sim.qc_quantize_op_dict[name].get_encodings()]
+            )[:, None]
+            steps = to_array(init).astype(np.float64) / delta
+            return np.round(steps) > np.floor(original[name] / delta)
+
+        for name in weight_names:
+            init = ParamUtils.get_param_by_name(bf16_sim.model.model, name)
+            assert init.data_type == onnx.TensorProto.BFLOAT16, name
+            assert bf16_sim.qc_quantize_op_dict[name].is_encoding_frozen(), name
+            agreement = np.mean(
+                rounded_up(bf16_sim, name) == rounded_up(fp32_sim, name)
+            )
+            # bfloat16 activations shift a few borderline decisions
+            assert agreement > 0.98, (name, agreement)
+
+        """
+        When: Calibrate activations after AdaRound
+        Then: The sim runs end-to-end on bfloat16 inputs
+        """
+        bf16_sim.compute_encodings(bf16_inputs)
 
 
 def dataloader(input_shape: tuple, batch_size=2):

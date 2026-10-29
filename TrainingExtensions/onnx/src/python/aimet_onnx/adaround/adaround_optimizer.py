@@ -25,7 +25,12 @@ from aimet_onnx.adaround.utils import (
     read_attributes_for_op,
     apply_activation_fn,
 )
-from aimet_onnx.utils import create_input_dict, get_torch_device
+from aimet_onnx.utils import (
+    create_input_dict,
+    get_torch_device,
+    _numpy_to_torch,
+    _torch_to_numpy,
+)
 from aimet_onnx.adaround.adaround_loss import AdaroundLoss
 from aimet_onnx.adaround.adaround_tensor_quantizer import AdaroundTensorQuantizer
 
@@ -79,12 +84,15 @@ class AdaroundOptimizer:
             module.params["weight"].name
         ]
         torch_device = get_torch_device(quant_model.session)
-        weights = torch.from_numpy(to_array(module.params["weight"].tensor)).to(
+        weights = _numpy_to_torch(to_array(module.params["weight"].tensor)).to(
             torch_device
         )
         enable_grad(weights)
 
-        adaround_quantizer.broadcast_offset_delta(weights)
+        # bfloat16 weights get a float32 delta/offset (see adaround_weights)
+        adaround_quantizer.broadcast_offset_delta(
+            weights.float() if weights.dtype == torch.bfloat16 else weights
+        )
         adaround_quantizer.initialize_alpha(weights)
 
         assert adaround_quantizer.alpha is not None, (
@@ -114,8 +122,8 @@ class AdaroundOptimizer:
             return
 
         inp_data_torch, out_data_torch = (
-            torch.from_numpy(inp_data[0]),
-            torch.from_numpy(out_data[0]),
+            _numpy_to_torch(inp_data[0]),
+            _numpy_to_torch(out_data[0]),
         )
         use_cache_acts_data = cls._can_cache_acts_data(
             len(cached_dataset),
@@ -130,10 +138,10 @@ class AdaroundOptimizer:
                 act_sampler.sample_and_place_all_acts_on_cpu(cached_dataset)
             )
             all_inp_data = [
-                torch.from_numpy(inp_data_np) for inp_data_np in all_inp_data_np
+                _numpy_to_torch(inp_data_np) for inp_data_np in all_inp_data_np
             ]
             all_orig_out_data = [
-                torch.from_numpy(orig_out_data_np)
+                _numpy_to_torch(orig_out_data_np)
                 for orig_out_data_np in all_orig_out_data_np
             ]
 
@@ -162,10 +170,10 @@ class AdaroundOptimizer:
                     create_input_dict(quant_model.model.model, model_inputs)
                 )
                 inp_data, orig_out_data = (
-                    torch.from_numpy(inp_data[iteration % len(inp_data)]).to(
+                    _numpy_to_torch(inp_data[iteration % len(inp_data)]).to(
                         torch_device
                     ),
-                    torch.from_numpy(orig_out_data[iteration % len(inp_data)]).to(
+                    _numpy_to_torch(orig_out_data[iteration % len(inp_data)]).to(
                         torch_device
                     ),
                 )
@@ -203,7 +211,7 @@ class AdaroundOptimizer:
                 )
 
         adarounded_weights = adaround_quantizer.adaround_weights(weights, True)
-        weights = adarounded_weights.detach().cpu().numpy().tobytes()
+        weights = _torch_to_numpy(adarounded_weights.detach().cpu()).tobytes()
         weight_name = module.params["weight"].name
         update_sim_weight(quant_model.model, weights, weight_name)
         act_sampler.restore_graph()
@@ -258,9 +266,9 @@ class AdaroundOptimizer:
                     )
             bias = None
             if "bias" in quant_module.params:
-                bias = torch.from_numpy(
-                    to_array(quant_module.params["bias"].tensor)
-                ).to(device)
+                bias = _numpy_to_torch(to_array(quant_module.params["bias"].tensor)).to(
+                    device
+                )
             out_data = functional.conv2d(
                 inp_data,
                 adarounded_weights,
@@ -279,9 +287,9 @@ class AdaroundOptimizer:
             torch_padding = [-onnx_padding[i] for i in (1, 3, 0, 2)]
             bias = None
             if "bias" in quant_module.params:
-                bias = torch.from_numpy(
-                    to_array(quant_module.params["bias"].tensor)
-                ).to(device)
+                bias = _numpy_to_torch(to_array(quant_module.params["bias"].tensor)).to(
+                    device
+                )
             out_data = functional.conv_transpose2d(
                 inp_data,
                 adarounded_weights,
@@ -297,9 +305,9 @@ class AdaroundOptimizer:
                 adarounded_weights = adarounded_weights.t()
             bias = None
             if "bias" in quant_module.params:
-                bias = torch.from_numpy(
-                    to_array(quant_module.params["bias"].tensor)
-                ).to(device)
+                bias = _numpy_to_torch(to_array(quant_module.params["bias"].tensor)).to(
+                    device
+                )
             out_data = functional.linear(inp_data, adarounded_weights, bias=bias)
         elif quant_module.type in ["MatMul"]:
             out_data = torch.matmul(inp_data, adarounded_weights)

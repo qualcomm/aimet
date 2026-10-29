@@ -883,13 +883,17 @@ def _onnx_element_type(np_dtype: np.dtype) -> Union[int, np.dtype]:
 
 
 def _run_session_to_numpy(
-    session: InferenceSession, inputs: Dict[str, np.ndarray]
+    session: InferenceSession,
+    inputs: Dict[str, np.ndarray],
+    output_names: Optional[List[str]] = None,
 ) -> List[np.ndarray]:
     """
-    ``session.run(None, inputs)`` that also accepts and returns bfloat16 arrays.
+    ``session.run(output_names, inputs)`` that also accepts and returns bfloat16 arrays.
 
     ``InferenceSession.run`` cannot convert bfloat16 tensors to or from numpy, so they are
     passed as OrtValues and read back through DLPack as ``ml_dtypes.bfloat16`` arrays.
+
+    :param output_names: Outputs to return, in this order. All outputs if None.
     """
     ort_inputs = {
         name: OrtValue.ortvalue_from_numpy_with_onnx_type(
@@ -900,7 +904,7 @@ def _run_session_to_numpy(
         for name, value in inputs.items()
     }
     outputs = []
-    for output in session.run_with_ort_values(None, ort_inputs):
+    for output in session.run_with_ort_values(output_names, ort_inputs):
         if output.data_type() == "tensor(bfloat16)":
             bits = torch.from_dlpack(output._ortvalue).view(torch.int16)  # pylint: disable=protected-access
             outputs.append(bits.cpu().numpy().view(_BFLOAT16))
