@@ -11,7 +11,7 @@ Release notes
 
 * New Features
     * ONNX
-        * Support bfloat16 graphs in ``QuantizationSimModel``, for calibration, SeqMSE, and AdaScale (`ff4f611`_, `901c4cf`_, `76e0b47`_, `28ace30`_, `36190d4`_, `bea0d4e`_, `fee0d31`_)
+        * Support bfloat16 graphs in ``QuantizationSimModel``, including calibration, SeqMSE, AdaScale, AdaRound, AMP, cross-layer equalization, BatchNorm folding, SpinQuant, QuantAnalyzer, layer output dumping, PSNR/lite-mp evaluation, and LoRA adapters in ``aimet_onnx.peft`` (`ff4f611`_, `901c4cf`_, `76e0b47`_, `28ace30`_, `36190d4`_, `bea0d4e`_, `fee0d31`_, `66e6e3b`_, `606ee2f`_, `46bbd5d`_, `a3f7904`_, `cfa85a5`_, `c507684`_, `e4092b7`_, `e572b36`_, `7b28de8`_)
         * Quantize ``If`` branches in ``QuantizationSimModel`` behind the subgraph flag (`e4f515b`_, `3019fd1`_, `6a25cb6`_)
 
 * Bug fixes and Improvements
@@ -30,6 +30,7 @@ Release notes
         * Upgrade onnxsim to 0.7.0 (`4867813`_)
         * Windows (x64/arm64) and macOS ``aimet-onnx`` wheels are now available on PyPI (`81d3a20`_)
         * Update quantization recipe docs for Gemma 4 and Qwen3-VL (`af9c406`_)
+        * Pin ``torch<2.15`` and ``torchvision<0.29.2`` in released wheels to avoid pulling CUDA 13 builds incompatible with CUDA 12.x drivers (`cd33832`_)
 
 .. _f371064: https://github.com/qualcomm/aimet/commit/f37106493fd544568e3afdb90435935595f629d5
 .. _ff4f611: https://github.com/qualcomm/aimet/commit/ff4f611a4b36c92f994a9a824b652ec977785033
@@ -52,6 +53,16 @@ Release notes
 .. _94ad369: https://github.com/qualcomm/aimet/commit/94ad369b3fd62153dae612e4faf4bfae1677ae42
 .. _bea0d4e: https://github.com/qualcomm/aimet/commit/bea0d4ebcdca87c46291f3fced596464ace1f9e2
 .. _78f0907: https://github.com/qualcomm/aimet/commit/78f0907299192de1ab19a72ee101eb36fe5020be
+.. _66e6e3b: https://github.com/qualcomm/aimet/commit/66e6e3b27a0eaf56665d3294ba9b68d279f5189e
+.. _606ee2f: https://github.com/qualcomm/aimet/commit/606ee2f3783ec8741a0e4a3cdbf52b441d2123cd
+.. _46bbd5d: https://github.com/qualcomm/aimet/commit/46bbd5df83c67ba206bbd7cec1e480ba8b4efbb6
+.. _a3f7904: https://github.com/qualcomm/aimet/commit/a3f7904f4875a9e7a59e25f7800a42d1daec5379
+.. _cfa85a5: https://github.com/qualcomm/aimet/commit/cfa85a5a712d5bc347e892f7534c70f3e2419a47
+.. _c507684: https://github.com/qualcomm/aimet/commit/c507684c6fe44a0d844d82663d4081d878c4209e
+.. _e4092b7: https://github.com/qualcomm/aimet/commit/e4092b707d00df206fa90e0f11a83aa538743684
+.. _e572b36: https://github.com/qualcomm/aimet/commit/e572b3606b40bcc966fead41fdc6195e97d4d9d1
+.. _7b28de8: https://github.com/qualcomm/aimet/commit/7b28de80f58e8f28836bc090fa51bd8438fc84da
+.. _cd33832: https://github.com/qualcomm/aimet/commit/cd33832c72ce1a948e3006089f2fd2029775a9c8
 
 
 2.42.0
