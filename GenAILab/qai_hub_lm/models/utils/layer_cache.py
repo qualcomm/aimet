@@ -66,6 +66,10 @@ class CacheState:
 #: Name of the model-level state holding the position ids of every cached key.
 PAST_POSITION_IDS = "past_position_ids"
 
+#: Conv-state slot of a Qwen4-Exp linear-attention cache layer that holds the
+#: PLE short-conv window (slot 0 is the GatedDeltaNet conv window).
+PLE_CONV_STATE_IDX = 1
+
 
 @dataclass
 class LayerCacheDescriptor:
@@ -84,6 +88,9 @@ class LayerCacheDescriptor:
     linear_head_v_dim: int | None = None
     #: Head dim of Qwen4-Exp's QSA indexer keys; ``None`` for layers without one.
     indexer_head_dim: int | None = None
+    #: ``(channels, length)`` of a Qwen4-Exp PLE layer's dilated short-conv
+    #: window; ``None`` for layers without PLE.
+    ple_conv_shape: tuple[int, int] | None = None
 
     @property
     def states(self) -> tuple[CacheState, ...]:
@@ -106,6 +113,14 @@ class LayerCacheDescriptor:
                         self.linear_head_v_dim,
                     ),
                 ),
+            ) + (
+                (
+                    CacheState(
+                        f"ple_conv_state_{i}", StateKind.REPLACE, self.ple_conv_shape
+                    ),
+                )
+                if self.ple_conv_shape is not None
+                else ()
             )
         if self.attention_type in (AttentionType.FULL, AttentionType.SLIDING_WINDOW):
             kv = (self.num_kv_heads, self.head_dim)
@@ -180,14 +195,6 @@ def build_layer_cache_descriptors(
     automatically via :func:`_resolve_text_config`.
     """
     config = _resolve_text_config(config)
-    ple_layer_ids = getattr(config, "ple_layer_ids", None)
-    if isinstance(ple_layer_ids, (list, tuple)) and ple_layer_ids:
-        raise NotImplementedError(
-            "Per-layer embedding (PLE, `ple_layer_ids`) layers are not supported "
-            "yet: they keep a dilated short-conv state and an n-gram token history "
-            "beside the linear-attention state, and their forward needs the same "
-            "left-padding handling as ExportableLinearAttention."
-        )
     num_kv_shared = getattr(config, "num_kv_shared_layers", 0)
     num_layers = config.num_hidden_layers - num_kv_shared
     sliding_window = getattr(config, "sliding_window", None)
@@ -249,6 +256,13 @@ def build_layer_cache_descriptors(
         indexer_kwargs = {}
         if hf_layer_type == "qwen_sparse_attention":
             indexer_kwargs = dict(indexer_head_dim=config.indexer_head_dim)
+        if i + 1 in ple_layer_ids(config):
+            # Qwen4-Exp PLE: depthwise conv over every residual stream, dilated by
+            # the n-gram size, so it keeps (kernel - 1) * ngram_size past columns
+            indexer_kwargs["ple_conv_shape"] = (
+                config.hidden_size * config.hc_count,
+                (config.ple_conv_kernel_size - 1) * config.ngram_size,
+            )
 
         descriptors.append(
             LayerCacheDescriptor(
@@ -263,6 +277,12 @@ def build_layer_cache_descriptors(
         )
 
     return descriptors
+
+
+def ple_layer_ids(config: PretrainedConfig) -> list[int]:
+    """One-indexed ids of Qwen4-Exp's per-layer-embedding (PLE) layers, if any."""
+    ids = getattr(_resolve_text_config(config), "ple_layer_ids", None)
+    return list(ids) if isinstance(ids, (list, tuple)) else []
 
 
 def _layer_config(config: PretrainedConfig, layer_idx: int) -> PretrainedConfig:

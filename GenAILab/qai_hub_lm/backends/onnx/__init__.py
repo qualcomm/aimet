@@ -22,3 +22,5 @@ except ImportError:
     warnings.warn(
         "Qwen 3.5 is not available. Please upgrade to a later version of transformers to use this model."
     )
+
+from GenAILab.qai_hub_lm.backends.onnx.qwen4_exp import Qwen4Exp  # noqa: F401

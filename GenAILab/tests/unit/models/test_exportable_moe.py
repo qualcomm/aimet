@@ -453,7 +453,13 @@ class TestRegistration:
         exportable_linear_attention.register_adaptations()
 
     def test_registered_for_moe_model_types(self):
-        for model_type in ("qwen3_moe", "qwen3_5_moe", "qwen3_5_moe_text"):
+        for model_type in (
+            "qwen3_moe",
+            "qwen3_5_moe",
+            "qwen3_5_moe_text",
+            "qwen4_exp",
+            "qwen4_exp_text",
+        ):
             info = YAMLConfigParser._get_adaptation_info(model_type, "ExportableMoE")
             assert info.mixin_cls is ExportableMoEAdaptation
             assert info.required_for_export
@@ -486,7 +492,7 @@ class TestRegistration:
     def test_linear_attention_registered_for_moe_types(self):
         """Qwen3.5-MoE is half GatedDeltaNet; it needs both adaptations."""
         pytest.importorskip("transformers.models.qwen3_5.modeling_qwen3_5")
-        for model_type in ("qwen3_5", "qwen3_5_moe", "qwen3_5_moe_text"):
+        for model_type in ("qwen3_5", "qwen3_5_moe", "qwen3_5_moe_text", "qwen4_exp"):
             info = YAMLConfigParser._get_adaptation_info(
                 model_type, "ExportableLinearAttention"
             )

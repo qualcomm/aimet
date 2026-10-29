@@ -202,5 +202,6 @@ def generator_factory(
             sequence_length=sequence_length,
             context_length=context_length,
             sim_collection=sim_collection,
+            **sim_collection.extras,
             **model_kwargs,
         )

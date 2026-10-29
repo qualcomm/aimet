@@ -160,6 +160,30 @@ class TestGeneratorFactory:
             )
             assert isinstance(gen, Generator)
 
+    def test_passes_extras_to_llm_generator(self):
+        from GenAILab.qai_hub_lm.backends.torch.generator_utils import generator_factory
+
+        class _ExtrasGenerator(Generator):
+            def __init__(self, *args, ngram_tables=None, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.ngram_tables = ngram_tables
+
+        mock_sim = MagicMock()
+        mock_sim.model = torch.nn.Linear(4, 4)
+        tables = torch.nn.ModuleList([torch.nn.Embedding(10, 4)])
+        collection = SimCollection(backbone=mock_sim, extras={"ngram_tables": tables})
+        tok = MagicMock()
+        tok.eos_token_id = 0
+
+        gen = generator_factory(
+            sim_collection=collection,
+            generator_cls=_ExtrasGenerator,
+            tokenizer=tok,
+            sequence_length=8,
+            context_length=32,
+        )
+        assert gen.ngram_tables is tables
+
     def test_creates_vlm_generator_for_vlm(self):
         from GenAILab.qai_hub_lm.backends.torch.generator_utils import generator_factory
 

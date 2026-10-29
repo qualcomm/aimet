@@ -46,3 +46,19 @@ except ImportError:
         "are not available. "
         "Please upgrade to a later version of transformers to use this model."
     )
+
+# Qwen4-Exp ships only in the newest transformers releases.
+try:
+    from GenAILab.qai_hub_lm.transforms.exportable_qsa import (
+        Qwen4ExpExportableQSAAdaptation,
+    )
+    from GenAILab.qai_hub_lm.transforms.exportable_ple import (
+        Qwen4ExpExportablePLEAdaptation,
+    )
+except ImportError:
+    import warnings
+
+    warnings.warn(
+        "Qwen4-Exp ExportableQSA and ExportablePLE adaptations are not available. "
+        "Please upgrade to a later version of transformers to use this model."
+    )

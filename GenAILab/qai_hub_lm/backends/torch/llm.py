@@ -119,7 +119,9 @@ class LLM_Torch(LLM):
                 "supported for plain LLMs."
             )
 
-        return SimCollection(backbone=quantsim, config=model.config)
+        return SimCollection(
+            backbone=quantsim, config=model.config, extras=cls.get_extras(model)
+        )
 
     @staticmethod
     def _is_quantized_rms_norm(module: torch.nn.Module) -> bool:

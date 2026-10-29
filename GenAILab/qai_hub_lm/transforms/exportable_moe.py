@@ -550,7 +550,13 @@ def assert_experts_quantized(quantsim) -> None:
 # Adaptation registration
 # ---------------------------------------------------------------------------
 
-_MOE_MODEL_TYPES = ("qwen3_moe", "qwen3_5_moe", "qwen3_5_moe_text")
+_MOE_MODEL_TYPES = (
+    "qwen3_moe",
+    "qwen3_5_moe",
+    "qwen3_5_moe_text",
+    "qwen4_exp",
+    "qwen4_exp_text",
+)
 
 
 class ExportableMoEMixin:

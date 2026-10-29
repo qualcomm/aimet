@@ -335,6 +335,9 @@ class TestQwen4ExpStates:
             linear_conv_kernel_dim: int = 4
             indexer_head_dim: int = 12
             ple_layer_ids: list = None
+            hc_count: int = 2
+            ple_conv_kernel_size: int = 4
+            ngram_size: int = 3
 
         return Cfg(
             layer_types=["linear_attention", "qwen_sparse_attention"], **overrides
@@ -388,6 +391,21 @@ class TestQwen4ExpStates:
             "past_value_1_in",
         ]
 
-    def test_ple_is_rejected(self):
-        with pytest.raises(NotImplementedError, match="ple_layer_ids"):
-            build_layer_cache_descriptors(self._cfg(ple_layer_ids=[1]))
+    def test_ple_layer_carries_its_conv_window(self):
+        # ple_layer_ids are one-indexed: [1] is decoder layer 0, the linear layer
+        linear, qsa = build_layer_cache_descriptors(self._cfg(ple_layer_ids=[1]))
+        assert [s.name for s in linear.states] == [
+            "conv_state_0",
+            "recurrent_state_0",
+            "ple_conv_state_0",
+        ]
+        ple = linear.states[2]
+        assert ple.kind == StateKind.REPLACE
+        # hidden 32 x 2 streams; (kernel 4 - 1) x dilation 3 past columns
+        assert ple.dummy_shape(2, 24) == (2, 64, 9)
+        assert qsa.ple_conv_shape is None
+        assert "ple_conv_state_0_in" not in kv_length_dynamic_axes([linear, qsa])
+
+    def test_models_without_ple_are_unchanged(self):
+        (linear, _) = build_layer_cache_descriptors(self._cfg())
+        assert [s.name for s in linear.states] == ["conv_state_0", "recurrent_state_0"]

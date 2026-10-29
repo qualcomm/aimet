@@ -59,6 +59,14 @@ _MOE_BLOCKS = (
     modeling_qwen3_5_moe.Qwen3_5MoeSparseMoeBlock,
 )
 
+# Qwen4-Exp ships only in the newest transformers releases.
+try:
+    from transformers.models.qwen4_exp import modeling_qwen4_exp
+
+    _MOE_BLOCKS += (modeling_qwen4_exp.Qwen4ExpTextSparseMoeBlock,)
+except ImportError:
+    pass
+
 
 class SubselectedTopKRouter(nn.Module):
     """Drop-in for a Qwen MoE ``TopKRouter`` that routes among a per-call subset.
@@ -125,7 +133,7 @@ def _subselected_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.T
         hidden_states_reshaped, selected_experts, routing_weights
     )
     if hasattr(self, "shared_expert"):
-        # Qwen3.5-MoE: an always-active shared expert behind a sigmoid gate.
+        # Qwen3.5-MoE, Qwen4-Exp: an always-active shared expert behind a sigmoid gate.
         shared_expert_output = self.shared_expert(hidden_states_reshaped)
         shared_expert_output = (
             F.sigmoid(self.shared_expert_gate(hidden_states_reshaped))

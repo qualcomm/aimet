@@ -326,6 +326,28 @@ def _roll_indices(npad, seq_len, device):
     return torch.where(idx < seq_len, idx, idx - seq_len)
 
 
+def _real_token_mask(attention_mask, batch_size, seq_len, like):
+    """Recover a 2D real-token mask ``(B, S)`` (1 = real) in ``like``'s dtype.
+
+    The generator feeds a 4D additive causal mask ``(B, 1, S, KV)``; query row
+    ``i`` is a real token iff its own diagonal key (kv index ``KV - S + i``) is
+    unmasked (``== 0``). A plain 2D mask is used directly; ``None`` means
+    all-real.
+    """
+    if attention_mask is None:
+        return torch.ones(batch_size, seq_len, dtype=like.dtype, device=like.device)
+    if attention_mask.dim() == 2:
+        return attention_mask.to(like.dtype)
+    kv_len = attention_mask.shape[-1]
+    diag_idx = torch.arange(seq_len, device=attention_mask.device) + (kv_len - seq_len)
+    diag = (
+        attention_mask[:, 0]
+        .gather(-1, diag_idx.view(1, seq_len, 1).expand(batch_size, seq_len, 1))
+        .squeeze(-1)
+    )  # (B, S)
+    return (diag >= 0).to(like.dtype)
+
+
 def exportable_gated_delta_net_forward(
     self, hidden_states, cache_params=None, attention_mask=None, **kwargs
 ):
@@ -366,28 +388,7 @@ def exportable_gated_delta_net_forward(
         cache_params.layers[self.layer_idx]
     )
 
-    # Recover a 2D real-token mask [B, S] (1 = real) from whatever form the
-    # model hands down. The generator feeds a 4D additive causal mask
-    # (B, 1, S, KV); query row i is a real token iff its own diagonal key
-    # (kv index q_offset + i, q_offset = KV - S) is unmasked (== 0). A plain 2D
-    # mask is used directly; ``None`` means all-real.
-    if attention_mask is None:
-        mask2d = torch.ones(
-            batch_size, seq_len, dtype=hidden_states.dtype, device=hidden_states.device
-        )
-    elif attention_mask.dim() == 2:
-        mask2d = attention_mask.to(hidden_states.dtype)
-    else:
-        mask4d = attention_mask
-        kv_len = mask4d.shape[-1]
-        q_offset = kv_len - seq_len
-        diag_idx = torch.arange(seq_len, device=mask4d.device) + q_offset  # (S,)
-        diag = (
-            mask4d[:, 0]
-            .gather(-1, diag_idx.view(1, seq_len, 1).expand(batch_size, seq_len, 1))
-            .squeeze(-1)
-        )  # (B, S)
-        mask2d = (diag >= 0).to(hidden_states.dtype)
+    mask2d = _real_token_mask(attention_mask, batch_size, seq_len, hidden_states)
     n_real = mask2d.sum(dim=-1).to(torch.int64)  # (B,)
     npad = seq_len - n_real
 
@@ -502,6 +503,26 @@ def _passthrough_recurrent_attn_mask(
     return attention_mask
 
 
+def _real_token_recurrent_attn_mask(
+    config=None,
+    inputs_embeds=None,
+    attention_mask=None,
+    past_key_values=None,
+    **kwargs,
+):
+    """Hand Qwen4-Exp's linear-attention layers a 2D ``(B, S)`` real-token mask.
+
+    Like :func:`_passthrough_recurrent_attn_mask`, but reduced to 2D: the
+    Qwen4-Exp model forward also uses this mask to blank PLE input ids with
+    ``torch.where(mask, ids, eos)``, which only broadcasts against ``(B, S)``.
+    The GatedDeltaNet forward accepts either form.
+    """
+    if attention_mask is None or attention_mask.dim() == 2:
+        return attention_mask
+    batch_size, seq_len = inputs_embeds.shape[:2]
+    return _real_token_mask(attention_mask, batch_size, seq_len, inputs_embeds)
+
+
 #: Largest chunk extent ``_solve_triangular`` inverts exactly. Its banded seed
 #: plus four product-form squarings spans ``A^0..A^15`` against a nilpotent ``A``
 #: with ``A^chunk == 0``; beyond this the solve degrades silently, so the cap is
@@ -525,12 +546,20 @@ def _patch_gated_delta_net_instances(
     from transformers.models.qwen3_5 import modeling_qwen3_5
     from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
 
-    # Qwen3.5-MoE's GatedDeltaNet is Qwen3.5's apart from the class name, so the
-    # same exportable forward applies to both.
+    # Qwen3.5-MoE's and Qwen4-Exp's GatedDeltaNet are Qwen3.5's apart from the
+    # class name, so the same exportable forward applies to all of them.
     gdn_classes = (
         modeling_qwen3_5.Qwen3_5GatedDeltaNet,
         modeling_qwen3_5_moe.Qwen3_5MoeGatedDeltaNet,
     )
+    namespaces = (modeling_qwen3_5, modeling_qwen3_5_moe)
+    try:
+        from transformers.models.qwen4_exp import modeling_qwen4_exp
+
+        gdn_classes += (modeling_qwen4_exp.Qwen4ExpTextGatedDeltaNet,)
+        namespaces += (modeling_qwen4_exp,)
+    except ImportError:
+        pass
 
     for module in model.modules():
         if isinstance(module, gdn_classes):
@@ -558,12 +587,16 @@ def _patch_gated_delta_net_instances(
             )
             patched_any = True
 
-    # Patch the mask factory in both modeling namespaces: Qwen3.5-MoE has its own
-    # copy of ``create_recurrent_attention_mask``, and patching only Qwen3.5's
-    # would leave the MoE model's mask nulled (silently corrupting decode).
-    for namespace in (modeling_qwen3_5, modeling_qwen3_5_moe):
+    # Patch the mask factory in every modeling namespace: each model imports its
+    # own copy of ``create_recurrent_attention_mask``, and patching only Qwen3.5's
+    # would leave the others' masks nulled (silently corrupting decode).
+    for namespace in namespaces:
         if hasattr(namespace, "create_recurrent_attention_mask"):
-            namespace.create_recurrent_attention_mask = _passthrough_recurrent_attn_mask
+            namespace.create_recurrent_attention_mask = (
+                _real_token_recurrent_attn_mask
+                if namespace.__name__.endswith("modeling_qwen4_exp")
+                else _passthrough_recurrent_attn_mask
+            )
             patched_any = True
 
     if not patched_any:
@@ -871,7 +904,13 @@ class Qwen3_5ExportableLinearAttentionAdaptation:
 #: Model types whose decoder stacks contain GatedDeltaNet layers. Qwen3.5-MoE is
 #: registered under both its top-level (VLM) and text-config model types so the
 #: adaptation resolves whichever one the config reports.
-_LINEAR_ATTENTION_MODEL_TYPES = ("qwen3_5", "qwen3_5_moe", "qwen3_5_moe_text")
+_LINEAR_ATTENTION_MODEL_TYPES = (
+    "qwen3_5",
+    "qwen3_5_moe",
+    "qwen3_5_moe_text",
+    "qwen4_exp",
+    "qwen4_exp_text",
+)
 
 
 def register_adaptations() -> None:

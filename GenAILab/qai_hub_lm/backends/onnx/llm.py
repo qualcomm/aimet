@@ -198,7 +198,7 @@ class LLM_ONNX(LLM):
                 "supported for plain LLMs."
             )
 
-        return SimCollection(quant_sim, config=config)
+        return SimCollection(quant_sim, config=config, extras=entry.extras)
 
     @classmethod
     def _export_to_cache_entry(
@@ -268,4 +268,5 @@ class LLM_ONNX(LLM):
         return ModelCacheEntry(
             backbone=onnx_model,
             config=instantiated_model.config,
+            extras=cls.get_extras(instantiated_model) or None,
         )

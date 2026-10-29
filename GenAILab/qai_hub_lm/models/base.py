@@ -239,6 +239,11 @@ class LLM(ABC):
     def get_generator_cls() -> type[Generator]:
         return Generator
 
+    @classmethod
+    def get_extras(cls, model: PreTrainedModel) -> dict:
+        """Return extra host-side modules the generator needs (e.g. per-layer embeddings)."""
+        return {}
+
 
 def _unimplemented(cls, hook: str):
     """The error every unimplemented component hook raises.
@@ -300,11 +305,6 @@ class VLM(LLM):
     def build_vision_wrapper(cls, model: PreTrainedModel) -> torch.nn.Module:
         """Return a traceable vision wrapper module for quantization/export."""
         raise _unimplemented(cls, "build_vision_wrapper")
-
-    @classmethod
-    def get_extras(cls, model: PreTrainedModel) -> dict:
-        """Return extra modules for SimCollection (e.g. per-layer embeddings)."""
-        return {}
 
     @classmethod
     def get_sample_vision_inputs(

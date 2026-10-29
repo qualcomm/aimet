@@ -10,6 +10,7 @@ from .compat import _patch_sdpa_mask  # noqa: F401 — triggers the patch on imp
 from .compat import linear_attention_states
 from .layer_cache import (
     PAST_POSITION_IDS,
+    PLE_CONV_STATE_IDX,
     AttentionType,
     all_states,
     build_layer_cache_descriptors,
@@ -33,6 +34,7 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
         "conv_state_",
         "past_indexer_key_",
         "recurrent_state_",
+        "ple_conv_state_",
         PAST_POSITION_IDS,
     )
 
@@ -141,9 +143,14 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
         for desc in descriptors:
             layer_states = [states[state.name] for state in desc.states]
             if desc.attention_type == AttentionType.LINEAR:
-                conv_state, recurrent_state = layer_states
+                conv_state, recurrent_state = layer_states[:2]
                 kv_cache.update_conv_state(conv_state, desc.layer_idx)
                 kv_cache.update_recurrent_state(recurrent_state, desc.layer_idx)
+                if desc.ple_conv_shape is not None:
+                    # Qwen4-Exp keeps the PLE short-conv window as conv state 1
+                    kv_cache.update_conv_state(
+                        layer_states[2], desc.layer_idx, state_idx=PLE_CONV_STATE_IDX
+                    )
                 continue
             kv_cache.update(layer_states[0], layer_states[1], desc.layer_idx, {})
             if desc.indexer_head_dim is not None:
@@ -188,6 +195,13 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
         if ds_items:
             ds_items.sort(key=lambda x: x[0])
             result["deepstack_visual_embeds"] = [v for _, v in ds_items]
+        # Qwen4-Exp PLE: decoder layer index -> its host-computed n-gram embeddings.
+        # Keyed by int only: strict torch.export cannot sort tuples holding tensors.
+        ple_keys = [k for k in result if k.startswith("ple_embeds_")]
+        if ple_keys:
+            result["ple_embeds"] = {
+                int(k[len("ple_embeds_") :]): result.pop(k) for k in ple_keys
+            }
         return result
 
     @staticmethod
@@ -281,6 +295,10 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
             if desc.attention_type == AttentionType.LINEAR:
                 # Linear attention: extract conv_state and recurrent_state.
                 flat_output_past_key_values.extend(linear_attention_states(cache_layer))
+                if desc.ple_conv_shape is not None:
+                    flat_output_past_key_values.append(
+                        cache_layer.conv_states[PLE_CONV_STATE_IDX]
+                    )
                 continue
             flat_output_past_key_values.append(cache_layer.keys)
             flat_output_past_key_values.append(cache_layer.values)

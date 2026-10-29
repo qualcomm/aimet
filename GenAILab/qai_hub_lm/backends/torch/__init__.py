@@ -22,6 +22,8 @@ except ImportError:
         "Qwen 3.5 is not available. Please upgrade to a later version of transformers to use this model."
     )
 
+from GenAILab.qai_hub_lm.backends.torch.qwen4_exp import Qwen4Exp  # noqa: F401
+
 # Gemma4 Torch backend (packed-QAT checkpoint support)
 try:
     from GenAILab.qai_hub_lm.backends.torch.gemma4 import Gemma4_Torch

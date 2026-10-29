@@ -278,7 +278,13 @@ class TestRegistration:
         return YAMLConfigParser.get_model_class("qwen3_moe", adaptations, kwargs)
 
     def test_registered_but_not_required_for_export(self):
-        for model_type in ("qwen3_moe", "qwen3_5_moe", "qwen3_5_moe_text"):
+        for model_type in (
+            "qwen3_moe",
+            "qwen3_5_moe",
+            "qwen3_5_moe_text",
+            "qwen4_exp",
+            "qwen4_exp_text",
+        ):
             info = YAMLConfigParser._get_adaptation_info(
                 model_type, "ExpertSubselection"
             )
