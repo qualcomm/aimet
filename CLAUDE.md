@@ -141,3 +141,15 @@ make doc
 cd build
 make packageaimet
 ```
+
+## Release Notes
+
+`Docs/release_notes.rst` entries are for end users deciding whether to upgrade, not a commit log. Keep them concise and user-focused:
+
+- **One line per change**, phrased as the user-visible effect, not the implementation. Omit internal rationale, benchmarking detail, review-comment history, or multi-PR narration — that belongs in the commit message, not here.
+- **Group by framework**, in this order under each section: ONNX, Torch, Common. Omit a framework subheading entirely if it has no entries for that section.
+- **Sections, in order**: `New Features`, `Bug fixes and Improvements`, `Deprecations` (only the sections that have entries).
+- Link every entry to its commit(s) via a short 7-char hash reference (e.g. `` (`98862fd`_) ``), with the full `.. _98862fd: https://github.com/qualcomm/aimet/commit/<full-sha>` target listed at the bottom of that release's section. Multiple commits for one line: `` (`abc1234`_, `def5678`_) ``.
+- Use double-backtick code formatting for API names, class names, and file names (e.g. ``` ``QuantizationSimModel`` ```).
+- Related small commits that land as one logical change (e.g. a feature plus its follow-up fix) collapse into a single bullet with multiple commit links, not one bullet per commit.
+- When in doubt about whether a change belongs: ask "would a user upgrading AIMET care about this?" If it's test-only, CI-only, or an internal refactor with no API/behavior change, leave it out.
