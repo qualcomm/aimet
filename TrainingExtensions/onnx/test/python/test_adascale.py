@@ -41,7 +41,7 @@ from aimet_onnx.llm_topology import (
 )
 from aimet_onnx.adascale.model_converter import (
     get_pt_block,
-    required_extra_block_inputs,
+    required_block_inputs,
     _retarget_fp16_casts_to_bf16,
     upcast_fp16_block_to_bf16,
 )
@@ -54,6 +54,8 @@ from .utils import (
 from .models.style_decoders import (
     _VOCAB,
     _export_decoder_with_ids,
+    _export_gemma4_shared_kv_decoder,
+    Gemma4StyleDecoder,
     LlamaStyleDecoder,
     STRUCTURAL_MODEL_TYPE,
 )
@@ -1258,9 +1260,9 @@ def test_adascale_with_bfloat16_model(io_dtype):
 
 
 @pytest.mark.parallel
-class TestRequiredExtraBlockInputs:
-    """Unit tests for ``required_extra_block_inputs`` — the graph inputs a block
-    subgraph still depends on beyond its residual input.
+class TestRequiredBlockInputs:
+    """Unit tests for ``required_block_inputs`` — the intermediate tensors and
+    graph inputs required to extract a block subgraph.
 
     The companion residual-name resolution (``resolve_residual_tensor_name``) is
     owned by ``llm_topology`` and tested in ``test_llm_topology.py``.
@@ -1281,8 +1283,8 @@ class TestRequiredExtraBlockInputs:
             }
             """
         )
-        extras = required_extra_block_inputs(graph, ["residual"], ["out"])
-        assert extras == ["side"]
+        extras = required_block_inputs(graph, ["residual"], ["out"])
+        assert set(extras) == {"residual", "side"}
 
     def test_required_extras_empty_when_fully_declared(self):
         """When every producer chain terminates at an already-declared input,
@@ -1295,7 +1297,7 @@ class TestRequiredExtraBlockInputs:
             }
             """
         )
-        assert required_extra_block_inputs(graph, ["residual"], ["out"]) == []
+        assert required_block_inputs(graph, ["residual"], ["out"]) == ["residual"]
 
     def test_required_extras_ignores_initializers(self):
         """Initializers (constants baked into the graph) are not counted as
@@ -1310,7 +1312,56 @@ class TestRequiredExtraBlockInputs:
             }
             """
         )
-        assert required_extra_block_inputs(graph, ["residual"], ["out"]) == []
+        assert required_block_inputs(graph, ["residual"], ["out"]) == ["residual"]
+
+    def test_gemma4_shared_kv_samples_multiple_residuals(self):
+        """
+        A shared-KV block is cut at both its own and its KV source residual.
+
+        Block 3 reuses K/V projected from block 1's input.
+        subgraph should retain only that K/V path and block 3
+        """
+        onnx_model = _export_gemma4_shared_kv_decoder(Gemma4StyleDecoder())
+        nodes = {node.name: node for node in onnx_model.graph.node}
+        block_end_points = [
+            (
+                nodes[f"/block{index}/input_norm/Pow"].input[0],
+                nodes[f"/block{index}/Add_6"].output[0],
+            )
+            for index in range(4)
+        ]
+
+        ir_model = onnx_ir.from_proto(onnx_model)
+        block_starts = [start for start, _ in block_end_points]
+        # Last block end
+        block_end = block_end_points[-1][1]
+        block_inputs = required_block_inputs(ir_model.graph, block_starts, [block_end])
+        assert set(block_inputs) == {
+            "past_value_1_in",  # Block 3 gets KV cache from block 1
+            "past_key_1_in",
+            block_end_points[1][0],  # Required to recompute block 1 KV
+            block_end_points[3][0],
+            "per_layer_inputs",  # Required for all blocks
+        }
+
+        subgraph = onnx_ir.convenience.extract(
+            ir_model.graph, block_inputs, [block_end]
+        )
+        node_names = {node.name for node in subgraph.all_nodes()}
+        # Nothing from block0 or block2 should be included in subgraph
+        assert not any("/block0/" in name for name in node_names)
+        assert not any("/block2/" in name for name in node_names)
+        # Only KV layers from block1 may be run again
+        assert "/block1/q_proj/MatMul" not in node_names
+        assert "/block1/o_proj/MatMul" not in node_names
+        assert "/block1/down_proj/MatMul" not in node_names
+        # Subgraph should include block3 layers
+        assert "/block3/q_proj/MatMul" in node_names
+        assert "/block3/o_proj/MatMul" in node_names
+        assert "/block3/up_proj/MatMul" in node_names
+        assert "/block3/gate_proj/MatMul" in node_names
+        assert "/block3/down_proj/MatMul" in node_names
+        assert "/block3/per_layer_projection/MatMul" in node_names
 
 
 @pytest.mark.parallel

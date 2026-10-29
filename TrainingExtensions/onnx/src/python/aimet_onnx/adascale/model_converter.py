@@ -71,47 +71,48 @@ def _get_onnx_block_info(onnx_subgraph: onnx_ir.Model):
     return node_name_to_onnx_param
 
 
-def required_extra_block_inputs(
+def required_block_inputs(
     graph: onnx_ir.Graph,
-    input_names: List[str],
+    intermediate_tensors: List[str],
     output_names: List[str],
 ) -> List[str]:
     """
-    Return graph-input names the subgraph requires beyond ``input_names``.
+    Return input names the subgraph requires from intermediate tensors or graph inputs.
 
-    Walks back from ``output_names`` with ``input_names`` as a barrier; any
+    Walks back from ``output_names`` with ``intermediate_tensors`` as a barrier; any
     producer-less, non-initializer value reached is an unbounded graph input.
     """
 
     name_to_value = onnx_ir.convenience.create_value_mapping(graph)
-    declared = {name_to_value[n] for n in input_names if n in name_to_value}
+    declared = {name_to_value[n] for n in intermediate_tensors if n in name_to_value}
     visited_values = set(declared)
     visited_nodes = set()
     stack = [name_to_value[n] for n in output_names if n in name_to_value]
-    extras: List[str] = []
-    seen = set(input_names)
+    required: set[str] = set()
+    seen = set(intermediate_tensors)
 
     while stack:
         value = stack.pop()
+        if value in declared:
+            required.add(value.name)
         if value in visited_values:
             continue
         visited_values.add(value)
         producer = value.producer()
         if producer is None:
             if not value.is_initializer() and value.name and value.name not in seen:
-                extras.append(value.name)
+                required.add(value.name)
                 seen.add(value.name)
             continue
         if producer in visited_nodes:
             continue
         visited_nodes.add(producer)
         for inp in producer.inputs:
-            if inp is None or inp in visited_values:
+            if inp is None:
                 continue
             stack.append(inp)
 
-    # Normalize order to graph input order
-    return [inp.name for inp in graph.inputs if inp.name in extras]
+    return list(required)
 
 
 @contextlib.contextmanager

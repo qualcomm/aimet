@@ -48,7 +48,7 @@ from aimet_onnx.adascale.model_converter import (
     get_pt_block,
     copy_pt_weights_to_onnx,
     copy_pt_encodings_to_sim,
-    required_extra_block_inputs,
+    required_block_inputs,
     upcast_fp16_block_to_bf16,
 )
 
@@ -356,25 +356,26 @@ class AdaScale:
 
                     # Step back through leading Casts to land on the true
                     # cross-block residual (fp16 graphs keep the Cast).
-                    start_residual = resolve_residual_tensor_name(
-                        unquantized_model.graph, block_end_points[idx][0]
-                    )
+                    previous_residuals = [
+                        resolve_residual_tensor_name(
+                            unquantized_model.graph, block_end_point[0]
+                        )
+                        for block_end_point in block_end_points[: idx + 1]
+                    ]
                     end_residual = resolve_residual_tensor_name(
                         unquantized_model.graph, block_end_points[idx][1]
                     )
-                    extra_inputs = required_extra_block_inputs(
-                        sim_model.graph, [start_residual], [end_residual]
+                    block_inputs = required_block_inputs(
+                        sim_model.graph, previous_residuals, [end_residual]
                     )
-                    if extra_inputs:
-                        _logger.debug(
-                            "Block %d adding extra inputs %s", idx, extra_inputs
-                        )
+                    if len(block_inputs) > 1:
+                        _logger.debug("Block %d sampling inputs %s", idx, block_inputs)
 
                     onnx_ir.save(
                         sim_model, path=sim_path, external_data="sim_model.data"
                     )
                     qsim_sess = ActivationSampler(
-                        start_residual,
+                        block_inputs,
                         sim_path,
                         sim.providers,
                     )
@@ -382,28 +383,24 @@ class AdaScale:
                     fp_inputs, qsim_inputs = [], []
                     for input in inputs:  # pylint: disable=redefined-builtin
                         sample = qsim_sess.sample_acts(input)
-                        qsim_inputs.append(
-                            [sample] + [input[name] for name in extra_inputs]
-                        )
+                        qsim_inputs.append(sample)
 
                     del qsim_sess
 
                     unquantized_sampler = ActivationSampler(
-                        start_residual,
+                        block_inputs,
                         unquantized_path,
                         sim.providers,
                     )
 
                     for input in inputs:
                         sample = unquantized_sampler.sample_acts(input)
-                        fp_inputs.append(
-                            [sample] + [input[name] for name in extra_inputs]
-                        )
+                        fp_inputs.append(sample)
 
                     del unquantized_sampler
 
                     block_input_output_names = (
-                        [start_residual] + extra_inputs,
+                        block_inputs,
                         [end_residual],
                     )
 

@@ -14,6 +14,7 @@ Naming mirrors real HF architectures at a coarse level:
 * :class:`Qwen3StyleDecoder` — internal q_norm/k_norm (excluded from active norms).
 * :class:`Phi3StyleDecoder`  — fused ``qkv_proj`` / ``gate_up_proj``.
 * :class:`Gemma3StyleDecoder` — post-writing norms after o_proj / down_proj.
+* :class:`Gemma4StyleDecoder` — later attention reuses an earlier block's K/V.
 * :class:`ViTEncoder` / :class:`LayerNormViTEncoder` — vision encoders + PatchMerger.
 * :class:`VLMBackbone` — decoder consuming ``inputs_embeds`` (no embed Gather).
 """
@@ -39,6 +40,8 @@ _H, _I = 8, 16  # hidden dim, intermediate dim
 _NUM_HEADS, _HEAD_DIM = 2, 4  # _H == _NUM_HEADS * _HEAD_DIM
 _VOCAB = 16
 _B, _SEQ = 1, 4  # batch, sequence length
+_GEMMA4_PLE_DIM = 4
+_GEMMA4_SHARED_I = 2 * _I
 
 #: ``model_type`` to analyze hand-built decoder fixtures with. Their modules carry no
 #: HuggingFace names, so it must be one that ``analyze_llm_topology`` analyzes by
@@ -118,6 +121,42 @@ def _export_decoder_with_ids(
     return model
 
 
+def _export_gemma4_shared_kv_decoder(module: nn.Module) -> onnx.ModelProto:
+    """Export a Gemma4-style decoder with per-source-layer K/V-cache inputs."""
+    token_ids = torch.randint(0, _VOCAB, (_B, _SEQ))
+    past_key_0 = torch.randn(_B, _SEQ, _H)
+    past_value_0 = torch.randn(_B, _SEQ, _H)
+    past_key_1 = torch.randn(_B, _SEQ, _H)
+    past_value_1 = torch.randn(_B, _SEQ, _H)
+    per_layer_inputs = torch.randn(_B, _SEQ, 4, _GEMMA4_PLE_DIM)
+    buf = io.BytesIO()
+    torch.onnx.export(
+        module.eval(),
+        (
+            token_ids,
+            past_key_0,
+            past_value_0,
+            past_key_1,
+            past_value_1,
+            per_layer_inputs,
+        ),
+        buf,
+        input_names=[
+            "input",
+            "past_key_0_in",
+            "past_value_0_in",
+            "past_key_1_in",
+            "past_value_1_in",
+            "per_layer_inputs",
+        ],
+        output_names=["output"],
+        opset_version=17,
+        dynamo=False,
+    )
+    buf.seek(0)
+    return load_model(buf)
+
+
 def _export_vit(module: nn.Module) -> onnx.ModelProto:
     x = torch.randn(_VIT_N, _VIT_D)
     return _export_to_onnx(module, x)
@@ -141,21 +180,16 @@ def _fuse_rms_norms(model: onnx.ModelProto) -> onnx.ModelProto:
 
 
 def _mha(q, k, v, num_heads, head_dim):
-    """Standard multi-head attention: split into heads, softmax(QK^T/sqrt(d))V, merge.
-
-    :param q: [B, S, hidden]
-    :param k: [B, S, hidden]
-    :param v: [B, S, hidden]
-    :return: [B, S, hidden]
-    """
-    B, S, _ = q.shape
-    q = q.reshape(B, S, num_heads, head_dim).transpose(1, 2)  # [B, H, S, D]
-    k = k.reshape(B, S, num_heads, head_dim).transpose(1, 2)
-    v = v.reshape(B, S, num_heads, head_dim).transpose(1, 2)
+    """Standard multi-head attention supporting cached K/V sequences."""
+    batch_size, query_length, _ = q.shape
+    key_value_length = k.shape[1]
+    q = q.reshape(batch_size, query_length, num_heads, head_dim).transpose(1, 2)
+    k = k.reshape(batch_size, key_value_length, num_heads, head_dim).transpose(1, 2)
+    v = v.reshape(batch_size, key_value_length, num_heads, head_dim).transpose(1, 2)
     scores = torch.matmul(q, k.transpose(-1, -2)) / (head_dim**0.5)
     attn = torch.softmax(scores, dim=-1)
-    y = torch.matmul(attn, v)  # [B, H, S, D]
-    return y.transpose(1, 2).reshape(B, S, num_heads * head_dim)
+    y = torch.matmul(attn, v)
+    return y.transpose(1, 2).reshape(batch_size, query_length, num_heads * head_dim)
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +381,104 @@ class Gemma3StyleDecoder(nn.Module):
         x = self.embed_tokens(token_ids)
         x = self.block0(x)
         x = self.block1(x)
+        return self.lm_head(self.norm(x))
+
+
+class _Gemma4Block(nn.Module):
+    """Decoder block that either computes or reuses K/V states."""
+
+    def __init__(self, shared_kv: bool):
+        super().__init__()
+        self.shared_kv = shared_kv
+        self.input_norm = RMSNorm(_H, **_NORM_KW)
+        self.q_proj = nn.Linear(_H, _H, bias=False)
+        self.q_norm = RMSNorm(_HEAD_DIM, **_NORM_KW)
+        if not shared_kv:
+            self.k_proj = nn.Linear(_H, _H, bias=False)
+            self.k_norm = RMSNorm(_HEAD_DIM, **_NORM_KW)
+            self.v_proj = nn.Linear(_H, _H, bias=False)
+            self.v_norm = RMSNorm(_HEAD_DIM, elementwise_affine=False, **_NORM_KW)
+        self.o_proj = nn.Linear(_H, _H, bias=False)
+        self.post_attn_norm = RMSNorm(_H, **_NORM_KW)
+        self.pre_ffn_norm = RMSNorm(_H, **_NORM_KW)
+        intermediate_size = _GEMMA4_SHARED_I if shared_kv else _I
+        self.gate_proj = nn.Linear(_H, intermediate_size, bias=False)
+        self.up_proj = nn.Linear(_H, intermediate_size, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, _H, bias=False)
+        self.post_ffn_norm = RMSNorm(_H, **_NORM_KW)
+        self.per_layer_input_gate = nn.Linear(_H, _GEMMA4_PLE_DIM, bias=False)
+        self.per_layer_projection = nn.Linear(_GEMMA4_PLE_DIM, _H, bias=False)
+        self.post_per_layer_input_norm = RMSNorm(_H, **_NORM_KW)
+
+    def forward(self, x, key, value, per_layer_input):
+        h = self.input_norm(x)
+        q = self.q_proj(h)
+        q = self.q_norm(q.reshape(*q.shape[:-1], _NUM_HEADS, _HEAD_DIM)).reshape_as(q)
+        if not self.shared_kv:
+            projected_key = self.k_proj(h)
+            projected_key = self.k_norm(
+                projected_key.reshape(*projected_key.shape[:-1], _NUM_HEADS, _HEAD_DIM)
+            ).reshape_as(projected_key)
+            key = torch.cat((key, projected_key), dim=1)
+            projected_value = self.v_proj(h)
+            projected_value = self.v_norm(
+                projected_value.reshape(
+                    *projected_value.shape[:-1], _NUM_HEADS, _HEAD_DIM
+                )
+            ).reshape_as(projected_value)
+            value = torch.cat((value, projected_value), dim=1)
+        y = _mha(q, key, value, _NUM_HEADS, _HEAD_DIM)
+        x = x + self.post_attn_norm(self.o_proj(y))
+        h2 = self.pre_ffn_norm(x)
+        gate = torch.nn.functional.gelu(self.gate_proj(h2), approximate="tanh")
+        y = self.down_proj(gate * self.up_proj(h2))
+        x = x + self.post_ffn_norm(y)
+        residual = x
+        h3 = torch.nn.functional.gelu(self.per_layer_input_gate(x), approximate="tanh")
+        h3 = h3 * per_layer_input
+        h3 = self.per_layer_projection(h3)
+        x = residual + self.post_per_layer_input_norm(h3)
+        return x, key, value
+
+
+class Gemma4StyleDecoder(nn.Module):
+    """Four-block decoder with Gemma4-style cross-block K/V sharing.
+
+    Blocks 0 and 1 are the final non-shared layers of two attention types. Each
+    consumes its own cache and exposes full-length K/V. Blocks 2 and 3 are shared
+    layers of those respective types, so block 2 reuses block 0's K/V and block
+    3 reuses block 1's K/V. Every block also applies Gemma4's gated
+    ``per_layer_input`` projection after its feed-forward sublayer.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.embed_tokens = nn.Embedding(_VOCAB, _H)
+        self.block0 = _Gemma4Block(shared_kv=False)
+        self.block1 = _Gemma4Block(shared_kv=False)
+        self.block2 = _Gemma4Block(shared_kv=True)
+        self.block3 = _Gemma4Block(shared_kv=True)
+        self.norm = RMSNorm(_H, **_NORM_KW)
+        self.lm_head = nn.Linear(_H, _VOCAB, bias=False)
+
+    def forward(
+        self,
+        token_ids,
+        past_key_0_in,
+        past_value_0_in,
+        past_key_1_in,
+        past_value_1_in,
+        per_layer_inputs,
+    ):
+        x = self.embed_tokens(token_ids)
+        x, key_0, value_0 = self.block0(
+            x, past_key_0_in, past_value_0_in, per_layer_inputs[:, :, 0, :]
+        )
+        x, key_1, value_1 = self.block1(
+            x, past_key_1_in, past_value_1_in, per_layer_inputs[:, :, 1, :]
+        )
+        x, _, _ = self.block2(x, key_0, value_0, per_layer_inputs[:, :, 2, :])
+        x, _, _ = self.block3(x, key_1, value_1, per_layer_inputs[:, :, 3, :])
         return self.lm_head(self.norm(x))
 
 
