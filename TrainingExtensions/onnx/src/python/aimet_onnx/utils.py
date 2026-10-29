@@ -18,6 +18,7 @@ import ml_dtypes
 import numpy as np
 import torch
 import onnx
+import onnx_ir
 from onnx import helper, numpy_helper
 from onnxruntime import SessionOptions, InferenceSession, OrtValue
 import shutil
@@ -216,7 +217,30 @@ def transpose_tensor(t: TensorProto, axes: Union[List, Tuple]) -> TensorProto:
     # Expand tensor with singleton dimensions to match axes
     while len(t_np.shape) < len(axes):
         t_np = np.expand_dims(t_np, len(t_np.shape))
-    return numpy_helper.from_array(np.transpose(t_np, axes), name=t.name)
+    return _tensor_from_array(np.transpose(t_np, axes), name=t.name)
+
+
+def _tensor_from_array(array: np.ndarray, name: str) -> TensorProto:
+    """
+    ``numpy_helper.from_array(array, name)`` that also accepts ``ml_dtypes.bfloat16`` arrays.
+
+    ``numpy_helper.from_array`` rejects bfloat16 arrays on onnx < 1.19, so they go through
+    onnx_ir, which stores them as BFLOAT16 tensors.
+    """
+    if array.dtype == _BFLOAT16:
+        return onnx_ir.serde.serialize_tensor(onnx_ir.Tensor(array, name=name))
+    return numpy_helper.from_array(array, name=name)
+
+
+def _tensor_np_dtype(tensor: TensorProto) -> np.dtype:
+    """
+    The numpy dtype of ``tensor``'s values.
+
+    Not ``helper.tensor_dtype_to_np_dtype``: onnx < 1.19 maps BFLOAT16 to float32.
+    """
+    if tensor.data_type == TensorProto.BFLOAT16:
+        return _BFLOAT16
+    return helper.tensor_dtype_to_np_dtype(tensor.data_type)
 
 
 def replace_node_with_op(node_type: str, new_type: str, onnx_graph: onnx.GraphProto):

@@ -10,7 +10,6 @@ import numpy as np
 import onnx
 import onnx_ir
 import onnx_ir.passes.common
-from onnx import numpy_helper
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from packaging import version
 
@@ -36,6 +35,8 @@ from aimet_onnx.utils import (
     ParamUtils,
     retrieve_constant_input,
     find_shared_param_names,
+    _tensor_from_array,
+    _tensor_np_dtype,
 )
 
 # pylint: disable=no-name-in-module, ungrouped-imports
@@ -295,9 +296,9 @@ def _fold_to_weight(
 
     # If layer doesn't have bias, create a bias initializer and add it to the model, then retrieve it
     if not bias:
-        bias_data = np.zeros(num_out_channels)
+        bias_data = np.zeros(num_out_channels, _tensor_np_dtype(weight))
         bias_name = conv_linear.name + ".bias"
-        bias = numpy_helper.from_array(bias_data.astype(np.float32), name=bias_name)
+        bias = _tensor_from_array(bias_data, name=bias_name)
         model.graph.initializer.append(bias)
         conv_linear.input.append(bias_name)
         bias = ParamUtils.get_param(model, conv_linear, BIAS_INDEX)
@@ -347,8 +348,8 @@ def _fold_to_weight(
     ):
         weight_np = weight_np.transpose(1, 0, 2, 3)
 
-    weight_np = weight_np.astype(onnx.helper.tensor_dtype_to_np_dtype(weight.data_type))
-    bias_np = bias_np.astype(onnx.helper.tensor_dtype_to_np_dtype(bias.data_type))
+    weight_np = weight_np.astype(_tensor_np_dtype(weight))
+    bias_np = bias_np.astype(_tensor_np_dtype(bias))
     weight.raw_data = weight_np.tobytes()
     bias.raw_data = bias_np.tobytes()
 
@@ -374,8 +375,8 @@ def _matmul_to_gemm(node: NodeProto, model: ModelProto):
     node.name = node.name.replace("MatMul", "Gemm")
     # Create bias vector for Gemm operation
     bias_name = node.name + ".bias"
-    bias_data = np.zeros(weight.dims[1])
-    bias = numpy_helper.from_array(bias_data.astype(np.float32), name=bias_name)
+    bias_data = np.zeros(weight.dims[1], _tensor_np_dtype(weight))
+    bias = _tensor_from_array(bias_data, name=bias_name)
     model.graph.initializer.append(bias)
     node.input.append(bias_name)
 
@@ -496,6 +497,9 @@ def _update_standalone_batchnorm_ops(model: ModelProto):
             tensor_b = onnx_ir.convenience.get_const_tensor(params[1]).numpy()
             tensor_rm = onnx_ir.convenience.get_const_tensor(params[2]).numpy()
             tensor_rv = onnx_ir.convenience.get_const_tensor(params[3]).numpy()
+            # numpy promotes bfloat16 math to float32; the updated parameters must keep
+            # their original dtypes.
+            dtypes = [t.dtype for t in (tensor_w, tensor_b, tensor_rm, tensor_rv)]
 
             # update values
             inv_sigma = np.reciprocal(np.sqrt(tensor_rv + epsilon))
@@ -503,6 +507,10 @@ def _update_standalone_batchnorm_ops(model: ModelProto):
             tensor_b = tensor_b - tensor_rm * tensor_w
             tensor_rm = np.zeros(tensor_w.shape, tensor_w.dtype)
             tensor_rv = np.ones(tensor_w.shape, tensor_w.dtype)
+            tensor_w, tensor_b, tensor_rm, tensor_rv = (
+                t.astype(dtype)
+                for t, dtype in zip((tensor_w, tensor_b, tensor_rm, tensor_rv), dtypes)
+            )
             node.attributes["epsilon"] = onnx_ir.convenience.convert_attribute(
                 "epsilon", 0.0
             )

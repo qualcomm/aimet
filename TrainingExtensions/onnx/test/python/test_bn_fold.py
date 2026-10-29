@@ -646,3 +646,75 @@ class TestBatchNormFold:
         model = models_for_tests.dynamic_batchnorm_model()
         fold_all_batch_norms_to_weight(model)
         assert not _has_unfolded_batchnorms(model)
+
+
+class _BNAfterLinear1d(torch.nn.Module):
+    """Linear -> ReLU -> BatchNorm1d over a 3-D input: the BN is standalone (not foldable)."""
+
+    def __init__(self):
+        super().__init__()
+        self.fc1 = torch.nn.Linear(8, 8)
+        self.bn1 = torch.nn.BatchNorm1d(4)
+
+    def forward(self, x):
+        return self.bn1(torch.relu(self.fc1(x)))
+
+
+def _folded_params(model_factory, dtype, input_shape):
+    """Fold a ``dtype`` export of ``model_factory()``; return its float32 params and dtypes."""
+    torch.manual_seed(10)
+    torch_model = model_factory().eval()
+    initialize_bn_params(torch_model)
+    model = _convert_to_onnx_no_fold(
+        torch_model.to(dtype), torch.randn(input_shape, dtype=dtype), opset_version=17
+    ).model
+    fold_all_batch_norms_to_weight(model)
+    params = {
+        init.name: aimet_onnx.common.onnx._utils.to_array(init).astype(np.float32)
+        for init in model.graph.initializer
+    }
+    dtypes = {init.name: init.data_type for init in model.graph.initializer}
+    return model, params, dtypes
+
+
+@pytest.mark.parametrize(
+    "model_factory, input_shape",
+    [
+        pytest.param(lambda: BNAfterConv(bias=True), (2, 10, 24, 24), id="conv_bn"),
+        pytest.param(
+            lambda: BNAfterConv(bias=False), (2, 10, 24, 24), id="conv_no_bias_bn"
+        ),
+        pytest.param(lambda: BNBeforeConv(bias=True), (2, 10, 24, 24), id="bn_conv"),
+        pytest.param(lambda: BNAfterLinear(bias=False), (32, 10), id="matmul_bn"),
+        pytest.param(lambda: BNBeforeLinear(bias=True), (32, 10), id="bn_gemm"),
+        pytest.param(_BNAfterLinear1d, (2, 4, 8), id="standalone_bn"),
+    ],
+)
+def test_fold_bfloat16_model(model_factory, input_shape):
+    """
+    Given: A model with BatchNorms, exported in bfloat16
+    When: Fold its BatchNorms
+    Then: The same BatchNorms are folded as for its float32 export, every parameter stays
+          bfloat16, the folded values match the float32 fold up to bfloat16 rounding, and
+          the folded graph type-checks
+    """
+    fp32_model, fp32_params, _ = _folded_params(
+        model_factory, torch.float32, input_shape
+    )
+    bf16_model, bf16_params, bf16_dtypes = _folded_params(
+        model_factory, torch.bfloat16, input_shape
+    )
+
+    assert [n.op_type for n in bf16_model.graph.node] == [
+        n.op_type for n in fp32_model.graph.node
+    ]
+    assert set(bf16_params) == set(fp32_params)
+    assert set(bf16_dtypes.values()) == {onnx.TensorProto.BFLOAT16}
+    for name, expected in fp32_params.items():
+        # The bf16 export's inputs to the fold are already rounded to bf16
+        scale = max(np.abs(expected).max(), 1e-6)
+        assert np.abs(bf16_params[name] - expected).max() <= 0.02 * scale, name
+
+    # bf16 Conv is rejected by the type checker regardless of folding
+    if not any(n.op_type == "Conv" for n in bf16_model.graph.node):
+        onnx.checker.check_model(bf16_model, full_check=True)
