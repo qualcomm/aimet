@@ -30,6 +30,7 @@ from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.utils import (
     ParamUtils,
+    _tensor_np_dtype,
     replace_relu6_with_relu,
     find_shared_param_names,
 )
@@ -235,28 +236,18 @@ class PythonClsImpl(ClsImpl):
         if conv_2.get_module().op_type == "ConvTranspose":
             _weight_2_np = _weight_2_np.transpose(1, 0, *range(2, _weight_2_np.ndim))
 
-        _weight_0_np = _weight_0_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(weight_0.data_type)
-        )
-        _weight_1_np = _weight_1_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(weight_1.data_type)
-        )
-        _weight_2_np = _weight_2_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(weight_2.data_type)
-        )
+        _weight_0_np = _weight_0_np.astype(_tensor_np_dtype(weight_0))
+        _weight_1_np = _weight_1_np.astype(_tensor_np_dtype(weight_1))
+        _weight_2_np = _weight_2_np.astype(_tensor_np_dtype(weight_2))
 
         weight_0.raw_data = _weight_0_np.tobytes()
         weight_1.raw_data = _weight_1_np.tobytes()
         weight_2.raw_data = _weight_2_np.tobytes()
         if bias_0 is not None:
-            _bias_0_np = _bias_0_np.astype(
-                onnx.helper.tensor_dtype_to_np_dtype(bias_0.data_type)
-            )
+            _bias_0_np = _bias_0_np.astype(_tensor_np_dtype(bias_0))
             bias_0.raw_data = _bias_0_np.tobytes()
         if bias_1 is not None:
-            _bias_1_np = _bias_1_np.astype(
-                onnx.helper.tensor_dtype_to_np_dtype(bias_1.data_type)
-            )
+            _bias_1_np = _bias_1_np.astype(_tensor_np_dtype(bias_1))
             bias_1.raw_data = _bias_1_np.tobytes()
 
         return s_12, s_23
@@ -301,19 +292,13 @@ class PythonClsImpl(ClsImpl):
         if conv_1.get_module().op_type == "ConvTranspose":
             _weight_1_np = _weight_1_np.transpose(1, 0, *range(2, _weight_1_np.ndim))
 
-        _weight_0_np = _weight_0_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(weight_0.data_type)
-        )
-        _weight_1_np = _weight_1_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(weight_1.data_type)
-        )
+        _weight_0_np = _weight_0_np.astype(_tensor_np_dtype(weight_0))
+        _weight_1_np = _weight_1_np.astype(_tensor_np_dtype(weight_1))
 
         weight_0.raw_data = _weight_0_np.tobytes()
         weight_1.raw_data = _weight_1_np.tobytes()
         if bias_0 is not None:
-            _bias_0_np = _bias_0_np.astype(
-                onnx.helper.tensor_dtype_to_np_dtype(bias_0.data_type)
-            )
+            _bias_0_np = _bias_0_np.astype(_tensor_np_dtype(bias_0))
             bias_0.raw_data = _bias_0_np.tobytes()
 
         return scale_factor
@@ -444,12 +429,8 @@ class PythonHbfImpl(HbfImpl):
         _bias_prev_np, _bias_curr_np = self._absorb_bias(
             activation_is_relu, beta, gamma, weight_curr_np, bias_curr_np, bias_prev_np
         )
-        _bias_prev_np = _bias_prev_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(bias_prev.data_type)
-        )
-        _bias_curr_np = _bias_curr_np.astype(
-            onnx.helper.tensor_dtype_to_np_dtype(bias_curr.data_type)
-        )
+        _bias_prev_np = _bias_prev_np.astype(_tensor_np_dtype(bias_prev))
+        _bias_curr_np = _bias_curr_np.astype(_tensor_np_dtype(bias_curr))
 
         bias_prev.raw_data = _bias_prev_np.tobytes()
         bias_curr.raw_data = _bias_curr_np.tobytes()

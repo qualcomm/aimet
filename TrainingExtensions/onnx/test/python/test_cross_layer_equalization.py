@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 
+import ml_dtypes
 import numpy as np
 import copy
+import onnx
 import pytest
 import torch
 from onnxruntime import SessionOptions, GraphOptimizationLevel, InferenceSession
 from onnx import numpy_helper
+from onnxruntime.quantization.onnx_quantizer import ONNXModel
 
 from aimet_onnx.common.cross_layer_equalization import GraphSearchUtils
 from aimet_onnx.utils import make_dummy_input
@@ -34,6 +37,8 @@ from .models.models_for_tests import (
 
 from aimet_onnx.utils import ParamUtils, replace_relu6_with_relu
 from aimet_onnx.batch_norm_fold import fold_all_batch_norms_to_weight
+from aimet_onnx.common.onnx._utils import to_array
+from aimet_onnx.export_passes import convert_bfloat16_to_float32_pass
 
 from .models import models_for_tests
 
@@ -302,6 +307,94 @@ class TestCLS:
         session = _build_session(model)
         output_after_cle = session.run(None, test_input)[0]
         assert np.allclose(output_before_cle, output_after_cle, rtol=1e-3, atol=1e-5)
+
+    @pytest.mark.parametrize(
+        "model_factory",
+        [
+            pytest.param(lambda: _ConvBnReluConv(), id="conv_bn_relu_conv"),
+            pytest.param(lambda: _ConvReluDepthwiseReluConv(), id="depthwise"),
+        ],
+    )
+    def test_equalize_bfloat16_model(self, model_factory):
+        """
+        Given: A model exported in bfloat16, and the same bfloat16-rounded weights in
+               float32
+        When: Equalize both
+        Then: Every parameter stays bfloat16 and matches the float32 result up to bfloat16
+              rounding, and the bfloat16 model's output is preserved
+        """
+
+        def equalize(dtype):
+            torch.manual_seed(0)
+            torch_model = model_factory().eval()
+            for module in torch_model.modules():
+                if isinstance(module, torch.nn.BatchNorm2d):
+                    with torch.no_grad():
+                        module.weight.uniform_(0.5, 2)
+                        module.bias.normal_()
+                        module.running_mean.normal_()
+                        module.running_var.uniform_(0.5, 2)
+            # Same bfloat16-rounded weights in both exports
+            torch_model = torch_model.to(torch.bfloat16).to(dtype)
+            model = _convert_to_onnx_no_fold(
+                torch_model, torch.randn(2, 3, 16, 16, dtype=dtype)
+            ).model
+            # ORT has no bfloat16 Conv kernel, so run both graphs in float32
+            x = np.random.default_rng(0).standard_normal((2, 3, 16, 16), np.float32)
+
+            def run():
+                fp32 = convert_bfloat16_to_float32_pass(copy.deepcopy(model))
+                return _build_session(ONNXModel(fp32)).run(None, {"input": x})[0]
+
+            output_before = run()
+            equalize_model(model)
+            params = {
+                init.name: init
+                for init in model.graph.initializer
+                if init.data_type != onnx.TensorProto.INT64
+            }
+            return output_before, run(), params
+
+        _, _, fp32_params = equalize(torch.float32)
+        output_before, output_after, bf16_params = equalize(torch.bfloat16)
+
+        assert set(bf16_params) == set(fp32_params)
+        for name, init in bf16_params.items():
+            assert init.data_type == onnx.TensorProto.BFLOAT16, name
+            expected = to_array(fp32_params[name])
+            actual = to_array(init).astype(np.float32)
+            # CLE computes on the bfloat16 values, so it rounds a little differently
+            assert np.abs(actual - expected).max() <= 0.02 * np.abs(expected).max(), (
+                name
+            )
+        # Equalized weights are stored in bfloat16 again: < 1% of the output's range
+        scale = np.abs(output_before).max()
+        assert np.abs(output_after - output_before).max() <= 0.01 * scale
+
+
+class _ConvBnReluConv(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = torch.nn.Conv2d(3, 16, 3)
+        self.bn1 = torch.nn.BatchNorm2d(16)
+        self.relu1 = torch.nn.ReLU()
+        self.conv2 = torch.nn.Conv2d(16, 8, 3)
+
+    def forward(self, x):
+        return self.conv2(self.relu1(self.bn1(self.conv1(x))))
+
+
+class _ConvReluDepthwiseReluConv(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = torch.nn.Conv2d(3, 16, 3)
+        self.relu1 = torch.nn.ReLU()
+        self.depthwise = torch.nn.Conv2d(16, 16, 3, groups=16)
+        self.relu2 = torch.nn.ReLU()
+        self.conv3 = torch.nn.Conv2d(16, 8, 1)
+
+    def forward(self, x):
+        return self.conv3(self.relu2(self.depthwise(self.relu1(self.conv1(x)))))
 
 
 class TestHighBiasFold:
