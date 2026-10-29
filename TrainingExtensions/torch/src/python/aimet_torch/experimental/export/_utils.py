@@ -59,7 +59,6 @@ _GRID_PRESERVING_OPS = (
     torch.ops.aten.narrow,
     torch.ops.aten.narrow_copy,
     torch.ops.aten.native_dropout,
-    torch.ops.aten.nonzero,
     torch.ops.aten.pad,
     torch.ops.aten.permute,
     torch.ops.aten.permute_copy,

@@ -7,6 +7,14 @@ ops:
       a8: {"*": uint8}
       a16: {"*": uint16}
 
+  - op_type: aten::_log_softmax
+    type_constraints:
+      a8: {"*": uint8}
+      a16: {"*": uint16}
+    value_contraints:
+      fix:
+        - $ret[0]: {max: 0.0}
+
   - op_type: aten::_native_batch_norm_legit_no_training
     type_constraints:
       w8a8:
@@ -43,29 +51,92 @@ ops:
         $ret[1]: null  # ret[1] is always an empty tensor
         $ret[2]: null  # ret[2] is always an empty tensor
 
-  - op_type: aten::_softmax
+  - op_type: aten::_softmax | aten::sigmoid
     type_constraints:
-      a8:
-        self: uint8
-        dim: null
-        half_to_float: null
-        $ret[0]: uint8
-      a16:
-        self: uint16
-        dim: null
-        half_to_float: null
-        $ret[0]: uint16
+      a8: {"*": uint8}
+      a16: {"*": uint16}
     value_contraints:
       fix:
         - $ret[0]: {min: 0.0, max: 1.0}
 
-  - op_type: aten::cat | aten::split_with_sizes
+  - op_type: >
+      aten::alias
+      | aten::as_strided
+      | aten::amax
+      | aten::amin
+      | aten::cat
+      | aten::clone
+      | aten::col2im
+      | aten::constant_pad_nd
+      | aten::copy
+      | aten::expand
+      | aten::fill.Tensor
+      | aten::max.dim
+      | aten::maximum
+      | aten::max_pool2d_with_indices
+      | aten::max_pool3d_with_indices
+      | aten::mean
+      | aten::mean.dim
+      | aten::min.dim
+      | aten::minimum
+      | aten::permute
+      | aten::reflection_pad1d
+      | aten::reflection_pad2d
+      | aten::reflection_pad3d
+      | aten::repeat
+      | aten::replication_pad1d
+      | aten::replication_pad2d
+      | aten::replication_pad3d
+      | aten::select_scatter
+      | aten::slice.Tensor
+      | aten::slice_scatter
+      | aten::split_with_sizes
+      | aten::squeeze.dim
+      | aten::squeeze.dims
+      | aten::unsqueeze
+      | aten::view
     type_constraints:
       a8: {"*": uint8}
       a16: {"*": uint16}
     value_contraints:
       tie:
         - ["*"]
+
+  - op_type: aten::any
+    type_constraints:
+      a8:
+        self: uint8
+        $ret[0]: null
+      a16:
+        self: uint16
+        $ret[0]: null
+
+  - op_type: aten::asin
+    type_constraints:
+      a8:
+        self: uint8
+        $ret[0]: uint8
+      a16:
+        self: uint16
+        $ret[0]: uint16
+    value_contraints:
+      fix:
+        # Slightly discount input range to offset quantization error.
+        # qdq(±1.0) can slightly exceed ±1.0, which leads to NaN output.
+        - self: {min: -0.99, max: 0.99}
+        - $ret[0]: {min: -1.57, max: 1.57}  # [-π/2, π/2]
+
+  - op_type: aten::atan
+    type_constraints:
+      a8:
+        self: uint8
+        $ret[0]: uint8
+      a16:
+        self: uint16
+        $ret[0]: uint16
+    value_contraints:
+      fix:
+        - $ret[0]: {min: -1.57, max: 1.57}  # [-π/2, π/2]
 
   - op_type: aten::conv1d | aten::conv2d | aten::conv3d
     type_constraints:
@@ -132,15 +203,117 @@ ops:
 
   - op_type: aten::cos | aten::sin | aten::tanh
     type_constraints:
+      a8: {"*": uint8}
+      a16: {"*": uint16}
+    value_contraints:
+      fix:
+        - $ret[0]: {min: -1.0, max: 1.0}
+
+  - op_type: aten::embedding
+    type_constraints:
+      a8:
+        weight: uint8
+        indices: null
+        padding_idx: null
+        scale_grad_by_freq: null
+        sparse: null
+        $ret[0]: uint8
+      a16:
+        weight: uint16
+        indices: null
+        padding_idx: null
+        scale_grad_by_freq: null
+        sparse: null
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [weight, "$ret[0]"]
+
+  - op_type: >
+      aten::eq.Tensor
+      | aten::ge.Tensor
+      | aten::gt.Tensor
+      | aten::le.Tensor
+      | aten::lt.Tensor
+      | aten::ne.Tensor
+    type_constraints:
       a8:
         self: uint8
+        other: uint8
+        $ret[0]: null
+      a16:
+        self: uint16
+        other: uint16
+        $ret[0]: null
+    value_contraints:
+      tie:
+        - [self, other]
+
+  - op_type: aten::gather
+    type_constraints:
+      a8:
+        self: uint8
+        dim: null
+        index: null
+        sparse_grad: null
         $ret[0]: uint8
       a16:
         self: uint16
+        dim: null
+        index: null
+        sparse_grad: null
         $ret[0]: uint16
     value_contraints:
-      fix:
-        - $ret[0]: {min: 0.0, max: 1.0}
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::index.Tensor
+    type_constraints:
+      a8:
+        self: uint8
+        indices: null
+        $ret[0]: uint8
+      a16:
+        self: uint16
+        indices: null
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
+
+  - op_type: aten::index_put
+    type_constraints:
+      a8:
+        self: uint8
+        indices: null
+        values: uint8
+        accumulate: null
+        $ret[0]: uint8
+      a16:
+        self: uint16
+        indices: null
+        values: uint16
+        accumulate: null
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, values, "$ret[0]"]
+
+  - op_type: aten::index_select
+    type_constraints:
+      a8:
+        self: uint8
+        dim: null
+        index: null
+        $ret[0]: uint8
+      a16:
+        self: uint16
+        dim: null
+        index: null
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, "$ret[0]"]
 
   - op_type: aten::instance_norm
     type_constraints:
@@ -196,18 +369,23 @@ ops:
         bias: int32[channel_axis=0]
         $ret[0]: uint16
 
-  - op_type: aten::matmul
+  - op_type: aten::masked_scatter
     type_constraints:
-      a8xa8:
+      a8:
         self: uint8
-        other: int8
+        mask: null
+        source: uint8
         $ret[0]: uint8
-      a16xa8:
+      a16:
         self: uint16
-        other: int8
+        mask: null
+        source: uint16
         $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, source, "$ret[0]"]
 
-  - op_type: aten::bmm
+  - op_type: aten::mm | aten::bmm
     type_constraints:
       a8xa8:
         self: uint8
@@ -217,62 +395,6 @@ ops:
         self: uint16
         mat2: int8
         $ret[0]: uint16
-
-  - op_type: aten::max.dim | aten::min.dim
-    type_constraints:
-      a8:
-        self: uint8
-        dim: null
-        keepdim: null
-        $ret[0]: uint8
-        $ret[1]: null  # ret[1] is integer indices
-      a16:
-        self: uint16
-        dim: null
-        keepdim: null
-        $ret[0]: uint16
-        $ret[1]: null  # ret[1] is integer indices
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::max_pool2d_with_indices | aten::max_pool3d_with_indices
-    type_constraints:
-      a8:
-        self: uint8
-        kernel_size: null
-        stride: null
-        padding: null
-        dilation: null
-        ceil_mode: null
-        $ret[0]: uint8
-        $ret[1]: null  # ret[1] is integer indices
-      a16:
-        self: uint16
-        kernel_size: null
-        stride: null
-        padding: null
-        dilation: null
-        ceil_mode: null
-        $ret[0]: uint16
-        $ret[1]: null  # ret[1] is integer indices
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
-
-  - op_type: aten::mean
-    type_constraints:
-      a8:
-        self: uint8
-        dtype: null
-        $ret[0]: uint8
-      a16:
-        self: uint16
-        dtype: null
-        $ret[0]: uint16
-    value_contraints:
-      tie:
-        - [self, "$ret[0]"]
 
   - op_type: aten::native_layer_norm
     type_constraints:
@@ -306,14 +428,65 @@ ops:
 
   - op_type: aten::relu
     type_constraints:
-      a8:
-        self: uint8
-        $ret[0]: uint8
-      a16:
-        self: uint16
-        $ret[0]: uint16
+      a8: {"*": uint8}
+      a16: {"*": uint16}
     value_contraints:
       fix:
         - $ret[0]: {min: 0.0}
       tie:
         - [self, "$ret[0]"]
+
+  - op_type: aten::rms_norm
+    type_constraints:
+      w8a8:
+        input: uint8
+        normalized_shape: null
+        weight: uint8
+        eps: null
+        $ret[0]: uint8
+      w8a16:
+        input: uint16
+        normalized_shape: null
+        weight: uint8
+        eps: null
+        $ret[0]: uint16
+      w16a16:
+        input: uint16
+        normalized_shape: null
+        weight: uint16
+        eps: null
+        $ret[0]: uint16
+
+  - op_type: aten::scatter_add
+    type_constraints:
+      a8:
+        self: uint8
+        dim: null
+        index: null
+        src: uint8
+        $ret[0]: uint8
+      a16:
+        self: uint16
+        dim: null
+        index: null
+        src: uint16
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, src, "$ret[0]"]
+
+  - op_type: aten::where.self
+    type_constraints:
+      a8:
+        condition: null
+        self: uint8
+        other: uint8
+        $ret[0]: uint8
+      a16:
+        condition: null
+        self: uint16
+        other: uint16
+        $ret[0]: uint16
+    value_contraints:
+      tie:
+        - [self, other, "$ret[0]"]

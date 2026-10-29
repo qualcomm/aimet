@@ -50,8 +50,8 @@
   is_core_aten: true
 - name: aten::amin
   is_core_aten: true
-# - name: aten::any
-#   is_core_aten: true
+- name: aten::any
+  is_core_aten: true
 # - name: aten::any.dim
 #   is_core_aten: true
 # - name: aten::any.dims
@@ -62,8 +62,8 @@
   is_core_aten: true
 - name: aten::argmin
   is_core_aten: true
-# - name: aten::as_strided
-#   is_core_aten: true
+- name: aten::as_strided
+  is_core_aten: true
 - name: aten::asin
   is_core_aten: true
 # - name: aten::asinh
@@ -104,8 +104,6 @@
   is_core_aten: true
 - name: aten::ceil
   is_core_aten: true
-- name: aten::channel_shuffle
-  is_core_aten: false
 - name: aten::clamp
   is_core_aten: true
 # - name: aten::clamp.Tensor
@@ -128,8 +126,8 @@
   is_core_aten: false
 - name: aten::conv_transpose3d.input
   is_core_aten: false
-- name: aten::convolution
-  is_core_aten: true
+# - name: aten::convolution
+#   is_core_aten: true
 # - name: aten::convolution_backward
 #   is_core_aten: true
 - name: aten::copy
@@ -148,8 +146,8 @@
 #   is_core_aten: true
 - name: aten::div.Tensor
   is_core_aten: true
-# - name: aten::div.Tensor_mode
-#   is_core_aten: true
+- name: aten::div.Tensor_mode
+  is_core_aten: true
 - name: aten::elu
   is_core_aten: true
 - name: aten::embedding
@@ -168,12 +166,14 @@
 #   is_core_aten: true
 - name: aten::exp
   is_core_aten: true
-# - name: aten::expand
-#   is_core_aten: true
+- name: aten::expand
+  is_core_aten: true
 # - name: aten::expm1
 #   is_core_aten: true
 # - name: aten::fill.Scalar
 #   is_core_aten: true
+- name: aten::fill.Tensor
+  is_core_aten: false
 # - name: aten::flip
 #   is_core_aten: true
 - name: aten::floor
@@ -206,8 +206,6 @@
   is_core_aten: false
 - name: aten::hardtanh
   is_core_aten: true
-- name: aten::im2col
-  is_core_aten: false
 - name: aten::index.Tensor
   is_core_aten: true
 - name: aten::index_put
@@ -250,8 +248,6 @@
   is_core_aten: true
 - name: aten::masked_scatter
   is_core_aten: true
-- name: aten::matmul
-  is_core_aten: false
 - name: aten::max.dim
   is_core_aten: true
 - name: aten::max_pool1d_with_indices
@@ -262,8 +258,8 @@
 #   is_core_aten: true
 - name: aten::max_pool3d_with_indices
   is_core_aten: true
-# - name: aten::maximum
-#   is_core_aten: true
+- name: aten::maximum
+  is_core_aten: true
 - name: aten::mean
   is_core_aten: true
 - name: aten::mean.dim
@@ -296,14 +292,8 @@
   is_core_aten: true
 - name: aten::nonzero
   is_core_aten: true
-- name: aten::ones
-  is_core_aten: false
 - name: aten::permute
   is_core_aten: true
-- name: aten::pixel_shuffle
-  is_core_aten: false
-- name: aten::pixel_unshuffle
-  is_core_aten: false
 # - name: aten::pow.Scalar
 #   is_core_aten: true
 - name: aten::pow.Tensor_Scalar
@@ -336,6 +326,8 @@
 #   is_core_aten: true
 # - name: aten::remainder.Tensor
 #   is_core_aten: true
+- name: aten::rms_norm
+  is_core_aten: false
 - name: aten::repeat
   is_core_aten: true
 - name: aten::replication_pad1d
@@ -350,8 +342,8 @@
   is_core_aten: true
 - name: aten::rsqrt
   is_core_aten: true
-# - name: aten::scalar_tensor
-#   is_core_aten: true
+- name: aten::scalar_tensor
+  is_core_aten: true
 # - name: aten::scatter.src
 #   is_core_aten: true
 # - name: aten::scatter.value
@@ -372,8 +364,8 @@
   is_core_aten: true
 # - name: aten::sinh
 #   is_core_aten: true
-# - name: aten::slice.Tensor
-#   is_core_aten: true
+- name: aten::slice.Tensor
+  is_core_aten: true
 - name: aten::slice_scatter
   is_core_aten: true
 # - name: aten::sort
@@ -382,10 +374,10 @@
   is_core_aten: true
 - name: aten::sqrt
   is_core_aten: true
-# - name: aten::squeeze.dim
-#   is_core_aten: true
-# - name: aten::squeeze.dims
-#   is_core_aten: true
+- name: aten::squeeze.dim
+  is_core_aten: true
+- name: aten::squeeze.dims
+  is_core_aten: true
 # - name: aten::sub.Scalar
 #   is_core_aten: true
 - name: aten::sub.Tensor
@@ -396,8 +388,8 @@
 #   is_core_aten: true
 # - name: aten::sym_numel
 #   is_core_aten: true
-# - name: aten::sym_size.int
-#   is_core_aten: true
+- name: aten::sym_size.int
+  is_core_aten: true
 # - name: aten::sym_storage_offset
 #   is_core_aten: true
 # - name: aten::sym_stride.int
@@ -410,8 +402,8 @@
 #   is_core_aten: true
 # - name: aten::trunc
 #   is_core_aten: true
-# - name: aten::unsqueeze
-#   is_core_aten: true
+- name: aten::unsqueeze
+  is_core_aten: true
 # - name: aten::upsample_bilinear2d.vec
 #   is_core_aten: true
 - name: aten::upsample_linear1d
@@ -426,9 +418,5 @@
   is_core_aten: true
 - name: aten::where.self
   is_core_aten: true
-- name: aten::zeros
-  is_core_aten: false
-# - aten::rms_norm
-#   is_core_aten: false
 # - aten::upsample_bicubic2d
 #   is_core_aten: false

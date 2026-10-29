@@ -116,17 +116,16 @@ def _avg_pool3d_example_inputs():
 
 @register_example_inputs(torch.ops.aten.batch_norm.default)
 def _batch_norm_example_inputs():
-    return (
-        torch.randn(2, 3, 4, 4),
-        torch.ones(3),
-        torch.zeros(3),
-        torch.ones(3),
-        torch.zeros(3),
-        False,
-        0.1,
-        1e-5,
-        False,
-    ), {}
+    return (torch.randn(2, 3, 4, 4),), {
+        "weight": torch.ones(3),
+        "bias": torch.zeros(3),
+        "running_mean": torch.ones(3),
+        "running_var": torch.zeros(3),
+        "training": False,
+        "momentum": 0.1,
+        "eps": 1e-5,
+        "cudnn_enabled": False,
+    }
 
 
 @register_example_inputs(torch.ops.aten.bmm.default)
@@ -173,98 +172,91 @@ def _constant_pad_nd_example_inputs():
 
 @register_example_inputs(torch.ops.aten.conv1d.default)
 def _conv1d_example_inputs():
-    return (
-        torch.randn(1, 3, 8),
-        torch.randn(4, 3, 3),
-        None,
-        [1],
-        [0],
-        [1],
-        1,
-    ), {}
+    return (torch.randn(1, 3, 8),), {
+        "weight": torch.randn(4, 3, 3),
+        "bias": torch.randn(4),
+        "stride": [1],
+        "padding": [0],
+        "dilation": [1],
+        "groups": 1,
+    }
 
 
 @register_example_inputs(torch.ops.aten.conv2d.default)
 def _conv2d_example_inputs():
-    return (
-        torch.randn(1, 3, 8, 8),
-        torch.randn(4, 3, 3, 3),
-        None,
-        [1, 1],
-        [0, 0],
-        [1, 1],
-        1,
-    ), {}
+    return (torch.randn(1, 3, 8, 8),), {
+        "weight": torch.randn(4, 3, 3, 3),
+        "bias": torch.randn(4),
+        "stride": [1, 1],
+        "padding": [0, 0],
+        "dilation": [1, 1],
+        "groups": 1,
+    }
 
 
 @register_example_inputs(torch.ops.aten.conv3d.default)
 def _conv3d_example_inputs():
-    return (
-        torch.randn(1, 3, 4, 4, 4),
-        torch.randn(4, 3, 3, 3, 3),
-        None,
-        [1, 1, 1],
-        [0, 0, 0],
-        [1, 1, 1],
-        1,
-    ), {}
+    return (torch.randn(1, 3, 4, 4, 4),), {
+        "weight": torch.randn(4, 3, 3, 3, 3),
+        "bias": torch.randn(4),
+        "stride": [1, 1, 1],
+        "padding": [0, 0, 0],
+        "dilation": [1, 1, 1],
+        "groups": 1,
+    }
 
 
 @register_example_inputs(torch.ops.aten.conv_transpose1d.default)
 def _conv_transpose1d_example_inputs():
-    return (
-        torch.randn(1, 3, 8),
-        torch.randn(3, 4, 3),
-        None,
-        [1],
-        [0],
-        [0],
-        1,
-        [1],
-    ), {}
+    return (torch.randn(1, 3, 8),), {
+        "weight": torch.randn(3, 4, 3),
+        "bias": torch.randn(4),
+        "stride": [1],
+        "padding": [0],
+        "output_padding": [0],
+        "groups": 1,
+        "dilation": [1],
+    }
 
 
 @register_example_inputs(torch.ops.aten.conv_transpose2d.input)
 def _conv_transpose2d_input_example_inputs():
-    return (
-        torch.randn(1, 3, 8, 8),
-        torch.randn(3, 4, 3, 3),
-        None,
-        [1, 1],
-        [0, 0],
-        [0, 0],
-        1,
-        [1, 1],
-    ), {}
+    return (torch.randn(1, 3, 8, 8),), {
+        "weight": torch.randn(3, 4, 3, 3),
+        "bias": torch.randn(4),
+        "stride": [1, 1],
+        "padding": [0, 0],
+        "output_padding": [0, 0],
+        "groups": 1,
+        "dilation": [1, 1],
+    }
 
 
 @register_example_inputs(torch.ops.aten.conv_transpose3d.input)
 def _conv_transpose3d_input_example_inputs():
-    return (
-        torch.randn(1, 3, 4, 4, 4),
-        torch.randn(3, 4, 3, 3, 3),
-        None,
-        [1, 1, 1],
-        [0, 0, 0],
-        [0, 0, 0],
-        1,
-        [1, 1, 1],
-    ), {}
+    return (torch.randn(1, 3, 4, 4, 4),), {
+        "weight": torch.randn(3, 4, 3, 3, 3),
+        "bias": torch.randn(4),
+        "stride": [1, 1, 1],
+        "padding": [0, 0, 0],
+        "output_padding": [0, 0, 0],
+        "groups": 1,
+        "dilation": [1, 1, 1],
+    }
 
 
 @register_example_inputs(torch.ops.aten.convolution.default)
 def _convolution_example_inputs():
-    return (
-        torch.randn(1, 3, 8, 8),
-        torch.randn(4, 3, 3, 3),
-        None,
-        [1, 1],
-        [0, 0],
-        [1, 1],
-        False,
-        [0, 0],
-        1,
-    ), {}
+    return (torch.randn(1, 3, 8, 8),), {
+        "weight": torch.randn(4, 3, 3, 3),
+        "bias": None,
+        "stride": [1, 1],
+        "padding": [0, 0],
+        "dilation": [1, 1],
+        "transposed": False,
+        "output_padding": [0, 0],
+        "groups": 1,
+    }
 
 
 @register_example_inputs(torch.ops.aten.copy.default)
@@ -280,6 +272,11 @@ def _detach_example_inputs():
 @register_example_inputs(torch.ops.aten.div.Tensor)
 def _div_tensor_example_inputs():
     return (torch.randn(2, 3), torch.randn(2, 3)), {}
+
+
+@register_example_inputs(torch.ops.aten.div.Tensor_mode)
+def _div_tensor_mode_example_inputs():
+    return (torch.randn(2, 3), torch.randn(2, 3)), {"rounding_mode": "floor"}
 
 
 @register_example_inputs(torch.ops.aten.dot.default)
@@ -431,17 +428,16 @@ def _index_select_example_inputs():
 
 @register_example_inputs(torch.ops.aten.instance_norm.default)
 def _instance_norm_example_inputs():
-    return (
-        torch.randn(2, 3, 4, 4),
-        torch.ones(3),
-        torch.zeros(3),
-        torch.ones(3),
-        torch.zeros(3),
-        True,
-        0.1,
-        1e-5,
-        False,
-    ), {}
+    return (torch.randn(2, 3, 4, 4),), {
+        "weight": torch.ones(3),
+        "bias": torch.zeros(3),
+        "running_mean": torch.ones(3),
+        "running_var": torch.zeros(3),
+        "use_input_stats": True,
+        "momentum": 0.1,
+        "eps": 1e-5,
+        "cudnn_enabled": False,
+    }
 
 
 @register_example_inputs(torch.ops.aten.le.Tensor)
@@ -456,7 +452,7 @@ def _leaky_relu_example_inputs():
 
 @register_example_inputs(torch.ops.aten.linear.default)
 def _linear_example_inputs():
-    return (torch.randn(2, 3), torch.randn(4, 3), None), {}
+    return (torch.randn(2, 3),), {"weight": torch.randn(4, 3), "bias": torch.randn(4)}
 
 
 @register_example_inputs(torch.ops.aten.log.default)
@@ -581,13 +577,12 @@ def _native_group_norm_example_inputs():
 
 @register_example_inputs(torch.ops.aten.native_layer_norm.default)
 def _native_layer_norm_example_inputs():
-    return (
-        torch.randn(2, 3, 4),
-        [4],
-        torch.ones(4),
-        torch.zeros(4),
-        1e-5,
-    ), {}
+    return (torch.randn(2, 3, 4),), {
+        "normalized_shape": [4],
+        "weight": torch.ones(4),
+        "bias": torch.zeros(4),
+        "eps": 1e-5,
+    }
 
 
 @register_example_inputs(torch.ops.aten.neg.default)
@@ -603,6 +598,11 @@ def _pixel_shuffle_example_inputs():
 @register_example_inputs(torch.ops.aten.pixel_unshuffle.default)
 def _pixel_unshuffle_example_inputs():
     return (torch.randn(1, 4, 8, 8), 2), {}
+
+
+@register_example_inputs(torch.ops.aten.pow.Scalar)
+def _pow_scalar_example_inputs():
+    return (2.0, torch.randn(2, 3)), {}
 
 
 @register_example_inputs(torch.ops.aten.pow.Tensor_Scalar)
@@ -692,12 +692,11 @@ def _replication_pad3d_example_inputs():
 
 @register_example_inputs(torch.ops.aten.rms_norm.default)
 def _rms_norm_example_inputs():
-    return (
-        torch.randn(2, 3, 4),
-        [4],
-        torch.ones(4),
-        1e-5,
-    ), {}
+    return (torch.randn(2, 3, 4),), {
+        "normalized_shape": [4],
+        "weight": torch.ones(4),
+        "eps": 1e-5,
+    }
 
 
 @register_example_inputs(torch.ops.aten.rsqrt.default)
@@ -875,14 +874,15 @@ def _argmin_example_inputs():
     return (torch.randn(2, 3),), {}
 
 
+@register_example_inputs(torch.ops.aten.as_strided.default)
 @register_example_inputs(torch.ops.aten.as_strided_copy.default)
-def _as_strided_copy_example_inputs():
+def _as_strided_example_inputs():
     return (torch.randn(4, 4), [2, 2], [4, 1], 0), {}
 
 
 @register_example_inputs(torch.ops.aten.asin.default)
 def _asin_example_inputs():
-    return (torch.randn(2, 3).clamp(-1, 1),), {}
+    return (torch.tensor([-1.0, 0.0, 1.0]),), {}
 
 
 @register_example_inputs(torch.ops.aten.atan.default)
@@ -940,8 +940,9 @@ def _empty_memory_format_example_inputs():
 #     return (torch.randn(2, 3),), {}
 
 
+@register_example_inputs(torch.ops.aten.expand.default)
 @register_example_inputs(torch.ops.aten.expand_copy.default)
-def _expand_copy_example_inputs():
+def _expand_example_inputs():
     return (torch.randn(1, 3), [2, 3]), {}
 
 
@@ -1060,6 +1061,7 @@ def _min_dim_example_inputs():
     return (torch.randn(2, 3), 1, False), {}
 
 
+@register_example_inputs(torch.ops.aten.maximum.default)
 @register_example_inputs(torch.ops.aten.minimum.default)
 def _minimum_example_inputs():
     return (torch.randn(2, 3), torch.randn(2, 3)), {}
@@ -1082,7 +1084,7 @@ def _ne_tensor_example_inputs():
 
 @register_example_inputs(torch.ops.aten.nonzero.default)
 def _nonzero_example_inputs():
-    return (torch.randint(0, 2, (2, 3)),), {}
+    return (torch.arange(0, 3, dtype=torch.float32),), {}
 
 
 @register_example_inputs(torch.ops.aten.ones.default)
@@ -1091,12 +1093,8 @@ def _ones_example_inputs():
 
 
 @register_example_inputs(torch.ops.aten.permute.default)
-def _permute_example_inputs():
-    return (torch.randn(2, 3, 4), [2, 0, 1]), {}
-
-
 @register_example_inputs(torch.ops.aten.permute_copy.default)
-def _permute_copy_example_inputs():
+def _permute_example_inputs():
     return (torch.randn(2, 3, 4), [2, 0, 1]), {}
 
 
@@ -1120,9 +1118,9 @@ def _round_example_inputs():
 #     return (torch.randn(2, 3), 1.0), {}
 
 
-# @register_example_inputs(torch.ops.aten.scalar_tensor.default)
-# def _scalar_tensor_example_inputs():
-#     return (1.0,), {}
+@register_example_inputs(torch.ops.aten.scalar_tensor.default)
+def _scalar_tensor_example_inputs():
+    return (1.0,), {}
 
 
 # @register_example_inputs(torch.ops.aten.select_copy.int)
@@ -1145,6 +1143,11 @@ def _sin_example_inputs():
     return (torch.randn(2, 3),), {}
 
 
+@register_example_inputs(torch.ops.aten.slice.Tensor)
+def _slice_tensor_example_inputs():
+    return (torch.randn(2, 3, 4), 1, 0, 2, 1), {}
+
+
 # @register_example_inputs(torch.ops.aten.slice_copy.Tensor)
 # def _slice_copy_tensor_example_inputs():
 #     return (torch.randn(2, 3, 4), 1, 0, 2, 1), {}
@@ -1160,13 +1163,15 @@ def _slice_scatter_example_inputs():
 #     return (torch.randn(4, 3), 2, 0), {}
 
 
+@register_example_inputs(torch.ops.aten.squeeze.dim)
 @register_example_inputs(torch.ops.aten.squeeze_copy.dim)
-def _squeeze_copy_dim_example_inputs():
+def _squeeze_dim_example_inputs():
     return (torch.randn(2, 1, 3), 1), {}
 
 
+@register_example_inputs(torch.ops.aten.squeeze.dims)
 @register_example_inputs(torch.ops.aten.squeeze_copy.dims)
-def _squeeze_copy_dims_example_inputs():
+def _squeeze_dims_example_inputs():
     return (torch.randn(2, 1, 3, 1), [1, 3]), {}
 
 
@@ -1178,6 +1183,11 @@ def _squeeze_copy_dims_example_inputs():
 @register_example_inputs(torch.ops.aten.sum.dim_IntList)
 def _sum_dim_intlist_example_inputs():
     return (torch.randn(2, 3, 4), [1]), {}
+
+
+@register_example_inputs(torch.ops.aten.sym_size.int)
+def _sym_size_int():
+    return (torch.randn(2, 3, 4), 1), {}
 
 
 @register_example_inputs(torch.ops.aten.t_copy.default)
@@ -1195,13 +1205,15 @@ def _tril_example_inputs():
     return (torch.randn(3, 3),), {}
 
 
+@register_example_inputs(torch.ops.aten.unbind.int)
 @register_example_inputs(torch.ops.aten.unbind_copy.int)
-def _unbind_copy_int_example_inputs():
+def _unbind_int_example_inputs():
     return (torch.randn(3, 2, 4), 0), {}
 
 
+@register_example_inputs(torch.ops.aten.unsqueeze.default)
 @register_example_inputs(torch.ops.aten.unsqueeze_copy.default)
-def _unsqueeze_copy_example_inputs():
+def _unsqueeze_example_inputs():
     return (torch.randn(2, 3), 1), {}
 
 

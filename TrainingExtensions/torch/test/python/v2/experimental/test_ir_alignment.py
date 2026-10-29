@@ -1,6 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import itertools
 from pathlib import Path
 from typing import Callable, Any
 import onnx
@@ -32,7 +33,10 @@ def test_example_input_registry_completeness():
     """
     Example input registry should cover all Qualcomm-ATen operators
     """
-    assert _example_inputs_registry.keys() >= set(_qualcomm_aten_ir_ops())
+    missing = set(_qualcomm_aten_ir_ops()) - set(_example_inputs_registry.keys())
+    assert not missing, (
+        f"Missing example inputs for operators: {[op.name() for op in missing]}"
+    )
 
 
 @pytest.mark.parallel
@@ -54,6 +58,7 @@ supergroups = {
     torch.ops.aten.rsqrt.default,
     torch.ops.aten.rms_norm.default,
     torch.ops.aten.ne.Tensor,
+    torch.ops.aten.div.Tensor_mode,
 }
 
 # Expected failures
@@ -78,6 +83,8 @@ xfail = {
     torch.ops.aten.zeros.default: "Minor ONNX export error",
     torch.ops.aten.alias.default: "Minor ONNX export error",
     torch.ops.aten.fill.Tensor: "Minor ONNX export error",
+    torch.ops.aten.scalar_tensor.default: "Minor ONNX export error",
+    torch.ops.aten.sym_size.int: "Minor ONNX export error",
 }
 
 
@@ -96,21 +103,59 @@ def test_qnn_ir_alignment(tmp_path: Path, op: torch._ops.OpOverload):
         pytest.xfail(f"Expected failure for {op.__name__}: {reason}")
 
     class Model(torch.nn.Module):
+        def __init__(
+            self, parameters: dict[str, torch.Tensor], buffers: dict[str, torch.Tensor]
+        ):
+            super().__init__()
+
+            for name, param in parameters.items():
+                self.register_parameter(name, torch.nn.Parameter(param.clone()))
+
+            for name, buffer in buffers.items():
+                self.register_buffer(name, buffer.clone())
+
         def forward(self, *args, **kwargs):
+            kwargs = {
+                key: value
+                for key, value in itertools.chain(
+                    kwargs.items(),
+                    self.named_parameters(),
+                    self.named_buffers(),
+                )
+            }
             return op(*args, **kwargs)
 
     args, kwargs = get_example_inputs(op)
-    ep = torch.export.export(Model(), args, kwargs)
+
+    parameters = {}
+    if (weight := kwargs.get("weight")) is not None:
+        parameters["weight"] = weight
+    if (bias := kwargs.get("bias")) is not None:
+        parameters["bias"] = bias
+
+    buffers = {}
+    if (running_mean := kwargs.get("running_mean")) is not None:
+        buffers["running_mean"] = running_mean
+    if (running_var := kwargs.get("running_var")) is not None:
+        buffers["running_var"] = running_var
+
+    model = Model(parameters=parameters, buffers=buffers)
+    ep = torch.export.export(model, args, kwargs)
     ep = AimetExportedProgram.from_torch_exported_program(ep)
 
-    expected = Model()(*args, **kwargs)
+    expected = model(*args, **kwargs)
     out = ep.module()(*args, **kwargs)
 
     for out_, expected_ in zip(tree_iter(out), tree_iter(expected)):
         assert torch.allclose(out_, expected_, rtol=1e-3)
 
-    with ep.compute_missing_encodings(param_bw=8, activation_bw=8):
-        _ = ep.module()(*args, **kwargs)
+    with ep.compute_missing_encodings(
+        param_bw=8, activation_bw=16, target_backend="htp_v69"
+    ):
+        out = ep.module()(*args, **kwargs)
+
+    for out_ in tree_iter(out):
+        assert not out_.isnan().any()
 
     torch.export.save(ep, tmp_path / f"{op.__name__}.pt2")
 
@@ -131,7 +176,7 @@ def test_qnn_ir_alignment(tmp_path: Path, op: torch._ops.OpOverload):
         if (
             not _is_grid_preserving_op(op_type)
             and not _is_metadata_op(op_type)
-            and op_type not in ("QuantizeLinear", "DequantizeLinear")
+            and op_type not in ("QuantizeLinear", "DequantizeLinear", "Cast")
         ):
             non_grid_preserving_ops.append(op_type)
 
@@ -141,12 +186,8 @@ def test_qnn_ir_alignment(tmp_path: Path, op: torch._ops.OpOverload):
     onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
     model = onnx_ir.from_proto(onnx_model)
 
-    quantizable_graph_inputs = [
-        t for t in model.graph.inputs if t and t.dtype == onnx.TensorProto.FLOAT
-    ]
-    quantizable_graph_outputs = [
-        t for t in model.graph.outputs if t and t.dtype == onnx.TensorProto.FLOAT
-    ]
+    quantizable_graph_inputs = [t for t in model.graph.inputs if _is_quantizable(t)]
+    quantizable_graph_outputs = [t for t in model.graph.outputs if _is_quantizable(t)]
 
     # All quantizable graph inputs/outputs should be quantized
     for inp in quantizable_graph_inputs:
@@ -167,10 +208,46 @@ def test_qnn_ir_alignment(tmp_path: Path, op: torch._ops.OpOverload):
             continue
 
         for inp in node.inputs:
-            if inp and inp.dtype == onnx.TensorProto.FLOAT:
-                assert inp.producer().op_type == "DequantizeLinear"
+            if _is_quantizable(inp):
+                assert inp is not None
+                assert (producer := inp.producer()) is not None
+                assert producer.op_type == "DequantizeLinear"
 
         for out in node.outputs:
-            if out.dtype == onnx.TensorProto.FLOAT:
+            if _is_quantizable(out):
                 for consumer in out.consumers():
                     assert consumer.op_type == "QuantizeLinear"
+
+
+def _is_batchnorm_input_statistics(value: onnx_ir.Value) -> bool:
+    return (
+        len(value.consumers()) == 1
+        and (consumer := value.consumers()[0]).op_type == "BatchNormalization"
+        and value in consumer.inputs[3:5]
+    )
+
+
+def _is_batchnorm_output_statistics(value: onnx_ir.Value) -> bool:
+    return bool(
+        (producer := value.producer())
+        and producer.op_type == "BatchNormalization"
+        and value in producer.outputs[1:]
+    )
+
+
+def _is_layernorm_output_statistics(value: onnx_ir.Value) -> bool:
+    return bool(
+        (producer := value.producer())
+        and producer.op_type == "LayerNormalization"
+        and value in producer.outputs[1:]
+    )
+
+
+def _is_quantizable(value: onnx_ir.Value | None) -> bool:
+    return (
+        value is not None
+        and value.dtype == onnx.TensorProto.FLOAT
+        and not _is_batchnorm_input_statistics(value)
+        and not _is_batchnorm_output_statistics(value)
+        and not _is_layernorm_output_statistics(value)
+    )

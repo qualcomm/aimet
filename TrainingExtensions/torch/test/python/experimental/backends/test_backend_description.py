@@ -48,23 +48,32 @@ def _assert_op_schema(node: torch.fx.Node, expected_schema: OpSchema):
     for input_node, arg_spec in zip(node.args, expected_schema.signature.inputs):
         if not arg_spec.qtype:
             continue
-        assert isinstance(input_node, torch.fx.Node)
-        *_, qtype = input_node.args
-        expected_qtype = getattr(torch, arg_spec.qtype.dtype)
-        assert qtype == expected_qtype
 
-        if arg_spec.qtype.channel_axis is None:
-            assert input_node.target.overloadpacket in (
-                torch.ops.quantized_decomposed.quantize_per_tensor,
-                torch.ops.quantized_decomposed.dequantize_per_tensor,
-            )
+        if node.target == torch.ops.aten.cat.default:
+            assert isinstance(input_node, (list, tuple))
+            input_nodes = input_node
+            assert all(isinstance(n, torch.fx.Node) for n in input_nodes)
         else:
-            assert input_node.target.overloadpacket in (
-                torch.ops.quantized_decomposed.quantize_per_channel,
-                torch.ops.quantized_decomposed.dequantize_per_channel,
-            )
-            _, _, _, channel_axis, *_ = input_node.args
-            assert channel_axis == arg_spec.qtype.channel_axis
+            assert isinstance(input_node, torch.fx.Node)
+            input_nodes = [input_node]
+
+        for input_node in input_nodes:
+            *_, qtype = input_node.args
+            expected_qtype = getattr(torch, arg_spec.qtype.dtype)
+            assert qtype == expected_qtype
+
+            if arg_spec.qtype.channel_axis is None:
+                assert input_node.target.overloadpacket in (
+                    torch.ops.quantized_decomposed.quantize_per_tensor,
+                    torch.ops.quantized_decomposed.dequantize_per_tensor,
+                )
+            else:
+                assert input_node.target.overloadpacket in (
+                    torch.ops.quantized_decomposed.quantize_per_channel,
+                    torch.ops.quantized_decomposed.dequantize_per_channel,
+                )
+                _, _, _, channel_axis, *_ = input_node.args
+                assert channel_axis == arg_spec.qtype.channel_axis
 
     if isinstance(node.meta["val"], (tuple, list)):
         # Node returns a list of tensors.
@@ -84,6 +93,7 @@ def _assert_op_schema(node: torch.fx.Node, expected_schema: OpSchema):
         if not ret_spec.qtype:
             continue
         assert isinstance(output_node, torch.fx.Node)
+
         (q,) = output_node.users
         assert _is_torch_ao_q_node(q)
         *_, qtype = q.args
@@ -131,9 +141,16 @@ def module(request):
             return cls(10, 10).eval()
         case torch.nn.ReLU | torch.nn.PReLU:
             return cls().eval()
-        case torch.nn.Softmax:
+        case torch.nn.Softmax | torch.nn.LogSoftmax | torch.nn.Sigmoid:
             return cls().eval()
-        case custom.Sin | custom.Cos | torch.nn.Tanh:
+        case (
+            custom.Asin
+            | custom.Atan
+            | custom.Sin
+            | custom.Cos
+            | torch.nn.Tanh
+            | custom.Concat
+        ):
             return cls().eval()
         case custom.MatMul:
             return cls().eval()
@@ -158,6 +175,12 @@ def module(request):
                 affine=True,
                 track_running_stats=True,
             ).eval()
+        case torch.nn.RMSNorm:
+            return cls(normalized_shape=10, eps=1e-8, elementwise_affine=True).eval()
+        case custom.Permute | custom.Pad | custom.Equal | custom.Where:
+            return cls().eval()
+        case torch.nn.Embedding:
+            return cls(20, 8).eval()
         case _:
             raise NotImplementedError
 
@@ -171,8 +194,24 @@ def example_inputs(module):
             return (torch.randn(1, 3, 10, 10, 10),)
         case torch.nn.Linear():
             return (torch.randn(1, 3, 10),)
-        case custom.MatMul():
+        case custom.MatMul() | custom.Concat():
             return (torch.randn(10, 10), torch.randn(10, 10))
+        case custom.Permute():
+            return (torch.randn(1, 3, 10, 10), (0, 2, 3, 1))
+        case torch.nn.Embedding():
+            return (torch.randint(0, 20, (1, 10)),)
+        case custom.Equal():
+            return (torch.randn(10, 10), torch.randn(10, 10))
+        case custom.Where():
+            return (
+                torch.rand(10, 10) > 0.5,
+                torch.randn(10, 10),
+                torch.randn(10, 10),
+            )
+        case custom.Pad():
+            return (torch.randn(1, 3, 10, 10), (1, 1, 1, 1))
+        case custom.Asin():
+            return (torch.tensor([-1.0, 0.0, 1.0]),)
         case _:
             return (torch.randn(1, 3, 10, 10),)
 
@@ -191,25 +230,35 @@ def w8a16_op_schemas():
 @pytest.mark.parametrize(
     "module",
     [
+        custom.Asin,
+        custom.Concat,
+        custom.Cos,
+        custom.Sin,
+        custom.Equal,
+        custom.MatMul,
+        custom.Mean,
+        custom.Pad,
+        custom.Permute,
+        custom.Where,
+        torch.nn.BatchNorm2d,
         torch.nn.Conv1d,
         torch.nn.Conv2d,
         torch.nn.Conv3d,
         torch.nn.ConvTranspose1d,
         torch.nn.ConvTranspose2d,
         torch.nn.ConvTranspose3d,
-        torch.nn.Linear,
-        torch.nn.ReLU,
-        torch.nn.PReLU,
-        torch.nn.Softmax,
-        custom.Sin,
-        custom.Cos,
-        torch.nn.Tanh,
-        custom.MatMul,
-        custom.Mean,
-        torch.nn.BatchNorm2d,
-        torch.nn.LayerNorm,
+        torch.nn.Embedding,
         torch.nn.InstanceNorm2d,
+        torch.nn.LayerNorm,
+        torch.nn.Linear,
+        torch.nn.LogSoftmax,
+        torch.nn.PReLU,
+        torch.nn.ReLU,
+        torch.nn.RMSNorm,
         torch.nn.Sequential,
+        torch.nn.Sigmoid,
+        torch.nn.Softmax,
+        torch.nn.Tanh,
     ],
     indirect=True,
 )
@@ -231,22 +280,40 @@ def test_fully_quantized(tmp_path, module, example_inputs, w8a16_op_schemas):
             outputs = (outputs,)
 
         for output in outputs:
-            if output.numel() > 0:
+            if output.numel() > 0 and output.is_floating_point():
                 assert isinstance(output, Q.DequantizedTensor)
+            assert not output.isnan().any()
 
     # Make sure ExportedProgram object can be saved and loaded correctly
     torch.export.save(ep, tmp_path / "ep.pt2")
     ep = torch.export.load(tmp_path / "ep.pt2")
     _assert_graph_fully_quantized(ep, w8a16_op_schemas)
 
-    if isinstance(module, (torch.nn.Softmax, custom.Sin, custom.Cos, torch.nn.Tanh)):
+    if isinstance(module, (torch.nn.Softmax, torch.nn.Sigmoid)):
         """
-        Softmax output should be set to [0, 1] range after quantization
+        Softmax/Sigmoid output should be set to [0, 1] range after quantization
         """
         (output_dq,) = ep.graph.output_node().all_input_nodes
         min, max = _get_min_max_range(output_dq)
         assert min == 0.0
-        assert np.allclose(max, 1.0)
+        assert np.allclose(max, 1.0, rtol=1e-4)
+
+    if isinstance(module, torch.nn.LogSoftmax):
+        """
+        LogSoftmax output should be set to [?, 0] range after quantization
+        """
+        (output_dq,) = ep.graph.output_node().all_input_nodes
+        min, max = _get_min_max_range(output_dq)
+        assert max == 0.0
+
+    if isinstance(module, (custom.Sin, custom.Cos, torch.nn.Tanh)):
+        """
+        Sin/Cos/Tanh output should be set to [-1, 1] range after quantization
+        """
+        (output_dq,) = ep.graph.output_node().all_input_nodes
+        min, max = _get_min_max_range(output_dq)
+        assert np.allclose(min, -1.0, rtol=1e-4)
+        assert np.allclose(max, 1.0, rtol=1e-4)
 
     if isinstance(module, torch.nn.ReLU):
         """
@@ -256,16 +323,46 @@ def test_fully_quantized(tmp_path, module, example_inputs, w8a16_op_schemas):
         min, _ = _get_min_max_range(output_dq)
         assert min == 0.0
 
-    if isinstance(module, (torch.nn.ReLU, custom.Mean)):
+    if isinstance(module, (torch.nn.ReLU, custom.Mean, custom.Permute)):
         """
         Relu and ReduceMean's input range should be euqal to the output range
         """
-        (input,) = ep.graph.find_nodes(op="placeholder")
+        (input, *_) = ep.graph.find_nodes(op="placeholder")
         (input_q,) = input.users
         (output_dq,) = ep.graph.output_node().all_input_nodes
         input_range = _get_min_max_range(input_q)
         output_range = _get_min_max_range(output_dq)
         assert input_range == output_range
+
+    if isinstance(module, custom.Concat):
+        """
+        Concat's input range should be equal to the output range
+        """
+        (output_dq,) = ep.graph.output_node().all_input_nodes
+        output_range = _get_min_max_range(output_dq)
+        for input in ep.graph.find_nodes(op="placeholder"):
+            (input_q,) = input.users
+            input_range = _get_min_max_range(input_q)
+            assert input_range == output_range
+
+    if isinstance(module, (custom.Asin, custom.Atan)):
+        """
+        Asin/Atan's output range should be [-π/2, π/2]
+        """
+        (output_dq,) = ep.graph.output_node().all_input_nodes
+        out_min, out_max = _get_min_max_range(output_dq)
+        assert np.isclose(out_min, -np.pi / 2, atol=0.001)
+        assert np.isclose(out_max, np.pi / 2, atol=0.001)
+
+    if isinstance(module, custom.Asin):
+        """
+        Asin's input range should be [-0.99, 0.99] to avoid NaN output
+        """
+        (input, *_) = ep.graph.find_nodes(op="placeholder")
+        (input_q,) = input.users
+        in_min, in_max = _get_min_max_range(input_q)
+        assert np.isclose(in_min, -0.99, atol=0.001)
+        assert np.isclose(in_max, 0.99, atol=0.001)
 
 
 def test_wildcard_overwrite():
