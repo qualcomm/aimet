@@ -3875,7 +3875,10 @@ def _to(encoding: dict, signed: bool) -> dict:
     if "y_zero_point" in encoding:
         y_zero_point = np.array(encoding["y_zero_point"], dtype=np.int64)
     else:
-        y_scale = np.array(encoding["y_scale"])
+        y_scale = encoding["y_scale"]
+        if isinstance(y_scale, dict):
+            y_scale = y_scale["x"]
+        y_scale = np.array(y_scale)
         y_zero_point = np.zeros(y_scale.shape, dtype=np.int64)
 
     if signed:
@@ -4235,7 +4238,9 @@ def _validate_encoding_entry(entry: Any, name: str, encoding_version: str):
                     f"required by encoding version {encoding_version}."
                 )
 
-            scales = [f for f in _SCALE_FIELDS[encoding_version] if f in element]
+            scales = {
+                f: element[f] for f in _SCALE_FIELDS[encoding_version] if f in element
+            }
             if not scales:
                 raise ValueError(
                     f"Integer encoding for '{name}' has no scale. Expected one of "
@@ -4243,8 +4248,12 @@ def _validate_encoding_entry(entry: Any, name: str, encoding_version: str):
                     f"{encoding_version} file."
                 )
 
-            for field in scales:
-                value = element[field]
+            if encoding_version == "2.1.0" and isinstance(scales.get("y_scale"), dict):
+                meta_encoding = scales.pop("y_scale")
+                scales["y_scale.x"] = meta_encoding["x"]
+                scales["y_scale.x_scale"] = meta_encoding["x_scale"]
+
+            for field, value in scales.items():
                 flat = value if isinstance(value, (list, tuple)) else [value]
                 if not len(flat):
                     raise ValueError(f"Encoding for '{name}' has an empty '{field}'.")
@@ -4256,7 +4265,7 @@ def _validate_encoding_entry(entry: Any, name: str, encoding_version: str):
                             f"Encoding for '{name}' has a non-numeric value in '{field}': "
                             f"{scalar!r}."
                         )
-                    if field != "per_block_int_scale" and (
+                    if field not in ("per_block_int_scale", "y_scale.x") and (
                         not np.isfinite(scalar) or scalar <= 0
                     ):
                         raise ValueError(
@@ -4632,11 +4641,15 @@ def encodings_to_onnx_qdq(
         is_param = is_constant or name in param_names
         dims = tuple(constants[name].dims) if is_constant else None
 
-        parsed = EncodingBase.from_qnn_encoding_dict(
-            encoding, input_shape=dims, default_channel_axis=channel_axes.get(name)
-        )
-
-        qdq_encoding = parsed.to_qnn_encoding_dict("2.0.0")
+        if isinstance(encoding, dict) and isinstance(encoding.get("y_scale"), dict):
+            # The QDQ exporter already handles 2.1.0 double quantization. Preserve its
+            # meta encoding rather than parsing it as a plain affine scale.
+            qdq_encoding = encoding.copy()
+        else:
+            parsed = EncodingBase.from_qnn_encoding_dict(
+                encoding, input_shape=dims, default_channel_axis=channel_axes.get(name)
+            )
+            qdq_encoding = parsed.to_qnn_encoding_dict("2.0.0")
 
         if not qdq_encoding:
             # Plain-cast float formats (float16, bfloat16) carry no scale and so have no
