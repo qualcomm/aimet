@@ -50,6 +50,44 @@ cls_supported_layer_types = ["Conv", "ConvTranspose"]
 cls_supported_activation_types = ["Relu", "PRelu"]
 
 
+def _convtranspose_to_oihw(weight: np.ndarray, groups: int) -> np.ndarray:
+    """
+    Reorder a ConvTranspose weight [I, O/g, *K] into the Conv layout [O, I/g, *K] that
+    the scaling math works in. A plain transpose of the first two axes is only correct
+    for groups == 1; a grouped (e.g. depthwise) ConvTranspose has to be swapped per group.
+
+    :param weight: ConvTranspose weight, at least 3D
+    :param groups: the node's group attribute
+    :return: weight in [O, I/g, *K] layout
+    """
+    g = max(int(groups or 1), 1)
+    in_ch, out_per_group = weight.shape[:2]
+    kernel = weight.shape[2:]
+    return (
+        weight.reshape(g, in_ch // g, out_per_group, *kernel)
+        .transpose(0, 2, 1, *range(3, weight.ndim + 1))
+        .reshape(g * out_per_group, in_ch // g, *kernel)
+    )
+
+
+def _oihw_to_convtranspose(weight: np.ndarray, groups: int) -> np.ndarray:
+    """
+    Inverse of _convtranspose_to_oihw: [O, I/g, *K] back to the ConvTranspose layout [I, O/g, *K].
+
+    :param weight: weight in [O, I/g, *K] layout
+    :param groups: the node's group attribute
+    :return: weight in [I, O/g, *K] layout
+    """
+    g = max(int(groups or 1), 1)
+    out_ch, in_per_group = weight.shape[:2]
+    kernel = weight.shape[2:]
+    return (
+        weight.reshape(g, out_ch // g, in_per_group, *kernel)
+        .transpose(0, 2, 1, *range(3, weight.ndim + 1))
+        .reshape(g * in_per_group, out_ch // g, *kernel)
+    )
+
+
 def get_ordered_list_of_conv_modules(list_of_starting_ops: List) -> List:
     """
     Finds order of nodes in graph
@@ -210,13 +248,13 @@ class PythonClsImpl(ClsImpl):
         while weight_2_np.ndim < 4:
             weight_2_np = np.expand_dims(weight_2_np, axis=-1)
 
-        # Transpose weights from [I, O, H, W] to [O, I, H, W]
+        # Reorder ConvTranspose weights from [I, O/g, H, W] to [O, I/g, H, W]
         if conv_0.get_module().op_type == "ConvTranspose":
-            weight_0_np = weight_0_np.transpose(1, 0, *range(2, weight_0_np.ndim))
+            weight_0_np = _convtranspose_to_oihw(weight_0_np, conv_0.groups)
         if conv_1.get_module().op_type == "ConvTranspose":
-            weight_1_np = weight_1_np.transpose(1, 0, *range(2, weight_1_np.ndim))
+            weight_1_np = _convtranspose_to_oihw(weight_1_np, conv_1.groups)
         if conv_2.get_module().op_type == "ConvTranspose":
-            weight_2_np = weight_2_np.transpose(1, 0, *range(2, weight_2_np.ndim))
+            weight_2_np = _convtranspose_to_oihw(weight_2_np, conv_2.groups)
 
         # compute scaling factors and folded parameters.
         s_12, s_23 = self.compute_scaling_params_for_depthwise_conv(
@@ -228,13 +266,13 @@ class PythonClsImpl(ClsImpl):
             )
         )
 
-        # Transpose weights from [O, I, H, W] back to [I, O, H, W]
+        # Reorder weights from [O, I/g, H, W] back to ConvTranspose [I, O/g, H, W]
         if conv_0.get_module().op_type == "ConvTranspose":
-            _weight_0_np = _weight_0_np.transpose(1, 0, *range(2, _weight_0_np.ndim))
+            _weight_0_np = _oihw_to_convtranspose(_weight_0_np, conv_0.groups)
         if conv_1.get_module().op_type == "ConvTranspose":
-            _weight_1_np = _weight_1_np.transpose(1, 0, *range(2, _weight_1_np.ndim))
+            _weight_1_np = _oihw_to_convtranspose(_weight_1_np, conv_1.groups)
         if conv_2.get_module().op_type == "ConvTranspose":
-            _weight_2_np = _weight_2_np.transpose(1, 0, *range(2, _weight_2_np.ndim))
+            _weight_2_np = _oihw_to_convtranspose(_weight_2_np, conv_2.groups)
 
         _weight_0_np = _weight_0_np.astype(_tensor_np_dtype(weight_0))
         _weight_1_np = _weight_1_np.astype(_tensor_np_dtype(weight_1))
@@ -274,11 +312,11 @@ class PythonClsImpl(ClsImpl):
         while weight_1_np.ndim < 4:
             weight_1_np = np.expand_dims(weight_1_np, axis=-1)
 
-        # Transpose weights from [I, O, H, W] to [O, I, H, W]
+        # Reorder ConvTranspose weights from [I, O/g, H, W] to [O, I/g, H, W]
         if conv_0.get_module().op_type == "ConvTranspose":
-            weight_0_np = weight_0_np.transpose(1, 0, *range(2, weight_0_np.ndim))
+            weight_0_np = _convtranspose_to_oihw(weight_0_np, conv_0.groups)
         if conv_1.get_module().op_type == "ConvTranspose":
-            weight_1_np = weight_1_np.transpose(1, 0, *range(2, weight_1_np.ndim))
+            weight_1_np = _convtranspose_to_oihw(weight_1_np, conv_1.groups)
 
         # compute scaling factors and folded parameters.
         scale_factor = self.compute_scaling_params_for_conv(weight_0_np, weight_1_np)
@@ -286,11 +324,11 @@ class PythonClsImpl(ClsImpl):
             weight_0_np, weight_1_np, bias_0_np, scale_factor
         )
 
-        # Transpose weights from [O, I, H, W] back to [I, O, H, W]
+        # Reorder weights from [O, I/g, H, W] back to ConvTranspose [I, O/g, H, W]
         if conv_0.get_module().op_type == "ConvTranspose":
-            _weight_0_np = _weight_0_np.transpose(1, 0, *range(2, _weight_0_np.ndim))
+            _weight_0_np = _oihw_to_convtranspose(_weight_0_np, conv_0.groups)
         if conv_1.get_module().op_type == "ConvTranspose":
-            _weight_1_np = _weight_1_np.transpose(1, 0, *range(2, _weight_1_np.ndim))
+            _weight_1_np = _oihw_to_convtranspose(_weight_1_np, conv_1.groups)
 
         _weight_0_np = _weight_0_np.astype(_tensor_np_dtype(weight_0))
         _weight_1_np = _weight_1_np.astype(_tensor_np_dtype(weight_1))
@@ -414,11 +452,9 @@ class PythonHbfImpl(HbfImpl):
         while weight_curr_np.ndim < 4:
             weight_curr_np = np.expand_dims(weight_curr_np, axis=-1)
 
-        # Transpose weights from [I, O, H, W] to [O, I, H, W]
+        # Reorder ConvTranspose weights from [I, O/g, H, W] to [O, I/g, H, W]
         if curr.get_module().op_type == "ConvTranspose":
-            weight_curr_np = weight_curr_np.transpose(
-                1, 0, *range(2, weight_curr_np.ndim)
-            )
+            weight_curr_np = _convtranspose_to_oihw(weight_curr_np, curr.groups)
 
         activation_is_relu = cls_pair_info.relu_activation_between_layers
 

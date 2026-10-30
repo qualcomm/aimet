@@ -22,6 +22,8 @@ from aimet_onnx.cross_layer_equalization import (
     CrossLayerScaling,
     HighBiasFold,
     equalize_model,
+    _convtranspose_to_oihw,
+    _oihw_to_convtranspose,
 )
 
 from .models.models_for_tests import (
@@ -225,6 +227,55 @@ class TestCLS:
         output_after_cls = session.run(None, {"input": test_data})
         assert np.allclose(output_after_cls, output_before_cls, rtol=1e-2, atol=1e-5)
         assert len(cls_set_infos) == 8
+
+    def test_scale_model_depthwise_transposed_conv(self):
+        torch.manual_seed(0)
+        model = _convert_to_onnx_no_fold(
+            models_for_tests.DepthwiseTransposedConvBetweenConvs(),
+            torch.randn(1, 3, 16, 16),
+        )
+        input_shape = (1, 3, 16, 16)
+        test_data = np.random.randn(*input_shape).astype(np.float32)
+        session = _build_session(model)
+        output_before_cls = session.run(None, {"input": test_data})
+        cls = CrossLayerScaling(model)
+        cls_set_infos = cls.scale_model()
+        assert len(cls_set_infos) == 1
+        session = _build_session(model)
+        output_after_cls = session.run(None, {"input": test_data})
+        assert np.allclose(output_after_cls, output_before_cls, rtol=1e-2, atol=1e-5)
+
+        pair_1, pair_2 = cls_set_infos[0].cls_pair_info_list
+        weight_1, weight_2, weight_3 = (
+            numpy_helper.to_array(
+                ParamUtils.get_param(model.model, layer.get_module(), WEIGHT_INDEX)
+            )
+            for layer in (pair_1.layer1, pair_1.layer2, pair_2.layer2)
+        )
+        # ConvTranspose weight keeps its [I, O/g, H, W] = [8, 1, 4, 4] layout
+        assert weight_2.shape == (8, 1, 4, 4)
+        # Per-channel ranges are equalized across all three layers
+        range_1 = np.amax(np.abs(weight_1), axis=(1, 2, 3))
+        range_2 = np.amax(np.abs(weight_2), axis=(1, 2, 3))
+        range_3 = np.amax(np.abs(weight_3), axis=(0, 2, 3))
+        assert np.allclose(range_1, range_2)
+        assert np.allclose(range_2, range_3)
+
+    @pytest.mark.parametrize("groups", [1, 2, 8])
+    def test_convtranspose_weight_reorder(self, groups):
+        in_channels, out_channels = 8, 4 * groups
+        weight = np.random.randn(in_channels, out_channels // groups, 3, 3)
+        reordered = _convtranspose_to_oihw(weight, groups)
+        assert reordered.shape == (out_channels, in_channels // groups, 3, 3)
+        if groups == 1:
+            assert np.array_equal(reordered, weight.transpose(1, 0, 2, 3))
+        # Output channel o of group g reads input channel i of the same group
+        for o in range(out_channels):
+            g, o_local = divmod(o, out_channels // groups)
+            for i_local in range(in_channels // groups):
+                i = g * (in_channels // groups) + i_local
+                assert np.array_equal(reordered[o, i_local], weight[i, o_local])
+        assert np.array_equal(_oihw_to_convtranspose(reordered, groups), weight)
 
     def test_cle(self):
         np.random.seed(0)
