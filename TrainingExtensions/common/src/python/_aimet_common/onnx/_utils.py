@@ -661,7 +661,7 @@ def _quantize_const(
             "encoding (weight/input) collapsed to zero. "
             "Please check provided input for calibration or increase precision of the model."
         )
-    const_q = const / y_scale + y_zero_point
+    const_q = const / y_scale
 
     if "int" in output_dtype:
         unsigned, bitwidth = output_dtype.split("int")
@@ -674,7 +674,10 @@ def _quantize_const(
             clip_min = -(2 ** (bitwidth - 1))
             clip_max = -clip_min - 1
 
-        const_q = const_q.round().clip(clip_min, clip_max)
+        # QuantizeLinear rounds the quotient before adding the zero point.
+        const_q = (const_q.round() + y_zero_point).clip(clip_min, clip_max)
+    else:
+        const_q = const_q + y_zero_point
 
     return opset.DequantizeLinear.make_arr(const_q, dtype=output_dtype, name=name)
 

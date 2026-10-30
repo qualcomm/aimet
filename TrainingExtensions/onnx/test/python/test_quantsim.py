@@ -7580,6 +7580,67 @@ def test_encodings_to_onnx_qdq(
     assert np.array_equal(out_expected, out_actual)
 
 
+@pytest.mark.parametrize("dtype", ["int4", "uint4", "int8", "uint8", "int16", "uint16"])
+@pytest.mark.parametrize("zero_point", [0, 1, 2])
+def test_encodings_to_onnx_qdq_prequantize_halfway_constants(dtype, zero_point):
+    """
+    Given: Halfway weights and an asymmetric integer encoding
+    When: Constants are prequantized instead of emitting QuantizeLinear
+    Then: Rounding, zero-point addition and clipping agree with ONNX Q/DQ
+    """
+    weights = np.array([-65536, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 65536], np.float32)
+    model = make_model(
+        onnx.helper.make_graph(
+            [onnx.helper.make_node("MatMul", ["input", "w"], ["output"])],
+            "halfway_constants",
+            [
+                onnx.helper.make_tensor_value_info(
+                    "input", onnx.TensorProto.FLOAT, [8, 8]
+                )
+            ],
+            [
+                onnx.helper.make_tensor_value_info(
+                    "output", onnx.TensorProto.FLOAT, [8, 1]
+                )
+            ],
+            [onnx.numpy_helper.from_array(weights.reshape(8, 1), name="w")],
+        ),
+        opset_imports=[onnx.helper.make_opsetid("", 21)],
+    )
+    encodings = {
+        "version": "2.0.0",
+        "encodings": [
+            {
+                "name": "w",
+                "output_dtype": dtype,
+                "y_scale": 1.0,
+                "y_zero_point": zero_point,
+            }
+        ],
+    }
+    limits = (
+        ml_dtypes.iinfo(getattr(ml_dtypes, dtype)) if "4" in dtype else np.iinfo(dtype)
+    )
+    # Nearest-even rounding of the quotient, before adding the zero point.
+    codes = (np.array([-65536, -2, -2, 0, 0, 2, 2, 65536]) + zero_point).clip(
+        limits.min, limits.max
+    )
+    expected = (codes - zero_point).astype(np.float32).reshape(8, 1)
+    inputs = {"input": np.eye(8, dtype=np.float32)}
+    for prequantize_constants in (False, True):
+        qdq_model = encodings_to_onnx_qdq(
+            model, encodings, prequantize_constants=prequantize_constants
+        )
+        onnx.checker.check_model(qdq_model, full_check=True)
+        (actual,) = _run_model(qdq_model, inputs)
+        assert np.array_equal(actual, expected)
+        if prequantize_constants:
+            quantized = next(i for i in qdq_model.graph.initializer if i.name == "w_q")
+            assert np.array_equal(
+                onnx.numpy_helper.to_array(quantized), codes.reshape(8, 1)
+            )
+
+
 @pytest.mark.parametrize("encoding_version", ["0.6.1", "1.0.0", "2.0.0"])
 def test_encodings_to_onnx_qdq_round_trip(tmp_dir, encoding_version):
     """
