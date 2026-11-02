@@ -13,7 +13,6 @@ pybind11
 PyYAML
 scikit-learn
 scipy
-# torch 2.15 defaults to CUDA 13, which the CI GPU runners' driver does not support yet
-torch<2.15
+torch
 tqdm
 onnx2torch
