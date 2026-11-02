@@ -5,6 +5,7 @@
 
 """AdaScale implementation"""
 
+import contextlib
 from copy import deepcopy
 from dataclasses import dataclass
 from types import NoneType
@@ -96,6 +97,9 @@ class AdaScaleModelConfig:
     enable_caching_after_block: int = 0
     # for models with ops in between blocks (ex: Qwen3VL), intermediate activations cannot be cached accurately.
     # This param can be used to disable caching for initial blocks until the caching strategy can be used.
+    allow_mutation_on_saved_tensors: bool = False
+    # for blocks that mutate tensors saved for backward in-place (ex: Qwen3.5 linear-attention cache updates).
+    # Enabling this adds significant per-op overhead, so only enable it for models that need it.
 
 
 # mapping of model type and the corresponding adascale config
@@ -152,6 +156,7 @@ if Qwen3_5TextModel is not None and Qwen3_5DecoderLayer is not None:
                 block_type=Qwen3_5DecoderLayer,
                 beta_gamma_lr=1e-3,
                 scales_lr=5e-4,
+                allow_mutation_on_saved_tensors=True,
             )
         }
     )
@@ -477,6 +482,9 @@ class AdaScale:
 
         qsim.model.requires_grad_(False)
         beta_gamma_lr, scales_lr = AdaScale._model_specific_lr(qsim)
+        allow_mutation_on_saved_tensors = (
+            AdaScale._model_specific_allow_mutation_on_saved_tensors(qsim)
+        )
 
         with remove_activation_quantizers(qsim.model):
             for offset, (block, fp_block_inputs, qt_block_inputs) in enumerate(
@@ -515,6 +523,7 @@ class AdaScale:
                     beta_gamma_lr=beta_gamma_lr,
                     scales_lr=scales_lr,
                     loss_fn=loss_fn,
+                    allow_mutation_on_saved_tensors=allow_mutation_on_saved_tensors,
                 )
 
                 # Save completed block checkpoint
@@ -543,6 +552,7 @@ class AdaScale:
         beta_gamma_lr: float = 1e-3,
         scales_lr: float = 5e-4,
         loss_fn: Optional[_LossFn] = None,
+        allow_mutation_on_saved_tensors: bool = False,
     ):
         """
         Performs AdaScale algorithm to optimize weight quantization of input block to minimize the output MSE
@@ -559,6 +569,10 @@ class AdaScale:
             loss_fn: Loss function with signature ``loss_fn(fp_out, quant_out, data_idx)`` returning a scalar loss
                 tensor, where ``data_idx`` is the index of the current input in ``fp_inputs``/``qt_inputs``.
                 Defaults to MSE loss if None.
+            allow_mutation_on_saved_tensors: If True, run forward and backward under
+                ``torch.autograd.graph.allow_mutation_on_saved_tensors()``. Required for blocks that mutate tensors
+                saved for backward in-place (e.g. linear-attention recurrent cache updates). Leave disabled otherwise,
+                since it adds significant per-op overhead.
 
         """
         if loss_fn is None:
@@ -623,10 +637,14 @@ class AdaScale:
                         pbar.close()
                         break
                     with torch.set_grad_enabled(True):
-                        # Tolerate in-place cache updates (e.g. linear-attention
+                        # Optionally tolerate in-place cache updates (e.g. linear-attention
                         # recurrent state) on tensors saved for backward. Keeping off
                         # optimizer.step() from the scope.
-                        with torch.autograd.graph.allow_mutation_on_saved_tensors():
+                        with (
+                            torch.autograd.graph.allow_mutation_on_saved_tensors()
+                            if allow_mutation_on_saved_tensors
+                            else contextlib.nullcontext()
+                        ):
                             quant_out = run_forward(args, kwargs)
 
                             del args, kwargs
@@ -777,6 +795,16 @@ class AdaScale:
             target_type, AdaScaleModelConfig()
         )
         return model_config.beta_gamma_lr, model_config.scales_lr
+
+    @staticmethod
+    def _model_specific_allow_mutation_on_saved_tensors(
+        qsim: QuantizationSimModel,
+    ) -> bool:
+        """helper function to get whether the model's blocks mutate tensors saved for backward"""
+        target_type = AdaScale._screen_for_target_type(qsim.model)
+        return adascale_model_config_dict.get(
+            target_type, AdaScaleModelConfig()
+        ).allow_mutation_on_saved_tensors
 
     @classmethod
     def _replace_with_adascale_weight_quantizers(cls, block: torch.nn.Module):

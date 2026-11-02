@@ -741,6 +741,62 @@ class TestAdascale:
         assert len(adascale_quantizers) == 0
 
     @pytest.mark.parallel
+    def test_block_level_adascale_allow_mutation_on_saved_tensors(self):
+        class BlockWithInPlaceStateUpdate(torch.nn.Module):
+            """Mimics a recurrent-cache update mutating a tensor saved for backward"""
+
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(64, 64)
+
+            def forward(self, x, state):
+                out = self.linear(x) * state  # saves state for backward
+                state.copy_(out.detach())
+                return out
+
+        dummy_input = (torch.rand(1, 3, 32, 64), torch.rand(1, 3, 32, 64))
+        sim = QuantizationSimModel(BlockWithInPlaceStateUpdate(), dummy_input)
+        inputs = [((torch.rand(1, 3, 32, 64), torch.rand(1, 3, 32, 64)), {})]
+
+        with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+            AdaScale.adascale_block(
+                sim.model, inputs, qt_inputs=inputs, num_iterations=NUM_ITERATIONS
+            )
+
+        sim = QuantizationSimModel(BlockWithInPlaceStateUpdate(), dummy_input)
+        AdaScale.adascale_block(
+            sim.model,
+            inputs,
+            qt_inputs=inputs,
+            num_iterations=NUM_ITERATIONS,
+            allow_mutation_on_saved_tensors=True,
+        )
+
+    @pytest.mark.parallel
+    def test_model_specific_allow_mutation_on_saved_tensors(self):
+        dummy_input = torch.rand(1, 3, 32, 64)
+        sim = QuantizationSimModel(
+            test_models.ModelWithConsecutiveLinearBlocks(), dummy_input
+        )
+        model_type = test_models.ModelWithConsecutiveLinearBlocks
+
+        with patch.dict(
+            adascale_model_config_dict,
+            {model_type: AdaScaleModelConfig(test_models.ModelWithLinears)},
+        ):
+            assert not AdaScale._model_specific_allow_mutation_on_saved_tensors(sim)
+
+        with patch.dict(
+            adascale_model_config_dict,
+            {
+                model_type: AdaScaleModelConfig(
+                    test_models.ModelWithLinears, allow_mutation_on_saved_tensors=True
+                )
+            },
+        ):
+            assert AdaScale._model_specific_allow_mutation_on_saved_tensors(sim)
+
+    @pytest.mark.parallel
     @pytest.mark.parametrize("seq_len", [8, 32, 2048])
     def test_mse_loss_fn(self, seq_len):
         """For p=2, the default loss equals plain MSE times dim 1's size."""
