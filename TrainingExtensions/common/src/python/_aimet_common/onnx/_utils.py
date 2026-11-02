@@ -1059,6 +1059,46 @@ _SELECTOR_OPS = (
     ("", "Where"),
 )
 
+# Cast target dtypes that preserve the quantization grid of the Cast input
+#
+# NOTE: Propagating an encoding through a Cast places a QDQ on the Cast output,
+# whose dtype may differ from the Cast input. The ONNX spec allows QuantizeLinear's
+# input to be FLOAT, FLOAT16 or BFLOAT16, and from opset 23 lets the scale dtype
+# differ from the input dtype. onnxruntime is stricter: it doesn't implement
+# BFLOAT16 input, and it requires the scale dtype to match the input dtype.
+# A QDQ derived through a Cast to BFLOAT16, or to FLOAT16 with a float32 scale,
+# is therefore valid ONNX but may fail to run in onnxruntime.
+_FLOAT_CAST_TYPES = (
+    TensorProto.FLOAT,
+    TensorProto.FLOAT16,
+    TensorProto.BFLOAT16,
+)
+
+
+def _is_float_cast(node: onnx.NodeProto) -> bool:
+    """
+    Returns True if node is a Cast to a float dtype.
+
+    If x is quantized, QDQ(Cast(QDQ(x))) == Cast(QDQ(x)) for any float target dtype,
+    so the Cast output can reuse the input encoding.
+    """
+    if node.op_type != "Cast" or node.domain != "":
+        return False
+    return _get_node_attribute(node, "to") in _FLOAT_CAST_TYPES
+
+
+def _is_float_cast_ir(node: onnx_ir.Node) -> bool:
+    """
+    Returns True if node is a Cast to a float dtype.
+
+    If x is quantized, QDQ(Cast(QDQ(x))) == Cast(QDQ(x)) for any float target dtype,
+    so the Cast output can reuse the input encoding.
+    """
+    if node.op_type != "Cast" or node.domain != "":
+        return False
+    to = node.attributes.get("to")
+    return (to.as_int() if to is not None else None) in _FLOAT_CAST_TYPES
+
 
 def _is_grid_equivariant_op(
     op_type: str, domain: str = "", include_unary: bool = True
@@ -2226,6 +2266,8 @@ def _derive_data_movement_op_encodings(
         or (node.domain, node.op_type) in _CLIPPING_OPS
         or (node.domain, node.op_type) in _PADDING_OPS
         or (node.domain, node.op_type) in _SELECTOR_OPS
+        # QDQ(Cast(QDQ(x))) == Cast(QDQ(x)) for any float target dtype
+        or _is_float_cast(node)
     ]
 
     new_encodings = {}
@@ -2291,10 +2333,12 @@ def _derive_data_movement_op_encodings(
             # Only per-tensor encodings can be safely propagated through data movement ops
             # because some data movement ops such as Reshape and Transpose can't reuse
             # the same channel/block axes across inputs and outputs
+            # Cast input may not be float (e.g. int64 -> float), so only propagate forward
             if (
                 out_encoding
                 and out_encoding.get("axis") is None
                 and can_propagate_backward
+                and node.op_type != "Cast"
             ):
                 if len(consumers[input_name]) > 1:
                     # If input has more than one consumer or if there are more than one output,
@@ -2353,6 +2397,8 @@ def _derive_data_movement_op_encodings_ir(
         or (node.domain, node.op_type) in _CLIPPING_OPS
         or (node.domain, node.op_type) in _PADDING_OPS
         or (node.domain, node.op_type) in _SELECTOR_OPS
+        # QDQ(Cast(QDQ(x))) == Cast(QDQ(x)) for any float target dtype
+        or _is_float_cast_ir(node)
     ]
 
     new_encodings = {}
@@ -2418,10 +2464,12 @@ def _derive_data_movement_op_encodings_ir(
             # Only per-tensor encodings can be safely propagated through data movement ops
             # because some data movement ops such as Reshape and Transpose can't reuse
             # the same channel/block axes across inputs and outputs
+            # Cast input may not be float (e.g. int64 -> float), so only propagate forward
             if (
                 output_encoding
                 and output_encoding.get("axis") is None
                 and can_propagate_backward
+                and node.op_type != "Cast"
             ):
                 if input_value is None or len(input_value.consumers()) > 1:
                     # If input has more than one consumer or if there are more than one output,

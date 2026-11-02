@@ -47,6 +47,7 @@ from aimet_onnx.common.defs import (
 from aimet_onnx.common.onnx._utils import (
     _convert_version_ir,
     _convert_version_with_external_weights,
+    _derive_data_movement_op_encodings,
     _remove_onnx_qdq_nodes,
 )
 from aimet_onnx.common.quantsim import VALID_ENCODING_VERSIONS
@@ -8684,6 +8685,123 @@ def test_insert_data_movement_op_quantizers(model_factory):
         outputs_after = sess_after.run(None, inputs)
         for out_before, out_after in zip(outputs_before, outputs_after):
             assert np.all(out_before == out_after)
+
+
+@pytest.mark.parametrize("internal_dtype", [torch.float32, torch.float16])
+def test_insert_data_movement_op_quantizers_through_noop_cast(internal_dtype):
+    """
+    Given: input -> Cast -> Mul -> [Cast] -> Slice -> Transpose -> Reshape -> Unsqueeze
+           -> Transpose -> Cast -> output, with and without the no-op Cast to Mul's dtype
+    When: Call to_onnx_qdq()
+    Then: The model with the no-op Cast should get the same QDQ as the model without it,
+          plus a QDQ on the Cast output with the same encoding as Mul's output
+    """
+
+    def get_qdq_encodings(with_cast):
+        model = models_for_tests.cast_chain_data_movement_model(
+            with_cast, internal_dtype
+        )
+        sim = QuantizationSimModel(model)
+        inputs = {"input": np.random.randn(8, 16).astype(np.float32)}
+        sim.compute_encodings(lambda session: session.run(None, inputs))
+        onnx_qdq = sim.to_onnx_qdq(prequantize_constants=False)
+        initializers = {
+            init.name: onnx.numpy_helper.to_array(init)
+            for init in onnx_qdq.graph.initializer
+        }
+        return {
+            node.input[0]: (
+                initializers[node.input[1]].tolist(),
+                initializers[node.input[2]].tolist(),
+            )
+            for node in onnx_qdq.graph.node
+            if node.op_type == "QuantizeLinear"
+        }
+
+    np.random.seed(0)
+    without_cast = get_qdq_encodings(with_cast=False)
+    np.random.seed(0)
+    with_cast = get_qdq_encodings(with_cast=True)
+
+    assert with_cast == {
+        **without_cast,
+        "/Cast_1_output_0": without_cast["/Mul_output_0"],
+    }
+
+
+def _cast_model(input_dtype, cast_to):
+    """input -> Cast(to=cast_to) -> output"""
+    return onnx.helper.make_model(
+        onnx.helper.make_graph(
+            name="cast",
+            inputs=[onnx.helper.make_tensor_value_info("input", input_dtype, [4])],
+            outputs=[onnx.helper.make_tensor_value_info("output", cast_to, [4])],
+            nodes=[onnx.helper.make_node("Cast", ["input"], ["output"], to=cast_to)],
+        ),
+        opset_imports=[onnx.helper.make_opsetid("", 17)],
+    )
+
+
+@pytest.mark.parametrize(
+    "cast_to, expect_propagation",
+    [
+        (onnx.TensorProto.FLOAT, True),
+        (onnx.TensorProto.FLOAT16, True),
+        (onnx.TensorProto.BFLOAT16, True),
+        (onnx.TensorProto.INT32, False),
+    ],
+)
+def test_derive_data_movement_op_encodings_through_cast(cast_to, expect_propagation):
+    """
+    Given: input -> Cast(to=cast_to) -> output
+    When: Call _derive_data_movement_op_encodings with an encoding on input
+    Then: The encoding should pass through the Cast only if cast_to is a float dtype,
+          since QDQ(Cast(QDQ(x))) == Cast(QDQ(x)) for any float target dtype
+    """
+    model = _cast_model(onnx.TensorProto.FLOAT, cast_to)
+    encoding = {"output_dtype": "uint8", "y_scale": 0.1, "y_zero_point": 0}
+
+    derived = _derive_data_movement_op_encodings(model, {"input": encoding})
+    assert derived.keys() == ({"output"} if expect_propagation else set())
+
+
+def test_derive_data_movement_op_encodings_not_backward_through_cast():
+    """
+    Given: input (int64) -> Cast(to=FLOAT) -> output
+    When: Call _derive_data_movement_op_encodings with an encoding on output
+    Then: The encoding should not pass back to input, which isn't a float tensor
+    """
+    model = _cast_model(onnx.TensorProto.INT64, onnx.TensorProto.FLOAT)
+    encoding = {"output_dtype": "uint8", "y_scale": 0.1, "y_zero_point": 0}
+
+    derived = _derive_data_movement_op_encodings(model, {"output": encoding})
+    assert not derived
+
+
+def test_encodings_to_onnx_qdq_through_float_cast(tmp_dir):
+    """
+    Given: input -> Cast -> Mul -> Cast -> Slice -> Transpose -> Reshape -> Unsqueeze
+           -> Transpose -> Cast -> output, and its exported encodings
+    When: Call encodings_to_onnx_qdq()
+    Then: Every Cast and data movement op output should have a QDQ
+    """
+    np.random.seed(0)
+    model = models_for_tests.cast_chain_data_movement_model(with_cast=True)
+    sim = QuantizationSimModel(model)
+    sim.compute_encodings([{"input": np.random.randn(8, 16).astype(np.float32)}])
+    encodings = _export_encodings(sim, tmp_dir, "2.0.0")
+
+    qdq_model = encodings_to_onnx_qdq(model, encodings)
+    quantized = {
+        node.input[0]
+        for node in qdq_model.graph.node
+        if node.op_type == "QuantizeLinear"
+    }
+    data_movement_ops = ("Cast", "Slice", "Transpose", "Reshape", "Unsqueeze")
+    # Checked on qdq_model, which renames the graph output's producer to keep its name
+    nodes = [node for node in qdq_model.graph.node if node.op_type in data_movement_ops]
+    assert len(nodes) == 8
+    assert [node.name for node in nodes if node.output[0] not in quantized] == []
 
 
 @pytest.mark.parametrize("fuse_supergroups", [False, True])

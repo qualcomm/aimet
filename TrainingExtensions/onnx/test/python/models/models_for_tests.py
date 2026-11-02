@@ -2547,6 +2547,48 @@ def weight_matmul_model(in_features=10, out_features=20):
     return model
 
 
+def cast_chain_data_movement_model(
+    with_cast: bool = True, internal_dtype: torch.dtype = torch.float32
+):
+    """
+    input -> Cast(to=internal_dtype) -> Mul -> [Cast(to=internal_dtype)] -> Slice
+          -> Transpose -> Reshape -> Unsqueeze -> Transpose -> Cast(to=FLOAT) -> output
+
+    The optional Cast is a no-op that casts to the dtype its input already has.
+    Exported with dynamo=False because the dynamo exporter drops no-op Casts.
+    """
+
+    class CastChain(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.scale = nn.Parameter(torch.rand(8, 16) + 0.5)
+
+        def forward(self, x):
+            y = x.to(internal_dtype) * self.scale
+            if with_cast:
+                y = y.to(internal_dtype)
+            y = y[:, 4:12]
+            y = y.transpose(0, 1)
+            y = y.reshape(4, 16)
+            y = y.unsqueeze(0)
+            return y.transpose(1, 2).to(torch.float32)
+
+    torch.manual_seed(0)
+    model = CastChain().to(internal_dtype).eval()
+    buffer = io.BytesIO()
+    torch.onnx.export(
+        model,
+        torch.randn(8, 16),
+        buffer,
+        input_names=["input"],
+        output_names=["output"],
+        opset_version=17,
+        dynamo=False,
+    )
+    buffer.seek(0)
+    return load_model(buffer)
+
+
 def simple_mlp_model(internal_dtype=torch.float32, io_dtype=torch.float32):
     """
     Small MLP: input -> Cast -> Linear -> Relu -> Linear -> Cast -> output.
