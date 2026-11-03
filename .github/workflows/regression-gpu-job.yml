@@ -183,6 +183,12 @@ jobs:
           unzip -q "${NYUV2_DIR}/nyuv2.zip" -d "$NYUV2_DIR"
           rm "${NYUV2_DIR}/nyuv2.zip"
 
+          IMAGENET_DIR="${DATASET_ROOT}/imagenet/v2"
+          mkdir -p "$IMAGENET_DIR"
+          aws s3 cp "s3://${BUCKET}/imagenet.zip" "${IMAGENET_DIR}/imagenet.zip"
+          unzip -q "${IMAGENET_DIR}/imagenet.zip" -d "$IMAGENET_DIR"
+          rm "${IMAGENET_DIR}/imagenet.zip"
+
       - name: Setup Python environment
         run: |
           set -e
