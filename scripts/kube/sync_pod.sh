@@ -4,7 +4,7 @@
 
 set -e
 
-NAMESPACE="aihub"
+NAMESPACE="${NAMESPACE:-aihub}"
 REMOTE_BASE="/scratch"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 

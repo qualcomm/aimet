@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NAMESPACE="aihub"
+NAMESPACE="${NAMESPACE:-aihub}"
 
 # Always run: besides missing tools, it upgrades a kubectl too old for the cluster
 bash "$SCRIPT_DIR/install_deps.sh"
