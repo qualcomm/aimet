@@ -137,6 +137,39 @@ class ONNXDevicePlacementMixin:
             finally:
                 self.to(torch_device)
 
+    @contextlib.contextmanager
+    def evicted(self):
+        """Drop every sim's ORT session for the block, then rebuild it.
+
+        Cheaper than ``on_device(cpu)``, and the only option for graphs ORT's
+        CPU provider cannot run (bfloat16 has no CPU MatMul kernel): nothing
+        runs the model inside the block, so no session is needed at all.
+        """
+        sims = [self.sim_collection.backbone]
+        sims.extend(
+            self.sim_collection.component(name)
+            for name in self.sim_collection.present_components()
+        )
+        # Read before moving, as in on_device: self.device reports cuda
+        # whenever CUDA is available, wherever the tensors are.
+        params = list(self.parameters())
+        torch_device = params[0].device if params else torch.device("cpu")
+        try:
+            for sim in sims:
+                del sim.session
+                sim.session = None
+            self.to(torch.device("cpu"))
+            gc.collect()
+            torch.cuda.empty_cache()
+            yield
+        finally:
+            # Nested so the torch tensors go back even if a rebuild raises
+            try:
+                for sim in sims:
+                    sim._rebuild_session()
+            finally:
+                self.to(torch_device)
+
 
 def _current_device_type(providers) -> str:
     for p in providers:

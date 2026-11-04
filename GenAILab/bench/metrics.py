@@ -1640,7 +1640,8 @@ class AutogradedPrompts(TextEvaluationMetric):
 
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        with model.on_device(torch.device("cpu")):
+        # Nothing runs the model under test while the grader holds the GPU
+        with model.evicted():
             grader_tokenizer = AutoTokenizer.from_pretrained(grader_model_id)
             grader_model = AutoModelForCausalLM.from_pretrained(
                 grader_model_id,
@@ -1790,7 +1791,8 @@ class AutogradedMultimodalPrompts(EvaluationMetric):
         from PIL import Image
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
-        with model.on_device(torch.device("cpu")):
+        # Nothing runs the model under test while the grader holds the GPU
+        with model.evicted():
             grader_processor = AutoProcessor.from_pretrained(grader_model_id)
             grader_model = AutoModelForImageTextToText.from_pretrained(
                 grader_model_id,
@@ -2182,13 +2184,14 @@ class Grace(TextEvaluationMetric):
             )
             print(f"Wrote {len(items)} responses to {responses_path}")
 
-            # Evict the model under test to CPU: the grader is a 35B MoE, and
-            # the two do not fit on one GPU together. The grader itself runs in
-            # a child process, so that the sim rebuild on the way out of this
-            # block gets the GPU back -- torch never returns the grader's
-            # reserved segments to the driver within a process, and ORT cannot
-            # allocate from torch's cache.
-            with model.on_device(torch.device("cpu")):
+            # Evict the model under test: the grader is a 35B MoE, and the two
+            # do not fit on one GPU together. Nothing runs the model here, so
+            # it is evicted rather than moved to CPU, which some graphs (bf16)
+            # cannot run on. The grader itself runs in a child process, so that
+            # the sim rebuild on the way out of this block gets the GPU back --
+            # torch never returns the grader's reserved segments to the driver
+            # within a process, and ORT cannot allocate from torch's cache.
+            with model.evicted():
                 grader_summary = _run_grader_subprocess(
                     responses_path,
                     summary_path,

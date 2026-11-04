@@ -136,6 +136,62 @@ class TestONNXFPModeMixin:
                     pass
 
 
+class TestONNXEvicted:
+    @staticmethod
+    def _gen(backbone):
+        from GenAILab.qai_hub_lm.backends.onnx.generator_utils import generator_factory
+
+        tok = MagicMock()
+        tok.eos_token_id = 0
+        with patch(
+            "GenAILab.qai_hub_lm.backends.onnx.generator_utils.TorchONNXInterface"
+        ):
+            return generator_factory(
+                sim_collection=SimCollection(backbone=backbone, config=MagicMock()),
+                generator_cls=Generator,
+                tokenizer=tok,
+                sequence_length=8,
+                context_length=32,
+            )
+
+    def test_drops_the_session_and_rebuilds_it(self):
+        """No session inside the block, and a working one with the same providers after."""
+        import numpy as np
+
+        backbone = _tiny_sim()
+        providers = backbone.providers
+        x = {"x": np.random.randn(1, 8).astype(np.float32)}
+        expected = backbone.session.run(None, x)[0]
+
+        with self._gen(backbone).evicted():
+            assert backbone.session is None
+
+        assert backbone.providers == providers
+        np.testing.assert_array_equal(backbone.session.run(None, x)[0], expected)
+
+    def test_never_builds_a_cpu_session(self):
+        """Unlike on_device(cpu), which bf16 graphs cannot survive: no rebuild inside."""
+        backbone = _tiny_sim()
+        rebuilds = []
+        real_rebuild = backbone._rebuild_session
+
+        def spy():
+            rebuilds.append(backbone.session)
+            real_rebuild()
+
+        backbone._rebuild_session = spy
+        with self._gen(backbone).evicted():
+            assert rebuilds == []
+        assert rebuilds == [None]  # one rebuild, on exit
+
+    def test_rebuilds_when_the_block_raises(self):
+        backbone = _tiny_sim()
+        with pytest.raises(RuntimeError, match="grader died"):
+            with self._gen(backbone).evicted():
+                raise RuntimeError("grader died")
+        assert backbone.session is not None
+
+
 class TestGeneratorFactory:
     def test_wraps_backbone_in_torch_onnx_interface(self):
         from GenAILab.qai_hub_lm.backends.onnx.generator_utils import generator_factory

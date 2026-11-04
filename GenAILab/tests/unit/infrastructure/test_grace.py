@@ -444,11 +444,15 @@ class TestGraceEvaluate:
         class FakeModel:
             device = torch.device("cpu")
 
+            evicted_during_grading = False
+
             @contextlib.contextmanager
-            def on_device(self, device):
+            def evicted(self):
                 # Grace evicts the model under test while the grader is loaded.
-                self.evicted_to = device
+                self.evicted_during_grading = True
                 yield
+                self.evicted_during_grading = False
+                self.was_evicted = True
 
         class FakeGrader:
             """Stands in for the grader child process.
@@ -545,12 +549,19 @@ class TestGraceEvaluate:
         # The perfect item is accounted for in the score, not reprinted in full.
         assert "Response: o0" not in report
 
-    def test_evicts_the_model_while_the_grader_is_loaded(self, stubbed):
-        import torch
-
+    def test_evicts_the_model_while_the_grader_is_loaded(self, stubbed, monkeypatch):
         metrics, model, fake_grader = stubbed
+        seen = []
+        real_run = metrics._run_grader_subprocess
+
+        def spy(*args, **kwargs):
+            seen.append(model.evicted_during_grading)
+            return real_run(*args, **kwargs)
+
+        monkeypatch.setattr(metrics, "_run_grader_subprocess", spy)
         metrics.Grace.evaluate(model, tokenizer=None, context_length=4096)
-        assert model.evicted_to == torch.device("cpu")
+        assert seen == [True]
+        assert model.was_evicted and not model.evicted_during_grading
 
     def test_grader_defaults_are_passed_through(self, stubbed):
         metrics, model, fake_grader = stubbed

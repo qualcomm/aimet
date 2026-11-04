@@ -372,6 +372,17 @@ class Generator(GenerationMixin, torch.nn.Module):
         """
         yield
 
+    @contextlib.contextmanager
+    def evicted(self):
+        """Context manager that frees the accelerator memory held by the models.
+
+        For callers that need the device for something else and will not run
+        the models until the block exits. Defaults to moving them to CPU;
+        framework mixins may free memory more cheaply.
+        """
+        with self.on_device(torch.device("cpu")):
+            yield
+
     def prepare_inputs_for_generation(
         self,
         input_ids: torch.Tensor | None = None,
