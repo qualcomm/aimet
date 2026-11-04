@@ -125,6 +125,7 @@ def _add_onnx_qdq_nodes(
     onnx_opset: int,
     prequantize_constants: bool,
     base_dir: str = "",
+    include_if: bool = True,
 ):
     """
     Add onnx::QuantizeLinear and/or onnx::DequantizeLinear as below
@@ -154,6 +155,7 @@ def _add_onnx_qdq_nodes(
         float_types,
         onnx_opset,
         prequantize_constants,
+        include_if=include_if,
     )
 
     return onnx_ir.to_proto(ir_model)
@@ -168,6 +170,7 @@ def _add_onnx_qdq_nodes_ir(
     float_types: Iterable[np.dtype],
     onnx_opset: int,
     prequantize_constants: bool,
+    include_if: bool = True,
 ) -> onnx_ir.Model:
     """
     IR-native core of :func:`_add_onnx_qdq_nodes`. Accepts, mutates, and returns an
@@ -198,7 +201,7 @@ def _add_onnx_qdq_nodes_ir(
     tensors_to_add = defaultdict(list)
     tensors_to_remove = defaultdict(dict)
     inputs_to_rename = defaultdict(dict)
-    graphs = list(_iterate_graphs_recursive_ir(ir_model.graph))
+    graphs = list(_iterate_graphs_recursive_ir(ir_model.graph, include_if=include_if))
     scope = {
         name: i
         for i, graph in enumerate(graphs)
@@ -1398,8 +1401,9 @@ def _convert_version_ir(model: onnx_ir.Model, target_opset_version: int) -> None
 def _remove_onnx_qdq_nodes(
     model: onnx.ModelProto,
     base_dir: str = "",
+    include_if: bool = True,
 ) -> List[Dict[str, Union[str, int, np.ndarray]]]:
-    graphs = list(_iterate_graphs_recursive(model.graph))
+    graphs = list(_iterate_graphs_recursive(model.graph, include_if=include_if))
     initializers: Dict[str, TensorProto] = {
         init.name: init for graph in graphs for init in graph.initializer
     }
@@ -1411,7 +1415,7 @@ def _remove_onnx_qdq_nodes(
     consumers: Dict[str, Dict[str, NodeProto]] = defaultdict(dict)
     graph_outputs = set(output.name for graph in graphs for output in graph.output)
 
-    _validate_model(model, constants, consumers, producers)
+    _validate_model(model, constants, consumers, producers, include_if=include_if)
 
     to_encoding = functools.partial(
         _to_encoding,
@@ -1564,7 +1568,9 @@ def _remove_onnx_qdq_nodes(
 
     # NOTE: Each graph is rebuilt before its nodes are walked for nested bodies, since
     # rebuilding graph.node copies the bodies they hold.
-    for i, graph in enumerate(_iterate_graphs_recursive(model.graph)):
+    for i, graph in enumerate(
+        _iterate_graphs_recursive(model.graph, include_if=include_if)
+    ):
         included_nodes = set()
         node = []
         # Same nodes as rebuilding from producers.values(): skip nodes without outputs,
@@ -1594,7 +1600,7 @@ def _remove_onnx_qdq_nodes(
         for node in _iterate_graph_nodes_recursive(model.graph)
         for name in node.input
     }
-    for graph in _iterate_graphs_recursive(model.graph):
+    for graph in _iterate_graphs_recursive(model.graph, include_if=include_if):
         unused_nodes = [
             node
             for node in graph.node
@@ -1619,11 +1625,14 @@ def _validate_model(
     constants: Dict[str, TensorProto],
     consumers: Dict[str, Dict[str, NodeProto]],
     producers: Dict[str, NodeProto],
+    include_if: bool = True,
 ) -> None:
     invalid_nodes = []
 
     for node in (
-        n for graph in _iterate_graphs_recursive(model.graph) for n in graph.node
+        n
+        for graph in _iterate_graphs_recursive(model.graph, include_if=include_if)
+        for n in graph.node
     ):
         if node.op_type == "QuantizeLinear":
             is_qdq = _is_q_dq_sequence(node, consumers)
@@ -1776,7 +1785,7 @@ def _iterate_graph_nodes_recursive(graph: onnx.GraphProto) -> Iterable[onnx.Node
 
 
 def _iterate_graphs_recursive(
-    graph: onnx.GraphProto, include_if: bool = False
+    graph: onnx.GraphProto, include_if: bool = True
 ) -> Iterable[onnx.GraphProto]:
     """
     Yield ``graph`` followed by every Control-flow body nested inside it, depth first.
@@ -1784,8 +1793,8 @@ def _iterate_graphs_recursive(
     Control-flow ops carry their bodies as graph-valued attributes rather than as nodes, so a
     plain walk over ``graph.node`` never sees them.
 
-    NOTE: ``Loop`` bodies are deliberately not yielded, nor are ``If`` branches unless
-    ``include_if`` is set:
+    NOTE: ``Loop`` bodies are deliberately not yielded, nor are ``If`` branches if
+    ``include_if`` is unset:
 
         main: Relu -> Scan -> If
                       body: Add
@@ -1813,7 +1822,8 @@ def _iterate_graphs_recursive(
 
 def _iterate_graphs_recursive_ir(
     graph: onnx_ir.Graph,
-    include_if_and_loop: bool = False,
+    include_loop: bool = False,
+    include_if: bool = True,
 ) -> Iterable[onnx_ir.Graph]:
     """
     Yield ``graph`` followed by every Control-flow body nested inside it, depth first.
@@ -1821,23 +1831,26 @@ def _iterate_graphs_recursive_ir(
     Control-flow ops carry their bodies as graph-valued attributes rather than as nodes, so a
     plain walk over ``graph.node`` never sees them.
 
-    NOTE: ``If`` and ``Loop`` bodies are deliberately not yielded, unless enabled through `include_if_and_loop` flag.
+    NOTE: ``Loop`` bodies are deliberately not yielded unless ``include_loop`` is set, nor are
+    ``If`` branches if ``include_if`` is unset.
     """
     yield graph
 
     for node in graph:
-        if node.op_type == "Scan" or (include_if_and_loop and node.op_type == "Loop"):
+        if node.op_type == "Scan" or (include_loop and node.op_type == "Loop"):
             yield from _iterate_graphs_recursive_ir(
                 node.attributes["body"].as_graph(),
-                include_if_and_loop=include_if_and_loop,
+                include_loop=include_loop,
+                include_if=include_if,
             )
 
-        elif include_if_and_loop and node.op_type == "If":
+        elif include_if and node.op_type == "If":
             for attr in node.attributes.values():
                 if attr.type == onnx_ir.AttributeType.GRAPH:
                     yield from _iterate_graphs_recursive_ir(
                         attr.as_graph(),
-                        include_if_and_loop=include_if_and_loop,
+                        include_loop=include_loop,
+                        include_if=include_if,
                     )
 
 
@@ -1892,7 +1905,7 @@ def _get_all_constants_ir(
     Returns ``Value`` handles rather than eagerly materialized numpy arrays.
     """
     constants: Dict[str, onnx_ir.Value] = {}
-    for subgraph in _iterate_graphs_recursive_ir(graph, include_if_and_loop=True):
+    for subgraph in _iterate_graphs_recursive_ir(graph, include_loop=True):
         constants.update(subgraph.initializers)
 
         for node in subgraph:
@@ -2043,14 +2056,16 @@ def _get_node_attribute(node: NodeProto, name: str):
     return None
 
 
-def contains_tensor_type(model: ModelProto, tensor_type: int | List[int]):
+def contains_tensor_type(
+    model: ModelProto, tensor_type: int | List[int], include_if: bool = True
+):
     """
     Returns True if the model contains the specified tensor type(s).
     """
     if isinstance(tensor_type, int):
         tensor_type = [tensor_type]
     # Control-flow bodies can compute in a different type than the top-level graph
-    graphs = list(_iterate_graphs_recursive(model.graph))
+    graphs = list(_iterate_graphs_recursive(model.graph, include_if=include_if))
     if any(
         tensor.type.tensor_type.elem_type in tensor_type
         for graph in graphs
@@ -2256,10 +2271,11 @@ def _is_htp_masked_softmax_reducemin_ir(
 def _derive_data_movement_op_encodings(
     model: onnx.ModelProto,
     encodings: Mapping[str, Mapping],
+    include_if: bool = True,
 ) -> Dict[str, Dict]:
     data_movement_ops = [
         node
-        for graph in _iterate_graphs_recursive(model.graph)
+        for graph in _iterate_graphs_recursive(model.graph, include_if=include_if)
         for node in graph.node
         if _is_grid_equivariant_op(node.op_type, domain=node.domain)
         # Export-time encoding propagation is safe
@@ -2274,7 +2290,7 @@ def _derive_data_movement_op_encodings(
     consumers: Mapping[str, List[onnx.NodeProto]] = defaultdict(list)
     constants: Mapping[str, onnx.TensorProto] = _get_all_constants(model)
 
-    for graph in _iterate_graphs_recursive(model.graph):
+    for graph in _iterate_graphs_recursive(model.graph, include_if=include_if):
         for node in graph.node:
             for inp in node.input:
                 consumers[inp].append(node)
@@ -2387,8 +2403,9 @@ def _derive_data_movement_op_encodings(
 def _derive_data_movement_op_encodings_ir(
     model: onnx_ir.Model,
     encodings: Mapping[str, Mapping],
+    include_if: bool = True,
 ) -> dict[str, dict]:
-    graphs = list(_iterate_graphs_recursive_ir(model.graph))
+    graphs = list(_iterate_graphs_recursive_ir(model.graph, include_if=include_if))
     data_movement_ops = [
         node
         for graph in graphs

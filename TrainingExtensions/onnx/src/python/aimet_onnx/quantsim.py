@@ -5,7 +5,7 @@
 """Implementation for simulating models running on Quantized hardware"""
 
 # pylint: disable=wrong-import-order
-from collections import defaultdict
+from collections import Counter, defaultdict
 import contextlib
 import os
 from typing import (
@@ -397,9 +397,7 @@ def _fill_missing_node_names(model: onnx.ModelProto):
 
     # The top-level graph is walked first, so its nodes keep their names on a clash.
     nodes = (
-        node
-        for graph in _iterate_graphs_recursive(model.graph, include_if=True)
-        for node in graph.node
+        node for graph in _iterate_graphs_recursive(model.graph) for node in graph.node
     )
     for node in nodes:
         if node.name and node.name not in seen:
@@ -547,6 +545,7 @@ class QuantizationSimModel:
 
         self.model = model
         self._quantize_subgraphs = _quantize_subgraphs
+        self._raise_for_duplicate_subgraph_tensors()
         self.connected_graph = ConnectedGraph(
             self.model, include_if_branches=self._quantize_subgraphs
         )
@@ -774,7 +773,33 @@ class QuantizationSimModel:
         """
         if not self._quantize_subgraphs:
             return [self.model.graph()]
-        return list(_iterate_graphs_recursive(self.model.graph(), include_if=True))
+        return list(_iterate_graphs_recursive(self.model.graph()))
+
+    def _raise_for_duplicate_subgraph_tensors(self):
+        """
+        ONNX lets a body define a name that its enclosing graph defines only later, or that
+        another body defines, but quantizers are keyed and placed by tensor name, so each tensor
+        quantized inside a body must be unique across all graphs:
+
+            cond -> the_if      then_branch: x -> Relu -> o
+                                else_branch: x -> Neg  -> o      (raises)
+            x -> abs -> o                                        (raises)
+        """
+        graphs = self._graphs_to_quantize()
+        if len(graphs) == 1:
+            return
+        defined = Counter(
+            name
+            for graph in graphs
+            for name in {init.name for init in graph.initializer}
+            | {name for node in graph.node for name in node.output if name}
+        )
+        duplicates = sorted(name for name, count in defined.items() if count > 1)
+        if duplicates:
+            raise RuntimeError(
+                f"Tensors {duplicates} are defined in more than one control-flow body. "
+                "Rename them to be unique to quantize tensors inside control-flow bodies."
+            )
 
     def _if_branch_of(self, tensor_name: str) -> Optional[Tuple[str, str]]:
         """
@@ -802,24 +827,6 @@ class QuantizationSimModel:
 
         return find(self.model.graph())
 
-    def _raise_for_quantized_if_branches(self, api: str):
-        branches = (
-            attr.g
-            for graph in self._graphs_to_quantize()
-            for node in graph.node
-            if node.op_type == "If"
-            for attr in node.attribute
-            if attr.type == onnx.AttributeProto.GRAPH
-        )
-        if any(
-            node.op_type == "QcQuantizeOp"
-            for branch in branches
-            for node in branch.node
-        ):
-            raise NotImplementedError(
-                f"{api} is not supported yet for models with quantizers inside If branches"
-            )
-
     def _get_param_names(self):
         """
         Get the names of params
@@ -842,7 +849,7 @@ class QuantizationSimModel:
                 names.update(name for node in graph.node for name in node.output)
             return names
 
-        all_graphs = _iterate_graphs_recursive(self.model.graph(), include_if=True)
+        all_graphs = _iterate_graphs_recursive(self.model.graph())
         body_params = tensors_of(list(all_graphs)[1:]) - tensors_of(
             self._graphs_to_quantize()
         )
@@ -1806,7 +1813,7 @@ class QuantizationSimModel:
                 continue
 
             if bias:
-                # Bias can be declared inside a Scan body
+                # Bias can be declared inside a Scan body or If branch
                 bias_proto = next(
                     (
                         init
@@ -2931,7 +2938,6 @@ class QuantizationSimModel:
         .. image:: ../../images/conv_qdq.onnx.svg
             :align: center
         """
-        self._raise_for_quantized_if_branches("to_onnx_qdq()")
         with (
             self._concretize_int32_bias_quantizers()
             if export_int32_bias
@@ -3220,7 +3226,7 @@ class QuantizationSimModel:
         """IR-native counterpart of :meth:`_overwrite_parameters`."""
         parameters = dict(parameters)
 
-        # Params can be declared inside Scan bodies
+        # Params can be declared inside Scan bodies and If branches
         initializer_values = {
             name: value
             for subgraph in _iterate_graphs_recursive_ir(graph)
@@ -3277,7 +3283,7 @@ class QuantizationSimModel:
     def _overwrite_parameters(
         model: onnx.ModelProto, parameters: Dict[str, np.ndarray]
     ):
-        # Params can be declared inside Scan bodies
+        # Params can be declared inside Scan bodies and If branches
         initializers = [
             (init, parameters.pop(init.name))
             for graph in _iterate_graphs_recursive(model.graph)
@@ -3356,7 +3362,6 @@ class QuantizationSimModel:
             >>> sum(node.op_type == "QcQuantizeOp" for node in sim.model.model.graph.node)
             21
         """
-        self._raise_for_quantized_if_branches("fold_param_quantizers()")
         # Compute encodings for any param quantizers that aren't initialized yet so we don't
         # fold with garbage scales/offsets.
         self._compute_param_encodings(overwrite=False)
@@ -4027,6 +4032,63 @@ def _remove_delegatable_excess_encodings(
 
     for name in delegatable:
         encodings.pop(name)
+
+    # Tensors inside If branches aren't in the ConnectedGraph unless subgraph quantization is
+    # enabled, but export() still derives their encodings from the enclosing graph, e.g.
+    #
+    #   main:        x --> Q/DQ(x) --> If
+    #   then_branch:                    Identity(x) --> x_id --> Q/DQ(x_id) (same encoding as x)
+    #
+    # Delegate those through the ONNX graph instead.
+    nodes = [
+        node
+        for graph in _iterate_graphs_recursive(sim.model.model.graph)
+        for node in graph.node
+    ]
+    quantizer_inputs = {
+        node.output[0]: node.input[0]
+        for node in nodes
+        if node.op_type == "QcQuantizeOp"
+    }
+    producers = {
+        output: node
+        for node in nodes
+        if node.op_type != "QcQuantizeOp"
+        for output in node.output
+    }
+    excess_encodings = [
+        name
+        for name in encodings.keys() - (quantizable_tensor_names | bias_names)
+        if sim.connected_graph.get_product(name) is None
+    ]
+
+    for output_name in excess_encodings:
+        output_encoding = EncodingBase.from_qnn_encoding_dict(encodings[output_name])
+        producer = producers.get(output_name)
+        # Branches of different Ifs may define each other's names, so the walk can cycle
+        visited = set()
+
+        while (
+            producer
+            and id(producer) not in visited
+            and (
+                _is_grid_preserving_op(producer.op_type, domain=producer.domain)
+                or producer.op_type == "Cast"
+            )
+        ):
+            visited.add(id(producer))
+            input_name = quantizer_inputs.get(producer.input[0], producer.input[0])
+
+            if (
+                input_name in quantizable_tensor_names
+                and input_name in encodings
+                and EncodingBase.from_qnn_encoding_dict(encodings[input_name])
+                == output_encoding
+            ):
+                encodings.pop(output_name)
+                break
+
+            producer = producers.get(input_name)
 
 
 def _flatten_0_6_1(encodings_dict: dict) -> Tuple[Dict[str, Any], Set[str]]:
@@ -4886,10 +4948,11 @@ def load_encodings_to_sim(
             )
         }
 
-    _validate_encodings_to_load(quant_sim_model, all_encodings.keys())
-
+    # Delegate first, as the excess encodings may name tensors the ConnectedGraph doesn't know
     if encoding_version == "2.0.0":
         _remove_delegatable_excess_encodings(quant_sim_model, all_encodings)
+
+    _validate_encodings_to_load(quant_sim_model, all_encodings.keys())
 
     # First pass through quantizers to check for mismatched encodings
     missing_quantizers = all_encodings.keys() - all_quantizers.keys()

@@ -6563,6 +6563,53 @@ def if_in_scan_model():
     )
 
 
+def loop_model():
+    """
+    A Loop whose body reads a top-level tensor by name and copies it:
+
+        x -> pre(Relu) -> h
+        trip, cond, v0 -> the_loop -> v_final      body: h -> b_id -> b_h
+                                                         v_in, b_h -> b_add -> v_out
+        v_final -> post(Relu) -> y
+    """
+    body = helper.make_graph(
+        [
+            helper.make_node("Identity", ["h"], ["b_h"], name="b_id"),
+            helper.make_node("Add", ["v_in", "b_h"], ["v_out"], name="b_add"),
+            helper.make_node("Identity", ["c_in"], ["c_out"], name="b_cond"),
+        ],
+        "loop_body",
+        inputs=[
+            _ti("i", [], TensorProto.INT64),
+            _ti("c_in", [], TensorProto.BOOL),
+            _ti("v_in", [DIM, DIM]),
+        ],
+        outputs=[_ti("c_out", [], TensorProto.BOOL), _ti("v_out", [DIM, DIM])],
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("Relu", ["x"], ["h"], name="pre"),
+                helper.make_node(
+                    "Loop",
+                    ["trip", "cond", "v0"],
+                    ["v_final"],
+                    name="the_loop",
+                    body=body,
+                ),
+                helper.make_node("Relu", ["v_final"], ["y"], name="post"),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM]), _ti("v0", [DIM, DIM])],
+            outputs=[_ti("y", [DIM, DIM])],
+            initializer=[
+                numpy_helper.from_array(np.array(TRIP, dtype=np.int64), "trip"),
+                numpy_helper.from_array(np.array(True), "cond"),
+            ],
+        )
+    )
+
+
 def body_scan_model(body_nodes, body_initializer=(), top_nodes=(), top_outputs=()):
     """A Scan over xs with one carry. The body reads b_c (carry), b_x (slice) and writes b_co."""
     body = helper.make_graph(

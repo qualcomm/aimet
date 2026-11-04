@@ -1395,8 +1395,9 @@ def _to_onnx(
     derived_encodings = _derive_const_rescale_op_output_encodings(
         onnx_model, encoding_dict, base_dir
     )
+    # aimet_torch doesn't quantize inside If branches
     derived_encodings |= _derive_data_movement_op_encodings(
-        onnx_model, encoding_dict | derived_encodings
+        onnx_model, encoding_dict | derived_encodings, include_if=False
     )
 
     if not propagate_int32_encodings:
@@ -1576,7 +1577,9 @@ def _to_onnx_qdq(
 
     # TODO: Support exporting (b)float16 models
     if contains_tensor_type(
-        onnx_model, (onnx.TensorProto.BFLOAT16, onnx.TensorProto.FLOAT16)
+        onnx_model,
+        (onnx.TensorProto.BFLOAT16, onnx.TensorProto.FLOAT16),
+        include_if=False,
     ):
         raise RuntimeError(
             "Exporting to onnx QDQ is only supported for float32 models."
@@ -1594,6 +1597,7 @@ def _to_onnx_qdq(
         onnx_opset=onnx_opset_version,
         prequantize_constants=prequantize_constants,
         base_dir=base_dir,
+        include_if=False,
     )
 
     return onnx_model

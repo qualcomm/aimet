@@ -14,10 +14,14 @@ from onnx import helper, numpy_helper
 
 from aimet_onnx import ir_utils
 import aimet_onnx.quantsim as quantsim
-from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
+from aimet_onnx.common.onnx._utils import (
+    _derive_data_movement_op_encodings,
+    _iterate_graphs_recursive,
+)
 from aimet_onnx.quantsim import QuantizationSimModel, _quantize_subgraphs_enabled
 
 from .models import models_for_tests
+from .models.models_for_tests import _control_flow_model, _ti
 
 
 def _inputs(model, seed=0):
@@ -55,6 +59,47 @@ def _if_branches(model):
         for attr in node.attribute
         if attr.type == onnx.AttributeProto.GRAPH
     }
+
+
+def _rename_if_outputs(model, branch_names):
+    """Renames the output of the named If branches to o"""
+    for graph in _bodies(model):
+        if graph.name in branch_names:
+            graph.node[-1].output[0] = "o"
+            graph.output[0].name = "o"
+    return model
+
+
+def _with_outer_o(model, source, after_if):
+    """
+    Renames the then branch output of the first If to o, and defines o again in the graph
+    holding the If. Before the If, the branch shadows o, which ONNX forbids; after it, o isn't
+    yet defined when the If is reached, which ONNX allows.
+    """
+    graph = next(
+        g
+        for g in _iterate_graphs_recursive(model.graph)
+        for n in g.node
+        if n.op_type == "If"
+    )
+    index, the_if = next((i, n) for i, n in enumerate(graph.node) if n.op_type == "If")
+    then_branch = next(a.g for a in the_if.attribute if a.name == "then_branch")
+    then_branch.node[-1].output[0] = "o"
+    then_branch.output[0].name = "o"
+    graph.node.insert(
+        index + after_if, helper.make_node("Abs", [source], ["o"], name="o_def")
+    )
+    if graph is model.graph:
+        graph.output.append(then_branch.output[0])
+    else:
+        # A Scan body's outputs are fixed by the Scan, so consume o inside the body instead
+        out = graph.output[0].name
+        producer = next(n for n in graph.node if out in n.output)
+        producer.output[0] = f"{out}_pre"
+        graph.node.append(
+            helper.make_node("Add", [f"{out}_pre", "o"], [out], name="o_use")
+        )
+    return model
 
 
 def _if_inputs(model, cond):
@@ -168,9 +213,7 @@ class TestSubgraphQuantizerInsertion:
         """
         top, *bodies = [
             sorted(n.input[0] for n in graph.node if n.op_type == "QcQuantizeOp")
-            for graph in _iterate_graphs_recursive(
-                sim.model.model.graph, include_if=True
-            )
+            for graph in _iterate_graphs_recursive(sim.model.model.graph)
         ]
         print(f"top-level graph: {top}, subgraphs: {bodies}")
         assert sorted(bodies) == sorted(expected)
@@ -243,9 +286,7 @@ class TestSubgraphQuantizerInsertion:
         # 1)
         nodes = [
             node
-            for graph in _iterate_graphs_recursive(
-                sim.model.model.graph, include_if=True
-            )
+            for graph in _iterate_graphs_recursive(sim.model.model.graph)
             for node in graph.node
             if node.op_type != "QcQuantizeOp"
         ]
@@ -342,50 +383,55 @@ class TestSubgraphQuantizerInsertion:
             q.is_initialized() for q in sim.qc_quantize_op_dict.values() if q.enabled
         )
 
-    @pytest.mark.parametrize("flag", [False, True])
     @pytest.mark.parametrize(
         "make_model",
         [
-            models_for_tests.if_model,
-            models_for_tests.weighted_if_model,
-            models_for_tests.if_in_scan_model,
+            # then: x -> Relu -> o, else: x -> Neg -> o
+            lambda: _rename_if_outputs(models_for_tests.if_model(), ["thn", "els"]),
+            # if_0 then: h -> o, if_1 then: y0, h -> o
+            lambda: _rename_if_outputs(
+                models_for_tests.chained_if_model(), ["then_0", "then_1"]
+            ),
+            # Scan body a: a_c, a_x -> t, Scan body b: b_c, b_x -> t
+            lambda: models_for_tests.sibling_scans_model(collide="tensor"),
+            # x -> Abs -> o, then x -> the_if (then: x -> Relu -> o)
+            lambda: _with_outer_o(models_for_tests.if_model(), "x", after_if=False),
+            # x -> the_if (then: x -> Relu -> o), then x -> Abs -> o
+            lambda: _with_outer_o(models_for_tests.if_model(), "x", after_if=True),
+            # Scan body: b_x -> Abs -> o, then b_if (then: b_x -> Relu -> o)
+            lambda: _with_outer_o(
+                models_for_tests.if_in_scan_model(), "b_x", after_if=False
+            ),
+            # Scan body: b_if (then: b_x -> Relu -> o), then b_x -> Abs -> o
+            lambda: _with_outer_o(
+                models_for_tests.if_in_scan_model(), "b_x", after_if=True
+            ),
+        ],
+        ids=[
+            "if_branches",
+            "two_ifs",
+            "sibling_scans",
+            "top_level_before_if",
+            "top_level_after_if",
+            "body_before_if",
+            "body_after_if",
         ],
     )
-    def test_qdq_apis_with_if_branches(self, make_model, flag, tmp_path):
-        """A calibrated sim of a model with If branches"""
+    def test_tensor_defined_in_two_scopes(self, make_model):
+        """
+        A model in which two scopes, one of them a control-flow body, define a tensor. ONNX
+        rejects the nested *_before_if ones and allows the rest.
+        """
         model = make_model()
-        sim = _sim(model, flag=flag)
-        sim.compute_encodings(
-            [_if_inputs(model, cond=True), _if_inputs(model, cond=False)]
-        )
 
         """
-        When: Exported, converted to ONNX QDQ, and param quantizers folded
-        Then: 1) export() works, with every enabled branch quantizer's encoding
-              2) Without subgraph quantization, to_onnx_qdq() and fold_param_quantizers() work
-              3) With it, they raise rather than produce a broken model, as they don't
-                 handle quantizers inside If branches yet
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: It raises naming the tensor, as quantizers are keyed by tensor name in every scope
         """
-        sim.export(str(tmp_path), "model")
-        with open(tmp_path / "model.encodings") as f:
-            encodings = json.load(f)
-        exported = {
-            enc["name"]
-            for enc in encodings["activation_encodings"] + encodings["param_encodings"]
-        }
-        assert {
-            name for name, q in sim.qc_quantize_op_dict.items() if q.enabled
-        } <= exported
-
-        if not flag:
-            sim.to_onnx_qdq()
-            sim.fold_param_quantizers()
-            return
-
-        with pytest.raises(NotImplementedError, match="If branches"):
-            sim.to_onnx_qdq()
-        with pytest.raises(NotImplementedError, match="If branches"):
-            sim.fold_param_quantizers()
+        with pytest.raises(
+            RuntimeError, match=r"\['[ot]'\] are defined in more than one"
+        ):
+            _sim(model)
 
     @pytest.mark.parametrize("make_model, expected", BODY_QUANTIZERS)
     def test_quantizers_inserted_in_bodies(self, make_model, expected):
@@ -879,6 +925,497 @@ class TestSubgraphExport:
         actual = ort.InferenceSession(qdq.SerializeToString()).run(None, inputs)
         for exp, act in zip(sim.session.run(None, inputs), actual):
             assert np.array_equal(act, exp)
+
+
+IF_MODELS = [
+    models_for_tests.if_model,
+    models_for_tests.weighted_if_model,
+    models_for_tests.chained_if_model,
+    models_for_tests.if_in_scan_model,
+    models_for_tests.predicated_experts_model,
+]
+
+
+def _ort_run(model, inputs):
+    # Keep ORT from folding Q/DQ pairs, so it computes exactly what the graph says
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    session = ort.InferenceSession(model.SerializeToString(), options)
+    return session.run(None, inputs)
+
+
+def _calibrated_if_sim(make_model, flag):
+    model = make_model()
+    sim = _sim(onnx.ModelProto.FromString(model.SerializeToString()), flag)
+    sim.compute_encodings([_if_inputs(model, cond=True), _if_inputs(model, cond=False)])
+    return model, sim
+
+
+def _qdq_per_graph(model):
+    """(scale, zero point) of every QuantizeLinear, keyed by the tensor its scale is named after,
+    for each graph in _iterate_graphs_recursive order"""
+    graphs = list(_iterate_graphs_recursive(model.graph))
+    constants = {
+        init.name: numpy_helper.to_array(init).tolist()
+        for graph in graphs
+        for init in graph.initializer
+    }
+    return [
+        {
+            node.input[1].removesuffix("_scale"): (
+                constants[node.input[1]],
+                constants[node.input[2]] if len(node.input) > 2 else None,
+            )
+            for node in graph.node
+            if node.op_type == "QuantizeLinear"
+        }
+        for graph in graphs
+    ]
+
+
+class TestSubgraphIfExport:
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_export(self, make_model, flag, tmp_path):
+        """A sim of a model with If branches, calibrated with every branch taken"""
+        model, sim = _calibrated_if_sim(make_model, flag)
+
+        """
+        When: The sim is exported
+        Then: 1) The exported model has no quantizer, is valid and computes the same outputs as
+                 the original model
+              2) Every enabled quantizer's encoding is exported, and every exported encoding
+                 names a tensor of the exported model
+        """
+        sim.export(str(tmp_path), "model", encoding_version="2.0.0")
+
+        # 1)
+        exported = onnx.load(str(tmp_path / "model.onnx"))
+        graphs = list(_iterate_graphs_recursive(exported.graph))
+        assert not any(
+            node.op_type == "QcQuantizeOp" for graph in graphs for node in graph.node
+        )
+        onnx.checker.check_model(exported, full_check=True)
+        for cond in (True, False):
+            inputs = _if_inputs(model, cond)
+            for exp, act in zip(_ort_run(model, inputs), _ort_run(exported, inputs)):
+                assert np.array_equal(act, exp)
+
+        # 2)
+        with open(tmp_path / "model.encodings") as f:
+            names = {enc["name"] for enc in json.load(f)["encodings"]}
+        assert {n for n, q in sim.qc_quantize_op_dict.items() if q.enabled} <= names
+        tensors = {
+            name
+            for graph in graphs
+            for name in [
+                *(inp.name for inp in graph.input),
+                *(init.name for init in graph.initializer),
+                *(out for node in graph.node for out in node.output),
+            ]
+        }
+        assert names <= tensors
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_to_onnx_qdq(self, make_model, flag):
+        """A sim of a model with If branches, calibrated with every branch taken"""
+        model, sim = _calibrated_if_sim(make_model, flag)
+
+        """
+        When: The sim is exported to onnx QDQ
+        Then: 1) No quantizer is left, and every enabled quantizer is a Q/DQ in the graph that
+                 defines its tensor, so none inside a branch with the flag off
+              2) No body or branch reads a tensor of its enclosing graph before it is quantized
+              3) The model is valid, and with the flag, computes the same outputs as the sim
+        """
+        qdq = sim.to_onnx_qdq()
+
+        # 1)
+        graphs = list(_iterate_graphs_recursive(qdq.graph))
+        assert not any(
+            node.op_type == "QcQuantizeOp" for graph in graphs for node in graph.node
+        )
+        quantized = _qdq_per_graph(qdq)
+        for graph, sim_graph in zip(quantized, _quantized_tensors_per_graph(sim)):
+            assert set(graph) >= {
+                name for name in sim_graph if sim.qc_quantize_op_dict[name].enabled
+            }
+        if flag:
+            assert any(quantized[1:])
+
+        # 2)
+        for graph in graphs:
+            unquantized = {
+                n.input[0] for n in graph.node if n.op_type == "QuantizeLinear"
+            }
+            for body in _iterate_graphs_recursive(graph):
+                if body is not graph:
+                    assert not unquantized & {i for n in body.node for i in n.input}
+
+        # 3)
+        onnx.checker.check_model(qdq, full_check=True)
+        # NOTE: Without the flag, the sim's branches read the unquantized tensors of the
+        # enclosing graph, since the ConnectedGraph doesn't see the branches.
+        if not flag:
+            return
+        for cond in (True, False):
+            inputs = _if_inputs(model, cond)
+            for exp, act in zip(sim.session.run(None, inputs), _ort_run(qdq, inputs)):
+                assert np.array_equal(act, exp)
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_encodings_to_onnx_qdq(self, make_model, flag, tmp_path):
+        """The exported model and encodings of a sim of a model with If branches"""
+        _, sim = _calibrated_if_sim(make_model, flag)
+        sim.export(str(tmp_path), "model", encoding_version="2.0.0")
+
+        """
+        When: The encodings are applied to the exported model as QDQ
+        Then: Every graph quantizes the same tensors, with the same scales and zero points, as
+              the sim's QDQ export
+        """
+        qdq = quantsim.encodings_to_onnx_qdq(
+            onnx.load(str(tmp_path / "model.onnx")),
+            str(tmp_path / "model.encodings"),
+            strict=True,
+        )
+        onnx.checker.check_model(qdq, full_check=True)
+        assert _qdq_per_graph(qdq) == _qdq_per_graph(sim.to_onnx_qdq())
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_from_onnx_qdq(self, make_model, flag):
+        """The QDQ model of a sim of a model with If branches"""
+        model, sim = _calibrated_if_sim(make_model, flag)
+        qdq = sim.to_onnx_qdq()
+
+        """
+        When: A sim is created from the QDQ model, strictly
+        Then: 1) Every Q/DQ maps to a quantizer, and the same quantizers are enabled
+              2) Its QDQ model is the same as the one it was created from
+        """
+        # 1)
+        with _quantize_subgraphs_enabled(flag):
+            new_sim = QuantizationSimModel.from_onnx_qdq(qdq, strict=True)
+        enabled = lambda s: {
+            n for n, q in s.qc_quantize_op_dict.items() if q and q.enabled
+        }
+        assert enabled(new_sim) == enabled(sim)
+
+        # 2)
+        new_qdq = new_sim.to_onnx_qdq()
+        assert _qdq_per_graph(new_qdq) == _qdq_per_graph(qdq)
+        for cond in (True, False):
+            inputs = _if_inputs(model, cond)
+            for exp, act in zip(_ort_run(qdq, inputs), _ort_run(new_qdq, inputs)):
+                assert np.array_equal(act, exp)
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_load_encodings(self, make_model, flag, tmp_path):
+        """The exported encodings of a sim of a model with If branches"""
+        model, sim = _calibrated_if_sim(make_model, flag)
+        sim.export(str(tmp_path), "model", encoding_version="2.0.0")
+
+        """
+        When: The encodings are loaded, strictly, into a new sim of the same model
+        Then: The new sim computes the same outputs as the calibrated sim
+        """
+        new_sim = _sim(model, flag)
+        quantsim.load_encodings_to_sim(new_sim, str(tmp_path / "model.encodings"))
+        for cond in (True, False):
+            inputs = _if_inputs(model, cond)
+            for exp, act in zip(
+                sim.session.run(None, inputs), new_sim.session.run(None, inputs)
+            ):
+                assert np.array_equal(act, exp)
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_fold_param_quantizers(self, make_model, flag):
+        """A sim of a model with If branches, calibrated with every branch taken"""
+        model, sim = _calibrated_if_sim(make_model, flag)
+        params = [n for n in sim.param_names if sim.qc_quantize_op_dict[n].enabled]
+        expected = {
+            cond: sim.session.run(None, _if_inputs(model, cond))
+            for cond in (True, False)
+        }
+
+        """
+        When: fold_param_quantizers is called
+        Then: 1) No param quantizer is left in any graph
+              2) The sim computes the same outputs as before folding
+        """
+        sim.fold_param_quantizers()
+
+        # 1)
+        assert set(params) <= set(sim._folded_param_quantizers)
+        assert not set(params) & {
+            name for graph in _quantized_tensors_per_graph(sim) for name in graph
+        }
+
+        # 2)
+        for cond in (True, False):
+            for exp, act in zip(
+                expected[cond], sim.session.run(None, _if_inputs(model, cond))
+            ):
+                assert np.array_equal(act, exp)
+
+    @pytest.mark.parametrize("flag", [False, True])
+    @pytest.mark.parametrize("make_model", IF_MODELS)
+    def test_remove_quantizers(self, make_model, flag):
+        """A sim of a model with If branches"""
+        model = make_model()
+        sim = _sim(onnx.ModelProto.FromString(model.SerializeToString()), flag)
+
+        """
+        When: remove_quantizers is called on the sim model
+        Then: 1) No quantizer is left in any graph
+              2) The model is valid and computes the same outputs as the original model
+        """
+        fp_model = QuantizationSimModel.remove_quantizers(
+            onnx.ModelProto.FromString(sim.model.model.SerializeToString())
+        )
+        assert not any(
+            node.op_type == "QcQuantizeOp"
+            for graph in _iterate_graphs_recursive(fp_model.graph)
+            for node in graph.node
+        )
+        onnx.checker.check_model(fp_model, full_check=True)
+        for cond in (True, False):
+            inputs = _if_inputs(model, cond)
+            for exp, act in zip(_ort_run(model, inputs), _ort_run(fp_model, inputs)):
+                assert np.array_equal(act, exp)
+
+    @pytest.mark.parametrize("flag", [False, True])
+    def test_encodings_to_onnx_qdq_fp16_branch(self, flag, tmp_path):
+        """An exported float32 model whose If then branch computes in float16"""
+        model = models_for_tests.if_model()
+        then_branch = _if_branches(model)["the_if", "then_branch"]
+        then_branch.ClearField("node")
+        then_branch.node.extend(
+            [
+                helper.make_node(
+                    "Cast", ["x"], ["t_h"], to=onnx.TensorProto.FLOAT16, name="t_cast"
+                ),
+                helper.make_node("Relu", ["t_h"], ["t_r"], name="t_relu"),
+                helper.make_node(
+                    "Cast",
+                    ["t_r"],
+                    ["thn_o"],
+                    to=onnx.TensorProto.FLOAT,
+                    name="t_cast2",
+                ),
+            ]
+        )
+        sim = _sim(model, flag=flag)
+        sim.compute_encodings(
+            [_if_inputs(model, cond=True), _if_inputs(model, cond=False)]
+        )
+        sim.export(str(tmp_path), "model", encoding_version="2.0.0")
+
+        """
+        When: encodings_to_onnx_qdq is called
+        Then: It raises like for a float16 top-level graph
+        """
+        with pytest.raises(RuntimeError, match="only supported for float32 models"):
+            quantsim.encodings_to_onnx_qdq(
+                onnx.load(str(tmp_path / "model.onnx")),
+                str(tmp_path / "model.encodings"),
+            )
+
+    def test_weight_scale_adjusted_for_branch_bias(self):
+        """An If whose then branch holds a Gemm with a large bias declared in the branch"""
+        dim = models_for_tests.DIM
+        weight = np.random.default_rng(1).standard_normal((dim, dim)).astype(np.float32)
+        bias = np.full(dim, 1e7, np.float32)
+        model = models_for_tests.weighted_if_model()
+        then_branch = _if_branches(model)["the_if", "then_branch"]
+        then_branch.ClearField("node")
+        then_branch.node.append(
+            helper.make_node("Gemm", ["h", "t_w", "t_b"], ["t_o"], name="t_gemm")
+        )
+        then_branch.initializer.extend(
+            [
+                numpy_helper.from_array(weight, "t_w"),
+                numpy_helper.from_array(bias, "t_b"),
+            ]
+        )
+        sim = _sim(model, config_file="htp_v73")
+
+        """
+        When: Encodings are computed
+        Then: The weight scale is adjusted against the branch bias, so the int32 bias fits
+        """
+        sim.compute_encodings(
+            [_if_inputs(model, cond=True), _if_inputs(model, cond=False)]
+        )
+        input_scale = sim._get_enabled_quantizer("h")._get_scale()
+        weight_scale = sim.qc_quantize_op_dict["t_w"]._get_scale()
+        assert np.abs(np.round(bias / (input_scale * weight_scale))).max() < 2**31
+
+    def test_branch_param_quantized_in_branch(self):
+        """A calibrated sim whose If else branch declares its own weight w_else"""
+        _, sim = _calibrated_if_sim(models_for_tests.weighted_if_model, flag=True)
+
+        """
+        When: The sim is exported to onnx QDQ, with and without prequantized constants
+        Then: w_else is quantized inside the else branch, ahead of time if prequantized
+        """
+        for prequantize_constants in (False, True):
+            qdq = sim.to_onnx_qdq(prequantize_constants=prequantize_constants)
+            else_branch = _if_branches(qdq)["the_if", "else_branch"]
+            assert any(
+                node.op_type == "DequantizeLinear" and node.input[1] == "w_else_scale"
+                for node in else_branch.node
+            )
+            assert prequantize_constants != any(
+                node.op_type == "QuantizeLinear" and node.input[0] == "w_else"
+                for node in else_branch.node
+            )
+
+    @pytest.mark.parametrize("flag", [False, True])
+    def test_branch_data_movement_output_encoded(self, flag, tmp_path):
+        """A calibrated sim whose if_1 else branch passes the quantized y0 on through Identity"""
+        _, sim = _calibrated_if_sim(models_for_tests.chained_if_model, flag)
+        sim.export(str(tmp_path), "model", encoding_version="2.0.0")
+
+        """
+        When: The sim is exported, and the encodings, without e1_o's, applied to the exported
+              model as QDQ
+        Then: 1) The Identity output e1_o gets y0's encoding, as in the top-level graph
+              2) encodings_to_onnx_qdq derives it too, and quantizes e1_o inside the else
+                 branch with y0's scale
+        """
+        # 1)
+        with open(tmp_path / "model.encodings") as f:
+            encodings_file = json.load(f)
+        encodings = {enc["name"]: enc for enc in encodings_file["encodings"]}
+        assert {**encodings["e1_o"], "name": "y0"} == encodings["y0"]
+
+        # 2)
+        encodings_file["encodings"] = [
+            enc for enc in encodings_file["encodings"] if enc["name"] != "e1_o"
+        ]
+        qdq = quantsim.encodings_to_onnx_qdq(
+            onnx.load(str(tmp_path / "model.onnx")), encodings_file
+        )
+        else_1 = _if_branches(qdq)["if_1", "else_branch"]
+        (q,) = [node for node in else_1.node if node.op_type == "QuantizeLinear"]
+        assert q.input[1] == "e1_o_scale"
+        scales = {
+            init.name: numpy_helper.to_array(init)
+            for graph in _iterate_graphs_recursive(qdq.graph)
+            for init in graph.initializer
+        }
+        assert scales["e1_o_scale"] == scales["y0_scale"]
+
+    @pytest.mark.parametrize("flag", [False, True])
+    def test_loop_body_left_unquantized(self, flag, tmp_path):
+        """A calibrated sim of a model whose Loop body copies a quantized top-level tensor"""
+        model = models_for_tests.loop_model()
+        inputs = _inputs(model)
+        sim = _sim(model, flag)
+        sim.compute_encodings([inputs])
+        sim.export(str(tmp_path), "model", encoding_version="2.0.0")
+
+        """
+        When: The sim is exported, and exported to onnx QDQ both from the sim and the encodings
+        Then: 1) No encoding is derived inside the Loop body, which no API quantizes
+              2) Neither QDQ model has a Q/DQ inside the Loop body
+        """
+        # 1)
+        with open(tmp_path / "model.encodings") as f:
+            names = {enc["name"] for enc in json.load(f)["encodings"]}
+        assert "b_h" not in names
+
+        # 2)
+        e2q = quantsim.encodings_to_onnx_qdq(
+            onnx.load(str(tmp_path / "model.onnx")), str(tmp_path / "model.encodings")
+        )
+        for qdq in (sim.to_onnx_qdq(), e2q):
+            (loop,) = [node for node in qdq.graph.node if node.op_type == "Loop"]
+            assert not any(
+                node.op_type in ("QuantizeLinear", "DequantizeLinear")
+                for node in loop.attribute[0].g.node
+            )
+            for exp, act in zip(sim.session.run(None, inputs), _ort_run(qdq, inputs)):
+                assert np.array_equal(act, exp)
+
+
+def test_delegation_walk_with_crosswise_branch_names():
+    """Two Ifs whose then branches define each other's input:
+
+    b = if_0(cond)   then_branch: x -> Identity -> c -> Identity -> b
+    y = if_1(cond)   then_branch: b -> Identity -> c
+    """
+
+    def branch(name, *chain):
+        nodes = [
+            helper.make_node("Identity", [src], [dst], name=f"{name}_{src}")
+            for src, dst in zip(chain, chain[1:])
+        ]
+        return helper.make_graph(nodes, name, [], [_ti(chain[-1], [1])])
+
+    if_0 = helper.make_node(
+        "If",
+        ["cond"],
+        ["b"],
+        name="if_0",
+        then_branch=branch("then_0", "x", "c", "b"),
+        else_branch=branch("else_0", "x", "e"),
+    )
+    if_1 = helper.make_node(
+        "If",
+        ["cond"],
+        ["y"],
+        name="if_1",
+        then_branch=branch("then_1", "b", "c"),
+        else_branch=branch("else_1", "b", "d"),
+    )
+    model = _control_flow_model(
+        helper.make_graph(
+            [if_0, if_1],
+            "g",
+            [_ti("x", [1]), _ti("cond", [1], onnx.TensorProto.BOOL)],
+            [_ti("y", [1])],
+        )
+    )
+    sim = _sim(model, flag=False)
+    sim.compute_encodings([{"x": np.ones(1, np.float32), "cond": np.array([True])}])
+    encodings = {"b": sim.qc_quantize_op_dict["b"].export_encodings("1.0.0")}
+    encodings["c"] = {
+        **encodings["b"],
+        "scale": [2 * s for s in encodings["b"]["scale"]],
+    }
+
+    """
+    When: Encodings are delegated given one for c, a branch tensor differing from b's
+    Then: The walk ends at the cycle of producers c -> b -> c and keeps c's encoding
+    """
+    quantsim._remove_delegatable_excess_encodings(sim, encodings)
+    assert "c" in encodings
+
+
+def test_derived_encodings_count_branch_consumers():
+    """x, read by a top-level Transpose -> t and by name inside both branches of an If"""
+    model = models_for_tests.if_model()
+    model.graph.node.append(helper.make_node("Transpose", ["x"], ["t"], name="tr"))
+    model.graph.output.append(
+        helper.make_tensor_value_info(
+            "t", onnx.TensorProto.FLOAT, [models_for_tests.DIM]
+        )
+    )
+    encoding = {"name": "t", "output_dtype": "uint8", "y_scale": 0.1, "y_zero_point": 0}
+
+    """
+    When: Encodings are derived through data movement ops, given only t's
+    Then: t's encoding is not reused for x, which has other consumers inside the branches
+    """
+    derived = _derive_data_movement_op_encodings(model, {"t": encoding})
+    assert "x" not in derived
 
 
 class TestSubgraphStaticTensors:

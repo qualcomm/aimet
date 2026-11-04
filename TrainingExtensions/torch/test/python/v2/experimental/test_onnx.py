@@ -857,7 +857,7 @@ def test_data_movement_op_encoding_generation(dynamo: bool):
     with tempfile.TemporaryDirectory() as tmpdir:
         full_path = os.path.join(tmpdir, "model.onnx")
         with patch(
-            "aimet_torch.onnx._derive_data_movement_op_encodings", lambda *_: {}
+            "aimet_torch.onnx._derive_data_movement_op_encodings", lambda *_, **__: {}
         ):
             aimet_torch.onnx.export(
                 sim.model,
