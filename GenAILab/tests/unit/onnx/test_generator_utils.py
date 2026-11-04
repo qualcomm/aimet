@@ -111,6 +111,30 @@ class TestONNXFPModeMixin:
             assert _enabled_flags(backbone) == backbone_before
             assert _enabled_flags(visual) == visual_before
 
+    def test_fp_mode_raises_after_fold(self):
+        """Disabling folded quantizers is a no-op, so fp_mode must refuse to run."""
+        from GenAILab.qai_hub_lm.backends.onnx.generator_utils import generator_factory
+
+        backbone = _tiny_sim()
+        backbone.fold_param_quantizers()
+        collection = SimCollection(backbone=backbone, config=MagicMock())
+        tok = MagicMock()
+        tok.eos_token_id = 0
+
+        with patch(
+            "GenAILab.qai_hub_lm.backends.onnx.generator_utils.TorchONNXInterface"
+        ):
+            gen = generator_factory(
+                sim_collection=collection,
+                generator_cls=Generator,
+                tokenizer=tok,
+                sequence_length=8,
+                context_length=32,
+            )
+            with pytest.raises(RuntimeError, match="fold_param_quantizers"):
+                with gen.fp_mode():
+                    pass
+
 
 class TestGeneratorFactory:
     def test_wraps_backbone_in_torch_onnx_interface(self):

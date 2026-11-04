@@ -57,6 +57,19 @@ class ONNXFPModeMixin:
 
     @contextlib.contextmanager
     def fp_mode(self):
+        sims = [self.sim_collection.backbone]
+        sims.extend(
+            self.sim_collection.component(name)
+            for name in self.sim_collection.present_components()
+        )
+        # A folded quantizer is still enabled but no longer in the graph, so
+        # disabling it changes nothing: "FP" outputs would use quantized weights
+        # and poison the shared FP cache.
+        if any(sim._folded_param_quantizers for sim in sims):
+            raise RuntimeError(
+                "fp_mode() is unavailable after fold_param_quantizers(): the float "
+                "weights have been overwritten with their quantized values."
+            )
         with contextlib.ExitStack() as stack:
             sim = self.sim_collection.backbone
             stack.enter_context(disable_quantizers(sim, sim.qc_quantize_op_dict.keys()))

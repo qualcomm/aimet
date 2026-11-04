@@ -23,7 +23,7 @@ from GenAILab.bench.profiler import (
 from GenAILab.bench.determinism import set_seed
 from GenAILab.bench.eval_context import EvaluationContext
 from GenAILab.bench.fp_cache import DiskBackedFPCache
-from GenAILab.bench.metrics import run_metrics
+from GenAILab.bench.metrics import DistanceMetric, run_metrics
 from GenAILab.bench.model_cache import DiskBackedModelCache
 from GenAILab.bench.recipe_chain import (
     apply_pre_quantization_chain,
@@ -94,6 +94,46 @@ def _check_bf16_supported(config):
         raise ValueError("dtype 'bfloat16' does not support analysis passes yet.")
     if config.model.encodings is not None:
         raise ValueError("dtype 'bfloat16' cannot load precomputed encodings.")
+
+
+def _can_fold_param_quantizers(config) -> bool:
+    """Whether evaluation can run with param quantizers folded into the weights.
+
+    Folding is permanent: it overwrites the float weights, so disabling a folded
+    quantizer no longer changes anything and fp_mode() would silently run the
+    quantized weights. Distance metrics compute their FP reference in fp_mode()
+    (and persist it to the shared FP cache), and analysis passes toggle
+    quantizers, so either rules folding out.
+    """
+    return (
+        bool(config.metrics)
+        and config.analysis is None
+        and not any(issubclass(m.metric_cls, DistanceMetric) for m in config.metrics)
+    )
+
+
+def _fold_param_quantizers(sims: dict):
+    """Fold each sim's param quantizers into its weights, in place.
+
+    Each weight is then quantize-dequantized once here instead of on every
+    forward pass, which dominates autoregressive decode on large models.
+    """
+    folded = []
+    for name, sim in sims.items():
+        try:
+            sim.fold_param_quantizers()
+        except NotImplementedError as e:
+            # Raised before the sim is changed, e.g. for quantizers inside If
+            # branches (torch.cond MoE experts), so the sim evaluates unfolded.
+            print(f"Not folding {name} param quantizers: {e}")
+        else:
+            if sim._folded_param_quantizers:
+                folded.append(name)
+    if folded:
+        print(
+            f"Folded param quantizers into the weights of {', '.join(folded)} for "
+            "faster evaluation (no distance metrics or analysis passes configured)."
+        )
 
 
 def run_experiment(
@@ -366,6 +406,17 @@ def run_experiment(
                 sim_collection.embedding.state_dict(),
                 os.path.join(export_dir, "embedding.pth"),
             )
+
+    # After export, so the exported model still carries the unfolded weights.
+    if _can_fold_param_quantizers(config):
+        # RemoveQuantization leaves the backbone with nothing to fold, and folding
+        # would still calibrate its uninitialized param quantizers first.
+        sims = {} if backbone_removed_quant else {"backbone": sim_collection.backbone}
+        sims.update(
+            (name, sim_collection.component(name))
+            for name in sim_collection.present_components()
+        )
+        _fold_param_quantizers(sims)
 
     results_folder = Path(results_dir)
     results_folder.mkdir(parents=True, exist_ok=True)
