@@ -128,10 +128,9 @@ uv pip install --upgrade pip wheel setuptools
 # Python dependencies
 # -----------------------------------------------------------------------
 echo "Installing PyTorch with CUDA support..."
-uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+uv pip install --upgrade torch torchvision torchaudio
 
 echo "Installing Python dependencies..."
-uv pip install qai_hub_models
 uv pip install -r "$REPO_DIR/GenAILab/requirements.txt"
 
 # -----------------------------------------------------------------------
