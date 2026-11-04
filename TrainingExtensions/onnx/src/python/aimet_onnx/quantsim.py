@@ -2658,11 +2658,11 @@ class QuantizationSimModel:
                     src_qtzr = self._get_enabled_quantizer(inp.name)
                     if src_qtzr:
                         src_name = qtzr_to_name[src_qtzr]
-                        src_min_max_ranges.add(
-                            src_qtzr._encoding_min_max_fixed_vals if src_qtzr else None
-                        )
                     else:
                         src_name = inp.name
+                    src_min_max_ranges.add(
+                        src_qtzr._encoding_min_max_fixed_vals if src_qtzr else None
+                    )
 
                     consumers = set(
                         end_consumer

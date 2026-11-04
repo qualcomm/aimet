@@ -5508,6 +5508,67 @@ class TestEncodingPropagation:
             sigmoid_output_encoding.delta, expected_scale, atol=np.finfo(np.float32).eps
         )
 
+    def test_concat_unquantized_input_is_unconstrained(self):
+        """
+        Given: model as below
+
+        [input] ----------> Relu ---> Concat -> [output]
+        [int_input] -> Cast(to=float) -----^
+
+        Cast output has no quantizer, since its input is an integer
+        """
+        model = onnx.helper.make_model(
+            onnx.helper.make_graph(
+                [
+                    onnx.helper.make_node("Relu", ["input"], ["relu"]),
+                    onnx.helper.make_node(
+                        "Cast", ["int_input"], ["cast"], to=onnx.TensorProto.FLOAT
+                    ),
+                    onnx.helper.make_node(
+                        "Concat", ["relu", "cast"], ["output"], axis=0
+                    ),
+                ],
+                "relu_cast_concat",
+                [
+                    onnx.helper.make_tensor_value_info(
+                        "input", onnx.TensorProto.FLOAT, [4]
+                    ),
+                    onnx.helper.make_tensor_value_info(
+                        "int_input", onnx.TensorProto.INT64, [4]
+                    ),
+                ],
+                [
+                    onnx.helper.make_tensor_value_info(
+                        "output", onnx.TensorProto.FLOAT, [8]
+                    )
+                ],
+            ),
+            opset_imports=[onnx.helper.make_opsetid("", 17)],
+        )
+        model.ir_version = 10
+
+        """
+        When: _apply_constraints(True)
+        Then: Concat output must not inherit Relu's [0, ?] range,
+              since Cast output is unconstrained and can be negative
+        """
+        sim = QuantizationSimModel(model, config_file="htp_v81")
+        assert sim.qc_quantize_op_dict["relu"]._encoding_min_max_fixed_vals == (
+            0.0,
+            None,
+        )
+        assert sim.qc_quantize_op_dict["output"]._encoding_min_max_fixed_vals is None
+        assert sim.qc_quantize_op_dict["output"] is not sim.qc_quantize_op_dict["relu"]
+
+        inputs = {
+            "input": np.array([-1, 0, 0.5, 1], dtype=np.float32),
+            "int_input": np.array([-2, -1, 0, 1], dtype=np.int64),
+        }
+        sim.compute_encodings([inputs])
+        (out,) = sim.session.run(None, inputs)
+        (output_encoding,) = sim.qc_quantize_op_dict["output"].get_encodings()
+        assert np.allclose(out[4:], [-2, -1, 0, 1], atol=output_encoding.delta)
+
     def test_quantsim_skips_unsafe_concat_tie_quantizers(self):
         """
         Given the model:
