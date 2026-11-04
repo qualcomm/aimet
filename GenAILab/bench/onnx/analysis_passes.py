@@ -23,16 +23,17 @@ def _truncated(sims, truncation_bits: int):
     """Insert Truncate nodes into every sim's session for the duration of the block.
 
     While active, each sim's ``_rebuild_session`` is patched to re-insert the
-    nodes, since ``on_device`` (Grace grades on CPU) rebuilds from the clean
-    graph and would otherwise silently drop the truncation for every metric
-    after it. On exit, even on error, the original method is restored and the
-    session rebuilt clean.
+    nodes, since ``evicted`` (graded metrics free the GPU for the grader)
+    rebuilds from the clean graph and would otherwise silently drop the
+    truncation for every metric after it. On exit, even on error, the original
+    method is restored and the session rebuilt clean.
+
+    No reference to the session is kept here: ``evicted`` frees GPU memory by
+    dropping ``sim.session``, which only works if it is the last reference.
     """
     from aimet_onnx.experimental._truncation_aware import (
         create_truncation_aware_session,
     )
-
-    last_session = {}
 
     def _reinstrument(sim):
         # Drop the old session first so two copies of the model never coexist.
@@ -40,7 +41,6 @@ def _truncated(sims, truncation_bits: int):
         sim.session = create_truncation_aware_session(
             sim, truncation_bits=truncation_bits
         )
-        last_session[id(sim)] = sim.session
 
     originals = []
     try:
@@ -51,11 +51,6 @@ def _truncated(sims, truncation_bits: int):
             _reinstrument(sim)
             sim._rebuild_session = functools.partial(_reinstrument, sim)
         yield
-        for sim in sims:
-            assert sim.session is last_session[id(sim)], (
-                f"{sim} was rebuilt outside the patched _rebuild_session during "
-                "TruncationSimulation -- instrumentation may have been silently lost."
-            )
     finally:
         for sim, original in originals:
             sim._rebuild_session = original

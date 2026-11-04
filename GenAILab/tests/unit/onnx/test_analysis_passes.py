@@ -95,7 +95,7 @@ def test_every_present_component_truncated_during_evaluate(build_calls):
 
 
 def test_rebuild_during_evaluate_reinstruments(build_calls):
-    """Grace's on_device() rebuilds the session; truncation must survive it."""
+    """Graded metrics' evicted() rebuilds the session; truncation must survive it."""
     sims = FakeSimCollection()
 
     def evaluate(slug):
@@ -147,18 +147,6 @@ def test_restored_clean_when_instrumenting_a_later_sim_fails(build_calls, monkey
     for sim in sims.all_sims():
         assert sim.session == "clean"
         assert sim._rebuild_session.__func__ is FakeSim._rebuild_session
-
-
-def test_session_swapped_outside_the_patch_is_caught(build_calls):
-    sims = FakeSimCollection()
-
-    def evaluate(slug):
-        sims.backbone.session = "tampered"
-        return _score(slug)
-
-    with pytest.raises(AssertionError, match="rebuilt outside the patched"):
-        TruncationSimulation(truncation_bits=8).run(sims, evaluate=evaluate)
-    assert sims.backbone.session == "clean"
 
 
 @pytest.mark.parametrize("bad", [[], "8", [8, "12"], True, 8.0])
