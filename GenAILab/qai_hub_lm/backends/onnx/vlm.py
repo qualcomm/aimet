@@ -107,6 +107,7 @@ class VLM_ONNX:
                         "small_model": small_model,
                         "image_size": image_size,
                         "dtype": str(dtype),
+                        "opset": ONNX_OPSET_VERSION,
                     }
                     # Added only when set, so an audio-free model's key -- and
                     # therefore every existing on-disk cache entry -- is

@@ -20,7 +20,8 @@ from GenAILab.qai_hub_lm.transforms.exportable_moe import (
     forced_expert_activation,
 )
 
-ONNX_OPSET_VERSION = 18
+# 22 is the first opset whose Conv (and Cos/Sin/Softplus) accept bfloat16.
+ONNX_OPSET_VERSION = 22
 
 #: ``torch.export`` mode for ``_dynamo_export``. Each mode has a torch.cond bug in a
 #: different release range, so pick the one that is correct for the installed torch:

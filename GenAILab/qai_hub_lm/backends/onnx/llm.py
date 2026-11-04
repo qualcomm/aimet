@@ -31,6 +31,7 @@ from GenAILab.qai_hub_lm.models.utils.layer_cache import build_layer_cache_descr
 from GenAILab.qai_hub_lm.models.utils.exportable import ONNXExportableModuleWithCache
 
 from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
+    ONNX_OPSET_VERSION,
     get_onnx_model,
     load_model_components_from_disk,
     get_model_checkpoint_path,
@@ -91,6 +92,7 @@ class LLM_ONNX(LLM):
                         "context_length": context_length,
                         "small_model": small_model,
                         "dtype": str(dtype),
+                        "opset": ONNX_OPSET_VERSION,
                     }
                     key = DiskBackedModelCache.build_key(params)
                     entry = model_cache.get_or_export(

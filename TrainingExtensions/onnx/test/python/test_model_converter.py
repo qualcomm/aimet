@@ -194,7 +194,15 @@ def test_model_round_trip_with_qwen(add_genai_tests_path, offline_hf_configs, tm
 @pytest.mark.skip_on_windows_arm64("transformers is not available on Windows ARM64")
 @pytest.mark.parametrize(
     "dynamo, opset_version",
-    [(False, 17), (False, 18), (True, 18), (False, 19), (False, 20), (False, 21)],
+    [
+        (False, 17),
+        (False, 18),
+        (True, 18),
+        (False, 19),
+        (False, 20),
+        (False, 21),
+        (True, 22),
+    ],
 )
 def test_model_round_trip_with_qwen_dynamo(
     add_genai_tests_path, offline_hf_configs, tmp_dir, dynamo, opset_version
@@ -422,6 +430,50 @@ def test_model_with_gemm(transposed_weight):
     ).run(None, {"input": dummy_input})
 
     # onnx -> torch -> reload back to onnx must preserve the output
+    copy_pt_weights_to_onnx(pt_block, onnx_model, param_map)
+    reloaded_output = ort.InferenceSession(
+        onnx_ir.to_proto(onnx_model).SerializeToString()
+    ).run(None, {"input": dummy_input})
+    assert compute_psnr(onnx_output[0], reloaded_output[0]) == 100
+
+
+def test_matmul_with_constant_first_input_is_not_a_weight():
+    """
+    Given: A MatMul whose first input (A) is an initializer, e.g. a rotary frequency
+           table, followed by a MatMul whose second input (B) is a weight
+    When: The block is converted to torch and its weights copied back
+    Then: Only the B-side initializer is treated as a weight, so copy-back succeeds and
+          the output is unchanged
+    """
+    table = onnx.helper.make_tensor(
+        "table", onnx.TensorProto.FLOAT, [4, 6], np.random.randn(24).astype(np.float32)
+    )
+    weight = onnx.helper.make_tensor(
+        "weight", onnx.TensorProto.FLOAT, [6, 3], np.random.randn(18).astype(np.float32)
+    )
+    graph = onnx.helper.make_graph(
+        [
+            onnx.helper.make_node("MatMul", ["table", "input"], ["scaled"], name="a"),
+            onnx.helper.make_node("MatMul", ["scaled", "weight"], ["output"], name="b"),
+        ],
+        "constant_a",
+        [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [6, 6])],
+        [onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [4, 3])],
+        [table, weight],
+    )
+    model = onnx.helper.make_model(
+        graph, opset_imports=[onnx.helper.make_opsetid("", 17)]
+    )
+    model.ir_version = 10
+    onnx_model = onnx_ir.from_proto(model)
+    dummy_input = np.random.randn(6, 6).astype(np.float32)
+
+    pt_block, param_map = get_pt_block(onnx_model, (["input"], ["output"]))
+    assert list(param_map.values()) == ["weight"]
+
+    onnx_output = ort.InferenceSession(model.SerializeToString()).run(
+        None, {"input": dummy_input}
+    )
     copy_pt_weights_to_onnx(pt_block, onnx_model, param_map)
     reloaded_output = ort.InferenceSession(
         onnx_ir.to_proto(onnx_model).SerializeToString()

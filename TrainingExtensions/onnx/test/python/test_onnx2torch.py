@@ -280,6 +280,48 @@ def test_clip(min_val, max_val, dtype):
     _assert_single_node_matches_ort(node, feed, tensor_type, initializers)
 
 
+@pytest.mark.parametrize(
+    "op_type, attrs, weight_shape",
+    [
+        # Depthwise causal conv, as in the gated-delta-net linear attention
+        ("Conv", {"group": 4, "pads": [3, 0]}, (4, 1, 4)),
+        ("Cos", {}, None),
+        ("Sin", {}, None),
+        ("Softplus", {}, None),
+    ],
+)
+def test_opset22_converters(op_type, attrs, weight_shape):
+    """
+    Given: An opset 22 graph using an op whose schema was bumped at 22 (bfloat16 added)
+    When: The model is converted to torch
+    Then: The converted model matches ONNX Runtime, as the previous version's converter
+          is registered at 22
+    """
+    feed = {"x": np.random.randn(1, 4, 16).astype(np.float32)}
+    inputs, initializers = ["x"], []
+    if weight_shape is not None:
+        inputs.append("w")
+        initializers.append(
+            numpy_helper.from_array(
+                np.random.randn(*weight_shape).astype(np.float32), "w"
+            )
+        )
+    graph = helper.make_graph(
+        [helper.make_node(op_type, inputs, ["output"], **attrs)],
+        "g",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, feed["x"].shape)],
+        [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+        initializers,
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 22)])
+    model.ir_version = 10
+    onnx_out, *_ = ort.InferenceSession(model.SerializeToString()).run(None, feed)
+    pt_block, _ = get_pt_block(onnx_ir.from_proto(model), (["x"], ["output"]))
+    converted_out = pt_block(torch.from_numpy(feed["x"])).detach().numpy()
+
+    np.testing.assert_allclose(onnx_out, converted_out, rtol=1e-5, atol=1e-5)
+
+
 def _scan_model(
     body, scan_inputs, scan_outputs, opset, initializers=(), nodes=(), **attrs
 ):

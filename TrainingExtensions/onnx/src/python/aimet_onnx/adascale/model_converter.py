@@ -59,15 +59,15 @@ def _get_onnx_block_info(onnx_subgraph: onnx_ir.Model):
                 1
             ].name
         else:
-            for edge in node.inputs:
-                if (
-                    edge.name in onnx_subgraph.graph.initializers
-                    and "bias" not in edge.name
-                ):
-                    # Bias will not be updated so we donot need to keep track of bias
-                    node_name_to_onnx_param[OnnxGraph.generate_node_name(node)] = (
-                        edge.name
-                    )
+            # The MatMul/Gemm converters make an nn.Linear only when input 1 (B) is an
+            # initializer; a constant input 0 (A) stays a plain matmul with no weight
+            edge = node.inputs[1]
+            if (
+                edge is not None
+                and edge.name in onnx_subgraph.graph.initializers
+                and "bias" not in edge.name
+            ):
+                node_name_to_onnx_param[OnnxGraph.generate_node_name(node)] = edge.name
     return node_name_to_onnx_param
 
 

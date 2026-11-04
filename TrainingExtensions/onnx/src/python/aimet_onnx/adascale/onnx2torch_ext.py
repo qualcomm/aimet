@@ -711,11 +711,12 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
     )
 
 
-# Bulk-register missing op versions for opsets 18-21.
+# Bulk-register missing op versions for opsets 18-22.
 # Many ops have unchanged schemas at newer versions but onnx2torch only registers
 # up to opset 13-17. We find the latest registered converter for each op and
-# re-register it at the newer since_version.
-def _register_missing_opset_converters(max_opset: int = 21):
+# re-register it at the newer since_version. Opset 22 only widens type constraints
+# (adds bfloat16 to e.g. Conv, Cos, Sin, Softplus), so the older converters apply.
+def _register_missing_opset_converters(max_opset: int = 22):
     """Register converters for op versions up to max_opset using existing converters."""
     _domain = defs.ONNX_DOMAIN
 
@@ -747,4 +748,4 @@ def _register_missing_opset_converters(max_opset: int = 21):
                     _CONVERTER_REGISTRY[desc_new] = _CONVERTER_REGISTRY[desc_old]
 
 
-_register_missing_opset_converters(max_opset=21)
+_register_missing_opset_converters(max_opset=22)
