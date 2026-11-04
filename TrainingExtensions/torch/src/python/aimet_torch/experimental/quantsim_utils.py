@@ -21,20 +21,6 @@ if TYPE_CHECKING:
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
-_MATH_INVARIANT_OPS = (
-    custom.Reshape,
-    custom.Permute,
-    custom.Shape,
-    custom.Cast,
-    custom.ChannelShuffle,
-    torch.nn.ChannelShuffle,
-    torch.nn.Identity,
-)
-
-
-def _is_math_invariant_op(module: torch.nn.Module):
-    return isinstance(module, _MATH_INVARIANT_OPS)
-
 
 @overload
 def propagate_output_encodings(
@@ -88,6 +74,14 @@ def _propagate_output_encodings(
 
     def _set_src_qtzr(x: Product, consumer: Op, qtzr: AffineQuantizerBase):
         if len(x.consumers) > 1 and not all(qtzr._is_overwrite_allowed.values()):
+            # If qtzr has fixed output range and x has multiple consumers
+            # to avoid catastrophic accuracy drop.
+            #
+            # For example:
+            #
+            #       +-> Softmax -> ...
+            # x ----+-> ReLU --> QDQ (`qtzr`)
+            #                   ∈ [0,?]
             return
 
         producer = x.producer
@@ -134,15 +128,20 @@ def _propagate_output_encodings(
                     producer.name,
                 )
                 return
+
             if i < len(qmodule.output_quantizers) and qmodule.output_quantizers[i]:
                 qmodule.output_quantizers[i] = qtzr
 
-        if (not qmodule and producer.is_grid_preserving_op()) or _is_math_invariant_op(
-            qmodule
-        ):
-            # 1. There is no qmodule associated with the grid-preserving ``producer``, or
-            # 2. qmodule is a math invariant op (reshape, permute, etc).
-            # In these cases, propagate encoding further to the ancestors
+        # Check if the producer is a grid-preserving op (reshape, permute, etc)
+        # and propagate the encoding further to the ancestors of the producer
+        #
+        # For example, in the following graph, even though reshape doesn't have output quantizer,
+        # we can continue to search if reshape's producer has output quantizer to tie with `qtzr`
+        #
+        # --> reshape -----------> relu -------> QDQ
+        #   (`producer`)        (`consumer`)   (`qtzr`)
+        #
+        if producer.is_grid_equivariant_op() or isinstance(qmodule, custom.Cast):
             for input in producer.inputs:
                 _set_src_qtzr(input, consumer=producer, qtzr=qtzr)
 

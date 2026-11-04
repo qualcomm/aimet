@@ -1608,6 +1608,113 @@ class TestQuantsim:
             sim.model.modules(remove_duplicate=False)
         )
 
+    def test_tie_encodings_propagate_through_data_movement_module(self):
+        """
+        Given:
+            x -> Gather -> Scatter -> y
+        When: Create quantsim with HTP V81 config
+        Then: Gather input quantizer should be tied with Scatter output quantizer
+        """
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.gather = custom.Gather()
+                self.scatter = custom.ScatterElements(dim=1)
+
+            def forward(self, x, index, src):
+                x = self.gather(x, dim=0, index=index)
+                x = self.scatter(x, index, src)
+                return x
+
+        model = Model()
+        x = torch.randn(3, 4)
+        index = torch.tensor([[0, 1], [1, 1], [0, 0]])
+        src = torch.randn(3, 2)
+        sim = aimet_torch.QuantizationSimModel(
+            model, (x, index, src), config_file="htp_v81"
+        )
+        gather_inp_qtzr = sim.model.gather.input_quantizers[0]
+        scatter_out_qtzr = sim.model.scatter.output_quantizers[0]
+        assert gather_inp_qtzr is scatter_out_qtzr
+
+    def test_tie_encodings_propagate_through_k_ary_grid_equivariant_module(self):
+        """
+        Given:
+            x1 ->
+            x2 -> Concat -> Sigmoid -> y
+            x3 ->
+        When: Create quantsim and call propagate_output_encodings with Sigmoid
+        Then: Concat input quantizers should be tied with Sigmoid output quantizer
+        """
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.concat = custom.Concat(axis=0)
+                self.sigmoid = torch.nn.Sigmoid()
+
+            def forward(self, x1, x2, x3):
+                x = self.concat(x1, x2, x3)
+                return self.sigmoid(x)
+
+        model = Model()
+        x1 = torch.randn(3, 4)
+        x2 = torch.randn(3, 4)
+        x3 = torch.randn(3, 4)
+        sim = aimet_torch.QuantizationSimModel(model, (x1, x2, x3))
+        propagate_output_encodings(sim, torch.nn.Sigmoid)
+        x1_quantizer, x2_quantizer, x3_quantizer = sim.model.concat.input_quantizers
+        concat_output_quantizer = sim.model.concat.output_quantizers[0]
+        sigmoid_output_quantizer = sim.model.sigmoid.output_quantizers[0]
+        assert (
+            x1_quantizer
+            == x2_quantizer
+            == x3_quantizer
+            == concat_output_quantizer
+            == sigmoid_output_quantizer
+        )
+        sim.compute_encodings(lambda model: model(x1, x2, x3))
+        _ = sim.model(x1, x2, x3)
+
+        """
+        Given:
+            x ----->
+            index -> ScatterElements -> Sigmoid -> y
+            src --->
+        When: Create quantsim and call propagate_output_encodings with Sigmoid
+        Then: Concat input quantizers should be tied with Sigmoid output quantizer
+        """
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.concat = custom.ScatterElements(dim=1)
+                self.sigmoid = torch.nn.Sigmoid()
+
+            def forward(self, x1, x2, x3):
+                x = self.concat(x1, x2, x3)
+                return self.sigmoid(x)
+
+        model = Model()
+        x = torch.randn(3, 4)
+        index = torch.tensor([[0, 1], [1, 1], [0, 0]])
+        src = torch.randn(3, 2)
+        sim = aimet_torch.QuantizationSimModel(model, (x, index, src))
+        propagate_output_encodings(sim, torch.nn.Sigmoid)
+        # Second input quantizer is a no-op placeholder for integer index, which is not quantized
+        x_quantizer, _, src_quantizer = sim.model.concat.input_quantizers
+        concat_output_quantizer = sim.model.concat.output_quantizers[0]
+        sigmoid_output_quantizer = sim.model.sigmoid.output_quantizers[0]
+        assert (
+            x_quantizer
+            == src_quantizer
+            == concat_output_quantizer
+            == sigmoid_output_quantizer
+        )
+        sim.compute_encodings(lambda model: model(x, index, src))
+        _ = sim.model(x, index, src)
+
     def test_quantsim_with_duplicated_concat_inputs(self):
         """
         Given: Concat consumes the output of a multi-output op (StridedSlice) in more
