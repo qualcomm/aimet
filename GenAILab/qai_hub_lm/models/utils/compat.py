@@ -61,6 +61,22 @@ def linear_attention_states(cache_layer) -> tuple[torch.Tensor, torch.Tensor]:
     return conv_states, recurrent_states
 
 
+def indexer_position_ids_owner(cache, config):
+    """Return the object Qwen4-Exp's model reads past indexer position ids from.
+
+    transformers 5.17 keeps them on the cache as ``Cache.position_ids``. 5.22
+    keeps them as ``indexer_position_ids`` on the first ``indexed_attention``
+    layer, so cache crop/reorder/reset keep them in sync. Either way they are
+    ``(3, batch, kv_length)``.
+    """
+    layer_types = getattr(config, "layer_types", None) or []
+    if "indexed_attention" in layer_types:
+        layer = cache.layers[layer_types.index("indexed_attention")]
+        if hasattr(layer, "indexer_position_ids"):
+            return layer, "indexer_position_ids"
+    return cache, "position_ids"
+
+
 class PositionIdContext:
     """Minimal stand-in for ``self`` when calling HF's unbound ``get_rope_index``.
 

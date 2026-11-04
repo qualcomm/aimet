@@ -7,7 +7,7 @@ import torch
 from transformers import PreTrainedModel, DynamicCache
 
 from .compat import _patch_sdpa_mask  # noqa: F401 — triggers the patch on import
-from .compat import linear_attention_states
+from .compat import indexer_position_ids_owner, linear_attention_states
 from .layer_cache import (
     PAST_POSITION_IDS,
     PLE_CONV_STATE_IDX,
@@ -159,7 +159,8 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
         if PAST_POSITION_IDS in states:
             # The model keeps these as (3, batch, kv_length); the graph state is
             # batch-first like every other state.
-            kv_cache.position_ids = states[PAST_POSITION_IDS].transpose(0, 1)
+            owner, attr = indexer_position_ids_owner(kv_cache, resolved)
+            setattr(owner, attr, states[PAST_POSITION_IDS].transpose(0, 1))
         return kv_cache
 
     @staticmethod
@@ -305,8 +306,9 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
             if desc.indexer_head_dim is not None:
                 flat_output_past_key_values.append(cache_layer.indexer_keys)
         if any(s.name == PAST_POSITION_IDS for s in all_states(descriptors)):
-            flat_output_past_key_values.append(
-                new_past_key_values.position_ids.transpose(0, 1)
+            owner, attr = indexer_position_ids_owner(
+                new_past_key_values, _resolve_text_config(self.config)
             )
+            flat_output_past_key_values.append(getattr(owner, attr).transpose(0, 1))
 
         return lm_logits, *flat_output_past_key_values

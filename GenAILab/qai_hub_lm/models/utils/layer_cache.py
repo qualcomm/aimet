@@ -26,7 +26,12 @@ _HF_LAYER_TYPE_MAP: dict[str, AttentionType] = {
     "recurrent": AttentionType.LINEAR,
     # Qwen4-Exp's sparse attention keeps a full KV cache plus indexer keys
     "qwen_sparse_attention": AttentionType.FULL,
+    "indexed_attention": AttentionType.FULL,
 }
+
+#: Qwen4-Exp QSA layer type names. transformers >= 5.22 calls them
+#: ``indexed_attention`` and its config rewrites any other name to that.
+_QSA_LAYER_TYPES = frozenset({"qwen_sparse_attention", "indexed_attention"})
 
 
 class StateKind(Enum):
@@ -254,7 +259,7 @@ def build_layer_cache_descriptors(
             )
 
         indexer_kwargs = {}
-        if hf_layer_type == "qwen_sparse_attention":
+        if hf_layer_type in _QSA_LAYER_TYPES:
             indexer_kwargs = dict(indexer_head_dim=config.indexer_head_dim)
         if i + 1 in ple_layer_ids(config):
             # Qwen4-Exp PLE: depthwise conv over every residual stream, dilated by
@@ -343,8 +348,8 @@ def model_states(
 
     Qwen4-Exp's QSA indexer ropes each compressed key block at its first token's
     position, so it reads past positions back from the cache: the model keeps
-    them on ``Cache.position_ids`` as its 3-axis mrope ids, carried here as
-    ``(batch, 3, kv_length)``.
+    them as its 3-axis mrope ids (see ``indexer_position_ids_owner`` for where),
+    carried here as ``(batch, 3, kv_length)``.
     """
     if any(d.indexer_head_dim is not None for d in layer_cache_descriptors):
         return (

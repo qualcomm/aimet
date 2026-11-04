@@ -20,7 +20,14 @@ from GenAILab.qai_hub_lm.models.gemma4 import (  # noqa: E402
 )
 
 
-def _model(attn_implementation="sdpa"):
+#: transformers >= 5.22 makes the audio tower eager-only (its chunked local
+#: attention has no sdpa path), and GenAI Lab loads Gemma4 with eager.
+_AUDIO_ATTN = (
+    ["sdpa", "eager"] if modeling_gemma4.Gemma4AudioModel._supports_sdpa else ["eager"]
+)
+
+
+def _model(attn_implementation="eager"):
     text = Gemma4TextConfig(
         vocab_size=128,
         hidden_size=32,
@@ -52,7 +59,7 @@ def _inputs(model, padded):
     return features, mask
 
 
-@pytest.mark.parametrize("attn_implementation", ["sdpa", "eager"])
+@pytest.mark.parametrize("attn_implementation", _AUDIO_ATTN)
 @pytest.mark.parametrize("padded", [False, True])
 def test_index_based_mask_matches_stock(attn_implementation, padded):
     """The audio tower builds the same mask, and so the same outputs, as stock."""

@@ -9,8 +9,4 @@ einops
 timm
 click
 pydantic
-# Audio decoding backend for ASR datasets (LibriSpeech FLAC -> waveform).
-# Neither soundfile nor torchcodec ships in the base env, and `datasets`
-# refuses to decode Audio columns without one; soundfile is preferred because
-# it bundles libsndfile and has no torch version coupling.
 soundfile

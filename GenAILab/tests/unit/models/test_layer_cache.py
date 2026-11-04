@@ -339,12 +339,16 @@ class TestQwen4ExpStates:
             ple_conv_kernel_size: int = 4
             ngram_size: int = 3
 
-        return Cfg(
-            layer_types=["linear_attention", "qwen_sparse_attention"], **overrides
+        overrides.setdefault(
+            "layer_types", ["linear_attention", "qwen_sparse_attention"]
         )
+        return Cfg(**overrides)
 
-    def test_qsa_layer_is_full_attention_with_indexer_keys(self):
-        linear, qsa = build_layer_cache_descriptors(self._cfg())
+    @pytest.mark.parametrize("qsa_type", ["qwen_sparse_attention", "indexed_attention"])
+    def test_qsa_layer_is_full_attention_with_indexer_keys(self, qsa_type):
+        """transformers >= 5.22 names the QSA layer type ``indexed_attention``."""
+        cfg = self._cfg(layer_types=["linear_attention", qsa_type])
+        linear, qsa = build_layer_cache_descriptors(cfg)
         assert qsa.attention_type == AttentionType.FULL
         assert qsa.indexer_head_dim == 12
         assert linear.indexer_head_dim is None
