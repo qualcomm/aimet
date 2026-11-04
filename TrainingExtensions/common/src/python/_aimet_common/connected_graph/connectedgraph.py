@@ -5,7 +5,7 @@
 """Connected graph abstract class and utilities"""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Set
+from typing import Callable, Iterable, List, Optional
 from ..connected_graph.operation import Op
 from ..connected_graph.product import Product
 
@@ -38,14 +38,18 @@ class ConnectedGraph(ABC):
 
 
 def get_ordered_ops(
-    list_of_starting_ops: List[Op], restrict_to: Optional[Set[Op]] = None
+    list_of_starting_ops: List[Op],
+    consumers_of: Optional[Callable[[Op], Iterable[Op]]] = None,
 ) -> List[Op]:
     """
     Function to get all the ops in connected graph based on occurrence by Depth First Traversal
     :param list_of_starting_ops: List of starting ops of the graph
-    :param restrict_to: If given, ops to stay within; consumers outside it are not followed
+    :param consumers_of: If given, returns the ops to follow from an op, in place of its output_ops
     :return: List of connected graph ops in order of occurrence
     """
+    if consumers_of is None:
+        consumers_of = lambda op: op.output_ops  # pylint: disable=unnecessary-lambda-assignment
+
     #  Set of all ops that have been visited
     visited_ops_set = set()
 
@@ -58,9 +62,8 @@ def get_ordered_ops(
         current_op = op_stack[-1]
         unvisited_consumers = [
             consumer
-            for consumer in current_op.output_ops
+            for consumer in consumers_of(current_op)
             if consumer not in visited_ops_set
-            and (restrict_to is None or consumer in restrict_to)
         ]
         if unvisited_consumers:
             op_stack.extend(reversed(unvisited_consumers))

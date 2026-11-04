@@ -270,6 +270,7 @@ class TestSubgraphQuantizerInsertion:
             models_for_tests.chained_if_model,
             models_for_tests.weighted_if_model,
             models_for_tests.if_in_scan_model,
+            models_for_tests.predicated_experts_model,
         ],
     )
     def test_calibrating_every_if_branch(self, make_model):
@@ -294,11 +295,10 @@ class TestSubgraphQuantizerInsertion:
     @pytest.mark.parametrize(
         "make_model, cond, if_name, branch",
         [
-            (models_for_tests.if_model, True, "the_if", "else_branch"),
+            # w_else is read only inside else_branch
             (models_for_tests.weighted_if_model, True, "the_if", "else_branch"),
-            (models_for_tests.weighted_if_model, False, "the_if", "then_branch"),
-            (models_for_tests.chained_if_model, False, "if_0", "then_branch"),
-            (models_for_tests.if_in_scan_model, True, "b_if", "else_branch"),
+            # t0_m is produced inside if_0's then_branch, before its output
+            (models_for_tests.predicated_experts_model, False, "if_0", "then_branch"),
         ],
     )
     def test_an_if_branch_that_never_ran_fails_calibration(
@@ -311,10 +311,36 @@ class TestSubgraphQuantizerInsertion:
         """
         When: Calibrated with inputs that never take one branch of an If
         Then: Calibration fails, naming the If and the branch that never ran, rather than
-              leaving that branch's quantizers without an encoding
+              leaving the quantizers inside that branch without an encoding
         """
         with pytest.raises(RuntimeError, match=f"in {branch} of If node {if_name}"):
             sim.compute_encodings([_if_inputs(model, cond=cond)])
+
+    @pytest.mark.parametrize(
+        "make_model, cond",
+        [
+            (models_for_tests.if_model, True),
+            (models_for_tests.weighted_if_model, False),
+            (models_for_tests.chained_if_model, False),
+            (models_for_tests.if_in_scan_model, True),
+        ],
+    )
+    def test_an_if_branch_output_that_never_ran_is_calibrated_via_the_if(
+        self, make_model, cond
+    ):
+        """A sim of a model whose If branches hold quantizers only on their outputs"""
+        model = make_model()
+        sim = _sim(model)
+
+        """
+        When: Calibrated with inputs that never take one branch of an If
+        Then: Calibration succeeds, since the output of the branch that never ran shares the
+              quantizer of the If output, which saw the data of the other branch
+        """
+        sim.compute_encodings([_if_inputs(model, cond=cond)])
+        assert all(
+            q.is_initialized() for q in sim.qc_quantize_op_dict.values() if q.enabled
+        )
 
     @pytest.mark.parametrize("flag", [False, True])
     @pytest.mark.parametrize(
@@ -1398,3 +1424,231 @@ class TestSubgraphScanTies:
             node.input[0] for node in body.node if node.op_type == "QuantizeLinear"
         }
         assert {inp.name for inp in body.input} <= quantized
+
+
+# Fixture, and the tensors that share one quantizer with subgraph quantization
+IF_TIES = [
+    (models_for_tests.weighted_if_model, [["t_o", "e_o", "y"]]),
+    # The else branch of if_0 returns an initializer, which has no quantizer, and that of
+    # if_1 passes y0 on, so the running sum shares one quantizer across both Ifs
+    (models_for_tests.chained_if_model, [["t0_o", "y0", "t1_o", "y1"]]),
+    (models_for_tests.predicated_experts_model, [["t0_o", "y0", "t1_o", "y1"]]),
+    # The If inside the Scan body is tied apart from the Scan carry
+    (
+        models_for_tests.if_in_scan_model,
+        [["e_o", "b_branch"], ["init", "b_c", "b_co", "final"]],
+    ),
+]
+
+
+def _groups(sim, names):
+    """``names`` grouped by the quantizer they share"""
+    qtzrs = sim.qc_quantize_op_dict
+    return sorted(
+        sorted(name for name in names if qtzrs[name] is qtzrs[first])
+        for first in names
+        if first == min(name for name in names if qtzrs[name] is qtzrs[first])
+    )
+
+
+class TestSubgraphIfTies:
+    @pytest.mark.parametrize("make_model, groups", IF_TIES)
+    def test_flag_off_no_if_ties(self, make_model, groups):
+        """A model with If branches"""
+        sim = _sim(make_model(), flag=False)
+        qtzrs = sim.qc_quantize_op_dict
+        top = [[name for name in group if name in qtzrs] for group in groups]
+
+        """
+        When: QuantizationSimModel is created without subgraph quantization
+        Then: The If outputs keep separate quantizers
+        """
+        for group in top:
+            assert len({id(qtzrs[name]) for name in group}) == len(group)
+
+    @pytest.mark.parametrize("make_model, groups", IF_TIES)
+    def test_if_outputs_tied(self, make_model, groups):
+        """A model with If branches"""
+        model = make_model()
+        sim = _sim(model)
+        qtzrs = sim.qc_quantize_op_dict
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: 1) Each If output shares one quantizer with the branch outputs it takes its value from
+              2) Different groups keep different quantizers
+              3) After calibrating with every branch taken, each group has one enabled encoding,
+                 and the sim runs either way
+        """
+        # 1)
+        for group in groups:
+            assert all(qtzrs[name] is qtzrs[group[0]] for name in group)
+
+        # 2)
+        assert len({id(qtzrs[group[0]]) for group in groups}) == len(groups)
+
+        # 3)
+        sim.compute_encodings(
+            [_if_inputs(model, cond=True), _if_inputs(model, cond=False)]
+        )
+        for group in groups:
+            assert qtzrs[group[0]].enabled
+            assert qtzrs[group[0]].get_encodings()
+        for cond in (True, False):
+            sim.session.run(None, _if_inputs(model, cond=cond))
+
+    @pytest.mark.parametrize(
+        "then_op, else_op",
+        [
+            ("Relu", "Neg"),
+            ("Sigmoid", "Sigmoid"),
+            ("Sigmoid", "Softmax"),
+            ("Softmax", "Neg"),
+            ("Softmax", "Relu"),
+            ("Tanh", "Sigmoid"),
+            ("Sin", "Tanh"),
+        ],
+    )
+    def test_if_tied_as_concat(self, then_op, else_op):
+        """An If whose branches end in then_op and else_op, and a Concat of the same two ops"""
+        if_sim = _sim(
+            models_for_tests.if_model(then_op=then_op, else_op=else_op),
+            config_file="htp_v73",
+        )
+        concat_sim = _sim(
+            models_for_tests.if_as_concat_model(then_op=then_op, else_op=else_op),
+            config_file="htp_v73",
+        )
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: The If output and the branch outputs share quantizers as the Concat output and its
+              inputs do, with the same fixed range and symmetry. An If output takes its value
+              from either branch, as a Concat output does from each of its inputs
+        """
+        names = ["x", "thn_o", "els_o", "y"]
+        assert _groups(if_sim, names) == _groups(concat_sim, names)
+        for name in names:
+            if_qtzr = if_sim.qc_quantize_op_dict[name]
+            concat_qtzr = concat_sim.qc_quantize_op_dict[name]
+            assert (
+                if_qtzr._encoding_min_max_fixed_vals
+                == concat_qtzr._encoding_min_max_fixed_vals
+            )
+            assert (
+                if_qtzr.use_symmetric_encodings == concat_qtzr.use_symmetric_encodings
+            )
+
+    def test_if_tie_keeps_constant_branch_unclamped(self):
+        """An If whose then branch ends in Relu, constrained to min=0 by htp_v73, and whose else
+        branch returns a negative constant, which has no quantizer"""
+        model = models_for_tests.if_constant_branch_model()
+        sim = _sim(model, config_file="htp_v73")
+        qtzrs = sim.qc_quantize_op_dict
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization, and calibrated
+        Then: 1) The Relu output is not tied to the If output, which gets no fixed range
+              2) The constant reaches the If output unclamped
+        """
+        # 1)
+        assert qtzrs["thn_o"] is not qtzrs["y"]
+        assert not qtzrs["y"]._encoding_min_max_fixed_vals
+
+        # 2)
+        x = np.linspace(-1, 1, models_for_tests.DIM).astype(np.float32)
+        sim.compute_encodings(
+            [{"x": x, "cond": np.array([True])}, {"x": x, "cond": np.array([False])}]
+        )
+        (else_out,) = sim.session.run(None, {"x": x, "cond": np.array([False])})
+        assert np.allclose(else_out, -0.5, atol=0.01)
+
+    def test_if_output_concat_keeps_other_input_unclamped(self):
+        """An If whose branches both end in Softmax, constrained to [0, 1] by htp_v73, and whose
+        output is concatenated with m = 5x"""
+        model = models_for_tests.if_concat_model()
+        sim = _sim(model, config_file="htp_v73")
+        qtzrs = sim.qc_quantize_op_dict
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization, and calibrated
+        Then: 1) The Softmax range is not given to the Concat output, which m shares
+              2) m reaches the Concat output unclamped
+        """
+        # 1)
+        assert qtzrs["m"] is qtzrs["c"]
+        assert not qtzrs["c"]._encoding_min_max_fixed_vals
+
+        # 2)
+        x = np.linspace(-1, 1, models_for_tests.DIM).astype(np.float32)
+        sim.compute_encodings(
+            [{"x": x, "cond": np.array([True])}, {"x": x, "cond": np.array([False])}]
+        )
+        (out,) = sim.session.run(None, {"x": x, "cond": np.array([True])})
+        assert np.allclose(out[models_for_tests.DIM :], 5 * x, atol=0.05)
+
+    def test_multi_output_if_tied_per_output(self):
+        """An If with two outputs: ya from Sigmoid in either branch, yb from Neg or Abs"""
+        sim = _sim(models_for_tests.multi_output_if_model(), config_file="htp_v73")
+        qtzrs = sim.qc_quantize_op_dict
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: Each If output shares one quantizer with the same output of either branch, and
+              takes the range they have in common
+        """
+        assert qtzrs["t_a"] is qtzrs["e_a"] is qtzrs["ya"]
+        assert qtzrs["ya"]._encoding_min_max_fixed_vals == (0.0, 1.0)
+        assert qtzrs["t_b"] is qtzrs["e_b"] is qtzrs["yb"]
+        assert qtzrs["ya"] is not qtzrs["yb"]
+
+    def test_routed_experts_match_flat_model(self):
+        """Predicated experts with every expert routed, and the same experts written without If"""
+        predicated = models_for_tests.predicated_experts_model()
+        flat = models_for_tests.flat_experts_model()
+        rng = np.random.default_rng(1)
+        calib = [
+            rng.standard_normal((models_for_tests.DIM,) * 2).astype(np.float32)
+            for _ in range(4)
+        ]
+        routed = {"route0": np.array([True]), "route1": np.array([True])}
+        predicated_sim, flat_sim = _sim(predicated), _sim(flat)
+        # The If ties the running sum across experts, so the flat model does the same
+        flat_sim._set_quantizers(
+            {"y1": flat_sim.qc_quantize_op_dict["y0"]}, rebuild_session=True
+        )
+
+        """
+        When: Both sims are calibrated on the same data
+        Then: Their outputs are identical
+        """
+        predicated_sim.compute_encodings([{"x": x, **routed} for x in calib])
+        flat_sim.compute_encodings([{"x": x} for x in calib])
+        (predicated_out,) = predicated_sim.session.run(None, {"x": calib[0], **routed})
+        (flat_out,) = flat_sim.session.run(None, {"x": calib[0]})
+        assert np.array_equal(predicated_out, flat_out)
+
+    @pytest.mark.parametrize(
+        "config_file, param_type, bitwidth",
+        [
+            # 16-bit weights of a dynamic MatMul must be symmetric
+            ("htp_v73", "int16", 16),
+            # Before V73, weights of a dynamic MatMul must be 8-bit and symmetric
+            ("htp_v69", "int8", 8),
+        ],
+    )
+    def test_if_tie_keeps_exception_rules_of_if_output(
+        self, config_file, param_type, bitwidth
+    ):
+        """An If whose output is the weight of a dynamic MatMul, with 16-bit activations"""
+        kwargs = dict(
+            config_file=config_file, param_type=param_type, activation_type="int16"
+        )
+        sim = _sim(models_for_tests.if_matmul_weight_model(), **kwargs)
+
+        """
+        When: QuantizationSimModel is created with subgraph quantization
+        Then: The If output keeps the symmetry and bitwidth the exception rules give it
+        """
+        assert sim.qc_quantize_op_dict["y"].use_symmetric_encodings
+        assert sim.qc_quantize_op_dict["y"].bitwidth == bitwidth

@@ -2576,6 +2576,9 @@ class QuantizationSimModel:
             for op_type in op_types_to_tie
             if _is_grid_equivariant_op(op_type, include_unary=False)
         }
+        if self._quantize_subgraphs:
+            # An If output is one of its branch outputs, as a Concat output is made of its inputs
+            op_types_to_propagate_backward.add("If")
         op_types_to_propagate_forward = op_types_to_tie - op_types_to_propagate_backward
 
         self._propagate_output_encodings(op_types_to_propagate_backward, node_input_map)
@@ -2626,13 +2629,9 @@ class QuantizationSimModel:
             if not op.outputs:
                 continue
 
-            output_name = op.outputs[0].name
-            output_qtzr = self.qc_quantize_op_dict.get(output_name)
-
-            if not output_qtzr:
-                continue
-
-            if len(op.outputs) != 1:
+            if op.type != "If" and len(op.outputs) != 1:
+                if not self.qc_quantize_op_dict.get(op.outputs[0].name):
+                    continue
                 msg = (
                     "Encoding propagation is only supported for ops with exactly "
                     f"1 output, but {op.name} (type: {op.type}) has {len(op.outputs)} "
@@ -2640,104 +2639,158 @@ class QuantizationSimModel:
                 )
                 raise RuntimeError(msg)
 
-            src_qtzrs = {}
-            src_min_max_ranges = set()
-            stack = [op]
-
-            while stack:
-                op = stack.pop()
-
-                if op in visited:
-                    continue
-
-                visited.add(op)
-
-                for inp in op.inputs:
-                    if not self._is_quantizable_dtype(inp.name):
-                        continue
-                    src_qtzr = self._get_enabled_quantizer(inp.name)
-                    if src_qtzr:
-                        src_name = qtzr_to_name[src_qtzr]
-                    else:
-                        src_name = inp.name
-                    src_min_max_ranges.add(
-                        src_qtzr._encoding_min_max_fixed_vals if src_qtzr else None
+            # An If output takes its value from the same output of either branch
+            for output_index, output in enumerate(op.outputs):
+                output_qtzr = self.qc_quantize_op_dict.get(output.name)
+                if output_qtzr:
+                    self._propagate_output_encoding(
+                        op,
+                        output_index,
+                        output_qtzr,
+                        op_types_to_tie,
+                        node_input_map,
+                        visited,
+                        get_end_consumers,
+                        qtzr_to_name,
                     )
 
+    def _encoding_sources(self, op: Op, output_index: int) -> List[Product]:
+        """
+        Returns the tensors whose values make up output ``output_index`` of ``op``:
+        the inputs of most ops, and the outputs of either branch of an If
+        """
+        if op.type != "If":
+            return op.inputs
+
+        sources = []
+        for attr_name in ("then_branch", "else_branch"):
+            branch = utils.get_node_attribute(op.get_module(), attr_name)
+            name = branch.output[output_index].name
+            # Branch outputs are renamed in the sim graph; the quantizer reads the original tensor
+            producer = self._producers.get(name)
+            if producer is not None and producer.op_type == "QcQuantizeOp":
+                name = producer.input[0]
+            sources.append(self.connected_graph.get_product(name))
+        return sources
+
+    def _propagate_output_encoding(  # pylint: disable=too-many-arguments, too-many-locals
+        self,
+        op: Op,
+        output_index: int,
+        output_qtzr: QcQuantizeOp,
+        op_types_to_tie: Set[str],
+        node_input_map: Dict,
+        visited: Set,
+        get_end_consumers: Callable,
+        qtzr_to_name: Dict,
+    ):
+        """
+        Let the quantizers of the tensors that make up output ``output_index`` of ``op`` inherit
+        its encoding (see _propagate_output_encodings)
+        """
+        # pylint: disable = protected-access
+        src_qtzrs = {}
+        src_min_max_ranges = set()
+        stack = [(op, output_index)]
+
+        while stack:
+            op, output_index = stack.pop()
+
+            # Each output of an If has its own sources
+            key = (op, output_index) if op.type == "If" else op
+            if key in visited:
+                continue
+
+            visited.add(key)
+
+            for inp in self._encoding_sources(op, output_index):
+                # A branch output has the type of the If output, even where its own type is
+                # unknown, e.g. an initializer of the branch
+                if op.type != "If" and not self._is_quantizable_dtype(inp.name):
+                    continue
+                src_qtzr = self._get_enabled_quantizer(inp.name)
+                if src_qtzr:
+                    src_name = qtzr_to_name[src_qtzr]
+                else:
+                    src_name = inp.name
+                src_min_max_ranges.add(
+                    src_qtzr._encoding_min_max_fixed_vals if src_qtzr else None
+                )
+
+                consumers = set(
+                    end_consumer
+                    for end_consumer in get_end_consumers(
+                        self.connected_graph.get_product(src_name)
+                    )
+                )
+                path_to_quantizer = self._get_path_to_effective_quantizer(inp.name)
+                if path_to_quantizer:
+                    cg_path = [
+                        self.connected_graph._ops[node.name]
+                        for node in path_to_quantizer
+                        if node.op_type != "QcQuantizeOp"
+                    ]
+                    all_end_consumers = consumers | set(
+                        end_consumer
+                        for op in cg_path
+                        for out in op.outputs
+                        for end_consumer in get_end_consumers(out)
+                    )
                     consumers = set(
                         end_consumer
-                        for end_consumer in get_end_consumers(
-                            self.connected_graph.get_product(src_name)
-                        )
+                        for end_consumer in all_end_consumers
+                        if end_consumer not in cg_path
                     )
-                    path_to_quantizer = self._get_path_to_effective_quantizer(inp.name)
-                    if path_to_quantizer:
-                        cg_path = [
-                            self.connected_graph._ops[node.name]
-                            for node in path_to_quantizer
-                            if node.op_type != "QcQuantizeOp"
-                        ]
-                        all_end_consumers = consumers | set(
-                            end_consumer
-                            for op in cg_path
-                            for out in op.outputs
-                            for end_consumer in get_end_consumers(out)
-                        )
-                        consumers = set(
-                            end_consumer
-                            for end_consumer in all_end_consumers
-                            if end_consumer not in cg_path
-                        )
 
-                    # If there are multiple consumers of input quantizer,
-                    # it's not safe to tie the output quantizer to the input quantizer.
-                    # For example, in the following graph, tying output_QDQ to input_QDQ,
-                    # which has multiple consumers, leads to catastrophic accuracy drop.
-                    #
-                    #                      +---------------------------+
-                    #                      |                           v
-                    #  input -> input_QDQ -+-> Relu -> output_QDQ -> MatMul -> ...
-                    #                                  (∈ [0, ?])
-                    if len(consumers) > 1:
-                        continue
+                # If there are multiple consumers of input quantizer,
+                # it's not safe to tie the output quantizer to the input quantizer.
+                # For example, in the following graph, tying output_QDQ to input_QDQ,
+                # which has multiple consumers, leads to catastrophic accuracy drop.
+                #
+                #                      +---------------------------+
+                #                      |                           v
+                #  input -> input_QDQ -+-> Relu -> output_QDQ -> MatMul -> ...
+                #                                  (∈ [0, ?])
+                if len(consumers) > 1:
+                    continue
 
-                    src_qtzrs[src_name] = src_qtzr
+                src_qtzrs[src_name] = src_qtzr
 
-                    if inp.producer and (
-                        inp.producer.type in op_types_to_tie
-                        or _is_grid_preserving_op(
-                            inp.producer.type, domain=inp.producer.domain
-                        )
-                    ):
-                        stack.append(inp.producer)
+                if inp.producer and (
+                    inp.producer.type in op_types_to_tie
+                    or _is_grid_preserving_op(
+                        inp.producer.type, domain=inp.producer.domain
+                    )
+                ):
+                    stack.append((inp.producer, inp.producer.outputs.index(inp)))
 
-            if len(src_min_max_ranges) == 1:
-                # If all inputs are quantized and have the same fixed quantization range,
-                # output quantizer will inherit the fixed range.
-                # In practice, this will be most relevant when
-                # Concat takes all its inputs from Softmax/Sigmoid.
-                #            [0, 1]         [0, 1]
-                #   Sigmoid ---Q1--> Concat --Q1-->
-                #   Softmax ---Q1------^
-                #            [0, 1]
-                output_qtzr.set_fixed_encoding_range(src_min_max_ranges.pop())
-            else:
-                # If inputs have conflicting encoding constraints,
-                # only tie the input quantizers without encoding constraints,
-                # leaving the constrained ones untouched.
-                #            [0, 1]         [X, Y]
-                #   Sigmoid ---Q1--> Concat --Q2-->
-                #      Conv ---Q2------^
-                #            [X, Y]
-                src_qtzrs = {
-                    src_name: src_qtzr
-                    for src_name, src_qtzr in src_qtzrs.items()
-                    if not src_qtzr or not src_qtzr._encoding_min_max_fixed_vals  # pylint: disable=protected-access
-                }
+        if len(src_min_max_ranges) == 1:
+            # If all inputs are quantized and have the same fixed quantization range,
+            # output quantizer will inherit the fixed range.
+            # In practice, this will be most relevant when
+            # Concat takes all its inputs from Softmax/Sigmoid.
+            #            [0, 1]         [0, 1]
+            #   Sigmoid ---Q1--> Concat --Q1-->
+            #   Softmax ---Q1------^
+            #            [0, 1]
+            output_qtzr.set_fixed_encoding_range(src_min_max_ranges.pop())
+        else:
+            # If inputs have conflicting encoding constraints,
+            # only tie the input quantizers without encoding constraints,
+            # leaving the constrained ones untouched.
+            #            [0, 1]         [X, Y]
+            #   Sigmoid ---Q1--> Concat --Q2-->
+            #      Conv ---Q2------^
+            #            [X, Y]
+            src_qtzrs = {
+                src_name: src_qtzr
+                for src_name, src_qtzr in src_qtzrs.items()
+                if not src_qtzr or not src_qtzr._encoding_min_max_fixed_vals  # pylint: disable=protected-access
+            }
 
-            for src_name, src_qtzr in src_qtzrs.items():
-                if src_qtzr:
-                    self._set_quantizer(src_name, node_input_map, output_qtzr)
+        for src_name, src_qtzr in src_qtzrs.items():
+            if src_qtzr:
+                self._set_quantizer(src_name, node_input_map, output_qtzr)
 
     def _propagate_input_encodings(
         self, op_types_to_tie: Set[str], node_input_map: Dict
@@ -3683,22 +3736,6 @@ class QuantizationSimModel:
         if not self._quantize_subgraphs:
             return
 
-        def effective_quantizer(tensor_name: str) -> Optional[QcQuantizeOp]:
-            path = self._get_path_to_effective_quantizer(tensor_name)
-            if not path:
-                return None
-            *_, qc_quantize_op_node = path
-            return self.qc_quantize_op_dict[qc_quantize_op_node.input[0]]
-
-        def tie(old_qtzr: Optional[QcQuantizeOp], new_qtzr: QcQuantizeOp):
-            # Replaced right away (not collected first), so that a quantizer shared by two Scans,
-            # e.g. the final state of one fed as the initial state of the next, joins both groups
-            if old_qtzr is None or old_qtzr is new_qtzr:
-                return
-            for name, qtzr in self.qc_quantize_op_dict.items():
-                if qtzr is old_qtzr:
-                    self.qc_quantize_op_dict[name] = new_qtzr
-
         for graph in self._graphs_to_quantize():
             for node in graph.node:
                 if node.op_type != "Scan":
@@ -3710,25 +3747,58 @@ class QuantizationSimModel:
                 )
 
                 for i, body_output in enumerate(body.output):
-                    body_qtzr = effective_quantizer(body_output.name)
+                    body_qtzr = self._effective_quantizer(body_output.name)
                     if not body_qtzr:
                         continue
 
-                    tie(self.qc_quantize_op_dict.get(node.output[i]), body_qtzr)
+                    self._replace_quantizer(
+                        self.qc_quantize_op_dict.get(node.output[i]), body_qtzr
+                    )
                     if i < num_carries:
-                        tie(effective_quantizer(node.input[i]), body_qtzr)
-                        tie(self.qc_quantize_op_dict.get(body.input[i].name), body_qtzr)
+                        self._replace_quantizer(
+                            self._effective_quantizer(node.input[i]), body_qtzr
+                        )
+                        self._replace_quantizer(
+                            self.qc_quantize_op_dict.get(body.input[i].name), body_qtzr
+                        )
 
                 for i in range(num_carries, len(node.input)):
-                    outer_qtzr = effective_quantizer(node.input[i])
+                    outer_qtzr = self._effective_quantizer(node.input[i])
                     # Slicing along the scan axis moves the channel axis
                     if outer_qtzr and not outer_qtzr.quant_info.usePerChannelMode:
-                        tie(
+                        self._replace_quantizer(
                             self.qc_quantize_op_dict.get(body.input[i].name), outer_qtzr
                         )
 
-        # tie() only updates the dict; point the graph's quantize nodes at the shared quantizers
+        # _replace_quantizer() only updates the dict; point the graph's quantize nodes at the
+        # shared quantizers
         self._set_quantizers(self.qc_quantize_op_dict, rebuild_session=False)
+
+    def _effective_quantizer(self, tensor_name: str) -> Optional[QcQuantizeOp]:
+        """
+        Returns the effective quantizer of ``tensor_name`` (see _get_path_to_effective_quantizer)
+        """
+        path = self._get_path_to_effective_quantizer(tensor_name)
+        if not path:
+            return None
+        *_, qc_quantize_op_node = path
+        return self.qc_quantize_op_dict[qc_quantize_op_node.input[0]]
+
+    def _replace_quantizer(
+        self, old_qtzr: Optional[QcQuantizeOp], new_qtzr: QcQuantizeOp
+    ):
+        """
+        Replaces ``old_qtzr`` with ``new_qtzr`` for every tensor in qc_quantize_op_dict
+
+        NOTE: Replaced right away (not collected first), so that a quantizer shared by two
+        control-flow nodes, e.g. the final state of one Scan fed as the initial state of the
+        next, joins both groups.
+        """
+        if old_qtzr is None or old_qtzr is new_qtzr:
+            return
+        for name, qtzr in self.qc_quantize_op_dict.items():
+            if qtzr is old_qtzr:
+                self.qc_quantize_op_dict[name] = new_qtzr
 
     def _lstm_cell_state_quantizers(self) -> Iterable[Tuple[str, QcQuantizeOp]]:
         for node in self.model.model.graph.node:

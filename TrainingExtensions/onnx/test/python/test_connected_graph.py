@@ -570,6 +570,24 @@ class TestOrderedOps:
             for branch_op in op.subgraph_ops:
                 assert position[branch_op.name] < position[op.name]
 
+    @pytest.mark.parametrize(
+        "make_model",
+        [models_for_tests.chained_if_model, models_for_tests.predicated_experts_model],
+    )
+    def test_chained_ifs_are_ordered_by_what_their_branches_read(self, make_model):
+        """Two Ifs that list only their condition as input, the second of whose branches read
+        the first's output y0 by name"""
+        cg = ConnectedGraph(make_model(), include_if_branches=True)
+        order = [op.name for op in cg.ordered_ops]
+
+        """
+        When: A ConnectedGraph is constructed for it with include_if_branches
+        Then: The first If comes before the second, and before the branch ops reading y0
+        """
+        assert order.index("if_0") < order.index("if_1")
+        for reader in cg.get_product("y0").consumers:
+            assert order.index("if_0") < order.index(reader.name)
+
     def test_a_body_is_placed_by_the_op_that_runs_it_not_by_any_edge(self):
         """A model with compute either side of a Scan"""
         cg = ConnectedGraph(models_for_tests.wrapped_scan_model())

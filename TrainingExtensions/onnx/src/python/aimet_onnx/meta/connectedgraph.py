@@ -369,8 +369,24 @@ class ConnectedGraph(AimetCommonConnectedGraph):
 
         :return: Its ops, each after the ops in it that produce what it reads
         """
-        top_level = set(self._top_level_ops())
-        return get_ordered_ops(self.starting_ops, restrict_to=top_level)
+        owner_of = {
+            body_op: op for op in self._ops.values() for body_op in op.subgraph_ops
+        }
+
+        def top_level_owner(op: Op) -> Op:
+            while op in owner_of:
+                op = owner_of[op]
+            return op
+
+        def consumers_of(op: Op) -> List[Op]:
+            # A body reads outer tensors by name, so the op running it consumes them as well
+            return [
+                owner
+                for owner in map(top_level_owner, op.output_ops)
+                if owner is not op
+            ]
+
+        return get_ordered_ops(self.starting_ops, consumers_of=consumers_of)
 
     def _get_ordered_ops(self) -> List[Op]:
         """

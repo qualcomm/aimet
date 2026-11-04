@@ -6086,7 +6086,7 @@ def sibling_scans_model(collide: str = ""):
     )
 
 
-def if_model():
+def if_model(then_op="Relu", else_op="Neg"):
     """If model."""
 
     def branch(name, op_type):
@@ -6105,13 +6105,105 @@ def if_model():
                     ["cond"],
                     ["y"],
                     name="the_if",
-                    then_branch=branch("thn", "Relu"),
-                    else_branch=branch("els", "Neg"),
+                    then_branch=branch("thn", then_op),
+                    else_branch=branch("els", else_op),
                 )
             ],
             "outer",
             inputs=[_ti("x", [DIM]), _ti("cond", [1], TensorProto.BOOL)],
             outputs=[_ti("y", [DIM])],
+        )
+    )
+
+
+def if_as_concat_model(then_op="Relu", else_op="Neg"):
+    """
+    if_model with both branches run and concatenated, named as in if_model:
+
+        x -> thn_op -> thn_o
+        x -> els_op -> els_o
+        thn_o, els_o -> cat -> y
+    """
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(then_op, ["x"], ["thn_o"], name="thn_op"),
+                helper.make_node(else_op, ["x"], ["els_o"], name="els_op"),
+                helper.make_node(
+                    "Concat", ["thn_o", "els_o"], ["y"], name="cat", axis=0
+                ),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM])],
+            outputs=[_ti("y", [2 * DIM])],
+        )
+    )
+
+
+def if_concat_model():
+    """
+    An If whose output is concatenated with a tensor of a wider range:
+
+        cond -> the_if -> y      then_branch: x -> thn_op(Softmax) -> thn_o
+                                 else_branch: x -> els_op(Softmax) -> els_o
+        x, five -> mul -> m
+        y, m -> cat -> c
+    """
+    model = if_model(then_op="Softmax", else_op="Softmax")
+    graph = model.graph
+    graph.initializer.append(
+        numpy_helper.from_array(np.array(5.0, np.float32), name="five")
+    )
+    graph.node.extend(
+        [
+            helper.make_node("Mul", ["x", "five"], ["m"], name="mul"),
+            helper.make_node("Concat", ["y", "m"], ["c"], name="cat", axis=0),
+        ]
+    )
+    del graph.output[:]
+    graph.output.append(_ti("c", [2 * DIM]))
+    onnx.checker.check_model(model, full_check=True)
+    return model
+
+
+def multi_output_if_model():
+    """
+    An If with two outputs, each taken from the same output of either branch:
+
+        cond -> the_if -> ya, yb      then_branch: x -> t_a_op(Sigmoid) -> t_a
+                                                   x -> t_b_op(Neg) -> t_b
+                                      else_branch: x -> e_a_op(Sigmoid) -> e_a
+                                                   x -> e_b_op(Abs) -> e_b
+        ya, yb -> add -> z
+    """
+
+    def branch(name, op_a, op_b):
+        return helper.make_graph(
+            [
+                helper.make_node(op_a, ["x"], [f"{name}_a"], name=f"{name}_a_op"),
+                helper.make_node(op_b, ["x"], [f"{name}_b"], name=f"{name}_b_op"),
+            ],
+            name,
+            inputs=[],
+            outputs=[_ti(f"{name}_a", [DIM]), _ti(f"{name}_b", [DIM])],
+        )
+
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "If",
+                    ["cond"],
+                    ["ya", "yb"],
+                    name="the_if",
+                    then_branch=branch("t", "Sigmoid", "Neg"),
+                    else_branch=branch("e", "Sigmoid", "Abs"),
+                ),
+                helper.make_node("Add", ["ya", "yb"], ["z"], name="add"),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM]), _ti("cond", [1], TensorProto.BOOL)],
+            outputs=[_ti("z", [DIM])],
         )
     )
 
@@ -6162,6 +6254,83 @@ def weighted_if_model():
             inputs=[_ti("x", [DIM, DIM]), _ti("cond", [1], TensorProto.BOOL)],
             outputs=[_ti("y", [DIM, DIM])],
             initializer=[w_top],
+        )
+    )
+
+
+def if_constant_branch_model():
+    """
+    An If whose else branch returns a negative constant, which has no quantizer:
+
+        cond -> the_if -> y      then_branch: x -> thn_op(Relu) -> thn_o
+                                 else_branch: els_o (initializer, no op)
+    """
+    const = numpy_helper.from_array(np.full(DIM, -0.5, np.float32), name="els_o")
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "If",
+                    ["cond"],
+                    ["y"],
+                    name="the_if",
+                    then_branch=helper.make_graph(
+                        [helper.make_node("Relu", ["x"], ["thn_o"], name="thn_op")],
+                        "thn",
+                        inputs=[],
+                        outputs=[_ti("thn_o", [DIM])],
+                    ),
+                    else_branch=helper.make_graph(
+                        [],
+                        "els",
+                        inputs=[],
+                        outputs=[_ti("els_o", [DIM])],
+                        initializer=[const],
+                    ),
+                )
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM]), _ti("cond", [1], TensorProto.BOOL)],
+            outputs=[_ti("y", [DIM])],
+        )
+    )
+
+
+def if_matmul_weight_model():
+    """
+    An If whose output is the second input, the weight, of a dynamic MatMul:
+
+        cond -> the_if -> y      then_branch: x -> thn_op(Neg) -> thn_o
+                                 else_branch: x -> els_op(Neg) -> els_o
+        x -> a_relu -> a
+        a, y -> mm -> z
+    """
+
+    def branch(name):
+        return helper.make_graph(
+            [helper.make_node("Neg", ["x"], [f"{name}_o"], name=f"{name}_op")],
+            name,
+            inputs=[],
+            outputs=[_ti(f"{name}_o", [DIM, DIM])],
+        )
+
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node(
+                    "If",
+                    ["cond"],
+                    ["y"],
+                    name="the_if",
+                    then_branch=branch("thn"),
+                    else_branch=branch("els"),
+                ),
+                helper.make_node("Relu", ["x"], ["a"], name="a_relu"),
+                helper.make_node("MatMul", ["a", "y"], ["z"], name="mm"),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM]), _ti("cond", [1], TensorProto.BOOL)],
+            outputs=[_ti("z", [DIM, DIM])],
         )
     )
 
@@ -6231,6 +6400,109 @@ def chained_if_model():
                 _ti("cond1", [1], TensorProto.BOOL),
             ],
             outputs=[_ti("y", [DIM])],
+        )
+    )
+
+
+def predicated_experts_model():
+    """
+    Two experts of a predicated MoE block, one If per expert. An expert runs only if routed, and
+    adds its output to the running sum, which an unrouted expert passes on unchanged:
+
+        route0 -> if_0 -> y0      then_branch: x, w0 -> t0_mm -> t0_m, g -> t0_mul -> t0_o
+                                  else_branch: e0_zeros (initializer, no op)
+        route1 -> if_1 -> y1      then_branch: x, w1 -> t1_mm -> t1_m, y0 -> t1_add -> t1_o
+                                  else_branch: y0 -> e1_id -> e1_o
+    """
+    rng = np.random.default_rng(0)
+    w0, w1 = (
+        numpy_helper.from_array(
+            rng.standard_normal((DIM, DIM)).astype(np.float32), name=name
+        )
+        for name in ("w0", "w1")
+    )
+    gate = numpy_helper.from_array(np.full((DIM, DIM), 0.5, np.float32), name="g")
+    zeros = numpy_helper.from_array(
+        np.zeros((DIM, DIM), dtype=np.float32), name="e0_zeros"
+    )
+    if_0 = helper.make_node(
+        "If",
+        ["route0"],
+        ["y0"],
+        name="if_0",
+        then_branch=helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w0"], ["t0_m"], name="t0_mm"),
+                helper.make_node("Mul", ["t0_m", "g"], ["t0_o"], name="t0_mul"),
+            ],
+            "then_0",
+            inputs=[],
+            outputs=[_ti("t0_o", [DIM, DIM])],
+        ),
+        else_branch=helper.make_graph(
+            [],
+            "else_0",
+            inputs=[],
+            outputs=[_ti("e0_zeros", [DIM, DIM])],
+            initializer=[zeros],
+        ),
+    )
+    if_1 = helper.make_node(
+        "If",
+        ["route1"],
+        ["y1"],
+        name="if_1",
+        then_branch=helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w1"], ["t1_m"], name="t1_mm"),
+                helper.make_node("Add", ["t1_m", "y0"], ["t1_o"], name="t1_add"),
+            ],
+            "then_1",
+            inputs=[],
+            outputs=[_ti("t1_o", [DIM, DIM])],
+        ),
+        else_branch=helper.make_graph(
+            [helper.make_node("Identity", ["y0"], ["e1_o"], name="e1_id")],
+            "else_1",
+            inputs=[],
+            outputs=[_ti("e1_o", [DIM, DIM])],
+        ),
+    )
+    return _control_flow_model(
+        helper.make_graph(
+            [if_0, if_1],
+            "outer",
+            inputs=[
+                _ti("x", [DIM, DIM]),
+                _ti("route0", [1], TensorProto.BOOL),
+                _ti("route1", [1], TensorProto.BOOL),
+            ],
+            outputs=[_ti("y1", [DIM, DIM])],
+            initializer=[w0, w1, gate],
+        )
+    )
+
+
+def flat_experts_model():
+    """
+    predicated_experts_model with every expert routed, written without If:
+
+        x, w0 -> t0_mm -> t0_m, g -> t0_mul -> y0
+        x, w1 -> t1_mm -> t1_m, y0 -> t1_add -> y1
+    """
+    initializer = list(predicated_experts_model().graph.initializer)
+    return _control_flow_model(
+        helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w0"], ["t0_m"], name="t0_mm"),
+                helper.make_node("Mul", ["t0_m", "g"], ["y0"], name="t0_mul"),
+                helper.make_node("MatMul", ["x", "w1"], ["t1_m"], name="t1_mm"),
+                helper.make_node("Add", ["t1_m", "y0"], ["y1"], name="t1_add"),
+            ],
+            "outer",
+            inputs=[_ti("x", [DIM, DIM])],
+            outputs=[_ti("y1", [DIM, DIM])],
+            initializer=initializer,
         )
     )
 
