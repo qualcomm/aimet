@@ -3,9 +3,10 @@
 
 """AdaScale implementation"""
 
+import collections
 import contextlib
 from typing import Callable, Collection, Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 import torch
 import tempfile
@@ -13,6 +14,8 @@ import gc
 import warnings
 import onnx_ir
 import os
+import time
+import psutil
 
 from aimet_onnx.common.utils import AimetLogger  # pylint: disable=import-error
 from aimet_onnx.common.early_stopping import (  # pylint: disable=import-error
@@ -198,6 +201,86 @@ def _validate_boundaries_in_graph(
         )
 
 
+@dataclass
+class _BlockReport:
+    """What :meth:`AdaScale.optimize_adascale_block` measured, for the per-block log lines."""
+
+    times: Dict[str, float] = field(default_factory=dict)
+    initial_loss: Optional[float] = None
+    final_loss: Optional[float] = None
+    num_iterations_run: int = 0
+    num_weights_updated: int = 0
+
+
+# Iterations between progress-bar loss readouts. Reading the loss syncs with the device.
+_LOSS_DISPLAY_INTERVAL = 64
+
+
+def _format_duration(seconds: float) -> str:
+    """``H:MM:SS``, or ``M:SS`` under an hour."""
+    minutes, secs = divmod(int(round(seconds)), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _log_block_report(
+    label: str,
+    report: _BlockReport,
+    num_iterations: int,
+    block_seconds: float,
+    elapsed_seconds: float,
+    remaining_seconds: float,
+):
+    """Log the loss and timing lines for one optimized block, and its phases and memory at debug."""
+    if report.initial_loss is not None and report.final_loss is not None:
+        change = ""
+        if report.initial_loss > 0:
+            change = f" ({(report.final_loss / report.initial_loss - 1) * 100:+.0f}%)"
+        early_stop = ""
+        if report.num_iterations_run < num_iterations:
+            early_stop = (
+                f", stopped early after {report.num_iterations_run}/{num_iterations} "
+                "iterations"
+            )
+        _logger.info(
+            "%s: loss %.2e -> %.2e%s, %d weights updated%s",
+            label,
+            report.initial_loss,
+            report.final_loss,
+            change,
+            report.num_weights_updated,
+            early_stop,
+        )
+    if report.num_weights_updated == 0:
+        _logger.warning(
+            "%s: no weights were updated; every weight quantizer in the block is "
+            "disabled or frozen.",
+            label,
+        )
+
+    phases = ", ".join(
+        f"{phase} {_format_duration(seconds)}"
+        for phase, seconds in report.times.items()
+    )
+    _logger.info(
+        "%s: took %s | elapsed %s, ETA %s",
+        label,
+        _format_duration(block_seconds),
+        _format_duration(elapsed_seconds),
+        _format_duration(remaining_seconds),
+    )
+    _logger.debug("%s: phases: %s", label, phases)
+
+    memory = [f"host {psutil.Process().memory_info().rss / 1024**3:.1f} GB"]
+    if torch.cuda.is_available():
+        free, total = torch.cuda.mem_get_info()
+        memory.append(
+            f"GPU {(total - free) / 1024**3:.1f}/{total / 1024**3:.1f} GB used, "
+            f"torch peak {torch.cuda.max_memory_allocated() / 1024**3:.1f} GB"
+        )
+    _logger.debug("%s: memory: %s", label, " | ".join(memory))
+
+
 class AdaScale:
     """
     AdaScale is PTQ technique which performs Knowledge Distillation on blocks of modules by using the FP32 output as its
@@ -327,6 +410,23 @@ class AdaScale:
 
                 _validate_boundaries_in_graph(unquantized_model.graph, block_end_points)
 
+                # Step back through leading Casts to land on the true
+                # cross-block residual (fp16 graphs keep the Cast).
+                start_residuals = [
+                    resolve_residual_tensor_name(unquantized_model.graph, start)
+                    for start, _ in block_end_points
+                ]
+                end_residuals = [
+                    resolve_residual_tensor_name(unquantized_model.graph, end)
+                    for _, end in block_end_points
+                ]
+                all_block_inputs = [
+                    required_block_inputs(
+                        sim_model.graph, start_residuals[: idx + 1], [end_residual]
+                    )
+                    for idx, end_residual in enumerate(end_residuals)
+                ]
+
                 # Save the unquantized model + weights once. Its
                 # dtype matches the sim's float dtype (fp16 by default).
                 onnx_ir.save(
@@ -335,93 +435,132 @@ class AdaScale:
                     external_data="unquantized_model.data",
                 )
 
-                for idx in range(len(block_end_points)):
-                    if (
-                        _DEBUG_NUM_PARTIAL_ITERATIONS is not None
-                        and idx >= _DEBUG_NUM_PARTIAL_ITERATIONS
-                    ):
-                        break
+                block_indices = cls._blocks_to_optimize(len(block_end_points))
+                _logger.info(
+                    "Optimizing %d of %d blocks with %d samples, %d iterations per block",
+                    len(block_indices),
+                    len(block_end_points),
+                    len(inputs),
+                    num_iterations,
+                )
+                run_start = time.perf_counter()
 
-                    if (
-                        _DEBUG_NUM_PARTIAL_ITERATIONS_START is not None
-                        and _DEBUG_NUM_PARTIAL_ITERATIONS_END is not None
-                        and (
-                            idx < _DEBUG_NUM_PARTIAL_ITERATIONS_START
-                            or idx >= _DEBUG_NUM_PARTIAL_ITERATIONS_END
+                blocks_done = 0
+                # The summary still reports what was done if a block fails
+                try:
+                    for count, idx in enumerate(block_indices, start=1):
+                        # The index matches the model's layer names; the count is progress
+                        label = f"Block {idx} ({count} of {len(block_indices)})"
+                        _logger.info("%s: sampling inputs", label)
+                        if torch.cuda.is_available():
+                            torch.cuda.reset_peak_memory_stats()
+
+                        block_inputs = all_block_inputs[idx]
+                        if len(block_inputs) > 1:
+                            _logger.debug("%s: block inputs %s", label, block_inputs)
+
+                        block_start = sample_start = time.perf_counter()
+                        fp_inputs, qsim_inputs = cls._sample_full_prefix(
+                            sim_model,
+                            sim_path,
+                            unquantized_path,
+                            block_inputs,
+                            inputs,
+                            sim.providers,
                         )
-                    ):
-                        continue
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                        report = _BlockReport()
+                        report.times["sample"] = time.perf_counter() - sample_start
 
-                    _logger.info("Optimizing block: %d", idx)
-
-                    # Step back through leading Casts to land on the true
-                    # cross-block residual (fp16 graphs keep the Cast).
-                    previous_residuals = [
-                        resolve_residual_tensor_name(
-                            unquantized_model.graph, block_end_point[0]
+                        block_input_output_names = (
+                            block_inputs,
+                            [end_residuals[idx]],
                         )
-                        for block_end_point in block_end_points[: idx + 1]
-                    ]
-                    end_residual = resolve_residual_tensor_name(
-                        unquantized_model.graph, block_end_points[idx][1]
+
+                        AdaScale.optimize_adascale_block(
+                            sim_model,
+                            sim.qc_quantize_op_dict,
+                            fp_inputs,
+                            qsim_inputs,
+                            block_input_output_names,
+                            beta_gamma_lr,
+                            scales_lr,
+                            num_iterations,
+                            device,
+                            loss_fn=loss_fn,
+                            _report=report,
+                            _progress_desc=f"{label} training",
+                        )
+                        del fp_inputs, qsim_inputs
+                        gc.collect()
+                        torch.cuda.empty_cache()
+
+                        now = time.perf_counter()
+                        elapsed = now - run_start
+                        _log_block_report(
+                            label,
+                            report,
+                            num_iterations,
+                            block_seconds=now - block_start,
+                            elapsed_seconds=elapsed,
+                            remaining_seconds=elapsed
+                            / count
+                            * (len(block_indices) - count),
+                        )
+
+                        blocks_done = count
+                finally:
+                    _logger.info(
+                        "Done: optimized %d of %d blocks in %s",
+                        blocks_done,
+                        len(block_indices),
+                        _format_duration(time.perf_counter() - run_start),
                     )
-                    block_inputs = required_block_inputs(
-                        sim_model.graph, previous_residuals, [end_residual]
-                    )
-                    if len(block_inputs) > 1:
-                        _logger.debug("Block %d sampling inputs %s", idx, block_inputs)
-
-                    onnx_ir.save(
-                        sim_model, path=sim_path, external_data="sim_model.data"
-                    )
-                    qsim_sess = ActivationSampler(
-                        block_inputs,
-                        sim_path,
-                        sim.providers,
-                    )
-
-                    fp_inputs, qsim_inputs = [], []
-                    for input in inputs:  # pylint: disable=redefined-builtin
-                        sample = qsim_sess.sample_acts(input)
-                        qsim_inputs.append(sample)
-
-                    del qsim_sess
-
-                    unquantized_sampler = ActivationSampler(
-                        block_inputs,
-                        unquantized_path,
-                        sim.providers,
-                    )
-
-                    for input in inputs:
-                        sample = unquantized_sampler.sample_acts(input)
-                        fp_inputs.append(sample)
-
-                    del unquantized_sampler
-
-                    block_input_output_names = (
-                        block_inputs,
-                        [end_residual],
-                    )
-
-                    AdaScale.optimize_adascale_block(
-                        sim_model,
-                        sim.qc_quantize_op_dict,
-                        fp_inputs,
-                        qsim_inputs,
-                        block_input_output_names,
-                        beta_gamma_lr,
-                        scales_lr,
-                        num_iterations,
-                        device,
-                        loss_fn=loss_fn,
-                    )
-                    del fp_inputs, qsim_inputs
-                    gc.collect()
-                    torch.cuda.empty_cache()
 
                 sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
                 sim._rebuild_session()  # pylint: disable=protected-access
+
+    @staticmethod
+    def _blocks_to_optimize(num_blocks: int) -> List[int]:
+        """Indices of the blocks to optimize, honoring the _DEBUG_NUM_PARTIAL_ITERATIONS* flags."""
+        indices = list(range(num_blocks))
+        if _DEBUG_NUM_PARTIAL_ITERATIONS is not None:
+            indices = indices[:_DEBUG_NUM_PARTIAL_ITERATIONS]
+        if (
+            _DEBUG_NUM_PARTIAL_ITERATIONS_START is not None
+            and _DEBUG_NUM_PARTIAL_ITERATIONS_END is not None
+        ):
+            indices = [
+                idx
+                for idx in indices
+                if _DEBUG_NUM_PARTIAL_ITERATIONS_START
+                <= idx
+                < _DEBUG_NUM_PARTIAL_ITERATIONS_END
+            ]
+        return indices
+
+    @staticmethod
+    def _sample_full_prefix(
+        sim_model: onnx_ir.Model,
+        sim_path: str,
+        unquantized_path: str,
+        block_inputs: List[str],
+        inputs: Collection[Dict[str, np.ndarray]],
+        providers,
+    ) -> Tuple[List[List[np.ndarray]], List[List[np.ndarray]]]:
+        """Sample a block's inputs by running every block before it."""
+        onnx_ir.save(sim_model, path=sim_path, external_data="sim_model.data")
+        qsim_sess = ActivationSampler(block_inputs, sim_path, providers)
+        qsim_inputs = [qsim_sess.sample_acts(input) for input in inputs]
+        del qsim_sess
+
+        unquantized_sampler = ActivationSampler(
+            block_inputs, unquantized_path, providers
+        )
+        fp_inputs = [unquantized_sampler.sample_acts(input) for input in inputs]
+        del unquantized_sampler
+        return fp_inputs, qsim_inputs
 
     @staticmethod
     def get_block_start_end_name(
@@ -446,6 +585,8 @@ class AdaScale:
         device: torch.device = torch.device("cpu"),
         *,
         loss_fn: Optional[_LossFn] = None,
+        _report: Optional[_BlockReport] = None,
+        _progress_desc: str = "AdaScale training",
     ):
         """
         :param sim: QuantizationSimModel object created using the fp32 model
@@ -474,6 +615,9 @@ class AdaScale:
         """
         if loss_fn is None:
             loss_fn = _mse_loss_fn
+        if _report is None:
+            _report = _BlockReport()
+        phase_start = time.perf_counter()
 
         pytorch_block, pt_weights_to_onnx_initializers = get_pt_block(
             sim_model, block_input_output_names
@@ -489,6 +633,9 @@ class AdaScale:
                 pytorch_block, device, torch_fp_input, torch_quant_input
             )
         )
+
+        _report.times["convert"] = time.perf_counter() - phase_start
+        phase_start = time.perf_counter()
 
         fp_out = []
         with torch.no_grad(), _autocast_ctx():
@@ -538,57 +685,100 @@ class AdaScale:
 
         early_stopping = _create_early_stopping(_EARLY_STOPPING)
 
+        # The loss is reported as the mean over the first and the last tenth of the
+        # iterations, as one iteration's loss depends on which sample it trained on.
+        # Kept on the device so that training does not wait on a host read every step.
+        window = max(1, num_iterations // 10)
+        initial_losses, recent_losses = [], collections.deque(maxlen=window)
+
+        def _mean(losses) -> float:
+            return torch.stack(list(losses)).float().mean().item()
+
         pytorch_block.to(device)
-        with torch.set_grad_enabled(True):
-            for iteration in progress_bar(range(num_iterations)):
-                data_idx = iteration % len(torch_fp_input)
-                fp_input = torch_fp_input[data_idx]
-                quant_input = torch_quant_input[iteration % len(torch_quant_input)]
-                if _QT_SAMPLING_PROB == 1.0:
-                    input_tensor = quant_input
-                elif _QT_SAMPLING_PROB == 0.0:
-                    input_tensor = fp_input
-                else:
-                    input_tensor = quant_input
-                    input_tensor[0] = torch.where(
-                        torch.rand_like(quant_input[0], dtype=quant_input[0].dtype).to(
-                            device=device
+        bar = progress_bar(range(num_iterations), desc=_progress_desc)
+        try:
+            with torch.set_grad_enabled(True):
+                for iteration in bar:
+                    data_idx = iteration % len(torch_fp_input)
+                    fp_input = torch_fp_input[data_idx]
+                    quant_input = torch_quant_input[iteration % len(torch_quant_input)]
+                    if _QT_SAMPLING_PROB == 1.0:
+                        input_tensor = quant_input
+                    elif _QT_SAMPLING_PROB == 0.0:
+                        input_tensor = fp_input
+                    else:
+                        input_tensor = quant_input
+                        input_tensor[0] = torch.where(
+                            torch.rand_like(
+                                quant_input[0], dtype=quant_input[0].dtype
+                            ).to(device=device)
+                            < _QT_SAMPLING_PROB,
+                            quant_input[0].to(device=device),
+                            fp_input[0].to(device=device),
                         )
-                        < _QT_SAMPLING_PROB,
-                        quant_input[0].to(device=device),
-                        fp_input[0].to(device=device),
+                    if isinstance(input_tensor, torch.Tensor):
+                        input_tensor = [input_tensor]
+                    input_tensor = [
+                        inp_t.to(device=device) for inp_t in input_tensor
+                    ]  # Create a new tensor
+                    with _autocast_ctx():
+                        quant_out = pytorch_block(*input_tensor)
+                    batch_fp_out = fp_out[data_idx].to(device)
+                    loss = loss_fn(
+                        batch_fp_out,
+                        quant_out,
+                        data_idx,
                     )
-                if isinstance(input_tensor, torch.Tensor):
-                    input_tensor = [input_tensor]
-                input_tensor = [
-                    inp_t.to(device=device) for inp_t in input_tensor
-                ]  # Create a new tensor
-                with _autocast_ctx():
-                    quant_out = pytorch_block(*input_tensor)
-                batch_fp_out = fp_out[data_idx].to(device)
-                loss = loss_fn(
-                    batch_fp_out,
-                    quant_out,
-                    data_idx,
-                )
 
-                loss.backward()
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
 
-                # Early stopping check
-                should_stop = early_stopping is not None and early_stopping(loss.item())
-                del quant_out, batch_fp_out, loss, input_tensor, fp_input, quant_input
-                if should_stop:
-                    break
+                    if iteration < window:
+                        initial_losses.append(loss.detach())
+                    recent_losses.append(loss.detach())
+                    _report.num_iterations_run = iteration + 1
 
-        copy_pt_weights_to_onnx(
+                    # Early stopping check
+                    should_stop = early_stopping is not None and early_stopping(
+                        loss.item()
+                    )
+                    if (
+                        iteration % _LOSS_DISPLAY_INTERVAL == 0
+                        or iteration == num_iterations - 1
+                        or should_stop
+                    ):
+                        bar.set_postfix_str(
+                            f"loss={_mean(recent_losses):.2e}", refresh=False
+                        )
+                    del (
+                        quant_out,
+                        batch_fp_out,
+                        loss,
+                        input_tensor,
+                        fp_input,
+                        quant_input,
+                    )
+                    if should_stop:
+                        break
+        finally:
+            bar.close()
+        if initial_losses:
+            _report.initial_loss = _mean(initial_losses)
+            _report.final_loss = _mean(recent_losses)
+
+        _report.times["train"] = time.perf_counter() - phase_start
+        phase_start = time.perf_counter()
+
+        updated = copy_pt_weights_to_onnx(
             pytorch_block, sim_model, pt_weights_to_onnx_initializers, quantizer_dict
         )
+        _report.num_weights_updated = len(updated)
         copy_pt_encodings_to_sim(
             pytorch_block, quantizer_dict, pt_weights_to_onnx_initializers
         )
+        _report.times["copy-back"] = time.perf_counter() - phase_start
 
         del (
             pytorch_block,

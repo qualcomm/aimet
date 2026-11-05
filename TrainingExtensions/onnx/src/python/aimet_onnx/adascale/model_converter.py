@@ -279,7 +279,7 @@ def copy_pt_weights_to_onnx(
     onnx_model: onnx_ir.Model,
     param_map: Collection[Dict[str, str]],
     quantizer_dict: Dict[str, QcQuantizeOp] = None,
-):
+) -> List[str]:
     """
     Given a pt_block with adascale params computed, copy the params to onnx model
     :param pt_block: pytorch block with adascale weight quantizers
@@ -287,7 +287,9 @@ def copy_pt_weights_to_onnx(
     :param pt_weights_to_onnx_initializers: Mapping between PT weight names to ONNX initializers
     :param quantizer_dict: Optional quantizer dict; params whose quantizer is
         disabled are skipped (e.g. LoRA params during base-model AdaScale).
+    :return: Names of the ONNX initializers that were updated.
     """
+    updated = []
     for name, module in pt_block.named_modules():
         if param_map.get(name) is None:
             continue
@@ -331,11 +333,13 @@ def copy_pt_weights_to_onnx(
         if pytorch_weight.dtype != onnx_dtype:
             pytorch_weight = pytorch_weight.astype(onnx_dtype)
         onnx_param_tensor.const_value = onnx_ir.Tensor(pytorch_weight)
-        _logger.info(
+        updated.append(onnx_tensor_name)
+        _logger.debug(
             "Copy from PyTorch to ONNX: torch : %s  onnx param : %s",
             name,
             onnx_tensor_name,
         )
+    return updated
 
 
 def copy_pt_encodings_to_sim(

@@ -5,6 +5,7 @@ import os
 import copy
 import shutil
 import warnings
+import logging
 from unittest.mock import Mock, patch
 import ml_dtypes
 import numpy as np
@@ -1909,3 +1910,62 @@ def test_qwen_adascale_e2e_ppl(add_genai_tests_path, small_model=False):
         )
         print("Computed PPL score after applying AdaScale", ppl_score_after_ada)
         assert ppl_score_before_ada > ppl_score_after_ada
+
+
+class TestAdaScaleProgressLog:
+    """Per-block progress stays at info; the phase split and memory are debug details."""
+
+    @staticmethod
+    def _sim_and_block():
+        model = models_for_tests.simple_mlp_model(torch.float32)
+        sim = QuantizationSimModel(model, param_type="int4", activation_type="int16")
+        sim._compute_param_encodings(overwrite=False)
+        gemms = [node for node in model.graph.node if node.op_type == "Gemm"]
+        inputs = [
+            {
+                "input": np.random.default_rng(0)
+                .standard_normal((4, 16))
+                .astype(np.float32)
+            }
+        ]
+        return sim, inputs, [(gemms[0].input[0], gemms[-1].output[0])]
+
+    def test_phases_and_memory_are_logged_at_debug(self, caplog):
+        """
+        Given: One block
+        When: AdaScale optimizes it
+        Then: The per-block timing line at info has no phase split, and the phase split and
+              memory lines are logged at debug
+        """
+        sim, inputs, block_end_points = self._sim_and_block()
+        with caplog.at_level(logging.DEBUG, logger="AdaScale"):
+            AdaScale._apply_adascale(sim, inputs, block_end_points, num_iterations=4)
+        records = [r for r in caplog.records if r.name == "AdaScale"]
+        took = [r for r in records if ": took " in r.getMessage()]
+        assert len(took) == 1 and took[0].levelno == logging.INFO
+        assert "train" not in took[0].getMessage()
+        for marker in (": phases: ", ": memory: "):
+            matching = [r for r in records if marker in r.getMessage()]
+            assert len(matching) == 1 and matching[0].levelno == logging.DEBUG, marker
+        done = [r.getMessage() for r in records if r.getMessage().startswith("Done: ")]
+        assert done and done[0].startswith("Done: optimized 1 of 1 blocks")
+
+    def test_summary_is_logged_when_a_block_fails(self, caplog):
+        """
+        Given: A block whose optimization raises
+        When: AdaScale runs
+        Then: The error propagates and the run summary still reports 0 of 1 blocks done
+        """
+        sim, inputs, block_end_points = self._sim_and_block()
+        with (
+            patch.object(
+                AdaScale, "optimize_adascale_block", side_effect=RuntimeError("boom")
+            ),
+            caplog.at_level(logging.INFO, logger="AdaScale"),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            AdaScale._apply_adascale(sim, inputs, block_end_points, num_iterations=4)
+        assert any(
+            r.getMessage().startswith("Done: optimized 0 of 1 blocks")
+            for r in caplog.records
+        )
