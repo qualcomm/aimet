@@ -3204,18 +3204,9 @@ class QuantizationSimModel:
             if not quantizer.enabled or quantizer.bitwidth >= 32:
                 continue
 
-            param_value = to_array_ir(constants[param_name])
-
-            if (
-                quantizer.data_type == QuantizationDataType.float
-                and quantizer.precision() not in _QDQ_FLOAT_TYPES
-            ):
-                # Plain-cast floats have no encoding, so mirror QcQuantizeOp and round-trip through float16
-                qdq_parameters[param_name] = param_value.astype(np.float16).astype(
-                    param_value.dtype
-                )
-            else:
-                qdq_parameters[param_name] = quantizer.quantize_dequantize(param_value)
+            qdq_parameters[param_name] = _quantize_dequantize_param(
+                quantizer, to_array_ir(constants[param_name])
+            )
 
         return qdq_parameters
 
@@ -3321,18 +3312,18 @@ class QuantizationSimModel:
                     attr.t.raw_data = qdq_param.tobytes()
                     break
                 if attr.name == "value_float":
-                    attr.float = float(qdq_param)
+                    attr.f = float(qdq_param)
                     break
                 if attr.name == "value_floats":
                     attr.ClearField("floats")
                     attr.floats.extend(qdq_param.astype(np.float32).tolist())
                     break
                 if attr.name == "value_int":
-                    attr.int = int(qdq_param)
+                    attr.i = int(qdq_param)
                     break
                 if attr.name == "value_ints":
                     attr.ClearField("ints")
-                    attr.floats.extend(qdq_param.astype(np.int64).tolist())
+                    attr.ints.extend(qdq_param.astype(np.int64).tolist())
                     break
 
     def fold_param_quantizers(self):
@@ -3366,19 +3357,13 @@ class QuantizationSimModel:
         # fold with garbage scales/offsets.
         self._compute_param_encodings(overwrite=False)
 
-        # _get_qdq_parameters already skips int32/>32-bit and disabled param quantizers, and
-        # only collects params that still have a QcQuantizeOp node, so re-folding is a no-op.
-        qdq_parameters = self._get_qdq_parameters()
-
-        folded_param_names = {
-            name for name in qdq_parameters if name in self.qc_quantize_op_dict
-        }
+        # Bake the quantize-dequantize'd values into the live model's initializers/constants,
+        # one parameter at a time, so peak memory grows by the largest parameter rather than
+        # by a copy of every parameter.
+        folded_param_names = self._fold_param_values_in_place()
 
         if not folded_param_names:
             return
-
-        # Bake the quantize-dequantize'd values into the live model's initializers/constants.
-        self._overwrite_parameters(self.model.model, dict(qdq_parameters))
 
         # Physically remove the folded params' QcQuantizeOp nodes from the graph. This rewires
         # consumers from the "<param>_qdq" tensor back to the raw parameter tensor, so the
@@ -3398,6 +3383,80 @@ class QuantizationSimModel:
             self._folded_param_quantizers[name] = self.qc_quantize_op_dict[name]
 
         self._rebuild_session()
+
+    def _fold_param_values_in_place(self) -> Set[str]:
+        """
+        Overwrite each foldable parameter of ``self.model.model`` with its quantize-dequantized
+        value, streaming one parameter at a time.
+
+        Folds the same parameters as :meth:`_get_qdq_parameters`, with the same values, but
+        never holds more than one QDQ'd parameter in memory.
+
+        :return: Names of the folded parameters
+        """
+        model = self.model.model
+        # Names of parameters (weights/biases) tracked by the connected graph whose
+        # quantizers are sub-int32.
+        param_names = {
+            product.name
+            for op in self.connected_graph.get_all_ops().values()
+            for product, _ in op.parameters.values()
+            if product.name in self.qc_quantize_op_dict
+            and self.qc_quantize_op_dict[product.name].bitwidth <= 32
+        }
+        # Only params that still have a QcQuantizeOp node, so re-folding is a no-op.
+        to_fold = {
+            node.input[0]
+            for node in _iterate_graph_nodes_recursive(model.graph)
+            if node.op_type == "QcQuantizeOp" and node.input[0] in param_names
+        }
+        # Skip disabled quantizers, and int32+ params (simulated in fp32, unreliable).
+        to_fold = {
+            name
+            for name in to_fold
+            if self.qc_quantize_op_dict[name].enabled
+            and self.qc_quantize_op_dict[name].bitwidth < 32
+        }
+
+        # Same lookup as _overwrite_parameters. Params can be declared inside Scan bodies
+        tensors = {
+            init.name: init
+            for graph in _iterate_graphs_recursive(model.graph)
+            for init in graph.initializer
+            if init.name in to_fold
+        }
+        constant_nodes = {
+            node.output[0]: node
+            for node in _iterate_graph_nodes_recursive(model.graph)
+            if node.op_type == "Constant" and node.output[0] in to_fold
+        }
+        not_found = to_fold - tensors.keys() - constant_nodes.keys()
+        if not_found:
+            raise RuntimeError(f"Couldn't find parameters: {list(not_found)}")
+
+        for name, node in constant_nodes.items():
+            # ConnectedGraph only treats a Constant's 'value' tensor as a parameter
+            value = next((a.t for a in node.attribute if a.name == "value"), None)
+            if value is None:
+                raise RuntimeError(
+                    f"Constant {node.name} holds its value in attribute "
+                    f"'{node.attribute[0].name}'; only the 'value' (tensor) form can be folded"
+                )
+            tensors[name] = value
+
+        for name in sorted(to_fold):
+            tensor = tensors[name]
+            qdq_param = _quantize_dequantize_param(
+                self.qc_quantize_op_dict[name], to_array(tensor)
+            )
+            # A TensorProto holds its data in exactly one field; drop the typed one (e.g.
+            # float_data) the value may have been stored in
+            for field in _TENSOR_DATA_FIELDS:
+                tensor.ClearField(field)
+            tensor.raw_data = qdq_param.tobytes()
+            del qdq_param
+
+        return to_fold
 
     def _get_enabled_quantizer(self, tensor_name: str) -> Optional[QcQuantizeOp]:
         """
@@ -5215,6 +5274,35 @@ def log_and_catch_mismatched_encodings(
             logger.error(log_message)
             raise AssertionError(log_message)
         logger.info(log_message)
+
+
+def _quantize_dequantize_param(
+    quantizer: QcQuantizeOp, param_value: np.ndarray
+) -> np.ndarray:
+    """
+    The value that ``quantizer``'s ``QcQuantizeOp`` would feed its consumers for
+    ``param_value``, computed once on the host.
+    """
+    if (
+        quantizer.data_type == QuantizationDataType.float
+        and quantizer.precision() not in _QDQ_FLOAT_TYPES
+    ):
+        if param_value.dtype in (np.float16, _BFLOAT16):
+            # QcQuantizeOp passes 16-bit float tensors through unchanged
+            return param_value
+        # Plain-cast floats have no encoding, so mirror QcQuantizeOp and round-trip through float16
+        return param_value.astype(np.float16).astype(param_value.dtype)
+    return quantizer.quantize_dequantize(param_value)
+
+
+#: TensorProto fields a tensor's values can live in besides ``raw_data``
+_TENSOR_DATA_FIELDS = (
+    "float_data",
+    "int32_data",
+    "int64_data",
+    "double_data",
+    "uint64_data",
+)
 
 
 def _run_session(session: ort.InferenceSession, inputs: Dict[str, np.ndarray]):
