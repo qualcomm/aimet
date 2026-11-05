@@ -8,49 +8,52 @@ AIMET (AI Model Efficiency Toolkit) is a software toolkit for quantizing trained
 
 ## Build Commands
 
-### Standard Build (CMake)
-```bash
-cd aimet
-mkdir build && cd build
-cmake .. -DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_ONNX=OFF
-make -j8
-make install
-```
+`scripts/all/build_and_test.py` is the canonical way to build and test AIMET (used by CI and
+documented in `Docs/overview/install/build_from_source.rst`). It manages venv creation, system
+dependency installation, and CMake/scikit-build-core configuration -- prefer it over invoking
+CMake or pip directly.
 
-### Build with pip (AIMET 2.0)
 ```bash
-CMAKE_ARGS='-DENABLE_CUDA=ON -DENABLE_TORCH=ON -DENABLE_ONNX=OFF' python3 -m pip install --no-build-isolation -e .
-```
+# Build aimet-torch (CPU)
+python3 scripts/all/build_and_test.py --task build --package aimet_torch
 
-### CMake Options
-- `-DENABLE_CUDA=ON/OFF` - Enable CUDA support
-- `-DENABLE_TORCH=ON/OFF` - Enable PyTorch variant
-- `-DENABLE_ONNX=ON/OFF` - Enable ONNX variant
-- `-DENABLE_TESTS=ON/OFF` - Enable test building
+# Build aimet-torch (GPU/CUDA)
+python3 scripts/all/build_and_test.py --task build --package aimet_torch --gpu
+
+# Build aimet-onnx (CPU)
+python3 scripts/all/build_and_test.py --task build --package aimet_onnx
+
+# Build aimet-onnx (GPU/CUDA)
+python3 scripts/all/build_and_test.py --task build --package aimet_onnx --gpu
+
+# Editable install for local development
+python3 scripts/all/build_and_test.py --task build --package aimet_torch --gpu -e
+
+# List every available task
+python3 scripts/all/build_and_test.py --task list
+```
 
 ## Testing
 
-### Run All Tests
+`--task test` builds the package first if needed, then runs its unit test suite:
+
 ```bash
-cd build
-make test
-# OR
-ctest -V
+# Build (if needed) and run aimet-onnx unit tests
+python3 scripts/all/build_and_test.py --task test --package aimet_onnx
+
+# Run tests only, skipping the build step
+python3 scripts/all/build_and_test.py --task test --package aimet_torch --only
+
+# Force a rebuild before testing
+python3 scripts/all/build_and_test.py --task test --package aimet_torch --force-rebuild
 ```
 
-### Run Single Test File with pytest
-```bash
-python -m pytest TrainingExtensions/torch/test/python/test_<name>.py -v
-```
+For running a single test file/method directly against an already-installed package, pytest
+still works as usual:
 
-### Run Tests without CUDA
-```bash
-python -m pytest TrainingExtensions/torch/test/python -m "not cuda"
-```
-
-### Run Specific Test
 ```bash
 python -m pytest TrainingExtensions/torch/test/python/test_<name>.py::TestClass::test_method -v
+python -m pytest TrainingExtensions/torch/test/python -m "not cuda"
 ```
 
 Test directories:
@@ -121,6 +124,8 @@ pre-commit run --all-files
 
 ## Environment Setup
 
+Editable mode (`-e`) is not reliable, so set `PYTHONPATH` explicitly:
+
 ```bash
 # Set PYTHONPATH after build
 export PYTHONPATH=$WORKSPACE/aimet/build/staging/universal/lib/python:$PYTHONPATH
@@ -131,15 +136,14 @@ export PYTHONPATH=$WORKSPACE/aimet/TrainingExtensions/torch/src/python:$WORKSPAC
 
 ## Generate Documentation
 ```bash
-cd build
-make doc
-# Output: build/staging/universal/Docs/
+python3 scripts/all/build_and_test.py --task build --package docs
+# Output: wheelhouse/Docs/
 ```
 
 ## Generate Wheel Packages
 ```bash
-cd build
-make packageaimet
+python3 scripts/all/build_and_test.py --task build --package aimet_torch
+# Output: wheelhouse/
 ```
 
 ## Release Notes

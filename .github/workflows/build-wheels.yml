@@ -32,23 +32,56 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      VER_PYTHON: ${{ matrix.VER_PYTHON_BUILD || matrix.VER_PYTHON || '3.12' }}
+      # id is one of: torch-cpu, torch-gpu, onnx-cpu, onnx-gpu, onnx-torch-cpu.
+      PACKAGE: ${{ (startsWith(matrix.id, 'onnx-torch') && 'docs') || (startsWith(matrix.id, 'torch') && 'aimet_torch') || 'aimet_onnx' }}
+      GPU_FLAG: ${{ endsWith(matrix.id, '-gpu') && '--gpu' || '' }}
+      ENABLE_TESTS_FLAG: ${{ (matrix.id == 'onnx-cpu' || matrix.id == 'onnx-gpu') && '--enable-tests' || '' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-build-env
+
+      - uses: actions/setup-python@v5
         with:
-          ver-python: ${{ matrix.VER_PYTHON_BUILD || matrix.VER_PYTHON || '3.12' }}
-          ver-torch: ${{ matrix.VER_TORCH }}
-          ver-onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
-          ver-cuda: ${{ matrix.VER_CUDA }}
-      - uses: ./.github/actions/build-wheel
+          python-version: ${{ env.VER_PYTHON }}
+
+      - name: "Build AIMET (${{ matrix.id }})"
+        run: |
+          python3 scripts/all/build_and_test.py --task build \
+            --package "$PACKAGE" \
+            $GPU_FLAG \
+            --ver-python "$VER_PYTHON" \
+            --ver-torch "${{ matrix.VER_TORCH }}" \
+            --ver-onnxruntime "${{ matrix.VER_ONNXRUNTIME }}" \
+            --pip-index "${{ matrix.PIP_INDEX }}" \
+            $ENABLE_TESTS_FLAG
+
+      - name: Upload AIMET wheel file
+        if: matrix.id != 'onnx-torch-cpu'
+        uses: actions/upload-artifact@v4
         with:
-          id: ${{ matrix.id }}
-          ver-torch: ${{ matrix.VER_TORCH }}
-          ver-onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
-          ver-cuda: ${{ matrix.VER_CUDA }}
-          pip-index: ${{ matrix.PIP_INDEX }}
-          build-targets: ${{ matrix.BUILD_TARGETS }}
-          build-tests: ${{ (matrix.id == 'onnx-cpu' || matrix.id == 'onnx-gpu') && 'ON' || 'OFF' }}
+          name: "${{ matrix.id }}-wheel"
+          path: wheelhouse/aimet*.whl
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload compiled C++ unit tests
+        if: (matrix.id == 'onnx-cpu' || matrix.id == 'onnx-gpu') && env.ENABLE_TESTS_FLAG != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ matrix.id }}-tests"
+          path: build/**/MoDl*Test
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload AIMET documentation
+        if: matrix.id == 'onnx-torch-cpu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Docs
+          path: wheelhouse/Docs/
+          if-no-files-found: error
+          retention-days: 30
 
   build-windows:
     runs-on: aimet-windows-amd64
@@ -68,106 +101,35 @@ jobs:
     defaults:
       run:
         shell: powershell
+    env:
+      VER_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-uv-env
         with:
           ENV_NAME: "onnx-cpu"
-          VER_PYTHON: "${{ matrix.python-version }}"
-
-      - name: "Download ARM64 Python for cross-compilation"
-        if: matrix.arch == 'arm64'
-        run: |
-          # Download ARM64 Python nuget package for cross-compilation libs
-          $pythonArm64Dir = Join-Path $env:GITHUB_WORKSPACE "python-arm64"
-          New-Item -ItemType Directory -Force -Path $pythonArm64Dir
-
-          # Download Python ARM64 nuget package (use .zip extension for Expand-Archive)
-          $nugetZip = Join-Path $pythonArm64Dir "python.zip"
-          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/pythonarm64/${{ matrix.python-version }}" -OutFile $nugetZip
-
-          # Extract the nuget package
-          Expand-Archive -Path $nugetZip -DestinationPath $pythonArm64Dir -Force
-
-          # Set environment variable for CMake to find ARM64 Python libs
-          $pythonArm64Libs = Join-Path $pythonArm64Dir "tools/libs"
-          $pythonArm64Include = Join-Path $pythonArm64Dir "tools/include"
-          echo "PYTHON_ARM64_LIBS=$pythonArm64Libs" >> $env:GITHUB_ENV
-          echo "PYTHON_ARM64_INCLUDE=$pythonArm64Include" >> $env:GITHUB_ENV
+          VER_PYTHON: ${{ env.VER_PYTHON }}
 
       - name: "Build AIMET ONNX-CPU wheel package for Windows (${{ matrix.arch }})"
         run: |
-
-          # Activate uv environment
           .\onnx-cpu\Scripts\Activate.ps1
 
-          # Bootstrap pip in the venv
-          python -m ensurepip --upgrade
-
-          python -m pip install uv
-
-          # Install dev requirements
-          python -m uv pip compile --output-file "$env:GITHUB_WORKSPACE\dev_requirements.txt" --extra dev pyproject.toml
-          python -m uv pip install -r "$env:GITHUB_WORKSPACE\dev_requirements.txt"
-
-          # Additional dependencies for windows build
-          python -m uv pip install onnxruntime==1.19.2 onnx build pybind11
-
-          # Install vcpkg if not present, then install Eigen3
-          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
-          $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
-          if (-not (Test-Path $vcpkgExe)) {
-            git clone https://github.com/microsoft/vcpkg $vcpkgRoot
-            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
-          }
-          & $vcpkgExe install eigen3:${{ matrix.vcpkg-triplet }}
-
-          $vcpkgToolchain = (Join-Path $vcpkgRoot "scripts/buildsystems/vcpkg.cmake") -replace '\\','/'
-          $env:CMAKE_TOOLCHAIN_FILE = $vcpkgToolchain
-
-          # Set CMake args for ${{ matrix.arch }} Windows build
-          $cmakeArgs = "-DENABLE_CUDA=OFF -DENABLE_TORCH=OFF -DENABLE_ONNX=ON -DENABLE_TESTS=OFF -DPIP_INDEX=pypi -DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
-
-          # For ARM64 cross-compilation, point to ARM64 Python libs
-          if ("${{ matrix.arch }}" -eq "arm64") {
-            $pythonArm64Libs = $env:PYTHON_ARM64_LIBS -replace '\\','/'
-            $pythonArm64Include = $env:PYTHON_ARM64_INCLUDE -replace '\\','/'
-            $pythonLibName = "python" + "${{ matrix.python-version }}".Replace(".", "") + ".lib"
-            $cmakeArgs = "$cmakeArgs -DPython3_LIBRARY=$pythonArm64Libs/$pythonLibName -DPython3_INCLUDE_DIR=$pythonArm64Include"
-          }
-
-          $cmakeArgs = "$cmakeArgs -DCMAKE_GENERATOR='Visual Studio 17 2022' -DCMAKE_GENERATOR_PLATFORM='${{ matrix.arch }}'"
-          $env:CMAKE_ARGS = $cmakeArgs
-
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build, dist, wheelhouse
-          New-Item -ItemType Directory -Force -Path wheelhouse
-
-          # Build AIMET wheel
-          python -m build --wheel --no-isolation .
-
-      - name: "Re-tag wheel for ARM64 platform"
-        if: matrix.arch == 'arm64'
-        run: |
-          .\onnx-cpu\Scripts\activate
-          python -m pip install wheel
-
-          # Re-tag the wheel from win_amd64 to win_arm64
-          Get-ChildItem dist\aimet*.whl | ForEach-Object {
-            python -m wheel tags --remove --platform-tag=win_arm64 $_.FullName
-          }
-
-          # Remove the original amd64 wheels
-          Remove-Item dist\*win_amd64.whl -ErrorAction SilentlyContinue
-
-          # Show the resulting wheels
-          Get-ChildItem dist\
+          python scripts\all\build_and_test.py --task build `
+            --package aimet_onnx `
+            --venv onnx-cpu `
+            --ver-python "${{ env.VER_PYTHON }}" `
+            --pip-index pypi `
+            --ver-onnxruntime 1.19.2 `
+            --windows-arch "${{ matrix.arch }}" `
+            --windows-vcpkg-triplet "${{ matrix.vcpkg-triplet }}" `
+            --only
 
       - name: Upload AIMET Windows wheel file
         uses: actions/upload-artifact@v4
         with:
           name: "onnx-cpu-win-${{ matrix.arch }}-wheel"
           path: |
-            dist/aimet*.whl
+            wheelhouse/aimet*.whl
           if-no-files-found: error
           retention-days: 30
 
@@ -177,6 +139,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      VER_PYTHON: "3.12"
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -186,39 +151,33 @@ jobs:
       - uses: ./.github/actions/setup-uv-env
         with:
           ENV_NAME: "onnx-cpu"
-          VER_PYTHON: "3.12"
+          VER_PYTHON: ${{ env.VER_PYTHON }}
 
       - name: "Build AIMET ONNX-CPU wheel package for macOS (arm64)"
         run: |
           set -x
-
-          # Activate uv environment
           . ./onnx-cpu/bin/activate
-
-          # Install dev requirements
-          uv pip compile --native-tls --output-file dev_requirements.txt --extra dev pyproject.toml
-          uv pip install --native-tls -r dev_requirements.txt
-
-          # Additional dependencies for macOS build
-          uv pip install --native-tls onnxruntime==1.19.2 onnx build pybind11
 
           # Pin a deployment target lower than the runner's live macOS version
           # (otherwise scikit-build-core/CMake default to it, producing a wheel
           # tagged e.g. macosx_27_0_arm64 that pip refuses to install on any
           # older mac even though the binary itself only links system libs).
-          export MACOSX_DEPLOYMENT_TARGET=15.0
-          export CMAKE_ARGS="-DENABLE_CUDA=OFF -DENABLE_TORCH=OFF -DENABLE_ONNX=ON -DENABLE_TESTS=ON -DPIP_INDEX=pypi -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0"
-
-          rm -rf build dist wheelhouse
-
-          python -m build --wheel --no-isolation .
+          python scripts/all/build_and_test.py --task build \
+            --package aimet_onnx \
+            --venv onnx-cpu \
+            --ver-python "${{ env.VER_PYTHON }}" \
+            --pip-index pypi \
+            --ver-onnxruntime 1.19.2 \
+            --enable-tests \
+            --macos-deployment-target "${{ env.MACOSX_DEPLOYMENT_TARGET }}" \
+            --only
 
       - name: Upload AIMET macOS wheel file
         uses: actions/upload-artifact@v4
         with:
           name: "onnx-cpu-macos-arm64-wheel"
           path: |
-            dist/aimet*.whl
+            wheelhouse/aimet*.whl
           if-no-files-found: error
           retention-days: 30
 

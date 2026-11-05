@@ -99,7 +99,6 @@ jobs:
                  "VER_CUDA":        "",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
               },
               {
@@ -111,7 +110,6 @@ jobs:
                  "VER_CUDA":        "12.6.3",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       "pypi"
               }
             ]')
@@ -128,7 +126,6 @@ jobs:
                  "VER_CUDA":        "",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
               },
               {
@@ -140,7 +137,6 @@ jobs:
                  "VER_CUDA":        "12.6.3",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "ON",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       "pypi"
               }
             ]')
@@ -158,7 +154,6 @@ jobs:
                  "VER_CUDA":        "",
                  "RUN_UNIT_TESTS":    "OFF",
                  "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all;doc",
                  "PIP_INDEX":       ""
               }
             ]')

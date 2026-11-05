@@ -93,8 +93,15 @@ jobs:
         with:
           name: "${{ inputs.env_name }}-wheel"
           path: "downloads"
+      - name: Determine package from env_name
+        run: |
+          package="aimet_torch"
+          if [[ "${{ inputs.env_name }}" == "onnx-cpu" || "${{ inputs.env_name }}" == "onnx-gpu" ]]; then
+            package="aimet_onnx"
+          fi
+          echo "PACKAGE=$package" >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
-        if: inputs.ver_onnxruntime != ''
+        if: env.PACKAGE == 'aimet_onnx'
         with:
           name: "${{ inputs.env_name }}-tests"
           path: "downloads"
@@ -121,27 +128,12 @@ jobs:
         run: |
           . ./${{ inputs.env_name }}/bin/activate
 
-          python3 -m ensurepip --upgrade
-          python3 -m pip install uv
-
-          if [[ "${{ inputs.run_acceptance_tests }}" == 'true' ]]; then
-            # Install both aimet-torch and aimet-onnx wheels for acceptance tests
-            # for joint testing of torch and onnx packages in the same environment
-            WHEEL_PATHS=$(find downloads -name "aimet_*.whl")
-          elif [[ "${{ inputs.env_name }}" == "torch-cpu" || "${{ inputs.env_name }}" == "torch-gpu" ]]; then
-            WHEEL_PATHS=$(find downloads -name "aimet_torch*.whl" | head -n 1)
-          elif [[ "${{ inputs.env_name }}" == "onnx-cpu" || "${{ inputs.env_name }}" == "onnx-gpu" ]]; then
-            WHEEL_PATHS=$(find downloads -name "aimet_onnx*.whl" | head -n 1)
-          fi
-
-          # Install test dependencies
-          cu=$(echo "${{ inputs.ver_cuda }}" | awk -F'.' '{print ($1!="")? "cu"$1$2 : "cpu"}')
-          for wheel in $WHEEL_PATHS; do
-            python3 -m uv pip install "${wheel}[test]" \
-                --extra-index-url="https://download.pytorch.org/whl/${cu}" \
-                --index-strategy unsafe-best-match
-          done
-
+          python3 scripts/all/build_and_test.py --task install_test_deps \
+            --package "$PACKAGE" \
+            --venv "${{ inputs.env_name }}" \
+            --wheel-dir "downloads" \
+            --ver-cuda "${{ inputs.ver_cuda }}" \
+            --only
       - name: Run pylint
         run: |
           . ./${{ inputs.env_name }}/bin/activate
@@ -152,13 +144,13 @@ jobs:
           export LD_LIBRARY_PATH="${PYTHON_LIB_PATH}:${LD_LIBRARY_PATH}"
 
           # Run pylint on aimet-onnx or aimet-torch
-          if [ "${{ inputs.ver_onnxruntime }}" != "" ] ; then
+          if [[ "$PACKAGE" == "aimet_onnx" ]] ; then
               AIMET_ONNX_PATH=$(find $UV_PYTHONPATH -regex ".*/aimet_onnx")
               if [ -z "$AIMET_ONNX_PATH" ]; then
                 echo "aimet_onnx package not found in $UV_PYTHONPATH"
               fi
               python -m pylint --rcfile=.pylintrc $AIMET_ONNX_PATH
-          elif [ "${{ inputs.ver_torch }}" != "" ] ; then
+          elif [[ "$PACKAGE" == "aimet_torch" ]] ; then
             AIMET_TORCH_PATH=$(find $UV_PYTHONPATH -regex ".*/aimet_torch")
             if [ -z "$AIMET_TORCH_PATH" ]; then
               echo "aimet_torch package not found in $UV_PYTHONPATH"
@@ -169,54 +161,27 @@ jobs:
       - name: Run Unit tests
         if: inputs.run_unit_tests
         run: |
-          set -x
           . ./${{ inputs.env_name }}/bin/activate
 
-          PYTHON_LIB_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-          export LD_LIBRARY_PATH="${PYTHON_LIB_PATH}:${LD_LIBRARY_PATH}"
-          for target in $(find downloads -name "*Test"); do
-              chmod +x $target
-              $target
-          done
+          python3 scripts/all/build_and_test.py --task unit_test \
+            --package "$PACKAGE" \
+            --venv "${{ inputs.env_name }}" \
+            --wheel-dir "downloads" \
+            --ver-cuda "${{ inputs.ver_cuda }}" \
+            --parallel 8 \
+            --only
 
-          PYTEST_TARGETS="./TrainingExtensions/common/test"
-
-          if [ "${{ inputs.ver_onnxruntime }}" != "" ] ; then
-              PYTEST_TARGETS="./ModelOptimizations/DlQuantization/test $PYTEST_TARGETS"
-              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/onnx/test"
-          elif [ "${{ inputs.ver_torch }}" != "" ] ; then
-              PYTEST_TARGETS="$PYTEST_TARGETS ./TrainingExtensions/torch/test"
-          fi
-          # Select all tests on GPU runners; skip cuda tests on CPU runners.
-          PYTEST_ARGS=()
-          if [ "${{ inputs.ver_cuda }}" = "" ] ; then
-              PYTEST_ARGS=(-m "not cuda")
-          fi
-          python -m pytest "${PYTEST_ARGS[@]}" $PYTEST_TARGETS -c pyproject.toml -n 8
       - name: Run Acceptance tests
         if: inputs.run_acceptance_tests
         run: |
-          set -x
           . ./${{ inputs.env_name }}/bin/activate
 
-          # Set LD_LIBRARY_PATH for dynamic linking with libpython3.so
-          PYTHON_LIB_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-          export LD_LIBRARY_PATH="${PYTHON_LIB_PATH}:${LD_LIBRARY_PATH}"
-
-          PYTEST_TARGETS="./NightlyTests/common"
-          if [ "${{ inputs.ver_onnxruntime }}" != "" ] ; then
-              PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/onnx"
-          elif [ "${{ inputs.ver_torch }}" != "" ] ; then
-              PYTEST_TARGETS="$PYTEST_TARGETS ./NightlyTests/torch"
-              uv pip install wget
-              python ./NightlyTests/torch/dependencies.py ./NightlyTests/torch/resnet18_eval_scores.csv
-          fi
-          # Select all tests on GPU runners; skip cuda tests on CPU runners.
-          PYTEST_ARGS=()
-          if [ "${{ inputs.ver_cuda }}" = "" ] ; then
-              PYTEST_ARGS=(-m "not cuda")
-          fi
-          python -m pytest "${PYTEST_ARGS[@]}" $PYTEST_TARGETS -c pyproject.toml
+          python3 scripts/all/build_and_test.py --task acceptance_test \
+            --package "$PACKAGE" \
+            --venv "${{ inputs.env_name }}" \
+            --wheel-dir "downloads" \
+            --ver-cuda "${{ inputs.ver_cuda }}" \
+            --only
 
   test_on_windows:
     name: Run AIMET unit and acceptance tests on Windows (${{ matrix.arch }})
@@ -253,43 +218,29 @@ jobs:
           ENV_NAME: "onnx-cpu"
           VER_PYTHON: "${{ matrix.python-version }}"
 
-      - name: Install AIMET-ONNX wheel
-        run: |
-
-          # Activate uv environment
-          .\onnx-cpu\Scripts\Activate.ps1
-
-          python -m ensurepip --upgrade
-          python -m pip install uv
-
-          # Install aimet-onnx
-          $wheel = Get-ChildItem -Path downloads -Filter "aimet_onnx*.whl" | Select-Object -First 1 -ExpandProperty FullName
-          python -m uv pip install "$wheel[test]" --extra-index-url="https://download.pytorch.org/whl/cpu" --index-strategy unsafe-best-match --native-tls
-
       - name: Run Unit tests
         if: inputs.run_unit_tests
         run: |
-
-          # Activate uv environment
           .\onnx-cpu\Scripts\Activate.ps1
 
-          # Run tests
-          $pytest_args = "not cuda"
-          Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\ModelOptimizations\\DlQuantization\\test"
-          Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\TrainingExtensions\\common\\test\\python"
-          # TODO: #6211 Move torch to onnx tests out of unit tests
-          Invoke-Expression "pytest -m `"$pytest_args`" -n 8 .\\TrainingExtensions\\onnx\\test\\python --ignore .\\TrainingExtensions\\onnx\\test\\python\\test_torch_to_onnx.py"
+          python scripts\all\build_and_test.py --task unit_test `
+            --package aimet_onnx `
+            --venv onnx-cpu `
+            --wheel-dir "downloads" `
+            --parallel 8 `
+            --only
 
       - name: Run Acceptance tests
         if: inputs.run_acceptance_tests
         run: |
-
-          # Activate uv environment
           .\onnx-cpu\Scripts\Activate.ps1
 
-          # Run tests
-          $pytest_args = "not cuda"
-          Invoke-Expression "pytest -m `"$pytest_args`" .\\NightlyTests\\onnx -n 8"
+          python scripts\all\build_and_test.py --task acceptance_test `
+            --package aimet_onnx `
+            --venv onnx-cpu `
+            --wheel-dir "downloads" `
+            --parallel 8 `
+            --only
 
   test_on_macos:
     name: Run AIMET unit and acceptance tests on macOS (ARM64)
@@ -319,44 +270,27 @@ jobs:
           ENV_NAME: "onnx-cpu"
           VER_PYTHON: "3.12"
 
-      - name: Install AIMET-ONNX wheel
-        run: |
-          set -x
-
-          # Activate uv environment
-          . ./onnx-cpu/bin/activate
-
-          # Install aimet-onnx
-          wheel=$(find downloads -name "aimet_onnx*.whl" | head -n 1)
-          uv pip install --native-tls "$wheel[test]" --extra-index-url="https://download.pytorch.org/whl/cpu" --index-strategy unsafe-best-match
-
       - name: Run Unit tests
         if: inputs.run_unit_tests
         run: |
-          set -x
-
-          # Activate uv environment
           . ./onnx-cpu/bin/activate
 
-          # Run compiled C++ unit tests (ModelOptimizations/DlQuantization)
-          for target in $(find downloads -name "*Test"); do
-              chmod +x $target
-              $target
-          done
-
-          # Run Python unit tests
-          pytest -m "not cuda" -n 8 TrainingExtensions/common/test/python
-          # TODO: #6211 Move torch to onnx tests out of unit tests
-          pytest -m "not cuda" -n 8 TrainingExtensions/onnx/test/python --ignore TrainingExtensions/onnx/test/python/test_torch_to_onnx.py
+          python3 scripts/all/build_and_test.py --task unit_test \
+            --package aimet_onnx \
+            --venv onnx-cpu \
+            --wheel-dir "downloads" \
+            --parallel 8 \
+            --only
 
       - name: Run Acceptance tests
         if: inputs.run_acceptance_tests
         run: |
-          set -x
-
-          # Activate uv environment
           . ./onnx-cpu/bin/activate
 
-          # Run tests
-          pytest -m "not cuda" NightlyTests/onnx -n 8
+          python3 scripts/all/build_and_test.py --task acceptance_test \
+            --package aimet_onnx \
+            --venv onnx-cpu \
+            --wheel-dir "downloads" \
+            --parallel 8 \
+            --only
 

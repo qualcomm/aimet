@@ -85,7 +85,6 @@ jobs:
                  "VER_CUDA":        "",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
               },
               {
@@ -97,7 +96,6 @@ jobs:
                  "VER_CUDA":        "13.2.0",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
               }
             ]')
@@ -116,7 +114,6 @@ jobs:
                  "VER_CUDA":        "",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
               },
               {
@@ -128,7 +125,6 @@ jobs:
                  "VER_CUDA":        "13.2.0",
                  "RUN_UNIT_TESTS":    "ON",
                  "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all",
                  "PIP_INDEX":       ""
               }
             ]')
@@ -146,7 +142,6 @@ jobs:
                  "VER_CUDA":        "",
                  "RUN_UNIT_TESTS":    "OFF",
                  "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "BUILD_TARGETS":   "all;doc",
                  "PIP_INDEX":       ""
               }
             ]')
