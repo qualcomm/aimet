@@ -1,7 +1,9 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import io
 import os
+import onnx
 import pytest
 import tempfile
 import torch
@@ -118,3 +120,120 @@ def random_chunked_dataset(vocab_size: int, context_length: int, num_chunks: int
     return ChunkedDataset(
         {"input_ids": input_ids, "attention_mask": attention_mask}, context_length
     )
+
+
+@contextmanager
+def patch_sdpa_mask():
+    """Make HF mask construction traceable under torch.jit.trace."""
+    import transformers.masking_utils as mu
+
+    orig = mu.sdpa_mask
+    orig_registered = mu.ALL_MASK_ATTENTION_FUNCTIONS["sdpa"]
+
+    def patched(*args, **kwargs):
+        if (
+            "q_length" in kwargs
+            and isinstance(kwargs["q_length"], torch.Tensor)
+            and kwargs["q_length"].ndim == 0
+        ):
+            kwargs["q_length"] = kwargs["q_length"].item()
+        elif len(args) >= 2 and isinstance(args[1], torch.Tensor) and args[1].ndim == 0:
+            args = (args[0], args[1].item(), *args[2:])
+        return orig(*args, **kwargs)
+
+    try:
+        mu.ALL_MASK_ATTENTION_FUNCTIONS["sdpa"] = patched
+        mu.sdpa_mask = patched
+        yield
+    finally:
+        mu.sdpa_mask = orig
+        mu.ALL_MASK_ATTENTION_FUNCTIONS["sdpa"] = orig_registered
+
+
+def make_tiny_decoder_config(config_attr, num_hidden_layers=2, **extra):
+    """Build a tiny decoder config, or skip if the architecture is unavailable."""
+    import transformers
+
+    cfg_cls = getattr(transformers, config_attr, None)
+    if cfg_cls is None:
+        pytest.skip(f"{config_attr} not available in this transformers version")
+
+    cfg = cfg_cls(**extra)
+    overrides = dict(
+        num_hidden_layers=num_hidden_layers,
+        hidden_size=64,
+        intermediate_size=128,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=16,
+        vocab_size=1024,
+        max_position_embeddings=128,
+        tie_word_embeddings=False,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
+        # MoE knobs (best-effort; ignored by dense configs)
+        num_experts=4,
+        num_local_experts=4,
+        num_experts_per_tok=2,
+        moe_intermediate_size=128,
+        decoder_sparse_step=1,
+    )
+    for key, value in overrides.items():
+        if hasattr(cfg, key):
+            try:
+                setattr(cfg, key, value)
+            except (AttributeError, TypeError):
+                pass
+    return cfg
+
+
+class PrefillWrapper(torch.nn.Module):
+    """input_ids -> logits prefill wrapper for ONNX export.
+
+    NOTE: ``use_cache=False`` keeps the graph to a prefill pass,
+    block detection needs no KV-cache I/O.
+    """
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids, position_ids, attention_mask):
+        return self.model(
+            input_ids=input_ids,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            use_cache=False,
+            return_dict=True,
+        ).logits
+
+
+def sample_prefill_inputs(cfg, seq_len=8):
+    """Build dummy (input_ids, position_ids, attention_mask) for a prefill pass."""
+    input_ids = torch.randint(3, cfg.vocab_size, (1, seq_len), dtype=torch.long)
+    position_ids = torch.arange(seq_len).unsqueeze(0)
+    attention_mask = torch.ones(1, seq_len, dtype=torch.long)
+    return input_ids, position_ids, attention_mask
+
+
+def export_onnx(model, inputs, backend, input_names=None):
+    """Export the wrapped model to ONNX via the torchscript or dynamo backend."""
+    if input_names is None:
+        input_names = ["input_ids", "position_ids", "attention_mask"]
+    buf = io.BytesIO()
+    with patch_sdpa_mask(), torch.no_grad():
+        if backend == "dynamo":
+            program = torch.export.draft_export(model, inputs, strict=False)
+            torch.onnx.export(program, (), buf, input_names=input_names, dynamo=True)
+        else:
+            torch.onnx.export(
+                model,
+                inputs,
+                buf,
+                input_names=input_names,
+                opset_version=17,
+                dynamo=False,
+            )
+    buf.seek(0)
+    return onnx.load_model(buf)

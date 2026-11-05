@@ -3,6 +3,8 @@
 
 # /usr/bin/env python
 
+import functools
+import re
 import time
 import pytest
 from unittest.mock import MagicMock
@@ -45,7 +47,7 @@ from aimet_onnx.quantsim import (
     set_blockwise_quantization_for_weights,
     set_grouped_blockwise_quantization_for_weights,
 )
-from aimet_onnx.utils import make_dummy_input
+from aimet_onnx.utils import _run_session_to_numpy, make_dummy_input
 from aimet_onnx.qc_quantize_op import (
     QcQuantizeOp,
     OpMode,
@@ -59,7 +61,13 @@ from .models.test_models import single_residual_model
 from .models import models_for_tests
 from .models.test_models_onnx import model_with_multiple_inputs
 from .models.test_models_onnx import model_with_multiple_outputs
-from .utils import tmp_dir
+from .utils import (
+    PrefillWrapper,
+    export_onnx,
+    make_tiny_decoder_config,
+    sample_prefill_inputs,
+    tmp_dir,
+)
 
 AimetLogger.set_level_for_all_areas(logging.DEBUG)
 
@@ -2094,3 +2102,637 @@ class TestBlockWiseReconLoss:
             assert np.allclose(onnx_outputs[0], output)
 
         del session
+
+
+_SEQ_LEN, _HIDDEN, _FFN = 4, 8, 16
+
+
+class _GraphBuilder:
+    """Builds small ONNX graphs in which every node output is named after its node."""
+
+    def __init__(self):
+        self.nodes = []
+        self.initializers = []
+
+    def op(self, op_type, inputs, name, **attrs):
+        self.nodes.append(
+            onnx.helper.make_node(op_type, inputs, [name], name=name, **attrs)
+        )
+        return name
+
+    def const(self, name, array):
+        self.initializers.append(
+            onnx.numpy_helper.from_array(np.asarray(array, dtype=np.float32), name)
+        )
+        return name
+
+    def linear(self, x, name, shape):
+        weight = self.const(f"{name}.weight", np.random.randn(*shape) * 0.1)
+        return self.op("MatMul", [x, weight], name)
+
+    def model(self, inputs, output):
+        graph = onnx.helper.make_graph(
+            self.nodes,
+            "test_graph",
+            inputs,
+            [
+                onnx.helper.make_tensor_value_info(
+                    output, onnx.TensorProto.FLOAT, [1, _SEQ_LEN, _HIDDEN]
+                )
+            ],
+            initializer=self.initializers,
+        )
+        model = onnx.helper.make_model(
+            graph,
+            opset_imports=[onnx.helper.make_operatorsetid("", 20)],
+            ir_version=10,
+        )
+        onnx.checker.check_model(model)
+        return model
+
+
+def _decoder_model(num_blocks: int) -> onnx.ModelProto:
+    """
+    Pre-norm decoder stack with RoPE, masked attention, SwiGLU MLP and two residual Adds per block.
+    RoPE cos/sin and the attention mask are computed in the graph from model inputs.
+    """
+    b = _GraphBuilder()
+    position = b.op(
+        "Mul", ["position", b.const("inv_freq", np.linspace(0.1, 1.0, _HIDDEN))], "pos"
+    )
+    cos = b.op("Cos", [position], "rope_cos")
+    sin = b.op("Sin", [position], "rope_sin")
+    mask = b.op("Mul", ["attention_mask", b.const("mask_scale", [-1e4])], "attn_mask")
+    h = b.linear("hidden", "in_proj", (_HIDDEN, _HIDDEN))
+
+    for i in range(num_blocks):
+        p = f"blk{i}"
+        norm1 = b.op("Relu", [h], f"{p}.norm1")
+        q = b.linear(norm1, f"{p}.q_proj", (_HIDDEN, _HIDDEN))
+        k = b.linear(norm1, f"{p}.k_proj", (_HIDDEN, _HIDDEN))
+        v = b.linear(norm1, f"{p}.v_proj", (_HIDDEN, _HIDDEN))
+
+        def rope(t, tag):
+            t_cos = b.op("Mul", [t, cos], f"{p}.{tag}_rope_cos_mul")
+            t_neg = b.op("Neg", [t], f"{p}.{tag}_rope_neg")
+            t_sin = b.op("Mul", [t_neg, sin], f"{p}.{tag}_rope_sin_mul")
+            return b.op("Add", [t_cos, t_sin], f"{p}.{tag}_rope_add")
+
+        q_rot = rope(q, "q")
+        k_rot = rope(k, "k")
+        k_t = b.op("Transpose", [k_rot], f"{p}.k_transpose", perm=[0, 2, 1])
+        scores = b.op("MatMul", [q_rot, k_t], f"{p}.attn_qk")
+        masked = b.op("Add", [scores, mask], f"{p}.attn_mask_add")
+        probs = b.op("Softmax", [masked], f"{p}.attn_softmax", axis=-1)
+        attn = b.op("MatMul", [probs, v], f"{p}.attn_pv")
+        o = b.linear(attn, f"{p}.o_proj", (_HIDDEN, _HIDDEN))
+        h1 = b.op("Add", [h, o], f"{p}.residual_add1")
+
+        norm2 = b.op("Relu", [h1], f"{p}.norm2")
+        gate = b.linear(norm2, f"{p}.gate_proj", (_HIDDEN, _FFN))
+        up = b.linear(norm2, f"{p}.up_proj", (_HIDDEN, _FFN))
+        sig = b.op("Sigmoid", [gate], f"{p}.silu_sigmoid")
+        silu = b.op("Mul", [gate, sig], f"{p}.silu_mul")
+        act = b.op("Mul", [silu, up], f"{p}.swiglu_mul")
+        down = b.linear(act, f"{p}.down_proj", (_FFN, _HIDDEN))
+        h = b.op("Add", [h1, down], f"{p}.residual_add2")
+
+    head = b.linear(h, "lm_head", (_HIDDEN, _HIDDEN))
+    inputs = [
+        onnx.helper.make_tensor_value_info(
+            "hidden", onnx.TensorProto.FLOAT, [1, _SEQ_LEN, _HIDDEN]
+        ),
+        onnx.helper.make_tensor_value_info(
+            "position", onnx.TensorProto.FLOAT, [1, _SEQ_LEN, 1]
+        ),
+        onnx.helper.make_tensor_value_info(
+            "attention_mask", onnx.TensorProto.FLOAT, [1, _SEQ_LEN, _SEQ_LEN]
+        ),
+    ]
+    return b.model(inputs, head)
+
+
+def _decoder_inputs():
+    return {
+        "hidden": np.random.randn(1, _SEQ_LEN, _HIDDEN).astype(np.float32),
+        "position": np.arange(_SEQ_LEN, dtype=np.float32).reshape(1, _SEQ_LEN, 1),
+        "attention_mask": np.triu(
+            np.ones((1, _SEQ_LEN, _SEQ_LEN), dtype=np.float32), k=1
+        ),
+    }
+
+
+def _single_op_residual_model(num_blocks: int) -> onnx.ModelProto:
+    """x_{i+1} = Add(Relu(x_i), MatMul(Sigmoid(Relu(x_i)))): the skip leaves a non-weight op."""
+    b = _GraphBuilder()
+    h = b.linear("hidden", "in_proj", (_HIDDEN, _HIDDEN))
+    for i in range(num_blocks):
+        r = b.op("Relu", [h], f"blk{i}.relu")
+        n = b.op("Sigmoid", [r], f"blk{i}.norm")
+        m = b.linear(n, f"blk{i}.proj", (_HIDDEN, _HIDDEN))
+        h = b.op("Add", [r, m], f"blk{i}.residual_add")
+    head = b.linear(h, "lm_head", (_HIDDEN, _HIDDEN))
+    inputs = [
+        onnx.helper.make_tensor_value_info(
+            "hidden", onnx.TensorProto.FLOAT, [1, _SEQ_LEN, _HIDDEN]
+        )
+    ]
+    return b.model(inputs, head)
+
+
+def _diamond_residual_model(num_blocks: int) -> onnx.ModelProto:
+    """A residual block whose branch forks and re-converges on an interior op.
+
+    blk{i}.fork is reachable from blk{i}.join both directly (through act) and through the
+    weight op blk{i}.proj, so _has_path_through_weight_op must expand it once per path.
+    Keyed on op.name alone, the weight-bearing path is pruned and the residual Add is missed.
+    """
+    b = _GraphBuilder()
+    h = b.linear("hidden", "in_proj", (_HIDDEN, _HIDDEN))
+    for i in range(num_blocks):
+        skip = b.op("Relu", [h], f"blk{i}.skip")
+        fork = b.op("Sigmoid", [skip], f"blk{i}.fork")
+        weighted = b.linear(fork, f"blk{i}.proj", (_HIDDEN, _HIDDEN))
+        plain = b.op("Relu", [fork], f"blk{i}.act")
+        joined = b.op("Mul", [weighted, plain], f"blk{i}.join")
+        h = b.op("Add", [skip, joined], f"blk{i}.residual_add")
+    head = b.linear(h, "lm_head", (_HIDDEN, _HIDDEN))
+    inputs = [
+        onnx.helper.make_tensor_value_info(
+            "hidden", onnx.TensorProto.FLOAT, [1, _SEQ_LEN, _HIDDEN]
+        )
+    ]
+    return b.model(inputs, head)
+
+
+def _boundary_names(dep_graph: DependencyGraph):
+    """Dependency nodes that are neither optimizable nor readers of a model input."""
+    model_input_ops = set(dep_graph._op_names_with_model_inputs)
+    return {
+        name
+        for name, node in dep_graph._name_to_node.items()
+        if not dep_graph.is_supported_op(node.cg_op) and name not in model_input_ops
+    }
+
+
+class TestResidualAddBoundary:
+    """Only residual Adds may become dependency boundaries of the dependency graph."""
+
+    @staticmethod
+    def _dependency_graph(model, inputs):
+        return DependencyGraph(ConnectedGraph(model), [inputs])
+
+    @pytest.mark.parametrize("num_blocks", [1, 3])
+    def test_only_residual_adds_are_boundaries(self, num_blocks):
+        """
+        When: A decoder with RoPE, masked attention and a SwiGLU MLP is converted to a dependency graph
+        Then: The two residual Adds of every block are the only boundary nodes
+        """
+        dep_graph = self._dependency_graph(
+            _decoder_model(num_blocks), _decoder_inputs()
+        )
+
+        expected = {
+            f"blk{i}.residual_add{j}" for i in range(num_blocks) for j in (1, 2)
+        }
+        assert _boundary_names(dep_graph) == expected
+
+    @pytest.mark.parametrize(
+        "op_suffix",
+        [
+            "attn_qk",  # activation x activation MatMul: Q.K^T
+            "attn_mask_add",  # Add of attention scores and a mask computed from a model input
+            "attn_pv",  # activation x activation MatMul: P.V
+        ],
+    )
+    def test_attention_joins_are_not_boundaries(self, op_suffix):
+        """
+        When: Attention joins have inputs that come from different dependency nodes
+        Then: They are not added to the dependency graph, so (heads, seq, seq) tensors are never cached
+        """
+        dep_graph = self._dependency_graph(_decoder_model(2), _decoder_inputs())
+
+        for i in range(2):
+            assert f"blk{i}.{op_suffix}" not in dep_graph._name_to_node
+
+    @pytest.mark.parametrize(
+        "op_suffix",
+        [
+            "q_rope_cos_mul",
+            "q_rope_sin_mul",
+            "q_rope_add",
+            "k_rope_cos_mul",
+            "k_rope_add",
+        ],
+    )
+    def test_rope_ops_are_not_boundaries(self, op_suffix):
+        """
+        When: RoPE multiplies q/k by cos/sin computed from a model input and adds the halves
+        Then: Neither the Muls nor the RoPE Add are added to the dependency graph
+        """
+        dep_graph = self._dependency_graph(_decoder_model(2), _decoder_inputs())
+
+        for i in range(2):
+            assert f"blk{i}.{op_suffix}" not in dep_graph._name_to_node
+
+    def test_swiglu_mul_is_not_boundary(self):
+        """
+        When: The SwiGLU gating Mul joins the gate and up projections
+        Then: down_proj depends on gate_proj and up_proj directly
+        """
+        dep_graph = self._dependency_graph(_decoder_model(1), _decoder_inputs())
+
+        assert "blk0.swiglu_mul" not in dep_graph._name_to_node
+        down_proj = dep_graph._name_to_node["blk0.down_proj"]
+        assert {node.cg_op.name for node in down_proj.inward_nodes} == {
+            "blk0.gate_proj",
+            "blk0.up_proj",
+        }
+
+    def test_residual_add_resets_dependencies(self):
+        """
+        When: Residual Adds are boundaries
+        Then: Ops after a residual Add depend only on that Add, and fan-in does not grow with depth
+        """
+        shallow = self._dependency_graph(_decoder_model(1), _decoder_inputs())
+        deep = self._dependency_graph(_decoder_model(4), _decoder_inputs())
+
+        for i in range(1, 4):
+            q_proj = deep._name_to_node[f"blk{i}.q_proj"]
+            assert [node.cg_op.name for node in q_proj.inward_nodes] == [
+                f"blk{i - 1}.residual_add2"
+            ]
+            residual = deep._name_to_node[f"blk{i}.residual_add1"]
+            assert {node.cg_op.name for node in residual.inward_nodes} == {
+                f"blk{i - 1}.residual_add2",
+                f"blk{i}.o_proj",
+            }
+
+        def max_fan_in(dep_graph):
+            return max(
+                len(node.inward_nodes) for node in dep_graph._name_to_node.values()
+            )
+
+        assert max_fan_in(deep) == max_fan_in(shallow)
+
+    def test_residual_add_with_single_weight_branch(self):
+        """
+        When: The skip input of a residual Add comes from a non-weight op and the branch contains one weight op
+        Then: Every residual Add is a boundary and fan-in stays bounded
+        """
+        num_blocks = 6
+        dep_graph = self._dependency_graph(
+            _single_op_residual_model(num_blocks),
+            {"hidden": np.random.randn(1, _SEQ_LEN, _HIDDEN).astype(np.float32)},
+        )
+
+        assert _boundary_names(dep_graph) == {
+            f"blk{i}.residual_add" for i in range(num_blocks)
+        }
+        assert max(len(n.inward_nodes) for n in dep_graph._name_to_node.values()) <= 2
+        head = dep_graph._name_to_node["lm_head"]
+        assert [node.cg_op.name for node in head.inward_nodes] == [
+            f"blk{num_blocks - 1}.residual_add"
+        ]
+
+    @pytest.mark.parametrize("num_blocks", [1, 3])
+    def test_residual_add_with_forking_branch(self, num_blocks):
+        """
+        When: The branch of a residual Add forks and re-converges on an op inside the branch
+        Then: The residual Add is still a boundary, because the path walk expands the fork
+              point once with a weight op on the path and once without
+        """
+        dep_graph = self._dependency_graph(
+            _diamond_residual_model(num_blocks),
+            {"hidden": np.random.randn(1, _SEQ_LEN, _HIDDEN).astype(np.float32)},
+        )
+
+        assert _boundary_names(dep_graph) == {
+            f"blk{i}.residual_add" for i in range(num_blocks)
+        }
+        assert max(len(n.inward_nodes) for n in dep_graph._name_to_node.values()) <= 2
+
+    def test_iterative_outputs_match_one_shot(self):
+        """
+        When: Activations are produced level by level through the residual boundaries
+        Then: The final output matches a single run of the whole model
+        """
+        model = _decoder_model(2)
+        cached_data = _decoder_inputs()
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=["CPUExecutionProvider"],
+        )
+        for quantizer in sim.qc_quantize_op_dict.values():
+            quantizer.enabled = False
+        seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=1), [cached_data])
+        dep_graph = seq_mse.dependency_graph
+
+        one_shot_output = sim.session.run(None, cached_data)[0]
+
+        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
+        for i in range(1, len(sorted_nodes)):
+            inp_names, out_names = dep_graph.get_subgraph_inp_out_names(sorted_nodes[i])
+            path = seq_mse._split_onnx_graph(inp_names, out_names)
+            with seq_mse._create_session(path) as session:
+                outputs = session.run(
+                    None, {name: cached_data[name] for name in inp_names}
+                )
+            cached_data.update(zip(out_names, outputs))
+
+        model_outputs = [output.name for output in sim.model.model.graph.output]
+        path = seq_mse._split_onnx_graph(out_names, model_outputs)
+        with seq_mse._create_session(path) as session:
+            iterative_output = session.run(
+                None, {name: cached_data[name] for name in out_names}
+            )[0]
+
+        assert np.allclose(iterative_output, one_shot_output, atol=1e-6)
+
+    @pytest.mark.parametrize(
+        "model_factory",
+        [lambda: _decoder_model(2), lambda: _single_op_residual_model(3)],
+    )
+    def test_cache_is_released_after_traversal(self, model_factory):
+        """
+        When: Sequential MSE runs to completion
+        Then: Every cached activation, including the inputs of nodes without dependents, is released
+        """
+        model = model_factory()
+        model_input_names = [inp.name for inp in model.graph.input]
+        all_inputs = _decoder_inputs()
+        inputs = [
+            {name: all_inputs[name] for name in model_input_names} for _ in range(2)
+        ]
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            default_param_bw=4,
+            providers=["CPUExecutionProvider"],
+        )
+        seq_mse = SequentialMse(
+            model, sim, SeqMseParams(num_batches=2, num_candidates=4), inputs
+        )
+        seq_mse.apply_seq_mse_algo()
+
+        dep_graph = seq_mse.dependency_graph
+        assert dep_graph._sim_data == {}
+        assert all(count == 0 for count in dep_graph._ref_cnt_for_sim_data.values())
+
+
+# Tests on real exported Hugging Face decoders. Their graphs contain many more Adds (RoPE,
+# tanh-GELU, MoE combines) and, in bfloat16, Casts around the residual stream.
+# Residual Adds per decoder layer, from each architecture's decoder-layer forward. Written
+# out by hand so the tests do not reuse the predicate under test to compute their oracle.
+_QWEN3 = ("Qwen3Config", (), 2)
+# Gemma4 also adds the per-layer-input gate back onto the residual stream.
+_GEMMA4 = ("Gemma4TextConfig", (), 3)
+# The MoE block's combine Add joins two sibling branches, so it is not a residual Add.
+_GEMMA4_MOE = (
+    "Gemma4TextConfig",
+    (("enable_moe_block", True), ("top_k_experts", 2)),
+    3,
+)
+# Hybrid linear-attention decoder; only exports under dynamo without a model transform.
+_QWEN3_5 = ("Qwen3_5TextConfig", (), 2)
+
+_LAYER_PATTERNS = {
+    "Gemma4TextConfig": ["sliding_attention"] * 4 + ["full_attention"],
+    "Qwen3_5TextConfig": ["linear_attention"] * 3 + ["full_attention"],
+}
+
+
+@functools.cache
+def _export_tiny_decoder(case, backend, dtype, num_layers):
+    pytest.importorskip("transformers")
+    from transformers import AutoModelForCausalLM
+
+    """Export a tiny random decoder; returns the ONNX model and one batch of inputs."""
+    config_attr, extra, _ = case
+    cfg = make_tiny_decoder_config(
+        config_attr, num_hidden_layers=num_layers, **dict(extra)
+    )
+    if config_attr in _LAYER_PATTERNS:
+        pattern = _LAYER_PATTERNS[config_attr]
+        # Keep one full-attention layer at every depth so fan-in is comparable across depths.
+        cfg.layer_types = [pattern[0]] * (num_layers - 1) + [pattern[-1]]
+    if config_attr == "Gemma4TextConfig":
+        cfg.hidden_size_per_layer_input = 16
+        cfg.vocab_size_per_layer_input = cfg.vocab_size
+        cfg.global_head_dim = cfg.head_dim
+        cfg.moe_intermediate_size = 64
+
+    torch.manual_seed(0)
+    model = AutoModelForCausalLM.from_config(cfg, experts_implementation="eager")
+    model = PrefillWrapper(model.eval()).to(dtype).eval()
+    inputs = sample_prefill_inputs(cfg)
+    onnx_model = export_onnx(model, inputs, backend)
+
+    names = ["input_ids", "position_ids", "attention_mask"]
+    feed = {name: tensor.numpy() for name, tensor in zip(names, inputs)}
+    graph_inputs = {inp.name for inp in onnx_model.graph.input}
+    return onnx_model, {k: v for k, v in feed.items() if k in graph_inputs}
+
+
+def _hf_dependency_graph(
+    case, backend="torchscript", dtype=torch.float32, num_layers=2
+):
+    onnx_model, inputs = _export_tiny_decoder(case, backend, dtype, num_layers)
+    return DependencyGraph(ConnectedGraph(copy.deepcopy(onnx_model)), [inputs])
+
+
+def _max_fan_in(dep_graph):
+    return max(len(node.inward_nodes) for node in dep_graph._name_to_node.values())
+
+
+# torchscript keeps the module scope in op names, so a residual Add is a direct child of the
+# decoder layer, not of self_attn / mlp / act_fn / experts.
+_LAYER_SCOPE_ADD = re.compile(r"/layers\.(\d+)/Add(_\d+)?$")
+
+
+@pytest.mark.skip_on_windows_amd64(
+    "insufficient disk for HF model export on Windows AMD64 runner"
+)
+class TestResidualAddBoundaryHF:
+    """SeqMSE dependency boundaries on exported Hugging Face decoders."""
+
+    @pytest.mark.parametrize(
+        "case, backend, dtype",
+        [
+            pytest.param(_QWEN3, "torchscript", torch.float32, id="qwen3-ts-fp32"),
+            pytest.param(_GEMMA4, "torchscript", torch.float32, id="gemma4-ts-fp32"),
+            pytest.param(
+                _GEMMA4_MOE, "torchscript", torch.float32, id="gemma4_moe-ts-fp32"
+            ),
+            pytest.param(_GEMMA4, "dynamo", torch.float32, id="gemma4-dynamo-fp32"),
+            pytest.param(_QWEN3_5, "dynamo", torch.float32, id="qwen3_5-dynamo-fp32"),
+            # torchscript cannot export bfloat16 RoPE (ComplexDouble), so bf16 uses dynamo.
+            pytest.param(_QWEN3, "dynamo", torch.bfloat16, id="qwen3-dynamo-bf16"),
+            pytest.param(_GEMMA4, "dynamo", torch.bfloat16, id="gemma4-dynamo-bf16"),
+        ],
+    )
+    def test_boundary_count_per_layer(self, case, backend, dtype):
+        """
+        When: A tiny HF decoder is exported and converted to a dependency graph
+        Then: Exactly the architecture's residual Adds per layer are boundaries, so a change
+              in the exported graph cannot silently disable residual-Add detection
+        """
+        num_layers = 2
+        _, _, adds_per_layer = case
+        dep_graph = _hf_dependency_graph(case, backend, dtype, num_layers)
+        boundaries = _boundary_names(dep_graph)
+
+        assert len(boundaries) == adds_per_layer * num_layers
+        for name in boundaries:
+            assert dep_graph._name_to_node[name].cg_op.type == "Add"
+
+        if backend == "torchscript":
+            per_layer = {}
+            for name in boundaries:
+                match = _LAYER_SCOPE_ADD.search(name)
+                assert match, f"{name} is not an Add at decoder-layer scope"
+                per_layer[match.group(1)] = per_layer.get(match.group(1), 0) + 1
+            assert per_layer == {str(i): adds_per_layer for i in range(num_layers)}
+
+    @pytest.mark.parametrize(
+        "case, backend",
+        [
+            pytest.param(_GEMMA4, "torchscript", id="gemma4-ts"),
+            pytest.param(_QWEN3_5, "dynamo", id="qwen3_5-dynamo"),
+        ],
+    )
+    def test_fan_in_independent_of_depth(self, case, backend):
+        """
+        When: The same decoder is exported with 2 and 6 layers
+        Then: The largest fan-in of any dependency node is the same, so cached activations
+              do not accumulate along the residual stream
+        """
+        shallow = _hf_dependency_graph(case, backend, num_layers=2)
+        deep = _hf_dependency_graph(case, backend, num_layers=6)
+
+        assert _max_fan_in(deep) == _max_fan_in(shallow)
+
+    def test_non_residual_adds_are_not_boundaries(self):
+        """
+        When: A Gemma4 MoE decoder has RoPE, tanh-GELU, expert and MoE-combine Adds
+        Then: None of them are added to the dependency graph
+        """
+        dep_graph = _hf_dependency_graph(_GEMMA4_MOE)
+        add_names = [
+            op.name for op in dep_graph.conn_graph.ordered_ops if op.type == "Add"
+        ]
+
+        non_residual = {
+            # MoE combine: sum of the dense-MLP and expert branches, at decoder-layer scope
+            "moe_combine": [
+                n for n in add_names if re.search(r"/layers\.\d+/Add_1$", n)
+            ],
+            "rope": [n for n in add_names if "/self_attn/" in n],
+            "gelu": [n for n in add_names if "/act_fn/" in n],
+            "experts": [n for n in add_names if "/experts/" in n],
+        }
+        for kind, names in non_residual.items():
+            assert names, f"no {kind} Adds in the export; the test would be vacuous"
+            assert not set(names) & set(dep_graph._name_to_node), kind
+
+    @pytest.mark.parametrize(
+        "backend, dtype, providers",
+        [
+            pytest.param(
+                "torchscript",
+                torch.float32,
+                ["CPUExecutionProvider"],
+                id="ts-fp32-cpu",
+            ),
+            pytest.param(
+                "dynamo",
+                torch.bfloat16,
+                ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                id="dynamo-bf16-cuda",
+                marks=pytest.mark.cuda,
+            ),
+        ],
+    )
+    def test_iterative_outputs_match_one_shot(self, backend, dtype, providers):
+        """
+        When: A Gemma4 decoder's activations are produced level by level through the residual
+              boundaries, as SeqMSE does
+        Then: The final output matches a single run of the whole model
+        """
+        if "CUDAExecutionProvider" in providers and (
+            "CUDAExecutionProvider" not in ort.get_available_providers()
+        ):
+            pytest.skip("CUDA EP not available")
+
+        onnx_model, inputs = _export_tiny_decoder(_GEMMA4, backend, dtype, 2)
+        sim = QuantizationSimModel(
+            copy.deepcopy(onnx_model),
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=providers,
+        )
+        for quantizer in sim.qc_quantize_op_dict.values():
+            quantizer.enabled = False
+        seq_mse = SequentialMse(
+            copy.deepcopy(onnx_model), sim, SeqMseParams(num_batches=1), [inputs]
+        )
+        dep_graph = seq_mse.dependency_graph
+        assert _boundary_names(dep_graph)
+
+        cached_data = dict(inputs)
+        one_shot_output = _run_session_to_numpy(sim.session, cached_data)[0]
+
+        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
+        for i in range(1, len(sorted_nodes)):
+            inp_names, out_names = dep_graph.get_subgraph_inp_out_names(sorted_nodes[i])
+            path = seq_mse._split_onnx_graph(inp_names, out_names)
+            with seq_mse._create_session(path) as session:
+                outputs = _run_session_to_numpy(
+                    session, {name: cached_data[name] for name in inp_names}
+                )
+            cached_data.update(zip(out_names, outputs))
+
+        model_outputs = [output.name for output in sim.model.model.graph.output]
+        path = seq_mse._split_onnx_graph(out_names, model_outputs)
+        with seq_mse._create_session(path) as session:
+            iterative_output = _run_session_to_numpy(
+                session, {name: cached_data[name] for name in out_names}
+            )[0]
+
+        assert iterative_output.shape == one_shot_output.shape
+        assert np.allclose(
+            iterative_output.astype(np.float32),
+            one_shot_output.astype(np.float32),
+            atol=1e-5 if dtype == torch.float32 else 1e-2,
+        )
+
+    @pytest.mark.cuda
+    def test_seq_mse_runs_on_bf16_decoder(self):
+        """
+        When: SeqMSE runs on a bfloat16 Gemma4 decoder with quantizers enabled
+        Then: Every weight quantizer in the dependency graph is optimized and frozen, and the
+              sim can calibrate activations afterwards
+        """
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("CUDA EP not available")
+
+        onnx_model, inputs = _export_tiny_decoder(_GEMMA4, "dynamo", torch.bfloat16, 2)
+        sim = QuantizationSimModel(
+            copy.deepcopy(onnx_model),
+            quant_scheme=QuantScheme.post_training_tf,
+            default_activation_bw=16,
+            default_param_bw=4,
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        apply_seq_mse(sim, [inputs], num_candidates=4)
+
+        weight_names = [
+            name
+            for name, quantizer in sim.qc_quantize_op_dict.items()
+            if quantizer.is_initialized()
+        ]
+        assert weight_names
+        for name in weight_names:
+            assert sim.qc_quantize_op_dict[name].is_encoding_frozen(), name
+
+        sim.compute_encodings([inputs])

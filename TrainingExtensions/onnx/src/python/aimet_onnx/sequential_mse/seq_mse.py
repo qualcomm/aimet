@@ -844,6 +844,12 @@ class SequentialMse:
             if dep_nodes_to_parallelize:
                 self._run_seq_mse(dep_nodes_to_parallelize)
 
+            # Nodes without dependents are never released by _cache_subgraph_input_data, so
+            # release their inputs once they have been optimized.
+            for dep_node in sorted_nodes:
+                if len(dep_node.outward_nodes) == 0:
+                    self.dependency_graph.dec_ref_count(dep_node)
+
     @contextmanager
     def _create_session(self, model: Union[onnx.ModelProto, str]):
         """

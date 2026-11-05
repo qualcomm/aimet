@@ -45,7 +45,8 @@ class DependencyGraph:
 
     Flow:
         1. Iterate over each Op in ConnectedGraph
-        2. If Op is in SUPPORTED_MODULES or Op contains at least one model input(s)
+        2. If Op is in SUPPORTED_MODULES, Op contains at least one model input(s), or Op is a
+           residual Add (see _is_residual_add)
             2a. Create DependencyNode corresponding to Op in ConnectedGraph
             2b. Link the DependencyNode with adjacent nodes
             2c. Update the reference count of DependencyNode's inputs
@@ -109,6 +110,10 @@ class DependencyGraph:
 
         # Tracks the cg op name to the number of incoming edges to the op.
         self._in_degree_map = self._fill_in_degree_map(self.conn_graph)
+
+        # Tracks the cg op name to its visit position in _fill_dependency_graph. Ops are visited
+        # only after all their producers, so this is a topological index.
+        self._visit_index = {}
 
         # NOTE: The traversal starts at top-level ops and visits only top-level ops, so the ops
         # inside control-flow bodies (e.g. Scan) are not added, and their weights are not
@@ -388,38 +393,41 @@ class DependencyGraph:
 
         NOTE:
          - _op_name_to_dependency_names tracks a node name to the names of nodes it depends on
-         - Add dependency node only if op is of type SUPPORTED_MODULES or has at least one input as model graph input(s)
+         - Add dependency node only if op is of type SUPPORTED_MODULES, has at least one input as
+           model graph input(s), or is a residual Add (see _is_residual_add)
 
         1) Checks if we can insert the dependency node in dependency graph using the module type
         2) Update the _op_name_to_dependency_names of the child op based on the parent op type.
 
         :param src_op: Current Op
         """
-        is_op_supported = False
+        self._visit_index[src_op.name] = len(self._visit_index)
 
         if src_op.name not in self._nodes_to_exclude:
             op = src_op.get_module()
+            supported_op = self.is_supported_op(src_op)
+            residual_add = self._is_residual_add(src_op)
             if op and (
-                self.is_supported_op(src_op)
+                supported_op
                 or src_op.name in self._op_names_with_model_inputs
+                or residual_add
             ):
-                is_op_supported = True
                 dependent_op_names = self._op_name_to_dependency_names[src_op.name]
                 self._add_dependency_node(src_op, dependent_op_names)
                 _logger.debug(
                     f"Added {src_op.name} to dependency graph with dependent_op_names: {len(dependent_op_names)}"
                 )
+                if residual_add:
+                    _logger.debug(
+                        f"{src_op.name} is a residual Add: added as a dependency boundary, not to be optimized"
+                    )
         else:
             _logger.debug(f"Skipping {src_op.name} as it's in nodes_to_exclude")
 
-        # If src_op is part of SUPPORTED_MODULES or has at least one input as a model input, include its name in _op_name_to_dependency_names.
-        # Otherwise, include the names of the dependencies of parent_op in _op_name_to_dependency_names.
+        # Children of a dependency node depend on that node; children of any other op inherit
+        # the op's own dependencies.
         for child_op in src_op.output_ops:
-            parent_dependencies = (
-                [src_op.name]
-                if is_op_supported
-                else self._op_name_to_dependency_names[src_op.name]
-            )
+            parent_dependencies = self._contributed_dependency_names(src_op.name)
             self._op_name_to_dependency_names[child_op.name].extend(parent_dependencies)
             self._op_name_to_dependency_names[child_op.name] = list(
                 set(self._op_name_to_dependency_names[child_op.name])
@@ -428,6 +436,102 @@ class DependencyGraph:
             self._in_degree_map[child_op.name] -= 1
             if self._in_degree_map[child_op.name] == 0:
                 self._fill_dependency_graph(child_op)
+
+    def _contributed_dependency_names(self, op_name: str) -> List[str]:
+        """
+        Returns the dependency names that the given (already visited) op passes to its children.
+
+        :param op_name: Name of a visited connected graph op
+        :return: [op_name] if the op is a dependency node, else the op's own dependency names
+        """
+        if op_name in self._name_to_node:
+            return [op_name]
+        return self._op_name_to_dependency_names[op_name]
+
+    def _is_residual_add(self, cg_op: Op) -> bool:
+        """
+        Checks whether the op is a residual Add that should be a dependency boundary.
+
+        Without a boundary, the children of an unsupported join inherit the union of both input
+        branches' dependencies; on a residual stream this union grows with depth and delays the
+        release of cached data. Only residual Adds are boundaries: other joins (attention
+        MatMuls, mask Adds, RoPE, gating Muls) can have much larger inputs than the tensors they
+        would replace, and their dependency sets do not grow across blocks.
+
+        An Add is residual if it has exactly two activation inputs that contribute different
+        dependency sets, the earlier producer feeds this Add and no other Add, and that producer
+        is an ancestor of the later one through a path that contains a supported (weight) op,
+        i.e. a skip connection around a weight branch.
+
+        :param cg_op: Connected graph op whose producers have all been visited
+        :return: True if the op is a residual Add
+        """
+        if cg_op.type != "Add":
+            return False
+
+        producers = [
+            inp.producer
+            for inp in cg_op.inputs
+            if not (inp.is_const or inp.is_parm) and inp.producer is not None
+        ]
+        if len(producers) != 2:
+            return False
+
+        first, second = producers
+        if frozenset(self._contributed_dependency_names(first.name)) == frozenset(
+            self._contributed_dependency_names(second.name)
+        ):
+            return False
+
+        early, late = sorted(producers, key=lambda op: self._visit_index[op.name])
+        # A tensor broadcast to every block (attention mask, RoPE cos/sin) is an operand of
+        # one Add per block, so from block 1 onwards it is an ancestor of that
+        # block's scores through the preceding blocks' weight ops, and the path test below
+        # accepts it. A residual skip tensor instead feeds exactly one Add, because each
+        # block consumes the stream once and produces a new one.
+        if [op for op in early.output_ops if op.type == "Add"] != [cg_op]:
+            return False
+
+        return self._has_path_through_weight_op(late, early)
+
+    def _has_path_through_weight_op(self, late: Op, early: Op) -> bool:
+        """
+        Checks whether early is an ancestor of late through a path containing a supported op.
+
+        The walk is bounded by early's visit index: an op visited no later than early cannot lie
+        on a path out of early, so it is pruned. On a residual stack early is the previous block's
+        residual Add, which confines the walk to a single block and keeps the total cost linear in
+        the number of blocks rather than quadratic.
+
+        Entries are keyed on (op, through_weight) rather than op alone, because an op that
+        is reachable both with and without a weight op on the path must be expanded once
+        per case; keying on the op alone would prune the weight-bearing path.
+
+        :param late: Connected graph op visited after early
+        :param early: Connected graph op
+        :return: True if such a path exists
+        """
+        early_index = self._visit_index[early.name]
+        stack = [(late, self.is_supported_op(late))]
+        seen = set()
+        while stack:
+            op, through_weight = stack.pop()
+            if (op.name, through_weight) in seen:
+                continue
+            # through_weight belongs to the path, not the op: an op reachable both with
+            # and without a weight op on the way must be expanded once for each, so it
+            # is part of the key.
+            seen.add((op.name, through_weight))
+            for parent in op.input_ops:
+                if parent.name == early.name:
+                    if through_weight:
+                        return True
+                    continue
+                # Descendants of early are visited after it, so earlier ops cannot be on a path.
+                if self._visit_index.get(parent.name, -1) <= early_index:
+                    continue
+                stack.append((parent, through_weight or self.is_supported_op(parent)))
+        return False
 
     def is_supported_op(self, cg_op: Op) -> bool:
         """

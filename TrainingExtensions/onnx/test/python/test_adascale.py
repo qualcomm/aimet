@@ -49,8 +49,10 @@ from aimet_onnx.adascale.model_converter import (
 from .models import models_for_tests
 from .utils import (
     add_genai_tests_path,
+    export_onnx,
     force_random_weight_init,
     offline_hf_configs,
+    sample_prefill_inputs,
 )
 from .models.style_decoders import (
     _VOCAB,
@@ -66,8 +68,6 @@ from .test_llm_topology_integration import (
     _block_topology_params,
     _build_block_topology_model,
     _detect_from_config,
-    _export_onnx,
-    _sample_inputs,
 )
 
 
@@ -1531,12 +1531,12 @@ def test_adascale_block_topologies(config_attr, backend, detect_kwargs, _):
     np.random.seed(0)
     torch.manual_seed(0)
     model, cfg = _build_block_topology_model(config_attr)
-    onnx_model = _export_onnx(model, _sample_inputs(cfg), backend)
+    onnx_model = export_onnx(model, sample_prefill_inputs(cfg), backend)
     end_points, *_ = _detect_from_config(config_attr, backend, detect_kwargs)
     inputs = [
         {
             t.name: tensor.numpy()
-            for t, tensor in zip(onnx_model.graph.input, _sample_inputs(cfg))
+            for t, tensor in zip(onnx_model.graph.input, sample_prefill_inputs(cfg))
         }
     ]
     sim = aimet_onnx.QuantizationSimModel(

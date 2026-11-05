@@ -10,8 +10,6 @@ matrix. Unit-level logic tests on tiny hand-built decoders live in
 ``test_llm_topology.py``.
 """
 
-import contextlib
-import io
 import re
 import shutil
 import pytest
@@ -26,7 +24,6 @@ skip_module_on_windows_arm64(
 
 import transformers
 from transformers import AutoModelForCausalLM
-import transformers.masking_utils as mu
 
 from aimet_onnx.ir_utils import static_tensor
 from aimet_onnx.llm_topology import analyze_llm_topology, ir_analysis
@@ -41,8 +38,12 @@ from aimet_onnx.llm_topology.layer_roles import LinearRole
 from aimet_onnx.llm_topology.topology import get_llm_topology
 from .utils import (
     add_genai_tests_path,
+    export_onnx,
     force_random_weight_init,
+    make_tiny_decoder_config,
     offline_hf_configs,
+    PrefillWrapper,
+    sample_prefill_inputs,
 )
 
 _NUM_LAYERS = 2
@@ -96,92 +97,9 @@ _BLOCK_TOPOLOGY_MODELS = [
 _VLM_BACKBONE_MODELS = ["llava", "internvl", "qwen2_5_vl", "qwen3_vl"]
 
 
-@contextlib.contextmanager
-def _patch_sdpa_mask():
-    """Make HF mask construction traceable under torch.jit.trace."""
-    orig = mu.sdpa_mask
-    orig_registered = mu.ALL_MASK_ATTENTION_FUNCTIONS["sdpa"]
-
-    def patched(*args, **kwargs):
-        if (
-            "q_length" in kwargs
-            and isinstance(kwargs["q_length"], torch.Tensor)
-            and kwargs["q_length"].ndim == 0
-        ):
-            kwargs["q_length"] = kwargs["q_length"].item()
-        elif len(args) >= 2 and isinstance(args[1], torch.Tensor) and args[1].ndim == 0:
-            args = (args[0], args[1].item(), *args[2:])
-        return orig(*args, **kwargs)
-
-    try:
-        mu.ALL_MASK_ATTENTION_FUNCTIONS["sdpa"] = patched
-        mu.sdpa_mask = patched
-        yield
-    finally:
-        mu.sdpa_mask = orig
-        mu.ALL_MASK_ATTENTION_FUNCTIONS["sdpa"] = orig_registered
-
-
-def _make_config(config_attr, **extra):
-    """Build a tiny decoder config, or skip if the architecture is unavailable."""
-    cfg_cls = getattr(transformers, config_attr, None)
-    if cfg_cls is None:
-        pytest.skip(f"{config_attr} not available in this transformers version")
-
-    cfg = cfg_cls(**extra)
-    overrides = dict(
-        num_hidden_layers=_NUM_LAYERS,
-        hidden_size=64,
-        intermediate_size=128,
-        num_attention_heads=4,
-        num_key_value_heads=2,
-        head_dim=16,
-        vocab_size=1024,
-        max_position_embeddings=128,
-        tie_word_embeddings=False,
-        pad_token_id=0,
-        bos_token_id=1,
-        eos_token_id=2,
-        # MoE knobs (best-effort; ignored by dense configs)
-        num_experts=4,
-        num_local_experts=4,
-        num_experts_per_tok=2,
-        moe_intermediate_size=128,
-        decoder_sparse_step=1,
-    )
-    for key, value in overrides.items():
-        if hasattr(cfg, key):
-            try:
-                setattr(cfg, key, value)
-            except (AttributeError, TypeError):
-                pass
-    return cfg
-
-
-class _PrefillWrapper(torch.nn.Module):
-    """input_ids -> logits prefill wrapper for ONNX export.
-
-    NOTE: ``use_cache=False`` keeps the graph to a prefill pass,
-    block detection needs no KV-cache I/O.
-    """
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, input_ids, position_ids, attention_mask):
-        return self.model(
-            input_ids=input_ids,
-            position_ids=position_ids,
-            attention_mask=attention_mask,
-            use_cache=False,
-            return_dict=True,
-        ).logits
-
-
 def _build_block_topology_model(config_attr):
     """Instantiate ``AutoModelForCausalLM`` with random, distinct norm weights."""
-    cfg = _make_config(config_attr)
+    cfg = make_tiny_decoder_config(config_attr)
     torch.manual_seed(0)
     try:
         model = AutoModelForCausalLM.from_config(
@@ -193,21 +111,13 @@ def _build_block_topology_model(config_attr):
         for name, param in model.named_parameters():
             if name.endswith("norm.weight"):
                 param.copy_(torch.rand_like(param) * 0.5 + 0.75)
-    return _PrefillWrapper(model).eval(), cfg
-
-
-def _sample_inputs(cfg, seq_len=8):
-    """Build dummy (input_ids, position_ids, attention_mask) for a prefill pass."""
-    input_ids = torch.randint(3, cfg.vocab_size, (1, seq_len), dtype=torch.long)
-    position_ids = torch.arange(seq_len).unsqueeze(0)
-    attention_mask = torch.ones(1, seq_len, dtype=torch.long)
-    return input_ids, position_ids, attention_mask
+    return PrefillWrapper(model).eval(), cfg
 
 
 def _build_vlm(name):
     """Build a tiny full VLM (text + vision)."""
     if name == "llava":
-        text = _make_config("LlamaConfig")
+        text = make_tiny_decoder_config("LlamaConfig")
         vision = transformers.CLIPVisionConfig(
             hidden_size=32,
             intermediate_size=64,
@@ -219,7 +129,7 @@ def _build_vlm(name):
         cfg = transformers.LlavaConfig(text_config=text, vision_config=vision)
         return transformers.LlavaForConditionalGeneration(cfg).eval()
     if name == "internvl":
-        text = _make_config("Qwen2Config")
+        text = make_tiny_decoder_config("Qwen2Config")
         vision = transformers.InternVLVisionConfig(
             hidden_size=32,
             intermediate_size=64,
@@ -231,7 +141,7 @@ def _build_vlm(name):
         cfg = transformers.InternVLConfig(text_config=text, vision_config=vision)
         return transformers.InternVLForConditionalGeneration(cfg).eval()
     if name == "qwen2_5_vl":
-        text = _make_config(
+        text = make_tiny_decoder_config(
             "Qwen2_5_VLTextConfig",
             rope_scaling={"rope_type": "mrope", "mrope_section": [2, 2, 4]},
         )
@@ -241,7 +151,7 @@ def _build_vlm(name):
         cfg = transformers.Qwen2_5_VLConfig(text_config=text, vision_config=vision)
         return transformers.Qwen2_5_VLForConditionalGeneration(cfg).eval()
     if name == "qwen3_vl":
-        text = _make_config(
+        text = make_tiny_decoder_config(
             "Qwen3VLTextConfig",
             rope_scaling={"rope_type": "default", "mrope_section": [2, 2, 4]},
         )
@@ -294,39 +204,17 @@ def _vlm_sample_inputs(cfg, seq_len=8):
     return inputs_embeds, position_ids, attention_mask
 
 
-def _export_onnx(model, inputs, backend, input_names=None):
-    """Export the wrapped model to ONNX via the torchscript or dynamo backend."""
-    if input_names is None:
-        input_names = ["input_ids", "position_ids", "attention_mask"]
-    buf = io.BytesIO()
-    with _patch_sdpa_mask(), torch.no_grad():
-        if backend == "dynamo":
-            program = torch.export.draft_export(model, inputs, strict=False)
-            torch.onnx.export(program, (), buf, input_names=input_names, dynamo=True)
-        else:
-            torch.onnx.export(
-                model,
-                inputs,
-                buf,
-                input_names=input_names,
-                opset_version=17,
-                dynamo=False,
-            )
-    buf.seek(0)
-    return onnx.load_model(buf)
-
-
 def _detect_from_config(config_attr, backend, detect_kwargs):
     """Build, export, and run block detection for one LLM (model, backend) case."""
     model, cfg = _build_block_topology_model(config_attr)
-    onnx_model = _export_onnx(model, _sample_inputs(cfg), backend)
+    onnx_model = export_onnx(model, sample_prefill_inputs(cfg), backend)
     return _detect_from_onnx(onnx_model, detect_kwargs)
 
 
 def _detect_vlm_backbone(vlm_key, backend, detect_kwargs):
     """Build, export, and run block detection for one VLM-backbone (model, backend) case."""
     model, cfg = _build_vlm_backbone(vlm_key)
-    onnx_model = _export_onnx(
+    onnx_model = export_onnx(
         model,
         _vlm_sample_inputs(cfg),
         backend,
