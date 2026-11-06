@@ -21,7 +21,7 @@
 set -e
 
 NAMESPACE="aihub"
-USERNAME="$(whoami)"
+USERNAME=""
 ARGO_TOKEN=""
 
 # Wrapper so every argo call honors an optional per-invocation bearer token.
@@ -40,7 +40,7 @@ usage() {
   echo "  -a                Stop all your running workflows" >&2
   echo "  -l                List your running workflows (don't stop)" >&2
   echo "  --delete          Use 'argo delete' instead of 'argo terminate'" >&2
-  echo "  --user <name>     Creator username to filter on (default: \$(whoami))" >&2
+  echo "  --user <name>     Creator username to filter on (default: your cluster username)" >&2
   echo "  --namespace <ns>  Argo namespace (default: aihub)" >&2
   echo "  --specify-token   Prompt for a bearer token (hidden) to use for this run" >&2
   echo "" >&2
@@ -82,6 +82,13 @@ while [[ $# -gt 0 ]]; do
     *)               WF_NAMES+=("$1"); shift ;;
   esac
 done
+
+# Default to the cluster identity, which is what launch_pod.sh labels workflows with
+# (the local login can differ). Skipped with --specify-token: kubectl ignores the token.
+if [ -z "$USERNAME" ] && ! $SPECIFY_TOKEN; then
+  USERNAME="$(kubectl auth whoami -n "$NAMESPACE" -o jsonpath='{.status.userInfo.username}' 2>/dev/null | cut -d@ -f1 || true)"
+fi
+USERNAME="${USERNAME:-$(whoami)}"
 
 # Prompt for a bearer token (hidden) to run as another account this invocation.
 if $SPECIFY_TOKEN; then

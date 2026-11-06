@@ -21,7 +21,10 @@
 set -e
 
 NAMESPACE="${NAMESPACE:-aihub}"
-USERNAME="${USER:-$(whoami)}"
+# Must match the cluster identity: the server rejects workflows whose creator labels
+# differ from it, and the local $USER can differ (e.g. truncated cluster usernames)
+USERNAME="$(kubectl auth whoami -n "$NAMESPACE" -o jsonpath='{.status.userInfo.username}' 2>/dev/null | cut -d@ -f1 || true)"
+USERNAME="${USERNAME:-${USER:-$(whoami)}}"
 
 # Defaults
 TEMPLATE="aihub-interactive"
