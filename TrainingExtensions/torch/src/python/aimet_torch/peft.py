@@ -74,8 +74,8 @@ class LoraLayer(torch.nn.Module):
         """Forward pass for replaced layer"""
         result = self.base_layer(x, *args, **kwargs)
         torch_result_dtype = result.dtype
-        for active_adapter in self.active_adapters:
-            if active_adapter not in self.adapter_name_to_index:
+        for active_adapter, enabled in self.active_adapters.items():
+            if not enabled or active_adapter not in self.adapter_name_to_index:
                 continue
             lora_A = self.lora_A[self.adapter_name_to_index[active_adapter]]
             lora_B = self.lora_B[self.adapter_name_to_index[active_adapter]]
