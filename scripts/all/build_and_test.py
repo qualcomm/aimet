@@ -1082,6 +1082,28 @@ class _CiTaskBase(Task):
                     f"uv pip install failed with exit code {e.returncode}",
                 )
 
+        # A PIP_INDEX=pypi aimet-onnx wheel depends on onnxruntime (CPU), not
+        # onnxruntime-gpu (see packaging/plugins/local/aimet.py), so CUDA legs
+        # would otherwise run every ORT session on the CPU EP. Reinstalling the GPU
+        # build
+        if self.framework == "onnx" and self.ver_cuda:
+            install_cmd = [
+                "uv",
+                "pip",
+                "install",
+                "--reinstall",
+                "--no-deps",
+                "onnxruntime-gpu",
+            ]
+            logger.info(f"Running: {' '.join(install_cmd)}")
+            try:
+                subprocess.run(install_cmd, check=True, capture_output=False, env=env)
+            except subprocess.CalledProcessError as e:
+                return TaskResult(
+                    TaskStatus.FAILED,
+                    f"onnxruntime-gpu install failed with exit code {e.returncode}",
+                )
+
         return TaskResult(TaskStatus.SUCCESS)
 
     def _pytest(self, test_paths: list[Path], extra_args: list[str]) -> TaskResult:
@@ -1991,7 +2013,7 @@ def parse_arguments() -> argparse.Namespace:
         "--ver-cuda",
         type=str,
         default="",
-        help="CUDA toolkit version string (e.g. '12.6.3'), empty for CPU. "
+        help="CUDA toolkit version string (e.g. '13.2.0'), empty for CPU. "
         "Used by install_test_deps/unit_test/acceptance_test to select the "
         "torch index and pytest markers.",
     )

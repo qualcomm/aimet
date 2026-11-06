@@ -108,7 +108,7 @@ def get_torch_index_url(enable_cuda: bool) -> str:
 
 def torch_index_url_for_cuda_version(ver_cuda: str) -> str:
     """PyTorch extra-index-url for a dotted CUDA toolkit version string
-    (e.g. "12.6.3" -> cu126, "" -> cpu). Uses the CI-supplied version, not
+    (e.g. "13.2.0" -> cu132, "" -> cpu). Uses the CI-supplied version, not
     whatever `nvcc` reports on the runner."""
     parts = ver_cuda.split(".")
     if not parts or not parts[0]:
