@@ -448,7 +448,7 @@ class SequentialMse(SequentialMseBase):
 
             loss_fn = params.get_loss_fn()
             return (
-                loss_fn(xw, xqwq, reduction="none")
+                loss_fn(xqwq, xw, reduction="none")
                 .sum(0)
                 .view(out_channels, num_blocks)
             )
@@ -559,6 +559,8 @@ class SequentialMse(SequentialMseBase):
                         loss += cls._compute_loss(
                             quant_module, batch_x, batch_xq, w, wq, params
                         )
+                    if max_tensor.numel() == 1:
+                        loss = loss.sum()
                     total_loss.append(loss)
 
             best_indices = torch.stack(total_loss).min(0)[1]
