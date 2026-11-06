@@ -106,10 +106,15 @@ def _convert_to_qmodel(model: torch.nn.Module):
     Helper function to convert all modules to quantized aimet.nn modules.
     """
 
+    converted_modules = {}
+
     def _convert_to_qmodule(module: torch.nn.Module):
+        if module in converted_modules:
+            return converted_modules[module]
         if is_mergeable_transform(module):
             return module
 
+        original_module = module
         if not isinstance(
             module, (*quantized_modules, *unquantizable_modules, *containers)
         ) and not is_mergeable_transform(module):
@@ -131,8 +136,11 @@ def _convert_to_qmodel(model: torch.nn.Module):
                     if not qmodule and not tuple(module.children()):
                         exceptions[e.module_cls] = e
 
-        for name, child in module.named_children():
-            setattr(module, name, _convert_to_qmodule(child))
+        converted_modules[original_module] = module
+        # named_children() omits aliases of the same registered module.
+        for name, child in module._modules.items():  # pylint: disable=protected-access
+            if child is not None:
+                setattr(module, name, _convert_to_qmodule(child))
 
         return module
 
