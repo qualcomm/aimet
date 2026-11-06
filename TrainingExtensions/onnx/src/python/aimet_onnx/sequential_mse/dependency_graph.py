@@ -317,6 +317,8 @@ class DependencyGraph:
                     )
                 data[model_input].append(batch_dict[model_input])
 
+        #: Number of calibration samples
+        self.num_samples = len(next(iter(data.values()), []))
         for input_name, data_value in data.items():
             self.update_sim_data([input_name], [data_value])
 

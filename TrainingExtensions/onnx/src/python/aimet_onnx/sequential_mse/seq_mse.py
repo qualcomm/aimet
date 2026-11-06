@@ -15,7 +15,6 @@ import itertools
 import os
 import tempfile
 import numpy as np
-from aimet_onnx.common.progress import progress_bar  # pylint: disable=import-error
 import onnx
 import onnx_ir
 import onnxruntime
@@ -37,6 +36,11 @@ from aimet_onnx.utils import (
     _run_session_to_numpy,
 )
 from aimet_onnx.sequential_mse.dependency_graph import DependencyNode, DependencyGraph
+from aimet_onnx.sequential_mse.progress import (
+    SeqMseProgress,
+    display_name,
+    weight_result,
+)
 from aimet_onnx.sequential_mse.transform import (
     modify_graph_with_grouped_conv,
     modify_graph_with_grouped_linear,
@@ -443,11 +447,16 @@ class SequentialMse:
         loss = loss_fn(xqwq, xqw, reduction="none").sum(0)
         return loss
 
-    def _run_seq_mse(self, dep_nodes_to_parallelize: List[DependencyNode]):
+    def _run_seq_mse(
+        self,
+        dep_nodes_to_parallelize: List[DependencyNode],
+        progress: SeqMseProgress,
+    ):
         """
         Run Sequential MSE for all the dep_nodes_to_parallelize at same level.
 
         :param dep_nodes_to_parallelize: Dependency nodes to be parallelized.
+        :param progress: Progress report of the run this group belongs to.
         """
 
         def _set_candidates(candidate_index: int):
@@ -498,6 +507,8 @@ class SequentialMse:
 
             subgraph_inputs = list(set(subgraph_inputs))
             return subgraph_inputs, subgraph_outputs
+
+        progress.start_phase("build")
 
         # Cache the initial min and max values
         initial_min_max = {}
@@ -556,11 +567,13 @@ class SequentialMse:
                 chunk_dim,
             )
             if chunk_size is not None:
-                _logger.info(
-                    "Large block-quantized output detected. "
-                    "Using sequence chunking (chunk_size=%d) to fit both fp and quantized block outputs on GPU.",
+                progress.notice_once(
+                    "sequence chunking",
+                    "Large block-quantized outputs: chunking the sequence (first chunk_size=%d) "
+                    "to fit both fp and quantized block outputs on the GPU.",
                     chunk_size,
                 )
+                _logger.debug("Sequence chunking with chunk_size=%d", chunk_size)
                 sim_inputs, all_out_shapes, all_out_dtypes = _rechunk_seq_inputs(
                     sim_inputs, chunk_size, all_out_shapes, all_out_dtypes, chunk_dim
                 )
@@ -569,11 +582,8 @@ class SequentialMse:
             # Store accumulated loss per dep_node across candidates
             total_loss = defaultdict(list)
 
-            for candidate_index in progress_bar(
-                range(self.params.num_candidates),
-                desc="Candidates",
-                position=0,
-            ):
+            progress.start_phase("search")
+            for candidate_index in range(self.params.num_candidates):
                 _set_candidates(candidate_index)
 
                 # Initialize per dep_node loss accumulator
@@ -643,6 +653,8 @@ class SequentialMse:
 
         del sim_inputs
 
+        progress.start_phase("finalize")
+        results = []
         # Postprocessing (not vectorized)
         for dep_node in dep_nodes_to_parallelize:
             loss = total_loss[dep_node.cg_op.name]
@@ -652,6 +664,14 @@ class SequentialMse:
 
             # Find the index of the minimum loss along the candidate axis (axis=0)
             best_indices = stacked_loss.min(0)[1]
+            results.append(
+                weight_result(
+                    display_name(dep_node.cg_op),
+                    stacked_loss,
+                    best_indices,
+                    self.params.num_candidates,
+                )
+            )
             init_min, init_max = initial_min_max[dep_node.cg_op.name]
 
             # Unsqueeze best_indices until it matches dim length of max_val
@@ -667,9 +687,11 @@ class SequentialMse:
             self._freeze_encodings(dep_node)
 
         dep_node_names = [dep_node.cg_op.name for dep_node in dep_nodes_to_parallelize]
-        _logger.info(
-            f"Computed optimal parameter encodings for ops: {', '.join(dep_node_names)}"
+        _logger.debug(
+            "Computed optimal parameter encodings for ops: %s",
+            ", ".join(dep_node_names),
         )
+        progress.end_group(results)
 
     @staticmethod
     def _infer_bq_output_shapes(
@@ -831,24 +853,53 @@ class SequentialMse:
         NOTE: For the first iteration, no need to cache subgraph input data since model graph inputs are already saved.
         """
         sorted_order = self.dependency_graph.get_topologically_sorted_nodes()
-
-        for i, sorted_nodes in sorted_order.items():
-            if i != 0:
-                self._cache_subgraph_input_data([node for node in sorted_nodes])
-
-            dep_nodes_to_parallelize = [
-                dep_node
+        groups = [
+            [
+                dep_node.cg_op
                 for dep_node in sorted_nodes
                 if self.dependency_graph.is_supported_op(dep_node.cg_op)
             ]
-            if dep_nodes_to_parallelize:
-                self._run_seq_mse(dep_nodes_to_parallelize)
+            for sorted_nodes in sorted_order.values()
+        ]
+        progress = SeqMseProgress(
+            [group for group in groups if group],
+            num_candidates=self.params.num_candidates,
+            num_batches=self.dependency_graph.num_samples,
+            loss_fn=self.params.loss_fn,
+            excluded=self._excluded_weight_names(),
+        )
 
-            # Nodes without dependents are never released by _cache_subgraph_input_data, so
-            # release their inputs once they have been optimized.
-            for dep_node in sorted_nodes:
-                if len(dep_node.outward_nodes) == 0:
-                    self.dependency_graph.dec_ref_count(dep_node)
+        # The summary still reports what was done if a group fails
+        try:
+            for i, sorted_nodes in sorted_order.items():
+                if i != 0:
+                    progress.start_phase("cache inputs")
+                    self._cache_subgraph_input_data([node for node in sorted_nodes])
+
+                dep_nodes_to_parallelize = [
+                    dep_node
+                    for dep_node in sorted_nodes
+                    if self.dependency_graph.is_supported_op(dep_node.cg_op)
+                ]
+                if dep_nodes_to_parallelize:
+                    self._run_seq_mse(dep_nodes_to_parallelize, progress)
+
+                # Nodes without dependents are never released by _cache_subgraph_input_data, so
+                # release their inputs once they have been optimized.
+                for dep_node in sorted_nodes:
+                    if len(dep_node.outward_nodes) == 0:
+                        self.dependency_graph.dec_ref_count(dep_node)
+        finally:
+            progress.finish()
+
+    def _excluded_weight_names(self) -> List[str]:
+        """Names of the excluded ops sequential MSE would otherwise optimize."""
+        excluded = set(self._nodes_to_exclude)
+        return [
+            cg_op.name
+            for cg_op in self.dependency_graph.conn_graph.ordered_ops
+            if cg_op.name in excluded and self.dependency_graph.is_supported_op(cg_op)
+        ]
 
     @contextmanager
     def _create_session(self, model: Union[onnx.ModelProto, str]):

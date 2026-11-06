@@ -4,6 +4,7 @@
 # /usr/bin/env python
 
 import functools
+import io
 import re
 import time
 import pytest
@@ -2736,3 +2737,126 @@ class TestResidualAddBoundaryHF:
             assert sim.qc_quantize_op_dict[name].is_encoding_frozen(), name
 
         sim.compute_encodings([inputs])
+
+
+def _dynamo_two_linear_model() -> onnx.ModelProto:
+    """Two Linear layers exported with dynamo, whose node names (``node_linear``) differ from
+    the module paths (``fc1``, ``fc2``) recorded in their ``namespace`` metadata."""
+
+    class TwoLinear(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(8, 8)
+            self.fc2 = torch.nn.Linear(8, 4)
+
+        def forward(self, x):
+            return self.fc2(torch.relu(self.fc1(x)))
+
+    program = torch.onnx.export(
+        TwoLinear().eval(), (torch.randn(1, 8),), dynamo=True, opset_version=18
+    )
+    return program.model_proto
+
+
+class TestSeqMseProgress:
+    @staticmethod
+    def _run(model, caplog, **kwargs):
+        sim = QuantizationSimModel(
+            model=copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            default_activation_bw=8,
+            default_param_bw=4,
+            providers=["CPUExecutionProvider"],
+        )
+        inputs = [make_dummy_input(model) for _ in range(2)]
+        with caplog.at_level(logging.DEBUG, logger="SeqMse"):
+            apply_seq_mse(sim, inputs, num_candidates=4, **kwargs)
+        return [r for r in caplog.records if r.name == "SeqMse"]
+
+    def test_group_lines_label_results_and_show_graph_names(self, caplog):
+        """
+        Given: A dynamo-exported model, whose node names are not module paths
+        When: Sequential MSE runs
+        Then: Each group line names the weight by module path and graph node name, labels
+              its range and loss, and leaves the phase breakdown to debug
+        """
+        records = self._run(_dynamo_two_linear_model(), caplog)
+        groups = [r for r in records if r.getMessage().startswith("SeqMSE group ")]
+        info_groups = [r.getMessage() for r in groups if r.levelno == logging.INFO]
+        assert len(info_groups) == 2
+        assert all(
+            re.search(r"fc[12] \[node_\w+\] range \d\.\d\dx", m) for m in info_groups
+        )
+        assert all("search" not in m for m in info_groups)
+        debug_phases = [r.getMessage() for r in groups if r.levelno == logging.DEBUG]
+        assert len(debug_phases) == 2 and all("search" in m for m in debug_phases)
+
+    def test_group_lines_keep_torchscript_names(self, caplog):
+        """
+        Given: A TorchScript-exported model, whose node names are module paths
+        When: Sequential MSE runs
+        Then: Each group line names the weight by its node name in the graph, unchanged
+        """
+
+        class TwoLinear(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = torch.nn.Linear(8, 8)
+                self.fc2 = torch.nn.Linear(8, 4)
+
+            def forward(self, x):
+                return self.fc2(torch.relu(self.fc1(x)))
+
+        buffer = io.BytesIO()
+        torch.onnx.export(
+            TwoLinear().eval(),
+            (torch.randn(1, 8),),
+            buffer,
+            dynamo=False,
+            opset_version=18,
+        )
+        model = onnx.load_from_string(buffer.getvalue())
+        weights = [n.name for n in model.graph.node if n.op_type in ("MatMul", "Gemm")]
+        assert all(name.startswith("/fc") for name in weights)
+        records = self._run(model, caplog)
+        info_groups = [
+            r.getMessage()
+            for r in records
+            if r.getMessage().startswith("SeqMSE group ") and r.levelno == logging.INFO
+        ]
+        assert len(info_groups) == 2
+        for name, message in zip(weights, info_groups):
+            assert f": {name} range " in message
+
+    def test_excluded_count_is_weights_only(self, caplog):
+        """
+        Given: One weight excluded by name
+        When: Sequential MSE runs
+        Then: The header counts one excluded weight and the run optimizes the other
+        """
+        model = _dynamo_two_linear_model()
+        # The last weight, so the first still reads the graph input it is calibrated on
+        last = [n.name for n in model.graph.node if n.op_type in ("MatMul", "Gemm")][-1]
+        records = self._run(model, caplog, nodes_to_exclude=[last])
+        header = next(
+            r.getMessage() for r in records if "SeqMSE: optimizing" in r.getMessage()
+        )
+        assert "optimizing 1 weights" in header and "| 1 weights excluded" in header
+
+    def test_summary_is_logged_when_a_group_fails(self, caplog, monkeypatch):
+        """
+        Given: A group that raises during optimization
+        When: Sequential MSE runs
+        Then: The error propagates and the end-of-run summary is still logged
+        """
+
+        def _fail(self, dep_nodes, progress):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(SequentialMse, "_run_seq_mse", _fail)
+        with pytest.raises(RuntimeError, match="boom"):
+            self._run(_dynamo_two_linear_model(), caplog)
+        assert any(
+            "SeqMSE: done, optimized 0 weights" in r.getMessage()
+            for r in caplog.records
+        )
