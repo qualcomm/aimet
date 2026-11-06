@@ -281,6 +281,113 @@ def _log_block_report(
     _logger.debug("%s: memory: %s", label, " | ".join(memory))
 
 
+_BRANCH_WITHOUT_SAMPLES_HINT = (
+    "Optimize with inputs that run every branch of every If, e.g. for MoE experts, force "
+    "every expert active."
+)
+
+
+def _is_optimized(quantizer: Optional[QcQuantizeOp]) -> bool:
+    """Whether AdaScale optimizes the weight ``quantizer`` quantizes"""
+    return (
+        quantizer is not None
+        and quantizer.enabled
+        and not quantizer.is_encoding_frozen()
+    )
+
+
+def _check_every_branch_runs(
+    model: onnx_ir.Model,
+    model_path: str,
+    quantizer_dict: Dict[str, QcQuantizeOp],
+    inputs: Collection[Dict[str, np.ndarray]],
+    providers,
+    blocks: Collection[Tuple[List[str], List[str]]],
+):
+    """
+    Raises if no input sample runs an If branch whose weights AdaScale optimizes, before
+    optimizing anything. The If conds are read in one run of the unquantized model.
+
+    A weight in nested Ifs runs on the samples taking the branches of all of them. Only the
+    conds of the top-level graph can be read, so an If whose cond is computed in a branch is
+    checked when its block is optimized instead.
+
+    :param model: Unquantized model
+    :param model_path: Path where ``model`` is saved
+    :param quantizer_dict: Quantizers of the sim
+    :param inputs: Model input samples
+    :param providers: Providers to run ``model`` with
+    :param blocks: (input names, output names) of each block to optimize; Ifs outside them
+        aren't checked
+    """
+    if not any(node.op_type == "If" for node in model.graph.all_nodes()):
+        return
+
+    # (weight name, [(If node, branch) of each enclosing If, outermost first])
+    branch_weights = []
+
+    def visit(nodes: Collection[onnx_ir.Node], enclosing_ifs):
+        for node in nodes:
+            # A body that isn't an If branch, e.g. of a Scan, runs whenever its node does
+            for name, attr in node.attributes.items():
+                if attr.type == onnx_ir.AttributeType.GRAPH:
+                    visit(
+                        attr.as_graph(),
+                        enclosing_ifs + [(node, name)]
+                        if node.op_type == "If"
+                        else enclosing_ifs,
+                    )
+            if not enclosing_ifs or node.op_type not in ("MatMul", "Gemm", "Conv"):
+                continue
+            weight = node.inputs[1] if len(node.inputs) > 1 else None
+            if weight is None:
+                continue
+            if ir_utils.is_static(weight) and _is_optimized(
+                quantizer_dict.get(weight.name)
+            ):
+                branch_weights.append((weight.name, enclosing_ifs))
+
+    for block_inputs, block_outputs in blocks:
+        visit(onnx_ir.convenience.extract(model.graph, block_inputs, block_outputs), [])
+    top_level_names = onnx_ir.convenience.create_value_mapping(
+        model.graph, include_subgraphs=False
+    ).keys()
+    cond_names = list(
+        dict.fromkeys(
+            node.inputs[0].name
+            for _, enclosing_ifs in branch_weights
+            for node, _ in enclosing_ifs
+            if node.inputs[0].name in top_level_names
+        )
+    )
+    if not cond_names:
+        return
+
+    sampler = ActivationSampler(cond_names, model_path, providers)
+    conds = [dict(zip(cond_names, sampler.sample_acts(sample))) for sample in inputs]
+    del sampler
+    for weight_name, enclosing_ifs in branch_weights:
+        checked = [
+            (node, branch)
+            for node, branch in enclosing_ifs
+            if node.inputs[0].name in cond_names
+        ]
+        if checked and not any(
+            all(
+                bool(c[node.inputs[0].name].reshape(-1)[0]) == (branch == "then_branch")
+                for node, branch in checked
+            )
+            for c in conds
+        ):
+            path = ", ".join(
+                f"{branch} of If node {node.name}" for node, branch in checked
+            )
+            raise RuntimeError(
+                f"No input sample runs {path}, so AdaScale can't optimize its weight "
+                f"{weight_name}. {_BRANCH_WITHOUT_SAMPLES_HINT}"
+            )
+
+
 class AdaScale:
     """
     AdaScale is PTQ technique which performs Knowledge Distillation on blocks of modules by using the FP32 output as its
@@ -405,121 +512,140 @@ class AdaScale:
                 # Deep copy the model to ensure original weights are maintained
                 sim_model: onnx_ir.Model = onnx_ir.from_proto(sim.model.model)
                 onnx_ir.passes.common.TopologicalSortPass().call(sim_model)
-                unquantized_model = sim_model.clone()
-                ir_utils.remove_aimet_quantizers(unquantized_model)
-
-                _validate_boundaries_in_graph(unquantized_model.graph, block_end_points)
-
-                # Step back through leading Casts to land on the true
-                # cross-block residual (fp16 graphs keep the Cast).
-                start_residuals = [
-                    resolve_residual_tensor_name(unquantized_model.graph, start)
-                    for start, _ in block_end_points
-                ]
-                end_residuals = [
-                    resolve_residual_tensor_name(unquantized_model.graph, end)
-                    for _, end in block_end_points
-                ]
-                all_block_inputs = [
-                    required_block_inputs(
-                        sim_model.graph, start_residuals[: idx + 1], [end_residual]
-                    )
-                    for idx, end_residual in enumerate(end_residuals)
-                ]
-
-                # Save the unquantized model + weights once. Its
-                # dtype matches the sim's float dtype (fp16 by default).
-                onnx_ir.save(
-                    unquantized_model,
-                    unquantized_path,
-                    external_data="unquantized_model.data",
-                )
-
-                block_indices = cls._blocks_to_optimize(len(block_end_points))
-                _logger.info(
-                    "Optimizing %d of %d blocks with %d samples, %d iterations per block",
-                    len(block_indices),
-                    len(block_end_points),
-                    len(inputs),
-                    num_iterations,
-                )
-                run_start = time.perf_counter()
-
-                blocks_done = 0
-                # The summary still reports what was done if a block fails
+                # On a raise, the sim keeps the blocks optimized so far: their weights match
+                # the encodings they froze
                 try:
-                    for count, idx in enumerate(block_indices, start=1):
-                        # The index matches the model's layer names; the count is progress
-                        label = f"Block {idx} ({count} of {len(block_indices)})"
-                        _logger.info("%s: sampling inputs", label)
-                        if torch.cuda.is_available():
-                            torch.cuda.reset_peak_memory_stats()
+                    unquantized_model = sim_model.clone()
+                    ir_utils.remove_aimet_quantizers(unquantized_model)
 
-                        block_inputs = all_block_inputs[idx]
-                        if len(block_inputs) > 1:
-                            _logger.debug("%s: block inputs %s", label, block_inputs)
-
-                        block_start = sample_start = time.perf_counter()
-                        fp_inputs, qsim_inputs = cls._sample_full_prefix(
-                            sim_model,
-                            sim_path,
-                            unquantized_path,
-                            block_inputs,
-                            inputs,
-                            sim.providers,
-                        )
-                        gc.collect()
-                        torch.cuda.empty_cache()
-                        report = _BlockReport()
-                        report.times["sample"] = time.perf_counter() - sample_start
-
-                        block_input_output_names = (
-                            block_inputs,
-                            [end_residuals[idx]],
-                        )
-
-                        AdaScale.optimize_adascale_block(
-                            sim_model,
-                            sim.qc_quantize_op_dict,
-                            fp_inputs,
-                            qsim_inputs,
-                            block_input_output_names,
-                            beta_gamma_lr,
-                            scales_lr,
-                            num_iterations,
-                            device,
-                            loss_fn=loss_fn,
-                            _report=report,
-                            _progress_desc=f"{label} training",
-                        )
-                        del fp_inputs, qsim_inputs
-                        gc.collect()
-                        torch.cuda.empty_cache()
-
-                        now = time.perf_counter()
-                        elapsed = now - run_start
-                        _log_block_report(
-                            label,
-                            report,
-                            num_iterations,
-                            block_seconds=now - block_start,
-                            elapsed_seconds=elapsed,
-                            remaining_seconds=elapsed
-                            / count
-                            * (len(block_indices) - count),
-                        )
-
-                        blocks_done = count
-                finally:
-                    _logger.info(
-                        "Done: optimized %d of %d blocks in %s",
-                        blocks_done,
-                        len(block_indices),
-                        _format_duration(time.perf_counter() - run_start),
+                    _validate_boundaries_in_graph(
+                        unquantized_model.graph, block_end_points
                     )
 
-                sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
-                sim._rebuild_session()  # pylint: disable=protected-access
+                    # Step back through leading Casts to land on the true
+                    # cross-block residual (fp16 graphs keep the Cast).
+                    start_residuals = [
+                        resolve_residual_tensor_name(unquantized_model.graph, start)
+                        for start, _ in block_end_points
+                    ]
+                    end_residuals = [
+                        resolve_residual_tensor_name(unquantized_model.graph, end)
+                        for _, end in block_end_points
+                    ]
+                    all_block_inputs = [
+                        required_block_inputs(
+                            sim_model.graph, start_residuals[: idx + 1], [end_residual]
+                        )
+                        for idx, end_residual in enumerate(end_residuals)
+                    ]
+
+                    # Save the unquantized model + weights once. Its
+                    # dtype matches the sim's float dtype (fp16 by default).
+                    onnx_ir.save(
+                        unquantized_model,
+                        unquantized_path,
+                        external_data="unquantized_model.data",
+                    )
+
+                    block_indices = cls._blocks_to_optimize(len(block_end_points))
+                    _check_every_branch_runs(
+                        unquantized_model,
+                        unquantized_path,
+                        sim.qc_quantize_op_dict,
+                        inputs,
+                        sim.providers,
+                        [
+                            (all_block_inputs[idx], [end_residuals[idx]])
+                            for idx in block_indices
+                        ],
+                    )
+
+                    _logger.info(
+                        "Optimizing %d of %d blocks with %d samples, %d iterations per block",
+                        len(block_indices),
+                        len(block_end_points),
+                        len(inputs),
+                        num_iterations,
+                    )
+                    run_start = time.perf_counter()
+
+                    blocks_done = 0
+                    # The summary still reports what was done if a block fails
+                    try:
+                        for count, idx in enumerate(block_indices, start=1):
+                            # The index matches the model's layer names; the count is progress
+                            label = f"Block {idx} ({count} of {len(block_indices)})"
+                            _logger.info("%s: sampling inputs", label)
+                            if torch.cuda.is_available():
+                                torch.cuda.reset_peak_memory_stats()
+
+                            block_inputs = all_block_inputs[idx]
+                            if len(block_inputs) > 1:
+                                _logger.debug(
+                                    "%s: block inputs %s", label, block_inputs
+                                )
+
+                            block_start = sample_start = time.perf_counter()
+                            fp_inputs, qsim_inputs = cls._sample_full_prefix(
+                                sim_model,
+                                sim_path,
+                                unquantized_path,
+                                block_inputs,
+                                inputs,
+                                sim.providers,
+                            )
+                            gc.collect()
+                            torch.cuda.empty_cache()
+                            report = _BlockReport()
+                            report.times["sample"] = time.perf_counter() - sample_start
+
+                            block_input_output_names = (
+                                block_inputs,
+                                [end_residuals[idx]],
+                            )
+
+                            AdaScale.optimize_adascale_block(
+                                sim_model,
+                                sim.qc_quantize_op_dict,
+                                fp_inputs,
+                                qsim_inputs,
+                                block_input_output_names,
+                                beta_gamma_lr,
+                                scales_lr,
+                                num_iterations,
+                                device,
+                                loss_fn=loss_fn,
+                                _report=report,
+                                _progress_desc=f"{label} training",
+                            )
+                            del fp_inputs, qsim_inputs
+                            gc.collect()
+                            torch.cuda.empty_cache()
+
+                            now = time.perf_counter()
+                            elapsed = now - run_start
+                            _log_block_report(
+                                label,
+                                report,
+                                num_iterations,
+                                block_seconds=now - block_start,
+                                elapsed_seconds=elapsed,
+                                remaining_seconds=elapsed
+                                / count
+                                * (len(block_indices) - count),
+                            )
+
+                            blocks_done = count
+                    finally:
+                        _logger.info(
+                            "Done: optimized %d of %d blocks in %s",
+                            blocks_done,
+                            len(block_indices),
+                            _format_duration(time.perf_counter() - run_start),
+                        )
+                finally:
+                    sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
+                    sim._rebuild_session()  # pylint: disable=protected-access
 
     @staticmethod
     def _blocks_to_optimize(num_blocks: int) -> List[int]:
@@ -652,6 +778,35 @@ class AdaScale:
             for name, onnx_name in pt_weights_to_onnx_initializers.items()
             if onnx_name in quantizer_dict
         }
+        layers = [
+            name
+            for name, module in pytorch_block.named_modules()
+            if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d))
+        ]
+        unquantized = [name for name in layers if name not in per_module_quantizers]
+        if unquantized:
+            raise RuntimeError(
+                f"No weight quantizer for {unquantized}. For weights in control-flow "
+                "bodies, build the sim with subgraph quantization enabled."
+            )
+        optimized = [
+            name for name in layers if _is_optimized(per_module_quantizers[name])
+        ]
+        # Each layer would be optimized on its own, and only one of them copied back
+        layers_of_weight = {}
+        for name in optimized:
+            layers_of_weight.setdefault(
+                pt_weights_to_onnx_initializers[name], []
+            ).append(name)
+        shared = {
+            weight: names
+            for weight, names in layers_of_weight.items()
+            if len(names) > 1
+        }
+        if shared:
+            raise RuntimeError(
+                f"AdaScale can't optimize a weight read by more than one layer: {shared}"
+            )
         pytorch_block = add_qlinear_layers(
             pytorch_block,
             per_module_quantizers=per_module_quantizers,
@@ -695,6 +850,38 @@ class AdaScale:
             return torch.stack(list(losses)).float().mean().item()
 
         pytorch_block.to(device)
+
+        # A layer in an If branch that no sample runs gets no gradient. The quantized block
+        # inputs can route differently than the unquantized ones checked upfront, and the
+        # block can be optimized on its own.
+        ran = set()
+        modules = dict(pytorch_block.named_modules())
+        hooks = [
+            modules[name].register_forward_hook(lambda *_, name=name: ran.add(name))
+            for name in optimized
+        ]
+        try:
+            with torch.no_grad(), _autocast_ctx():
+                for input_tensor in (
+                    torch_fp_input if _QT_SAMPLING_PROB == 0.0 else torch_quant_input
+                ):
+                    if isinstance(input_tensor, torch.Tensor):
+                        input_tensor = [input_tensor]
+                    pytorch_block(*(inp_t.to(device=device) for inp_t in input_tensor))
+        finally:
+            for hook in hooks:
+                hook.remove()
+        not_run = [
+            pt_weights_to_onnx_initializers[name]
+            for name in optimized
+            if name not in ran
+        ]
+        if not_run:
+            raise RuntimeError(
+                f"No input sample runs the If branches of {not_run}, so AdaScale can't "
+                f"optimize them. {_BRANCH_WITHOUT_SAMPLES_HINT}"
+            )
+
         bar = progress_bar(range(num_iterations), desc=_progress_desc)
         try:
             with torch.set_grad_enabled(True):
@@ -729,6 +916,9 @@ class AdaScale:
                         quant_out,
                         data_idx,
                     )
+                    # The sample took no If branch with a layer to train
+                    if not loss.requires_grad:
+                        continue
 
                     loss.backward()
                     optimizer.step()

@@ -10,6 +10,7 @@ from torch import fx
 from torch import nn
 from torch.nn import functional as F
 from onnx import (
+    AttributeProto,
     defs,
     helper,
     GraphProto,
@@ -17,6 +18,7 @@ from onnx import (
     OperatorSetIdProto,
     StringStringEntryProto,
     TensorProto,
+    ValueInfoProto,
 )
 from onnx2torch import convert
 from onnx2torch.node_converters.registry import add_converter
@@ -219,6 +221,58 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
 
     return OperationConverterResult(
         torch_module=OnnxReduceMean(
+            axes=axes,
+            keepdims=keepdims,
+            noop_with_empty_axes=noop_with_empty_axes,
+        ),
+        onnx_mapping=OnnxMapping(
+            inputs=inputs,
+            outputs=node.output_values,
+        ),
+    )
+
+
+class OnnxReduceMax(nn.Module, OnnxToTorchModule):
+    """ReduceMax for opset 18+ where axes is an input rather than an attribute."""
+
+    def __init__(
+        self,
+        axes: Optional[List[int]] = None,
+        keepdims: int = 1,
+        noop_with_empty_axes: int = 0,
+    ):
+        super().__init__()
+        self.axes = axes
+        self.keepdims = bool(keepdims)
+        self.noop_with_empty_axes = noop_with_empty_axes
+
+    def forward(
+        self, input_tensor: torch.Tensor, axes: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        axes = self.axes if axes is None else axes.tolist()
+        if axes is None or len(axes) == 0:
+            if self.noop_with_empty_axes:
+                return input_tensor
+            axes = list(range(input_tensor.dim()))
+        return torch.amax(input_tensor, dim=axes, keepdim=self.keepdims)
+
+
+@add_converter(operation_type="ReduceMax", version=18)
+def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
+    keepdims: int = node.attributes.get("keepdims", 1)
+    noop_with_empty_axes: int = node.attributes.get("noop_with_empty_axes", 0)
+
+    axes = None
+    inputs = (node.input_values[0],)
+    if len(node.input_values) == 2:
+        try:
+            axes = cast(torch.Tensor, get_const_value(node.input_values[1], graph))
+            axes = axes.tolist()
+        except KeyError:
+            inputs = _non_empty_inputs(node)
+
+    return OperationConverterResult(
+        torch_module=OnnxReduceMax(
             axes=axes,
             keepdims=keepdims,
             noop_with_empty_axes=noop_with_empty_axes,
@@ -644,17 +698,27 @@ class OnnxScan(nn.Module, OnnxToTorchModule):
         return tuple(carries + [torch.stack(ys) for ys in zip(*scan_outputs)])
 
 
-def _outer_scope_inputs(body: GraphProto) -> List[str]:
-    """Names the Scan body reads from the enclosing graph, in first-use order."""
-    local = {value.name for value in body.input} | {
-        init.name for init in body.initializer
+def _captured_names(graph: GraphProto) -> List[str]:
+    """Names graph reads from enclosing graphs, including through nested graphs, in first-use order."""
+    local = {value.name for value in graph.input} | {
+        init.name for init in graph.initializer
     }
-    local |= {name for node in body.node for name in node.output}
+    local |= {name for node in graph.node for name in node.output}
     names = []
-    for node in body.node:
+
+    def add(name):
+        if name and name not in local and name not in names:
+            names.append(name)
+
+    for node in graph.node:
         for name in node.input:
-            if name and name not in local and name not in names:
-                names.append(name)
+            add(name)
+        for attr in node.attribute:
+            if attr.type == AttributeProto.GRAPH:
+                for name in _captured_names(attr.g):
+                    add(name)
+    for output in graph.output:
+        add(output.name)
     return names
 
 
@@ -677,7 +741,7 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
     # Pass the tensors the body reads from the enclosing graph as extra trailing inputs,
     # so the body converts as a standalone model
     body = attributes["body"].g
-    outer_inputs = _outer_scope_inputs(body)
+    outer_inputs = _captured_names(body)
     outer_value_infos = []
     for name in outer_inputs:
         if name in graph.initializers:
@@ -706,6 +770,85 @@ def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
         ),
         onnx_mapping=OnnxMapping(
             inputs=tuple(node.input_values) + tuple(outer_inputs),
+            outputs=node.output_values,
+        ),
+    )
+
+
+class OnnxIf(nn.Module, OnnxToTorchModule):
+    """ONNX If: runs the converted branch that cond selects, as onnxruntime does.
+
+    Inputs: [cond, tensors either branch reads from the enclosing graph]
+    """
+
+    def __init__(
+        self,
+        then_branch: nn.Module,
+        else_branch: nn.Module,
+        then_inputs: List[int],
+        else_inputs: List[int],
+    ):
+        super().__init__()
+        self.then_branch = then_branch
+        self.else_branch = else_branch
+        self.then_inputs = then_inputs
+        self.else_inputs = else_inputs
+
+    def forward(self, cond: torch.Tensor, *outer: torch.Tensor):  # pylint: disable=missing-function-docstring
+        if cond.item():
+            return self.then_branch(*(outer[i] for i in self.then_inputs))
+        return self.else_branch(*(outer[i] for i in self.else_inputs))
+
+
+def _convert_branch(branch: GraphProto, graph: OnnxGraph):
+    """Convert an If branch as a standalone model.
+
+    Initializers the branch reads from the enclosing graph are copied into it, so that a MatMul or
+    Gemm on a weight converts to nn.Linear, which AdaScale optimizes. Other captured tensors become
+    branch inputs. Outputs no branch node produces (e.g. an initializer) pass through Identity.
+    """
+    captured = _captured_names(branch)
+    inputs = [name for name in captured if name not in graph.initializers]
+    initializers = list(branch.initializer) + [
+        graph.initializers[name].proto
+        for name in captured
+        if name in graph.initializers
+    ]
+    nodes = list(branch.node)
+    outputs = []
+    produced = {name for node in nodes for name in node.output}
+    for output in branch.output:
+        if output.name in produced:
+            outputs.append(output)
+            continue
+        renamed = ValueInfoProto()
+        renamed.CopyFrom(output)
+        renamed.name = f"{output.name}__aimet_passthrough"
+        nodes.append(helper.make_node("Identity", [output.name], [renamed.name]))
+        outputs.append(renamed)
+    value_infos = [graph.value_info[name] for name in inputs]
+    branch_graph = helper.make_graph(
+        nodes, branch.name, value_infos, outputs, initializers
+    )
+    branch_model = helper.make_model(branch_graph, opset_imports=_opset_imports(graph))
+    return convert_model(branch_model), inputs
+
+
+@add_converter(operation_type="If", version=16)
+def _(node: OnnxNode, graph: OnnxGraph) -> OperationConverterResult:
+    attributes = {attr.name: attr.g for attr in node.proto.attribute}
+    then_branch, then_names = _convert_branch(attributes["then_branch"], graph)
+    else_branch, else_names = _convert_branch(attributes["else_branch"], graph)
+    outer = list(dict.fromkeys(then_names + else_names))
+    return OperationConverterResult(
+        torch_module=OnnxIf(
+            then_branch,
+            else_branch,
+            [outer.index(name) for name in then_names],
+            [outer.index(name) for name in else_names],
+        ),
+        onnx_mapping=OnnxMapping(
+            inputs=(node.input_values[0], *outer),
             outputs=node.output_values,
         ),
     )

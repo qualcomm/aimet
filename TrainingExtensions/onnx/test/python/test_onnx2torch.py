@@ -1,6 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import itertools
 import os
 
 import numpy as np
@@ -17,6 +18,7 @@ from aimet_onnx.adascale.model_converter import get_pt_block
 # Importing onnx2torch_ext (done transitively by model_converter) registers the
 # custom converters (ScatterElements, Flatten, NonZero, OneHot, Trilu, Clip)
 # on the onnx2torch registry.
+from .models import models_for_tests
 from .utils import tmp_dir  # noqa: F401  pytest fixture
 
 
@@ -396,6 +398,112 @@ def test_scan():
     _assert_scan_matches_ort(model, feed)
 
 
+def test_scan_with_if_reading_enclosing_graph():
+    """A Scan body holding an If whose branch reads a tensor of the graph enclosing the Scan"""
+    if_node = helper.make_node(
+        "If",
+        ["cond"],
+        ["b"],
+        then_branch=helper.make_graph(
+            [helper.make_node("Add", ["x", "top"], ["t"])],
+            "then",
+            [],
+            [_float_info("t", [4, 4])],
+        ),
+        else_branch=helper.make_graph(
+            [helper.make_node("Neg", ["x"], ["e"])],
+            "else",
+            [],
+            [_float_info("e", [4, 4])],
+        ),
+    )
+    body = helper.make_graph(
+        [
+            if_node,
+            helper.make_node("Add", ["c", "b"], ["c_out"]),
+            helper.make_node("Relu", ["b"], ["y"]),
+        ],
+        "body",
+        [_float_info("c", [4, 4]), _float_info("x", [4, 4])],
+        [_float_info("c_out", [4, 4]), _float_info("y", [4, 4])],
+    )
+    model = _scan_model(
+        body,
+        [_float_info("c0", [4, 4]), _float_info("xs", [3, 4, 4])],
+        [_float_info("c_final", [4, 4]), _float_info("ys", [3, 4, 4])],
+        opset=18,
+        nodes=[helper.make_node("Relu", ["top_in"], ["top"])],
+        num_scan_inputs=1,
+    )
+    model.graph.input.extend(
+        [
+            _float_info("top_in", [4, 4]),
+            helper.make_tensor_value_info("cond", TensorProto.BOOL, [1]),
+        ]
+    )
+    for cond in (True, False):
+        feed = {
+            "c0": np.random.randn(4, 4).astype(np.float32),
+            "xs": np.random.randn(3, 4, 4).astype(np.float32),
+            "top_in": np.random.randn(4, 4).astype(np.float32),
+            "cond": np.array([cond]),
+        }
+        _assert_scan_matches_ort(model, feed)
+
+
+@pytest.mark.parametrize(
+    "model_fn, cond_names",
+    [
+        (models_for_tests.if_model, ["cond"]),
+        (models_for_tests.weighted_if_model, ["cond"]),
+        (models_for_tests.chained_if_model, ["cond0", "cond1"]),
+        (models_for_tests.predicated_experts_model, ["route0", "route1"]),
+    ],
+)
+def test_if_matches_ort(model_fn, cond_names):
+    """
+    Given: A model with Ifs, whose branches read tensors and weights of the enclosing graph
+    When: The model is converted to torch
+    Then: The converted model matches ORT for every combination of conds, i.e. it runs the
+          branch ORT runs
+    """
+    model = model_fn()
+    x = np.random.randn(
+        *[d.dim_value for d in model.graph.input[0].type.tensor_type.shape.dim]
+    )
+    feed_names = [model.graph.input[0].name, *cond_names]
+    output_name = model.graph.output[0].name
+    pt_block, _ = get_pt_block(onnx_ir.from_proto(model), (feed_names, [output_name]))
+    session = ort.InferenceSession(model.SerializeToString())
+    for conds in itertools.product([True, False], repeat=len(cond_names)):
+        feed = {feed_names[0]: x.astype(np.float32)}
+        feed.update({name: np.array([c]) for name, c in zip(cond_names, conds)})
+        onnx_out = session.run(None, feed)[0]
+        converted_out = pt_block(*(torch.from_numpy(arr) for arr in feed.values()))
+        np.testing.assert_allclose(
+            onnx_out, converted_out.detach().numpy(), rtol=1e-5, atol=1e-6
+        )
+
+
+def test_if_branch_weights_convert_to_linear():
+    """
+    Given: Experts in If branches, whose MatMuls read top-level weights
+    When: The block is converted to torch
+    Then: Each expert MatMul is an nn.Linear mapped to its weight, so AdaScale optimizes it
+    """
+    pt_block, param_map = get_pt_block(
+        onnx_ir.from_proto(models_for_tests.predicated_experts_model()),
+        (["x", "route0", "route1"], ["y1"]),
+    )
+    modules = dict(pt_block.named_modules())
+    for module_name, weight in (
+        ("if_0.then_branch.t0_mm", "w0"),
+        ("if_1.then_branch.t1_mm", "w1"),
+    ):
+        assert isinstance(modules[module_name], nn.Linear)
+        assert param_map[module_name] == weight
+
+
 def _reduce_model(op_type, axes_source, axes, **attrs):
     """Opset 18 model applying op_type to x over axes read from axes_source."""
     x_info = _float_info("x", [2, 3, 4])
@@ -419,7 +527,7 @@ def _reduce_model(op_type, axes_source, axes, **attrs):
     return model
 
 
-@pytest.mark.parametrize("op_type", ["ReduceMean", "ReduceL2"])
+@pytest.mark.parametrize("op_type", ["ReduceMean", "ReduceL2", "ReduceMax"])
 @pytest.mark.parametrize("axes_source", ["initializer", "identity", "graph_input"])
 @pytest.mark.parametrize("axes", [[1], [-1], [0, 2]])
 @pytest.mark.parametrize("keepdims", [0, 1])

@@ -10,6 +10,7 @@ import onnx_ir
 from onnx.utils import Extractor
 from onnx2torch.onnx_graph import OnnxGraph
 
+from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive_ir
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.common.quantsim import calculate_delta_offset
 from aimet_onnx.adascale.quantizer import QuantizedLinear, QuantizedConv2d
@@ -46,28 +47,48 @@ def _get_onnx_subgraph(
 def _get_onnx_block_info(onnx_subgraph: onnx_ir.Model):
     """
     For an onnx subgraph get onnx param name from initializer list map
+
+    Keys are the module names of the converted torch block; a node in an If branch converts to
+    "<If module>.then_branch.<node module>" (see onnx2torch_ext.OnnxIf).
     """
-    graph = onnx_subgraph.graph
-    name_to_node_filtered = {
-        n.name: n for n in graph.all_nodes() if n.op_type in filter_op
-    }
     node_name_to_onnx_param = {}
-    for node in name_to_node_filtered.values():
-        # TODO remove using "bias" word search and add op specific logic instead
-        if node.op_type == "Conv":
-            node_name_to_onnx_param[OnnxGraph.generate_node_name(node)] = node.inputs[
-                1
-            ].name
-        else:
-            # The MatMul/Gemm converters make an nn.Linear only when input 1 (B) is an
-            # initializer; a constant input 0 (A) stays a plain matmul with no weight
-            edge = node.inputs[1]
-            if (
-                edge is not None
-                and edge.name in onnx_subgraph.graph.initializers
-                and "bias" not in edge.name
-            ):
-                node_name_to_onnx_param[OnnxGraph.generate_node_name(node)] = edge.name
+
+    def visit(graph: onnx_ir.Graph, prefix: str, initializers):
+        # A branch can also read weights it declares itself
+        initializers = {**initializers, **graph.initializers}
+        # Suffix duplicate names as onnx2torch does (OnnxGraph.__init__); each branch converts
+        # as a graph of its own
+        counters = {}
+        for node in graph:
+            name = OnnxGraph.generate_node_name(node)
+            counter = counters.setdefault(name, 0)
+            counters[name] += 1
+            module_name = prefix + name + (f"_{counter}" if counter > 0 else "")
+            if node.op_type == "If":
+                for branch in ("then_branch", "else_branch"):
+                    visit(
+                        node.attributes[branch].as_graph(),
+                        f"{module_name}.{branch}.",
+                        initializers,
+                    )
+                continue
+            if node.op_type not in filter_op:
+                continue
+            # TODO remove using "bias" word search and add op specific logic instead
+            if node.op_type == "Conv":
+                node_name_to_onnx_param[module_name] = node.inputs[1].name
+            else:
+                # The MatMul/Gemm converters make an nn.Linear only when input 1 (B) is an
+                # initializer; a constant input 0 (A) stays a plain matmul with no weight
+                edge = node.inputs[1]
+                if (
+                    edge is not None
+                    and edge.name in initializers
+                    and "bias" not in edge.name
+                ):
+                    node_name_to_onnx_param[module_name] = edge.name
+
+    visit(onnx_subgraph.graph, "", {})
     return node_name_to_onnx_param
 
 
@@ -107,7 +128,16 @@ def required_block_inputs(
         if producer in visited_nodes:
             continue
         visited_nodes.add(producer)
-        for inp in producer.inputs:
+        # Control-flow bodies read tensors of this graph by name, not as node inputs
+        captured = [
+            inp
+            for attr in producer.attributes.values()
+            if attr.type == onnx_ir.AttributeType.GRAPH
+            for node in onnx_ir.traversal.RecursiveGraphIterator(attr.as_graph())
+            for inp in node.inputs
+            if inp is not None and inp.graph is graph
+        ]
+        for inp in [*producer.inputs, *captured]:
             if inp is None:
                 continue
             stack.append(inp)
@@ -319,7 +349,12 @@ def copy_pt_weights_to_onnx(
             pytorch_weight = _raw.numpy()
 
         onnx_tensor_name = param_map[name]
-        onnx_param_tensor = onnx_model.graph.initializers[onnx_tensor_name]
+        # The weight can be declared in an If branch
+        onnx_param_tensor = next(
+            g.initializers[onnx_tensor_name]
+            for g in _iterate_graphs_recursive_ir(onnx_model.graph, include_loop=True)
+            if onnx_tensor_name in g.initializers
+        )
         if _should_transpose_weight(module, onnx_param_tensor):
             pytorch_weight = pytorch_weight.T
         if tuple(pytorch_weight.shape) != tuple(onnx_param_tensor.const_value.shape):
@@ -355,7 +390,9 @@ def copy_pt_encodings_to_sim(
     """
     for name, module in pt_block.named_modules():
         if isinstance(module, (QuantizedLinear, QuantizedConv2d)):
-            onnx_param_name = pt_weights_to_onnx_initializers[name]
+            onnx_param_name = pt_weights_to_onnx_initializers.get(name)
+            if onnx_param_name is None:
+                continue
             #### TODO Check the modules
             # copy encodings over to onnx quantizers
             new_min = module.param_quantizers["weight"].get_min().detach().cpu().numpy()

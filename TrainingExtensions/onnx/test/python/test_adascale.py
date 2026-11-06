@@ -20,6 +20,7 @@ import pytest
 
 import aimet_onnx
 from aimet_onnx import QuantizationSimModel
+from aimet_onnx.quantsim import _quantize_subgraphs_enabled
 from aimet_onnx.common import libpymo
 from aimet_onnx.common.quantsim import calculate_delta_offset
 from aimet_onnx.adascale.adascale_optimizer import (
@@ -885,6 +886,430 @@ class TestAdascaleQuantizer:
             # int8 symmetric offset is -128, not the int4 default of -8
             assert all(e.offset == -128 for e in boosted_enc)
 
+    @staticmethod
+    def _adascale_experts(model, routes, flag=True, num_iterations=20):
+        """
+        AdaScale on the whole experts block; returns the sim and weights/encodings before and
+        after. routes is (route0, route1) for both samples, or one such pair per sample.
+        """
+        rng = np.random.default_rng(0)
+        xs = [rng.standard_normal((4, 4)).astype(np.float32) for _ in range(2)]
+        if not isinstance(routes[0], tuple):
+            routes = [routes] * len(xs)
+        feeds = [
+            {"x": x, "route0": np.array([r0]), "route1": np.array([r1])}
+            for x, (r0, r1) in zip(xs, routes)
+        ]
+        input_names = ["x", "route0", "route1"]
+        if len(model.graph.input) == 1:
+            feeds, input_names = [{"x": x} for x in xs], ["x"]
+        with _quantize_subgraphs_enabled(flag):
+            sim = QuantizationSimModel(
+                model,
+                [feeds[0]],
+                default_param_bw=4,
+                providers=["CPUExecutionProvider"],
+            )
+        sim._compute_param_encodings(dummy_input=feeds[0])
+
+        def snapshot():
+            weights = {
+                name: numpy_helper.to_array(init).copy()
+                for name, init in (
+                    (i.name, i) for i in sim.model.model.graph.initializer
+                )
+                if name in ("w0", "w1")
+            }
+            encodings = {
+                name: [e.delta for e in sim.qc_quantize_op_dict[name].get_encodings()]
+                for name in ("w0", "w1")
+                if name in sim.qc_quantize_op_dict
+            }
+            return weights, encodings
+
+        before = snapshot()
+        sim_model = onnx_ir.from_proto(sim.model.model)
+        onnx_ir.passes.common.TopologicalSortPass().call(sim_model)
+        torch.manual_seed(0)
+        fp_inputs = [[feed[name] for name in input_names] for feed in feeds]
+        AdaScale.optimize_adascale_block(
+            sim_model,
+            sim.qc_quantize_op_dict,
+            fp_inputs,
+            [
+                [arr * 0.9 if arr.dtype == np.float32 else arr for arr in inp]
+                for inp in fp_inputs
+            ],
+            block_input_output_names=(input_names, ["y1"]),
+            num_iterations=num_iterations,
+        )
+        sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
+        return sim, before, snapshot()
+
+    def test_block_level_api_if_matches_flat(self):
+        """
+        Given: An MoE block with an If per expert, every expert routed
+        When: AdaScale optimizes the block
+        Then: Expert weights and encodings change, exactly as for the same block written without If.
+              The If must be transparent to AdaScale.
+        """
+        _, if_before, if_after = self._adascale_experts(
+            models_for_tests.predicated_experts_model(), (True, True)
+        )
+        _, _, flat_after = self._adascale_experts(
+            models_for_tests.flat_experts_model(), (True, True)
+        )
+        for name in ("w0", "w1"):
+            assert not np.array_equal(if_before[0][name], if_after[0][name])
+            assert if_before[1][name] != if_after[1][name]
+            np.testing.assert_array_equal(if_after[0][name], flat_after[0][name])
+            assert if_after[1][name] == flat_after[1][name]
+
+    @pytest.mark.parametrize("routes", [(True, False), (False, False)])
+    def test_block_with_unrouted_expert_raises(self, routes):
+        """
+        Given: An MoE block where no sample is routed to expert 1, or to any expert
+        When: AdaScale optimizes the block
+        Then: It raises naming expert 1's weight, as calibrating such a sim raises too
+        """
+        with pytest.raises(RuntimeError, match=r"If branches of \[.*'w1'\]"):
+            self._adascale_experts(models_for_tests.predicated_experts_model(), routes)
+
+    def test_apply_adascale_with_unrouted_expert_raises_upfront(self):
+        """
+        Given: An MoE model where no sample is routed to expert 1
+        When: AdaScale is applied
+        Then: It raises naming expert 1's If branch and weight, before optimizing any block
+        """
+        model = models_for_tests.predicated_experts_model()
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route0": np.array([True]),
+                "route1": np.array([False]),
+            }
+            for _ in range(2)
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                model, default_param_bw=4, providers=["CPUExecutionProvider"]
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+
+        with patch.object(AdaScale, "optimize_adascale_block") as optimize_mock:
+            with pytest.raises(
+                RuntimeError, match="then_branch of If node if_1.*weight w1"
+            ):
+                AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=1)
+        optimize_mock.assert_not_called()
+
+    @staticmethod
+    def _nested_if_model():
+        """
+        outer -> y      then_branch: inner -> t_o   then_branch: x, w_in -> in_mm -> i_o
+                                                    else_branch: x -> e_id -> ie_o
+                        else_branch: x -> o_id -> oe_o
+        """
+        dim = models_for_tests.DIM
+        w_in = numpy_helper.from_array(
+            np.random.default_rng(0).standard_normal((dim, dim)).astype(np.float32),
+            "w_in",
+        )
+        ti = models_for_tests._ti
+
+        def branch(nodes, name, output):
+            return onnx.helper.make_graph(nodes, name, [], [ti(output, [dim, dim])])
+
+        inner = onnx.helper.make_node(
+            "If",
+            ["route_in"],
+            ["t_o"],
+            name="inner",
+            then_branch=branch(
+                [onnx.helper.make_node("MatMul", ["x", "w_in"], ["i_o"], name="in_mm")],
+                "then_in",
+                "i_o",
+            ),
+            else_branch=branch(
+                [onnx.helper.make_node("Identity", ["x"], ["ie_o"], name="e_id")],
+                "else_in",
+                "ie_o",
+            ),
+        )
+        outer = onnx.helper.make_node(
+            "If",
+            ["route_out"],
+            ["y"],
+            name="outer",
+            then_branch=branch([inner], "then_out", "t_o"),
+            else_branch=branch(
+                [onnx.helper.make_node("Identity", ["x"], ["oe_o"], name="o_id")],
+                "else_out",
+                "oe_o",
+            ),
+        )
+        return models_for_tests._control_flow_model(
+            onnx.helper.make_graph(
+                [outer],
+                "outer_graph",
+                [
+                    ti("x", [dim, dim]),
+                    ti("route_out", [1], onnx.TensorProto.BOOL),
+                    ti("route_in", [1], onnx.TensorProto.BOOL),
+                ],
+                [ti("y", [dim, dim])],
+                [w_in],
+            )
+        )
+
+    @pytest.mark.parametrize(
+        "routes, raises",
+        [
+            # Every sample takes the outer then_branch, but never the inner one
+            ([(True, False), (True, False)], True),
+            # Each If's then_branch is taken, but never by the same sample
+            ([(True, False), (False, True)], True),
+            ([(True, False), (True, True)], False),
+        ],
+    )
+    def test_apply_adascale_checks_nested_ifs_upfront(self, routes, raises):
+        """
+        Given: A weight in the then_branch of an If nested in the then_branch of another
+        When: AdaScale is applied
+        Then: It raises before optimizing, naming both branches, unless a sample takes both
+        """
+        model = self._nested_if_model()
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route_out": np.array([outer]),
+                "route_in": np.array([inner]),
+            }
+            for outer, inner in routes
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                model, default_param_bw=4, providers=["CPUExecutionProvider"]
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+
+        with patch.object(AdaScale, "optimize_adascale_block") as optimize_mock:
+            if not raises:
+                AdaScale._apply_adascale(sim, inputs, [("x", "y")], num_iterations=1)
+                optimize_mock.assert_called_once()
+                return
+            with pytest.raises(
+                RuntimeError,
+                match="then_branch of If node outer, then_branch of If node inner.*w_in",
+            ):
+                AdaScale._apply_adascale(sim, inputs, [("x", "y")], num_iterations=1)
+        optimize_mock.assert_not_called()
+
+    def test_block_routing_checked_before_training(self):
+        """
+        Given: An MoE block where no sample is routed to expert 1
+        When: AdaScale optimizes the block
+        Then: It raises before the first iteration, not after all of them
+        """
+        loss_fn = Mock(side_effect=AssertionError("trained"))
+        with (
+            patch("aimet_onnx.adascale.adascale_optimizer._mse_loss_fn", loss_fn),
+            pytest.raises(RuntimeError, match=r"If branches of \['w1'\]"),
+        ):
+            self._adascale_experts(
+                models_for_tests.predicated_experts_model(), (True, False)
+            )
+        loss_fn.assert_not_called()
+
+    def test_block_expert_routed_by_a_sample_the_loop_skips(self):
+        """
+        Given: An MoE block where only the second sample is routed to expert 1
+        When: AdaScale stops after the first sample, e.g. with early stopping
+        Then: It doesn't raise; expert 1 is left as is, like any layer the loop didn't reach
+        """
+        _, before, after = self._adascale_experts(
+            models_for_tests.predicated_experts_model(),
+            [(True, False), (True, True)],
+            num_iterations=1,
+        )
+        np.testing.assert_array_equal(before[0]["w1"], after[0]["w1"])
+
+    def test_block_with_unrouted_disabled_expert(self):
+        """
+        Given: An MoE block where no sample is routed to expert 1, whose weight quantizer is
+               disabled (e.g. a LoRA weight during base-model AdaScale)
+        When: AdaScale optimizes the block
+        Then: It doesn't raise, as AdaScale doesn't optimize expert 1, upfront or per block
+        """
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route0": np.array([True]),
+                "route1": np.array([False]),
+            }
+            for _ in range(2)
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                models_for_tests.predicated_experts_model(),
+                default_param_bw=4,
+                providers=["CPUExecutionProvider"],
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+        sim.qc_quantize_op_dict["w1"].enabled = False
+        AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=1)
+
+    def test_block_weight_read_by_both_branches_raises(self):
+        """
+        Given: An If whose branches both read the same weight
+        When: AdaScale optimizes the block
+        Then: It raises naming the weight and both layers, as each branch would optimize its
+              own copy and only one could be copied back
+        """
+        model = models_for_tests.predicated_experts_model()
+        if_1 = next(node for node in model.graph.node if node.name == "if_1")
+        else_1 = next(attr.g for attr in if_1.attribute if attr.name == "else_branch")
+        del else_1.node[:]
+        else_1.node.extend(
+            [
+                onnx.helper.make_node("MatMul", ["x", "w1"], ["e1_m"], name="e1_mm"),
+                onnx.helper.make_node("Add", ["e1_m", "y0"], ["e1_o"], name="e1_add"),
+            ]
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=r"read by more than one layer: \{'w1': \['if_1.then_branch.t1_mm', "
+            r"'if_1.else_branch.e1_mm'\]\}",
+        ):
+            self._adascale_experts(model, [(True, True), (True, False)])
+
+    def test_apply_adascale_raise_leaves_sim_usable(self):
+        """
+        Given: An MoE model where no sample is routed to expert 1
+        When: AdaScale raises for it
+        Then: The sim still runs, with the original weights
+        """
+        model = models_for_tests.predicated_experts_model()
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route0": np.array([True]),
+                "route1": np.array([False]),
+            }
+            for _ in range(2)
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                model, default_param_bw=4, providers=["CPUExecutionProvider"]
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+        before = {
+            i.name: numpy_helper.to_array(i) for i in sim.model.model.graph.initializer
+        }
+        with pytest.raises(RuntimeError, match="weight w1"):
+            AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=1)
+
+        sim.session.run(None, inputs[0])
+        for init in sim.model.model.graph.initializer:
+            np.testing.assert_array_equal(
+                numpy_helper.to_array(init), before[init.name]
+            )
+
+    def test_apply_adascale_checks_only_ifs_in_optimized_blocks(self):
+        """
+        Given: An MoE model where no sample is routed to expert 1
+        When: AdaScale is applied to a block holding only expert 0
+        Then: It optimizes the block, as expert 1 isn't in it
+        """
+        model = models_for_tests.predicated_experts_model()
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route0": np.array([True]),
+                "route1": np.array([False]),
+            }
+            for _ in range(2)
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                model, default_param_bw=4, providers=["CPUExecutionProvider"]
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+
+        with patch.object(AdaScale, "optimize_adascale_block") as optimize_mock:
+            AdaScale._apply_adascale(sim, inputs, [("x", "y0")], num_iterations=1)
+        optimize_mock.assert_called_once()
+
+    def test_branch_weights_without_quantizers_raise(self):
+        """
+        Given: A sim built without subgraph quantization, so expert weights have no quantizer
+        When: AdaScale optimizes the block
+        Then: It raises, naming the layers, instead of skipping the experts silently
+        """
+        with pytest.raises(RuntimeError, match="if_0.then_branch.t0_mm"):
+            self._adascale_experts(
+                models_for_tests.predicated_experts_model(), (True, True), flag=False
+            )
+
+    def test_branch_declared_weight(self):
+        """
+        Given: An If whose else branch declares its own weight
+        When: AdaScale optimizes the block, on samples taking either branch
+        Then: The branch weight changes in the branch where it is declared
+        """
+        model = models_for_tests.weighted_if_model()
+        # Off the clamp bounds, unlike -eye, so its scales get gradients
+        the_if = next(n for n in model.graph.node if n.op_type == "If")
+        else_branch = next(a.g for a in the_if.attribute if a.name == "else_branch")
+        else_branch.initializer[0].CopyFrom(
+            numpy_helper.from_array(
+                np.random.default_rng(1).standard_normal((4, 4)).astype(np.float32),
+                "w_else",
+            )
+        )
+        rng = np.random.default_rng(0)
+        feeds = [
+            {"x": rng.standard_normal((4, 4)).astype(np.float32), "cond": np.array([c])}
+            for c in (True, False)
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                model,
+                [feeds[0]],
+                default_param_bw=4,
+                providers=["CPUExecutionProvider"],
+            )
+        sim.compute_encodings(feeds)
+
+        def w_else():
+            the_if = next(n for n in sim.model.model.graph.node if n.op_type == "If")
+            else_branch = next(
+                attr.g for attr in the_if.attribute if attr.name == "else_branch"
+            )
+            return numpy_helper.to_array(
+                next(i for i in else_branch.initializer if i.name == "w_else")
+            ).copy()
+
+        before = w_else()
+        sim_model = onnx_ir.from_proto(sim.model.model)
+        onnx_ir.passes.common.TopologicalSortPass().call(sim_model)
+        fp_inputs = [[feed["x"], feed["cond"]] for feed in feeds]
+        AdaScale.optimize_adascale_block(
+            sim_model,
+            sim.qc_quantize_op_dict,
+            fp_inputs,
+            [[x * 0.9, cond] for x, cond in fp_inputs],
+            block_input_output_names=(["x", "cond"], ["y"]),
+            num_iterations=20,
+        )
+        sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
+        assert not np.array_equal(before, w_else())
+
     @pytest.mark.parallel
     def test_apply_adascale_does_not_optimize_frozen_quantizer(self):
         torch.manual_seed(1)
@@ -1168,6 +1593,30 @@ def test_get_pt_block_reads_bfloat16_weights():
         )
 
 
+def test_get_pt_block_maps_unnamed_if_branch_weights():
+    """
+    Given: Two unnamed Ifs, each with an unnamed MatMul in its then_branch
+    When: Convert the model to a PyTorch block
+    Then: Each layer maps to its own weight, under the name onnx2torch gives it (If, If_1)
+    """
+    model = models_for_tests.predicated_experts_model()
+    for node in model.graph.node:
+        node.name = ""
+        for attr in node.attribute:
+            for branch_node in attr.g.node:
+                branch_node.name = ""
+    ir_model = onnx_ir.from_proto(model)
+    pt_block, param_map = get_pt_block(ir_model, (["x", "route0", "route1"], ["y1"]))
+
+    assert param_map == {"If.then_branch.MatMul": "w0", "If_1.then_branch.MatMul": "w1"}
+    modules = dict(pt_block.named_modules())
+    for pt_name, onnx_name in param_map.items():
+        expected = ir_model.graph.initializers[onnx_name].const_value.numpy()
+        np.testing.assert_array_equal(
+            modules[pt_name].weight.detach().numpy(), expected.T
+        )
+
+
 def test_weight_qdq_keeps_fp32_range_for_bfloat16_weight():
     """
     Given: A bfloat16 weight
@@ -1314,6 +1763,16 @@ class TestRequiredBlockInputs:
             """
         )
         assert required_block_inputs(graph, ["residual"], ["out"]) == ["residual"]
+
+    def test_required_extras_follow_if_branch_reads(self):
+        """If branches read tensors of the enclosing graph by name, not as node inputs; those
+        tensors are required too."""
+        graph = onnx_ir.from_proto(models_for_tests.predicated_experts_model()).graph
+        assert set(required_block_inputs(graph, [], ["y1"])) == {
+            "x",
+            "route0",
+            "route1",
+        }
 
     def test_gemma4_shared_kv_samples_multiple_residuals(self):
         """
