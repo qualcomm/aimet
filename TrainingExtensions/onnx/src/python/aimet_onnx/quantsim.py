@@ -3967,7 +3967,7 @@ class QuantizationSimModel:
             raise ValueError(f"No tensor found in graph with names: {missing_names}")
 
         quantizers = {
-            name: self._get_enabled_quantizer(name)
+            name: self._get_enabled_quantizer_name(name)
             for name in names
             if name in products
         }
@@ -3977,9 +3977,20 @@ class QuantizationSimModel:
         if missing_quantizers and strict:
             raise ValueError(f"No quantizer exists for tensors: {missing_quantizers}")
 
-        for quantizer in quantizers.values():
-            if quantizer is not None:
-                quantizer.set_precision(precision)
+        for tensor_name, quantizer_name in quantizers.items():
+            if quantizer_name is not None:
+                logger.debug(
+                    "Setting precision %s on quantizer '%s' for requested tensor '%s'.",
+                    precision,
+                    quantizer_name,
+                    tensor_name,
+                )
+                self.qc_quantize_op_dict[quantizer_name].set_precision(precision)
+            else:
+                logger.debug(
+                    "No enabled quantizer found for requested tensor '%s'; precision was not changed.",
+                    tensor_name,
+                )
 
 
 def _to_signed_encoding(encoding: dict) -> dict:
