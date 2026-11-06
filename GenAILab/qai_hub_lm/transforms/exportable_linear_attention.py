@@ -84,8 +84,19 @@ from GenAILab.bench.yaml_config_parser import YAMLConfigParser
 from GenAILab.qai_hub_lm.models.utils.compat import linear_attention_states
 
 
-def l2norm(x, dim=-1, eps=1e-6):
-    return x / (x.norm(dim=dim, keepdim=True).clamp(min=eps))
+def l2norm(x, eps=1e-6):
+    """L2-normalize the last dim, written as an RMSNorm so aimet fuses it.
+
+    Scaling by sqrt(d) makes mean(x^2) == sum(x^2), so eps keeps its meaning and
+    aimet matches the RMSNormalization supergroup instead of quantizing the
+    norm's internals. gamma is a [d] tensor: qairt-converter rejects one scalar
+    constant shared as gamma by the query and key norms. Same form as AI Hub
+    Models' Qwen 3.5 template.
+    """
+    d = x.shape[-1]
+    x = x * d**0.5
+    gamma = torch.full((d,), d**-0.5, dtype=x.dtype, device=x.device)
+    return x * torch.rsqrt((x * x).mean(dim=-1, keepdim=True) + eps) * gamma
 
 
 # ---------------------------------------------------------------------------
@@ -105,10 +116,10 @@ def _solve_triangular(attn, chunk_size, order=4):
     product-form refinement steps converge for the chunk sizes used here.
     """
     I = torch.eye(chunk_size, dtype=attn.dtype, device=attn.device)
-    mask_acc = torch.triu(
-        torch.ones(chunk_size, chunk_size, dtype=attn.dtype, device=attn.device),
-        diagonal=-order,
-    )
+    # Built from integer indices, not triu of float ones: those get Q/DQ when
+    # quantized, which stops them folding before QNN sees a Trilu.
+    idx = torch.arange(chunk_size, device=attn.device)
+    mask_acc = (idx[:, None] - idx[None, :] <= order).to(attn.dtype)
 
     M_mat = I - attn
     acc = I + attn
@@ -174,16 +185,23 @@ def exportable_gated_delta_rule(
         within a batch of mixed real lengths.
     """
     initial_dtype = query.dtype
-    if use_qk_l2norm_in_kernel:
-        query = l2norm(query, dim=-1, eps=1e-6)
-        key = l2norm(key, dim=-1, eps=1e-6)
-    query, key, value, beta, g = [
-        x.transpose(1, 2).contiguous().to(torch.float32)
-        for x in (query, key, value, beta, g)
-    ]
-
-    batch_size, num_heads, seq_len, k_head_dim = key.shape
+    batch_size, seq_len, num_heads, k_head_dim = key.shape
     v_head_dim = value.shape[-1]
+
+    # Batch and heads are merged into one axis so no tensor exceeds rank 4: the
+    # HTP backend rejects rank-5 ops (e.g. Neg) when building the context binary.
+    query, key, value = (
+        x.transpose(1, 2).reshape(-1, seq_len, x.shape[-1]).to(torch.float32)
+        for x in (query, key, value)
+    )
+    beta, g = (
+        x.transpose(1, 2).reshape(-1, seq_len).to(torch.float32) for x in (beta, g)
+    )
+    # Normalize in fp32, as the reference kernel does: ORT has no bfloat16
+    # kernel for the norm's reductions on any execution provider.
+    if use_qk_l2norm_in_kernel:
+        query = l2norm(query)
+        key = l2norm(key)
 
     # Derive the chunk extent from the sequence length: ``chunk_size`` is a cap,
     # not a fixed width. ``sym_min`` keeps this symbolic -- see the module
@@ -195,7 +213,12 @@ def exportable_gated_delta_rule(
     # attention exactly zero, so a fixed-length (padded) graph matches the
     # variable-length reference regardless of left/right padding.
     if attention_mask is not None:
-        mask = attention_mask[:, None, :].to(torch.float32)  # [B, 1, S]
+        mask = (
+            attention_mask[:, None, :]
+            .expand(batch_size, num_heads, seq_len)
+            .reshape(-1, seq_len)
+            .to(torch.float32)
+        )  # [B*H, S]
         key = key * mask.unsqueeze(-1)
         value = value * mask.unsqueeze(-1)
         g = g * mask
@@ -223,17 +246,17 @@ def exportable_gated_delta_rule(
     v_beta = value * beta.unsqueeze(-1)
     k_beta = key * beta.unsqueeze(-1)
 
-    # Reshape into chunks: [B, H, num_chunks, chunk_size, ...]
+    # Reshape into chunks: [B*H, num_chunks, chunk_size, ...]
     query, key, value, k_beta, v_beta = [
-        x.reshape(x.shape[0], x.shape[1], -1, chunk_size, x.shape[-1])
+        x.reshape(x.shape[0], -1, chunk_size, x.shape[-1])
         for x in (query, key, value, k_beta, v_beta)
     ]
-    g = g.reshape(g.shape[0], g.shape[1], -1, chunk_size)
+    g = g.reshape(g.shape[0], -1, chunk_size)
 
-    # Precompute masks (shared across all chunks)
-    tril_mask = torch.tril(
-        torch.ones(chunk_size, chunk_size, dtype=torch.float32, device=query.device)
-    )
+    # Precompute masks (shared across all chunks), from integer indices for the
+    # same folding reason as in ``_solve_triangular``.
+    idx = torch.arange(chunk_size, device=query.device)
+    tril_mask = (idx[:, None] >= idx[None, :]).to(torch.float32)
     eye = torch.eye(chunk_size, dtype=torch.float32, device=query.device)
     strict_lower_tri = tril_mask - eye
 
@@ -249,25 +272,24 @@ def exportable_gated_delta_rule(
     value = attn @ v_beta
     k_cumdecay = attn @ (k_beta * g_cum.exp().unsqueeze(-1))
 
-    # State initialization
+    # State initialization, flattened to [B*H, Dk, Dv] like the inputs
     state = (
         torch.zeros(
-            batch_size,
-            num_heads,
+            batch_size * num_heads,
             k_head_dim,
             v_head_dim,
             device=value.device,
             dtype=value.dtype,
         )
         if initial_state is None
-        else initial_state.to(value)
+        else initial_state.reshape(-1, k_head_dim, v_head_dim).to(value)
     )
 
     # Inter-chunk recurrence, as a native scan. ``scan`` iterates dim 0, so the
     # chunk axis moves to the front; the recurrent state is the carry and the
     # per-chunk outputs are stacked. Lowers to one ONNX ``Scan`` whose body is
     # ``_chunk_step``, keeping the graph independent of sequence length.
-    xs = [x.movedim(2, 0) for x in (query, key, value, k_cumdecay, decay_mask, g_cum)]
+    xs = [x.movedim(1, 0) for x in (query, key, value, k_cumdecay, decay_mask, g_cum)]
 
     def _chunk_step(state, xs_i):
         q_i, k_i, v_i, kc_i, dm_i, g_i = xs_i
@@ -277,23 +299,24 @@ def exportable_gated_delta_rule(
         o_i = (q_i * g_i.unsqueeze(-1).exp()) @ state + attn_i @ v_new
 
         next_state = (
-            state * g_i[:, :, -1, None, None].exp()
-            + (k_i * (g_i[:, :, -1, None] - g_i).exp().unsqueeze(-1)).transpose(-1, -2)
+            state * g_i[:, -1, None, None].exp()
+            + (k_i * (g_i[:, -1, None] - g_i).exp().unsqueeze(-1)).transpose(-1, -2)
             @ v_new
         )
         return next_state, o_i
 
     state, core_attn_out = scan(_chunk_step, state, xs)
-    core_attn_out = core_attn_out.movedim(
-        0, 2
-    )  # [n_chunks, B, H, C, Dv] -> [B, H, ...]
+    core_attn_out = core_attn_out.movedim(0, 1)  # [n_chunks, B*H, C, Dv] -> [B*H, ...]
 
-    if not output_final_state:
+    if output_final_state:
+        state = state.reshape(batch_size, num_heads, k_head_dim, v_head_dim)
+    else:
         state = None
     core_attn_out = core_attn_out.reshape(
-        core_attn_out.shape[0], core_attn_out.shape[1], -1, core_attn_out.shape[-1]
+        core_attn_out.shape[0], -1, core_attn_out.shape[-1]
     )
-    core_attn_out = core_attn_out[:, :, :seq_len]
+    core_attn_out = core_attn_out[:, :seq_len]
+    core_attn_out = core_attn_out.reshape(batch_size, num_heads, seq_len, v_head_dim)
     core_attn_out = core_attn_out.transpose(1, 2).contiguous().to(initial_dtype)
     return core_attn_out, state
 
@@ -324,6 +347,48 @@ def _roll_indices(npad, seq_len, device):
     base = torch.arange(seq_len, device=device).unsqueeze(0)  # (1, S)
     idx = base + npad.unsqueeze(1)  # (B, S), < 2 * seq_len
     return torch.where(idx < seq_len, idx, idx - seq_len)
+
+
+def _conv_with_state(mixed_qkv, conv_state, mask2d, conv):
+    """Depthwise causal conv over ``[conv_state | real tokens]``, either padding side.
+
+    The real tokens of each row are the contiguous run ``first_valid..last_valid``
+    of ``mask2d``; padding may sit on either side of it, depending on the
+    runtime driving the graph. The cached state is gathered to sit directly before
+    ``first_valid``, so padding never enters a real token's receptive field, and
+    the new state is the ``K`` inputs ending at ``last_valid``. Same scheme as AI
+    Hub Models' Qwen 3.5 template, but with per-row indices rather than row 0's.
+
+    The real-run bounds are sums, not ReduceMin/Max, which aimet cannot handle.
+
+    :param mixed_qkv: ``(B, conv_dim, S)`` conv input.
+    :param conv_state: ``(B, conv_dim, K)`` last ``K`` inputs from the previous call.
+    :param mask2d: ``(B, S)`` real-token mask (1 = real), contiguous per row.
+    :param conv: the layer's ``nn.Conv1d`` (built-in left padding ``K - 1``).
+    :return: ``(silu(conv) at every position (B, conv_dim, S), new conv_state)``.
+    """
+    K = conv_state.shape[-1]
+    batch_size, channels, seq_len = mixed_qkv.shape
+    first_valid = (mask2d.cumsum(dim=-1) == 0).to(torch.int64).sum(dim=-1)  # (B,)
+    last_valid = first_valid + mask2d.sum(dim=-1).to(torch.int64) - 1  # (B,)
+
+    joined = torch.cat([conv_state.to(mixed_qkv.dtype), mixed_qkv], dim=-1)
+    positions = torch.arange(K + seq_len, device=joined.device).unsqueeze(0)
+    fv = first_valid.unsqueeze(1)
+    # Columns before first_valid take the state, shifted to end just before it;
+    # first_valid onward keep their own input.
+    index = torch.where(positions < K + fv, (positions - fv).clamp(min=0), positions)
+    joined = torch.gather(
+        joined, -1, index.unsqueeze(1).expand(batch_size, channels, K + seq_len)
+    )
+    state_index = positions[:, :K] + last_valid.unsqueeze(1) + 1  # (B, K)
+    new_conv_state = torch.gather(
+        joined, -1, state_index.unsqueeze(1).expand(batch_size, channels, K)
+    )
+    # The built-in left padding adds K - 1 outputs, so slice to joined's width and
+    # keep the last S, one per input position.
+    out = conv(joined)[:, :, : joined.shape[-1]][:, :, -seq_len:]
+    return F.silu(out), new_conv_state
 
 
 def _real_token_mask(attention_mask, batch_size, seq_len, like):
@@ -365,14 +430,13 @@ def exportable_gated_delta_net_forward(
     both prefill and decode:
       - delta rule: pass ``initial_state=recurrent_state`` unconditionally, and
         let ``attention_mask`` zero the padded positions (the kernel handles
-        left-padding exactly).
-      - conv: the generator left-pads inputs to a fixed width with the real
-        tokens right-aligned, but the depthwise causal conv mixes *adjacent*
-        columns, so the cached ``conv_state`` history must sit immediately
-        before the first real token. We roll the real tokens to the front
-        (via a gather), prepend ``conv_state`` there, convolve, capture the new
-        conv window, then roll the outputs back. Padding is never between the
-        history and the real tokens, so the conv sees the correct context.
+        padding on either side exactly).
+      - conv: inputs are padded to a fixed width, on either side depending on
+        the runtime, but the depthwise causal conv mixes *adjacent* columns, so
+        the cached ``conv_state`` history must sit immediately before the first
+        real token. ``_conv_with_state`` gathers it there, wherever the real
+        run starts, so padding never sits between the history and the real
+        tokens.
     """
     import torch
     import torch.nn.functional as F
@@ -389,42 +453,16 @@ def exportable_gated_delta_net_forward(
     )
 
     mask2d = _real_token_mask(attention_mask, batch_size, seq_len, hidden_states)
-    n_real = mask2d.sum(dim=-1).to(torch.int64)  # (B,)
-    npad = seq_len - n_real
 
     mixed_qkv = self.in_proj_qkv(hidden_states).transpose(1, 2)  # (B, conv_dim, S)
     z = self.in_proj_z(hidden_states).reshape(batch_size, seq_len, -1, self.head_v_dim)
     b = self.in_proj_b(hidden_states)
     a = self.in_proj_a(hidden_states)
 
-    # Roll the real tokens (right-aligned) to the front so the cached conv_state
-    # sits immediately before them, convolve over [conv_state | real | pad],
-    # then roll the per-position outputs back to their original alignment.
-    K = self.conv_kernel_size
-    fwd_idx = _roll_indices(npad, seq_len, mixed_qkv.device)  # roll left by npad
-    back_idx = _roll_indices(
-        seq_len - npad, seq_len, mixed_qkv.device
-    )  # roll right by npad
-    mixed_rolled = torch.gather(
-        mixed_qkv, -1, fwd_idx.unsqueeze(1).expand_as(mixed_qkv)
-    )
-
-    buf = torch.cat([conv_state, mixed_rolled], dim=-1)  # (B, conv_dim, K + S)
-    # New conv window = the last K real columns. In ``buf`` the real region is
-    # cols [K : K + n_real], so the trailing K of it start at ``n_real``. Gather
-    # those K columns per batch (tensor index → exportable, no dynamic slice).
-    cs_cols = torch.arange(K, device=buf.device).unsqueeze(0) + n_real.unsqueeze(
-        1
-    )  # (B, K)
-    new_conv_state = torch.gather(
-        buf, -1, cs_cols.unsqueeze(1).expand(buf.shape[0], buf.shape[1], K)
+    mixed_qkv, new_conv_state = _conv_with_state(
+        mixed_qkv, conv_state, mask2d, self.conv1d
     )
     cache_params.update_conv_state(new_conv_state, self.layer_idx)
-
-    # conv1d has built-in left padding (K-1); slice to the input width then drop
-    # the K leading conv_state columns, leaving S outputs aligned to mixed_rolled.
-    conv_out = F.silu(self.conv1d(buf)[:, :, : buf.shape[-1]])[:, :, K:]
-    mixed_qkv = torch.gather(conv_out, -1, back_idx.unsqueeze(1).expand_as(conv_out))
 
     mixed_qkv = mixed_qkv.transpose(1, 2)
     query, key, value = torch.split(
@@ -831,16 +869,16 @@ class Qwen3_5ExportableLinearAttentionAdaptation:
 # outside this model.
 #
 # ===========================================================================
-# Appendix A -- The conv roll is NOT a graph rewrite
+# Appendix A -- The conv state gather is NOT a graph rewrite
 # ===========================================================================
 #
-# ``exportable_gated_delta_net_forward`` rolls the real tokens to the front so
-# the cached ``conv_state`` sits adjacent to them, and rolls the outputs back:
-# 10 ``GatherElements`` plus index arithmetic across the linear layers. At
-# decode ``npad = 1 - n_real`` is always 0, because the single token being
-# decoded is real by construction -- so both rolls are the identity.
+# ``_conv_with_state`` gathers the cached ``conv_state`` to sit directly before
+# the first real token, and gathers the new state from the K inputs ending at
+# the last one: two ``GatherElements`` plus index arithmetic per linear layer.
+# At decode ``first_valid`` is always 0, because the single token being decoded
+# is real by construction -- so the first gather is the identity.
 #
-# But ``npad`` is derived from the attention mask, i.e. from DATA. No folder can
+# But ``first_valid`` is derived from the attention mask, i.e. from DATA. No folder can
 # prove it, and no algebraic identity applies. Removing these requires
 # *asserting* "at seq_len == 1 the query token is always real", which narrows
 # the graph's contract rather than simplifying its algebra. Keep it in a

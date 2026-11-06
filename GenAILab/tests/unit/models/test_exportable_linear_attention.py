@@ -68,6 +68,85 @@ def _max_err(a, b):
 TOL = 1e-4
 
 
+class TestL2Norm:
+    def test_matches_reference_l2norm(self):
+        """The RMSNorm-shaped form equals HF's FLA-aligned ``l2norm``."""
+        from GenAILab.qai_hub_lm.transforms.exportable_linear_attention import l2norm
+
+        x = torch.randn(2, 8, K_DIM, generator=torch.Generator().manual_seed(1)) * 3
+        assert _max_err(l2norm(x), modeling_qwen3_5.l2norm(x)) < 1e-6
+
+
+class TestConvWithState:
+    """The conv must see ``[conv_state | real tokens]`` wherever the padding is;
+    which side it lands on depends on the runtime driving the graph."""
+
+    C, K, S, N_REAL = 6, 4, 10, 6
+
+    def _reference(self, conv, state, real):
+        seq = torch.cat([state, real], -1)
+        out = torch.nn.functional.silu(
+            torch.nn.functional.conv1d(seq, conv.weight, groups=self.C)
+        )
+        return out[:, :, -self.N_REAL :], seq[:, :, -self.K :]
+
+    @pytest.mark.parametrize("side", ["left", "right"])
+    def test_matches_reference_for_either_padding_side(self, side):
+        from GenAILab.qai_hub_lm.transforms.exportable_linear_attention import (
+            _conv_with_state,
+        )
+
+        torch.manual_seed(0)
+        C, K, S, N_REAL = self.C, self.K, self.S, self.N_REAL
+        conv = torch.nn.Conv1d(C, C, K, groups=C, padding=K - 1, bias=False)
+        state, real = torch.randn(1, C, K), torch.randn(1, C, N_REAL)
+        garbage = torch.full((1, C, S - N_REAL), 99.0)
+        ones, zeros = torch.ones(1, N_REAL), torch.zeros(1, S - N_REAL)
+        if side == "left":
+            x, mask, real_slots = (
+                torch.cat([garbage, real], -1),
+                torch.cat([zeros, ones], -1),
+                slice(S - N_REAL, S),
+            )
+        else:
+            x, mask, real_slots = (
+                torch.cat([real, garbage], -1),
+                torch.cat([ones, zeros], -1),
+                slice(0, N_REAL),
+            )
+
+        with torch.no_grad():
+            out, new_state = _conv_with_state(x, state, mask, conv)
+            ref_out, ref_state = self._reference(conv, state, real)
+        assert _max_err(out[:, :, real_slots], ref_out) < 1e-5
+        assert _max_err(new_state, ref_state) < 1e-5
+
+    def test_rows_use_their_own_padding(self):
+        """Each batch row locates its own real run, not row 0's."""
+        from GenAILab.qai_hub_lm.transforms.exportable_linear_attention import (
+            _conv_with_state,
+        )
+
+        torch.manual_seed(0)
+        C, K, S = self.C, self.K, self.S
+        conv = torch.nn.Conv1d(C, C, K, groups=C, padding=K - 1, bias=False)
+        state, x = torch.randn(2, C, K), torch.randn(2, C, S)
+        mask = torch.zeros(2, S)
+        mask[0, 2:] = 1  # row 0: 2 left-pad, 8 real
+        mask[1, :5] = 1  # row 1: 5 real, 5 right-pad
+
+        with torch.no_grad():
+            out, new_state = _conv_with_state(x, state, mask, conv)
+            for row, real_slots in ((0, slice(2, S)), (1, slice(0, 5))):
+                real = x[row : row + 1, :, real_slots]
+                seq = torch.cat([state[row : row + 1], real], -1)
+                ref = torch.nn.functional.silu(
+                    torch.nn.functional.conv1d(seq, conv.weight, groups=C)
+                )[:, :, -real.shape[-1] :]
+                assert _max_err(out[row : row + 1, :, real_slots], ref) < 1e-5
+                assert _max_err(new_state[row : row + 1], seq[:, :, -K:]) < 1e-5
+
+
 class TestSolveTriangular:
     def test_inverts_unit_lower_triangular(self):
         """``_solve_triangular(A)`` approximates ``(I - A)^{-1}`` for strict-LT A."""
@@ -283,6 +362,29 @@ class TestOnnxScanExport:
         # No unrolled copies of the body left at the top level.
         assert op_types.count("Loop") == 0
 
+    def test_no_tensor_exceeds_rank_4(self, tmp_path):
+        """The HTP backend rejects rank-5 ops when building the context binary."""
+        onnx = pytest.importorskip("onnx")
+        model, _ = self._export(tmp_path)
+        inferred = onnx.shape_inference.infer_shapes(model)
+        ranks = {
+            v.name: len(v.type.tensor_type.shape.dim)
+            for v in (*inferred.graph.value_info, *inferred.graph.output)
+            if v.type.tensor_type.HasField("shape")
+        }
+        assert max(ranks.values()) <= 4, {n: r for n, r in ranks.items() if r > 4}
+
+    def test_l2norm_fuses_to_rmsnorm(self, tmp_path):
+        """aimet must fuse the q/k norms, not quantize their internals."""
+        onnx_ir = pytest.importorskip("onnx_ir")
+        fusions = pytest.importorskip("aimet_onnx.graph_passes.fusions")
+        model, _ = self._export(tmp_path)
+        fused = fusions.fuse_supergroups(
+            onnx_ir.from_proto(model), ["RMSNormalization"]
+        )
+        op_types = [n.op_type for n in fused.graph.all_nodes()]
+        assert op_types.count("RMSNormalization") == 2, op_types  # query and key
+
     def test_padding_stays_in_the_graph(self, tmp_path):
         """The pad must survive export, or the seq axis gets specialized.
 
@@ -330,7 +432,9 @@ class TestOnnxScanExport:
         scan = next(n for n in model.graph.node if n.op_type == "Scan")
         body = next(a.g for a in scan.attribute if a.name == "body")
         # Generous bounds: these catch an unroll regression, not op-count drift.
-        assert top_level < 120, f"top-level grew to {top_level} nodes"
+        # ~150 today: the rank-4 merge, integer-index masks and fusable norm add
+        # reshapes and index math, constant in the sequence length.
+        assert top_level < 200, f"top-level grew to {top_level} nodes"
         assert len(body.node) < 60, f"scan body grew to {len(body.node)} nodes"
         # The recurrent state is the scan carry: first body input, first output.
         assert len(body.input) >= 1 and len(body.output) >= 2
@@ -649,6 +753,47 @@ class TestPatchedModelForward:
         assert _max_err(out[0][:, real], out_other_pad[0][:, real]) < TOL
         for state, state_other_pad in zip(out[1:3], out_other_pad[1:3]):
             assert _max_err(state, state_other_pad) < TOL
+
+    def test_right_padding_matches_left_padding(self):
+        """The same real tokens and incoming states must give the same real-position
+        outputs and carried states whichever side the padding is on. Before the
+        conv located the real run, right padding corrupted the conv state."""
+        from GenAILab.qai_hub_lm.models.utils.attention_mask import (
+            convert_2d_attention_mask_to_4d,
+        )
+
+        wrapped, sample = self._wrapped_model_and_inputs()
+        S, CL, NPAD = self.S, self.CL, self.NPAD
+        n_real = S - NPAD
+        torch.manual_seed(1)
+        # Non-zero incoming states, so the conv's use of its history is exercised
+        states = [torch.randn_like(x) if x.dim() > 2 else x for x in sample[3:]]
+        real_ids = sample[0][:, NPAD:]
+        pad_ids = torch.full((1, NPAD), 7, dtype=real_ids.dtype)
+        past = torch.zeros(1, CL - S)
+
+        def run(input_ids, mask2d, position_ids):
+            mask = convert_2d_attention_mask_to_4d(mask2d, S, CL).clip(-100, 0)
+            with torch.no_grad():
+                return wrapped(input_ids, mask, position_ids, *states)
+
+        positions = torch.arange(n_real, dtype=torch.int32).unsqueeze(0)
+        zero_pos = torch.zeros(1, NPAD, dtype=torch.int32)
+        left = run(
+            torch.cat([pad_ids, real_ids], -1),
+            torch.cat([past, torch.zeros(1, NPAD), torch.ones(1, n_real)], -1),
+            torch.cat([zero_pos, positions], -1),
+        )
+        right = run(
+            torch.cat([real_ids, pad_ids], -1),
+            torch.cat([past, torch.ones(1, n_real), torch.zeros(1, NPAD)], -1),
+            torch.cat([positions, zero_pos], -1),
+        )
+
+        assert _max_err(left[0][:, NPAD:], right[0][:, :n_real]) < TOL
+        # Linear-attention conv and recurrent states (the KV cache is position-laid-out)
+        for state_left, state_right in zip(left[1:3], right[1:3]):
+            assert _max_err(state_left, state_right) < TOL
 
     def test_dynamo_exports(self):
         """The backbone exports with a dynamic sequence axis, as in the backend."""
