@@ -799,23 +799,41 @@ def _tanh_example_inputs():
 #     return (torch.randn(3, 2, 4), 0), {}
 
 
-@register_example_inputs(torch.ops.aten.upsample_bicubic2d.default)
-def _upsample_bicubic2d_example_inputs():
+@register_example_inputs(torch.ops.aten.upsample_bicubic2d.vec)
+def _upsample_bicubic2d_vec_example_inputs():
     return (
         torch.randn(1, 3, 4, 4),
         [8, 8],
         True,
         None,
+    ), {}
+
+
+@register_example_inputs(torch.ops.aten.upsample_bilinear2d.vec)
+def _upsample_bilinear2d_vec_example_inputs():
+    return (
+        torch.randn(1, 3, 4, 4),
+        [8, 8],
+        True,
         None,
     ), {}
 
 
-@register_example_inputs(torch.ops.aten.upsample_linear1d.default)
-def _upsample_linear1d_example_inputs():
+@register_example_inputs(torch.ops.aten.upsample_linear1d.vec)
+def _upsample_linear1d_vec_example_inputs():
     return (
         torch.randn(1, 3, 4),
         [8],
         True,
+        None,
+    ), {}
+
+
+@register_example_inputs(torch.ops.aten.upsample_nearest2d.vec)
+def _upsample_nearest2d_vec_example_inputs():
+    return (
+        torch.randn(1, 3, 4, 4),
+        [8, 8],
         None,
     ), {}
 
@@ -954,6 +972,11 @@ def _expand_example_inputs():
 @register_example_inputs(torch.ops.aten.fill.Tensor)
 def _fill_tensor_example_inputs():
     return (torch.randn(2, 3), torch.tensor(1.0)), {}
+
+
+@register_example_inputs(torch.ops.aten.flip.default)
+def _flip_example_inputs():
+    return (torch.randn(2, 3, 4), [0, 2]), {}
 
 
 @register_example_inputs(torch.ops.aten.floor.default)

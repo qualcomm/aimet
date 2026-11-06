@@ -85,6 +85,7 @@ xfail = {
     torch.ops.aten.fill.Tensor: "Minor ONNX export error",
     torch.ops.aten.scalar_tensor.default: "Minor ONNX export error",
     torch.ops.aten.sym_size.int: "Minor ONNX export error",
+    torch.ops.aten.upsample_linear1d.vec: "Proper support not implemented in onnxscript. See https://github.com/microsoft/onnxscript/issues/3165",
 }
 
 

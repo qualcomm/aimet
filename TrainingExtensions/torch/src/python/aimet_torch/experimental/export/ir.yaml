@@ -174,8 +174,8 @@
 #   is_core_aten: true
 - name: aten::fill.Tensor
   is_core_aten: false
-# - name: aten::flip
-#   is_core_aten: true
+- name: aten::flip
+  is_core_aten: true
 - name: aten::floor
   is_core_aten: true
 # - name: aten::fmod.Scalar
@@ -404,12 +404,14 @@
 #   is_core_aten: true
 - name: aten::unsqueeze
   is_core_aten: true
-# - name: aten::upsample_bilinear2d.vec
-#   is_core_aten: true
-- name: aten::upsample_linear1d
+- name: aten::upsample_bicubic2d.vec
   is_core_aten: false
-# - name: aten::upsample_nearest2d.vec
-#   is_core_aten: true
+- name: aten::upsample_bilinear2d.vec
+  is_core_aten: true
+- name: aten::upsample_linear1d.vec
+  is_core_aten: true
+- name: aten::upsample_nearest2d.vec
+  is_core_aten: true
 # - name: aten::var.correction
 #   is_core_aten: true
 # - name: aten::var.dim
@@ -418,5 +420,3 @@
   is_core_aten: true
 - name: aten::where.self
   is_core_aten: true
-# - aten::upsample_bicubic2d
-#   is_core_aten: false

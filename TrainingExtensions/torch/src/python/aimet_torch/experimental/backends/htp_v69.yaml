@@ -71,6 +71,7 @@ ops:
       | aten::copy
       | aten::expand
       | aten::fill.Tensor
+      | aten::flip
       | aten::max.dim
       | aten::maximum
       | aten::max_pool2d_with_indices
@@ -94,6 +95,8 @@ ops:
       | aten::squeeze.dim
       | aten::squeeze.dims
       | aten::unsqueeze
+      | aten::upsample_bilinear2d.vec
+      | aten::upsample_nearest2d.vec
       | aten::view
     type_constraints:
       a8: {"*": uint8}
