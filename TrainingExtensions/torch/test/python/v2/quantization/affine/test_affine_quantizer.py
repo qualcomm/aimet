@@ -2710,6 +2710,27 @@ def test_equivalence_with_pairwise_nearest():
         assert torch.equal(mapped_tensor, out)
 
 
+@pytest.mark.parametrize("zero_point_shift", [0.0, 0.5])
+def test_from_encodings_preserves_zero_point_shift(zero_point_shift):
+    """
+    When: Instantiate a quantizer from the encodings of a quantizer with zero_point_shift
+    Then: The new quantizer should have the same zero_point_shift and produce the same output
+    """
+    qtzr = QuantizeDequantize(
+        shape=(), bitwidth=2, symmetric=True, zero_point_shift=zero_point_shift
+    )
+    x = torch.arange(-5, 5, 0.1)
+    with qtzr.compute_encodings():
+        _ = qtzr(x)
+
+    qtzr_ = QuantizeDequantize.from_encodings(qtzr.get_encodings())
+
+    assert qtzr_.zero_point_shift == zero_point_shift
+    assert torch.equal(qtzr_.get_min(), qtzr.get_min())
+    assert torch.equal(qtzr_.get_max(), qtzr.get_max())
+    assert torch.equal(qtzr_(x), qtzr(x))
+
+
 def test_affine_encoding_schema_2_0_0_nonstandard_dtype():
     """
     When: Export quantizer with non-standard data type
