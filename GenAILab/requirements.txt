@@ -9,4 +9,6 @@ einops
 timm
 click
 pydantic
+# Text-to-image diffusion models (Stable Diffusion).
+diffusers
 soundfile
