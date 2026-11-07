@@ -1077,7 +1077,11 @@ class BaseQuantizationMixin(abc.ABC):
         bias_qtzr = QuantizeDequantize(
             shape=bias_encoding_shape, qmin=qmin, qmax=qmax, symmetric=True
         )
-        bias_qtzr.to(dtype=bias.dtype, device=bias.device)
+        # NOTE: Only follow the device, but NOT the dtype of bias.
+        #       The int32 range bias_scale * [-2**31, 2**31 - 1] overflows float16
+        #       (max 65504) to inf if bias_scale > ~3e-5 and is rounded off in bfloat16.
+        #       Keep the quantization parameters in float32 for numerical stability.
+        bias_qtzr.to(device=bias.device, dtype=torch.float32)
         self.param_quantizers["bias"] = bias_qtzr
 
         if bias_scale is not None:
