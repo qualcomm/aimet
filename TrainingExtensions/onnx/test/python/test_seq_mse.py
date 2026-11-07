@@ -471,6 +471,44 @@ def test_static_apply_seq_mse(param_bw, loss_fn, enable_pcq, tmp_dir):
         apply_seq_mse(sim, inputs[:1])
 
 
+def test_apply_seq_mse_with_tf_enhanced():
+    """
+    When: Apply seq mse to a sim created with the TF-Enhanced quant scheme
+    Then: Weight encodings match those of a min-max sim, since seq mse needs exact min/max
+          values, and the original quant scheme is restored
+    """
+    model = single_conv_layer_model()
+    inputs = [make_dummy_input(model.model) for _ in range(2)]
+    sim_kwargs = {
+        "default_activation_bw": 8,
+        "default_param_bw": 4,
+        "providers": ["CPUExecutionProvider"],
+    }
+    sim = QuantizationSimModel(
+        model=copy.deepcopy(model),
+        quant_scheme=QuantScheme.post_training_tf_enhanced,
+        **sim_kwargs,
+    )
+    min_max_sim = QuantizationSimModel(
+        model=copy.deepcopy(model),
+        quant_scheme=QuantScheme.post_training_tf,
+        **sim_kwargs,
+    )
+
+    apply_seq_mse(sim, inputs)
+    apply_seq_mse(min_max_sim, inputs)
+
+    quantizer = sim.qc_quantize_op_dict["conv.weight"]
+    expected_quantizer = min_max_sim.qc_quantize_op_dict["conv.weight"]
+
+    assert quantizer.quant_scheme == QuantScheme.post_training_tf_enhanced
+    assert quantizer.is_encoding_frozen()
+    assert np.allclose(
+        [enc.max for enc in quantizer.get_encodings()],
+        [enc.max for enc in expected_quantizer.get_encodings()],
+    )
+
+
 @pytest.mark.parametrize("param_bw", [2, 31])
 @pytest.mark.parametrize("loss_fn", ["mse", "l1", "sqnr"])
 @pytest.mark.parametrize("enable_pcq", [True, False])

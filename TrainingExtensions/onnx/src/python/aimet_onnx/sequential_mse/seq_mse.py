@@ -25,6 +25,7 @@ from aimet_onnx.common.libpymo import TensorQuantizerOpMode
 from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.common.utils import AimetLogger, deprecated
 from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
+from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import (
     disable_quantizers,
@@ -112,12 +113,6 @@ class SequentialMse:
         :param data_loader: The set of input samples to use during optimization
         nodes_to_exclude: List of supported node name(s) to exclude from sequential MSE optimization
         """
-        # pylint: disable=protected-access
-        assert sim._quant_scheme in (
-            QuantScheme.post_training_tf,
-            QuantScheme.training_range_learning_with_tf_init,
-        ), "Use TF quant-scheme with sequential MSE."
-
         self.sim = sim
         self.params = params
 
@@ -176,21 +171,32 @@ class SequentialMse:
         3) run the onnx graph and compute encoding using seq mse algorithm
         4) re-enable the quantizer disabled in first step
         """
-        with _temporarily_disable_block_grouping(self.sim):
+        names_to_optimize = self._get_quantizer_names_to_optimize()
+        quantizers_to_optimize = [
+            self.sim.qc_quantize_op_dict[name] for name in names_to_optimize
+        ]
+
+        with (
+            _temporarily_disable_block_grouping(self.sim),
+            _use_min_max_quant_scheme(quantizers_to_optimize),
+        ):
             self.sim._compute_param_encodings(overwrite=False)
 
             with (
-                disable_quantizers(self.sim, self._get_quantizers_to_be_disabled()),
+                disable_quantizers(
+                    self.sim, self._get_quantizers_to_be_disabled(names_to_optimize)
+                ),
                 _remove_session(self.sim),
             ):
                 self._topological_traversal()
 
-    def _get_quantizers_to_be_disabled(self) -> List[str]:
+    def _get_quantizers_to_be_disabled(self, names_to_optimize: List[str]) -> List[str]:
         """
         Get list of quantizer names to be disabled in sim model before applying seq mse.
 
         NOTE: Disable all activation quantizers and param quantizers of non-supported modules
 
+        :param names_to_optimize: Param quantizer names optimized by seq mse
         :return Returns the quantizer names to be disabled in sim model.
         """
         enabled_quantizer_names = []
@@ -200,7 +206,20 @@ class SequentialMse:
             if quantizer.enabled:
                 enabled_quantizer_names.append(name)
 
-        # Get list of all the enabled param quantizers of supported ops
+        # Get list of all the quantizers that are not part of param quantizers of supported ops
+        quantizers_to_be_disabled = []
+        for name in enabled_quantizer_names:
+            if name not in names_to_optimize:
+                quantizers_to_be_disabled.append(name)
+
+        return quantizers_to_be_disabled
+
+    def _get_quantizer_names_to_optimize(self) -> List[str]:
+        """
+        Get list of enabled param quantizer names of the ops optimized by seq mse.
+
+        :return Returns the param quantizer names of supported ops.
+        """
         param_quantizer_names = []
         for cg_op in self.dependency_graph.conn_graph.ordered_ops:
             if not self.dependency_graph.is_supported_op(cg_op):
@@ -214,13 +233,7 @@ class SequentialMse:
                 if quantizer and quantizer.enabled:
                     param_quantizer_names.append(param_name)
 
-        # Get list of all the quantizers that are not part of param quantizers of supported ops
-        quantizers_to_be_disabled = []
-        for name in enabled_quantizer_names:
-            if name not in param_quantizer_names:
-                quantizers_to_be_disabled.append(name)
-
-        return quantizers_to_be_disabled
+        return param_quantizer_names
 
     @contextmanager
     def _disable_subgraph_quantizers(self, model: onnx.ModelProto):
@@ -1054,6 +1067,41 @@ def _temporarily_disable_block_grouping(sim: QuantizationSimModel):
     finally:
         for quantizer, original_scale_quantizer in original_scale_quantizers.items():
             quantizer._scale_quantizer = original_scale_quantizer
+
+
+@contextmanager
+def _use_min_max_quant_scheme(quantizers: List[QcQuantizeOp]):
+    """
+    Set the given quantizers to the min-max quant scheme for the duration of the context manager.
+
+    NOTE: Sequential MSE derives encodings by passing exact candidate min/max values through the
+          quantizer, which histogram-based schemes such as TF-Enhanced would distort.
+
+    :param quantizers: Quantizers to be set to min-max
+    """
+    original_quant_schemes = {
+        quantizer: quantizer.quant_scheme
+        for quantizer in quantizers
+        if quantizer.quant_scheme != QuantScheme.post_training_tf
+        and not quantizer.is_encoding_frozen()
+    }
+
+    try:
+        for quantizer in original_quant_schemes:
+            quantizer.set_quant_scheme(QuantScheme.post_training_tf)
+        yield
+
+    finally:
+        for quantizer, quant_scheme in original_quant_schemes.items():
+            # set_quant_scheme discards the encodings, so carry over the ones computed under min-max.
+            encodings = quantizer.get_encodings()
+            was_frozen = quantizer.is_encoding_frozen()
+            quantizer._is_encoding_frozen = False  # pylint: disable=protected-access
+            quantizer.set_quant_scheme(quant_scheme)
+            if encodings:
+                quantizer.load_encodings(encodings)
+            if was_frozen:
+                quantizer.freeze_encodings()
 
 
 def _has_unit_kernel_only(model: onnx.ModelProto) -> bool:
