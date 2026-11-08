@@ -10,6 +10,7 @@ from onnxscript import rewriter
 from onnxscript.rewriter import pattern
 
 from aimet_onnx.ir_utils import get_constant_singleton_value, get_upstream_cast_type
+from aimet_onnx.graph_passes.utils import is_unidirectionally_broadcastable
 from .fusion_registry import register_fusion, AIMET_SUPERGROUP_DOMAIN
 from . import _patterns
 
@@ -22,6 +23,16 @@ SUPPORTED_FLOAT_TYPES = (
     onnx_ir.DataType.FLOAT16,
     onnx_ir.DataType.BFLOAT16,
 )
+
+
+def _dims(value: onnx_ir.Value) -> list | None:
+    """
+    Return the shape of ``value`` with symbolic dims as their names and unknown dims as
+    None, or None if the shape is unknown
+    """
+    if value.shape is None:
+        return None
+    return [dim if isinstance(dim, int) else dim.value for dim in value.shape.dims]
 
 
 @register_fusion("RMSNormalization", pattern_idx=0)
@@ -190,6 +201,7 @@ class RMSNormFusion(pattern.RewriteRuleClassBase):
         self,
         context: rewriter.MatchContext,
         input_x: onnx_ir.Value,
+        scale: onnx_ir.Value,
         **kwargs,
     ) -> rewriter.pattern.MatchResult:
         match_result = pattern.MatchResult()
@@ -201,6 +213,22 @@ class RMSNormFusion(pattern.RewriteRuleClassBase):
         if axes is not None and axes_value is None:
             return match_result.fail(
                 f"Axes attribute must be single element constant, got: {axes}"
+            )
+
+        # The Mul is the RMSNorm scale Mul only if its other input is a valid scale as per
+        # the ONNX spec, i.e. unidirectionally broadcastable to the normalized shape
+        # ``input_shape[axis:]``. Otherwise, e.g. for a Mul by an activation, it consumes
+        # the RMSNorm output. If the shapes are unknown, it is not taken as the scale Mul.
+        axis = axes_value if axes_value is not None else -1
+        input_shape = _dims(input_x)
+        if input_shape is None or not -len(input_shape) <= axis < len(input_shape):
+            return match_result.fail(
+                f"Input shape {input_x.shape} is unknown or axis {axis} is out of range"
+            )
+        if not is_unidirectionally_broadcastable(_dims(scale), input_shape[axis:]):
+            return match_result.fail(
+                f"Scale shape {scale.shape} is not broadcastable to the normalized "
+                f"shape of input shape {input_x.shape} from axis {axis}"
             )
 
         eps = get_constant_singleton_value(epsilon)

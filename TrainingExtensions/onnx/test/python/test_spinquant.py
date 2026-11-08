@@ -2111,11 +2111,12 @@ class TestLowPrecisionGraphs:
         Then: The graph's dtypes are inferred once for the whole pass, not per Hadamard
         """
         model = _export_decoder_with_pkv(decoder_cls())
+        # Patch the name in rotation_primitives, so that only its shape inference is
+        # counted, not the one that supergroup fusion runs
         with patch.object(
-            rotation_primitives.ShapeInferencePass,
-            "call",
-            autospec=True,
-            side_effect=rotation_primitives.ShapeInferencePass.call,
+            rotation_primitives,
+            "ShapeInferencePass",
+            wraps=rotation_primitives.ShapeInferencePass,
         ) as shape_inference:
             apply_spinquant(model, enable_r1=False, enable_r3=True)
 

@@ -460,6 +460,53 @@ def rmsnorm_with_cast_model(
     return model
 
 
+class RMSNormFollowedByMul(nn.Module):
+    """RMSNorm (with or without weight) followed by a Mul by the second input."""
+
+    def __init__(self, dim, elementwise_affine=True):
+        super().__init__()
+        self.weight = (
+            torch.nn.Parameter(torch.randn(dim)) if elementwise_affine else None
+        )
+        self.variance_epsilon = 0.003
+
+    def forward(self, x, y):
+        variance = x.pow(2).mean(-1, keepdim=True)
+        x = x * torch.rsqrt(variance + self.variance_epsilon)
+        if self.weight is not None:
+            x = x * self.weight
+        return x * y
+
+
+def rmsnorm_followed_by_mul_model(
+    dim: int = 32,
+    elementwise_affine: bool = True,
+    other_shape: tuple = (1, 3, 32, 32),
+    opset=16,
+):
+    """
+    RMSNorm over an input of shape (1, 3, dim, dim) followed by a Mul by a second
+    input of shape ``other_shape``
+    """
+    torch.manual_seed(10)
+    model = RMSNormFollowedByMul(dim=dim, elementwise_affine=elementwise_affine)
+    buffer = io.BytesIO()
+    x = torch.randn((1, 3, dim, dim))
+    y = torch.randn(other_shape)
+    torch.onnx.export(
+        model,
+        (x, y),
+        buffer,
+        input_names=["x", "y"],
+        output_names=["output"],
+        opset_version=opset,
+        dynamo=False,
+    )
+    buffer.seek(0)
+    model = load_model(buffer)
+    return model
+
+
 def rmsnorm_model(
     dim: int = 32,
     elementwise_affine: bool = True,

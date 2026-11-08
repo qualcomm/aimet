@@ -386,6 +386,33 @@ def compute_encodings(sim: "QuantizationSimModel"):
         delattr(sim, "_is_computing_encodings")
 
 
+def _add_inferred_value_info(model: onnx.ModelProto):
+    """
+    Add the inferred shapes of the intermediate tensors of the main graph and its If/Scan
+    bodies to the value infos of the graph that defines them, in place. Tensors whose
+    shapes cannot be inferred are left without a value info.
+
+    :param model: ONNX model
+    """
+    ir_model = onnx_ir.from_proto(model)
+    ShapeInferencePass(strict_mode=False, data_prop=False).call(ir_model)
+
+    # Both walks visit the bodies in the same order, so each IR graph is paired with the
+    # proto graph it was built from
+    for graph, ir_graph in zip(
+        _iterate_graphs_recursive(model.graph),
+        _iterate_graphs_recursive_ir(ir_model.graph),
+        strict=True,
+    ):
+        known = {value_info.name for value_info in graph.value_info}
+        known |= {value_info.name for value_info in graph.input}
+        known |= {value_info.name for value_info in graph.output}
+        for node in ir_graph:
+            for value in node.outputs:
+                if value.name and value.name not in known and value.shape is not None:
+                    graph.value_info.append(onnx_ir.serde.serialize_value(value))
+
+
 def _fill_missing_node_names(model: onnx.ModelProto):
     """
     Fill missing node names in the ONNX model with unique names.
@@ -541,7 +568,12 @@ class QuantizationSimModel:
             self._activation_type,
         )
         if _fuse_supergroups:
+            # ``fuse_supergroups`` infers tensor shapes before matching the supergroups
             model = quantsim_configurator.apply_fusions(model)
+        else:
+            # Without fusion, the supergroup graph passes still read tensor shapes from
+            # ``value_info``, e.g. to check the shape of the RMSNorm weight
+            _add_inferred_value_info(model.model)
 
         self.model = model
         self._quantize_subgraphs = _quantize_subgraphs

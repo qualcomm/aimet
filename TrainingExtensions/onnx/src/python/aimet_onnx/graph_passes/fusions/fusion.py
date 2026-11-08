@@ -5,6 +5,7 @@
 
 from collections import defaultdict
 import onnx_ir
+from onnx_ir.passes.common import ShapeInferencePass
 from onnxscript.rewriter import pattern
 from .fusion_registry import FUSION_PASS_REGISTRY
 from aimet_onnx import ir_utils
@@ -40,6 +41,10 @@ def fuse_supergroups(
 
     if not patterns:
         return model
+
+    # Patterns check tensor shapes, e.g. the shape of the RMSNorm scale, so infer them
+    # before matching. Tensors whose shapes cannot be inferred are left without a shape.
+    ShapeInferencePass(strict_mode=False, data_prop=False).call(model)
 
     # Create rewrite rule set to match specified patterns into onnx functions
     fusion_rules = [

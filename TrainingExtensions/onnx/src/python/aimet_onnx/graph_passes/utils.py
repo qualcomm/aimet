@@ -3,9 +3,11 @@
 
 # pylint: disable=missing-module-docstring
 
+import itertools
+
 from aimet_onnx.common.connected_graph.operation import Op, Product
 from aimet_onnx.utils import ParamUtils, ModelProto
-from aimet_onnx.common.onnx._utils import to_array
+from aimet_onnx.common.onnx._utils import to_array, _iterate_graphs_recursive
 
 import numpy as np
 from typing import List, Tuple, Optional, Union
@@ -221,3 +223,61 @@ def get_const_input_names(op_list: List[Op]) -> List[str]:
         input.name for op in op_list for input in op.inputs if input.is_const
     ]
     return const_input_names
+
+
+def get_shape(model: ModelProto, name: str) -> Optional[list]:
+    """
+    Returns the shape of a tensor from the value infos of the model and its subgraphs,
+    or from the tensor itself if it is a constant
+
+    Args:
+        model (ModelProto): source Model
+        name (str): name of the tensor
+
+    Returns:
+        Optional[list]: Shape with each dim as an int, a symbolic dim name, or None if
+        the dim is unknown. None if the shape is unknown.
+    """
+    for graph in _iterate_graphs_recursive(model.graph, include_if=True):
+        for value_info in itertools.chain(graph.input, graph.value_info, graph.output):
+            tensor_type = value_info.type.tensor_type
+            if value_info.name == name and tensor_type.HasField("shape"):
+                return [
+                    dim.dim_value
+                    if dim.HasField("dim_value")
+                    else dim.dim_param or None
+                    for dim in tensor_type.shape.dim
+                ]
+
+    param = ParamUtils.get_param_by_name(model, name)
+    return list(param.dims) if param is not None else None
+
+
+def is_unidirectionally_broadcastable(
+    shape: Optional[list], target_shape: Optional[list]
+) -> bool:
+    """
+    Check if a tensor of shape ``shape`` is unidirectionally broadcastable to
+    ``target_shape`` as per the ONNX broadcasting rules, i.e. it can be broadcast to
+    ``target_shape`` without changing ``target_shape``. Each dim is an int, a symbolic
+    dim name, or None if the dim is unknown.
+
+    Args:
+        shape (Optional[list]): Shape to broadcast, None if unknown
+        target_shape (Optional[list]): Shape to broadcast to, None if unknown
+
+    Returns:
+        bool: True if ``shape`` is broadcastable to ``target_shape``. False if not, or if
+        a shape or dim needed to decide is unknown
+    """
+    if shape is None or target_shape is None:
+        return False
+
+    if len(shape) > len(target_shape):
+        return False
+
+    # Dims with the same symbolic name are the same dim at runtime
+    return all(
+        dim == 1 or (dim is not None and dim == target_dim)
+        for dim, target_dim in zip(reversed(shape), reversed(target_shape))
+    )
