@@ -15,7 +15,7 @@ import torch.nn
 from aimet_torch.common.defs import QuantizationDataType, QuantScheme
 from aimet_torch.common.utils import AimetLogger
 from aimet_torch.onnx_utils import map_torch_types_to_onnx
-from aimet_torch.utils import get_param_channel_axis
+from aimet_torch.utils import get_param_channel_axis, get_per_channel_scale_shape
 from aimet_torch.quantization.base import QuantizerBase
 from aimet_torch.quantsim import QuantizationSimModel
 from aimet_torch.nn import BaseQuantizationMixin
@@ -359,7 +359,7 @@ class MpHandler:
         quant_scheme: QuantScheme,
         symm: bool,
         tensor_shape: tuple = None,
-        ch_axis: int = None,
+        ch_axis: Union[int, Tuple[int, ...], None] = None,
     ):
         """
         Helper function to apply mixed precision candidate to a quantizer
@@ -388,11 +388,7 @@ class MpHandler:
         else:
             scale_shape = tuple()
             if tensor_shape is not None and ch_axis is not None:
-                ch_axis = len(tensor_shape) + ch_axis if ch_axis < 0 else ch_axis
-                scale_shape = tuple(
-                    dim if axis == ch_axis else 1
-                    for axis, dim in enumerate(tensor_shape)
-                )
+                scale_shape = get_per_channel_scale_shape(tensor_shape, ch_axis)
 
             encoding_analyzer_cls = (
                 MinMaxEncodingAnalyzer

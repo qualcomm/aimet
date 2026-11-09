@@ -50,6 +50,7 @@ from aimet_torch.mixed_precision import choose_mixed_precision
 from aimet_torch.v2.mixed_precision import MixedPrecisionConfigurator
 from aimet_torch.v2.quantization.float import FloatQuantizeDequantize
 from ..models_ import test_models
+from ..models_.models_to_test import ModelWithStackedLinear, quantized_stacked_linear
 
 
 def encodings_are_close(
@@ -3678,3 +3679,32 @@ def test_root_qmodule():
     assert not hasattr(model, "input_quantizers")
     assert not hasattr(model, "output_quantizers")
     assert not hasattr(model, "param_quantizers")
+
+
+def test_stacked_weight_per_channel():
+    """
+    When: Create quantsim with per-channel quantization for a module declaring
+          weight channel axes (0, 1)
+    Then: 1) The stacked weight is quantized per stacked weight and per output channel
+          2) Quantizing it is equivalent to quantizing each stacked weight per output channel
+          3) Other modules are quantized per output channel as before
+    """
+    torch.manual_seed(0)
+    with quantized_stacked_linear({"weight": (0, 1)}):
+        model = ModelWithStackedLinear()
+        dummy_input = torch.randn(2, 8)
+        sim = QuantizationSimModel(model, dummy_input)
+        sim.compute_encodings(lambda m: m(dummy_input))
+
+    stacked = sim.model.stacked
+    qdq = stacked.param_quantizers["weight"]
+    assert qdq.shape == (3, 4, 1)
+    assert sim.model.fc.param_quantizers["weight"].shape == (6, 1)
+
+    with torch.no_grad():
+        out = qdq(stacked.weight)
+        for i, weight in enumerate(stacked.weight):
+            ref_qdq = QuantizeDequantize((4, 1), qdq.bitwidth, qdq.symmetric)
+            with ref_qdq.compute_encodings():
+                ref_qdq(weight)
+            assert torch.equal(out[i], ref_qdq(weight))

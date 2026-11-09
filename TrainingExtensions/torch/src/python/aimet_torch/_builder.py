@@ -10,6 +10,7 @@ import torch
 
 from aimet_torch.common.defs import QuantScheme, QuantizationDataType
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, LazyQuantizer
+from aimet_torch.utils import get_per_channel_scale_shape
 import aimet_torch.fp_quantization as v1_fp_quantization
 from aimet_torch.quantization.float import FloatQuantizeDequantize
 from aimet_torch.quantization.affine import QuantizeDequantize, AffineQuantizerBase
@@ -73,22 +74,13 @@ class _V2LazyQuantizer(LazyQuantizer):
                 "Unsigned symmetric is not supported in quantsim v2"
             )
 
-        if self.channel_axis:
-            assert self.input_tensor_shape
-            assert 0 <= self.channel_axis < len(self.input_tensor_shape), (
-                f"Channel axis {self.channel_axis} is out of bound of param shape {self.input_tensor_shape}"
-            )
-
     def _get_scale_shape(self) -> tuple[int, ...]:
         """Returns shape of quantization scale/offset."""
         if self.channel_axis is not None:
             assert self.input_tensor_shape
-            channel_axis = self.channel_axis if self.channel_axis else 0
-
-            scale_shape = [1] * len(self.input_tensor_shape)
-            scale_shape[channel_axis] = self.input_tensor_shape[channel_axis]
-
-            return tuple(scale_shape)
+            return get_per_channel_scale_shape(
+                self.input_tensor_shape, self.channel_axis
+            )
 
         return tuple()
 

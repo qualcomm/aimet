@@ -4282,10 +4282,9 @@ class TestQuantizationSimLearnedGrid:
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
 
-        # Temporarily add aimet_modules.MatMul entry to apply op_type config
-        original_map_torch_types_to_onnx = copy.deepcopy(
-            onnx_utils.map_torch_types_to_onnx
-        )
+        # Temporarily add aimet_modules.MatMul entry to apply op_type config.
+        # Restore it in place: other modules hold references to this dict object.
+        original_map_torch_types_to_onnx = dict(onnx_utils.map_torch_types_to_onnx)
         onnx_utils.map_torch_types_to_onnx[aimet_modules.MatMul] = ["MatMul"]
 
         model = test_models.ModelWithMatMul().to(device)
@@ -4348,7 +4347,8 @@ class TestQuantizationSimLearnedGrid:
             assert not second_input_quantizer.symmetric
 
         # Restore original mapping dictionary
-        onnx_utils.map_torch_types_to_onnx = original_map_torch_types_to_onnx
+        onnx_utils.map_torch_types_to_onnx.clear()
+        onnx_utils.map_torch_types_to_onnx.update(original_map_torch_types_to_onnx)
 
     @pytest.mark.parametrize("hw_version", [None, "V66", "V68", "V69", "V73", "V75"])
     @pytest.mark.parametrize(

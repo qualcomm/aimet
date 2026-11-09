@@ -16,6 +16,7 @@ from typing import (
     Optional,
     TextIO,
     Mapping,
+    Sequence,
 )
 import contextlib
 from contextlib import contextmanager, ExitStack
@@ -1037,13 +1038,27 @@ def place_model(model: torch.nn.Module, device: torch.device):
         model.to(device=original_device)
 
 
-def get_param_channel_axis(module: torch.nn.Module, param_name: str):
+def get_param_channel_axis(
+    module: torch.nn.Module, param_name: str
+) -> Union[int, Tuple[int, ...]]:
     """
     Given a module and its param name, this method returns the channel axis of the given parameter.
 
+    Modules can declare the channel axes of their parameters through a _param_channel_axes
+    attribute mapping parameter name to a tuple of axes.
+
+    This is required for parameters quantized per channel along more than one axis.
+
     :param module: torch.nn.Module
     :param param_name: str representing the name of the parameter
+    :return: Channel axis, or tuple of channel axes for parameters declared in
+        _param_channel_axes
     """
+    declared_channel_axes = getattr(module, "_param_channel_axes", None) or {}
+    if param_name in declared_channel_axes:
+        channel_axes = tuple(declared_channel_axes[param_name])
+        return channel_axes[0] if len(channel_axes) == 1 else channel_axes
+
     channel_axis = 0
     if isinstance(
         module,
@@ -1051,6 +1066,29 @@ def get_param_channel_axis(module: torch.nn.Module, param_name: str):
     ):
         channel_axis = 1 if param_name == "weight" else 0
     return channel_axis
+
+
+def get_per_channel_scale_shape(
+    tensor_shape: Sequence[int], channel_axis: Union[int, Sequence[int]]
+) -> Tuple[int, ...]:
+    """
+    Returns shape of per-channel quantization scale:
+    size of tensor_shape along each channel axis, 1 elsewhere.
+
+    :param tensor_shape: Shape of the tensor to quantize
+    :param channel_axis: Channel axis, or sequence of channel axes. Negative axes are allowed.
+    :return: Scale shape
+    """
+    channel_axes = (
+        channel_axis if isinstance(channel_axis, (tuple, list)) else (channel_axis,)
+    )
+    for axis in channel_axes:
+        if not -len(tensor_shape) <= axis < len(tensor_shape):
+            raise ValueError(
+                f"Channel axis {axis} is out of bound of tensor shape {tuple(tensor_shape)}"
+            )
+    channel_axes = {axis % len(tensor_shape) for axis in channel_axes}
+    return tuple(dim if i in channel_axes else 1 for i, dim in enumerate(tensor_shape))
 
 
 def _is_expandable(src_shape: Tuple[int, ...], target_shape: Tuple[int, ...]) -> bool:

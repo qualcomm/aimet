@@ -24,6 +24,7 @@ from aimet_torch import utils
 import aimet_torch._base.nn.modules.custom as aimet_modules
 
 import aimet_torch.v2.quantsim as v2
+from aimet_torch.utils import get_param_channel_axis, get_per_channel_scale_shape
 from .models.test_models import (
     TinyModel,
     MultiInput,
@@ -770,3 +771,51 @@ def test_profile():
 
         with utils.profile("profile 4"):
             _ = 1 + 1
+
+
+@pytest.mark.parametrize(
+    "module, param_name, expected",
+    [
+        (torch.nn.Linear(4, 2), "weight", 0),
+        (torch.nn.Linear(4, 2), "bias", 0),
+        (torch.nn.Conv2d(4, 2, 3), "weight", 0),
+        (torch.nn.ConvTranspose2d(4, 2, 3), "weight", 1),
+        (torch.nn.ConvTranspose2d(4, 2, 3), "bias", 0),
+    ],
+)
+def test_get_param_channel_axis(module, param_name, expected):
+    """Channel axis of modules that don't declare their weight channel axes is unchanged"""
+    assert get_param_channel_axis(module, param_name) == expected
+
+
+def test_get_param_channel_axis_declared():
+    """
+    When: Module declares channel axes of its parameters through _param_channel_axes
+    Then: Declared weights get their axes (int for a single axis), other params keep the default
+    """
+    module = torch.nn.Module()
+    module._param_channel_axes = {"stacked": (0, 1), "single": (1,)}
+    assert get_param_channel_axis(module, "stacked") == (0, 1)
+    assert get_param_channel_axis(module, "single") == 1
+    assert get_param_channel_axis(module, "bias") == 0
+
+
+@pytest.mark.parametrize(
+    "tensor_shape, channel_axis, expected",
+    [
+        ((4, 8), 0, (4, 1)),
+        ((4, 8, 3, 3), 1, (1, 8, 1, 1)),
+        ((4, 8), -1, (1, 8)),
+        ((3, 4, 8), (0, 1), (3, 4, 1)),
+        ((3, 8, 4), (0, 2), (3, 1, 4)),
+        ((3, 4, 8), [0, -2], (3, 4, 1)),
+    ],
+)
+def test_get_per_channel_scale_shape(tensor_shape, channel_axis, expected):
+    assert get_per_channel_scale_shape(tensor_shape, channel_axis) == expected
+
+
+@pytest.mark.parametrize("channel_axis", [2, -3, (0, 2)])
+def test_get_per_channel_scale_shape_out_of_bound(channel_axis):
+    with pytest.raises(ValueError, match="out of bound"):
+        get_per_channel_scale_shape((4, 8), channel_axis)

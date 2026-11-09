@@ -4,10 +4,14 @@
 
 """Models for use in unit testing"""
 
+import contextlib
+
 import torch
 from torch import nn
 
 import aimet_torch._base.nn.modules.custom as aimet_modules
+from aimet_torch.onnx_utils import map_torch_types_to_onnx
+from aimet_torch.utils import modules_to_treat_as_leaf
 from aimet_torch.v2.nn import QuantizationMixin
 
 
@@ -398,3 +402,61 @@ class BasicConv2d(nn.Module):
         x = self.dropout(x)
         x = self.bn(x)
         return self.relu(x)
+
+
+class StackedLinear(torch.nn.Module):
+    """Stack of linear layers applied to the same input, with weight [num_stacked, out, in]"""
+
+    def __init__(self, num_stacked=3, in_features=8, out_features=4):
+        super().__init__()
+        self.weight = torch.nn.Parameter(
+            torch.randn(num_stacked, out_features, in_features)
+        )
+
+    def forward(self, x):
+        return torch.matmul(x, self.weight.transpose(1, 2))
+
+
+@contextlib.contextmanager
+def quantized_stacked_linear(param_channel_axes):
+    """Registers a quantized StackedLinear as a MatMul leaf, declaring the given channel axes"""
+    # Must be mapped before QuantizationMixin.implements, which copies the mapping
+    # to the quantized class
+    map_torch_types_to_onnx[StackedLinear] = ["MatMul"]
+
+    @QuantizationMixin.implements(StackedLinear)
+    class QuantizedStackedLinear(QuantizationMixin, StackedLinear):
+        def __quant_init__(self):
+            super().__quant_init__()
+            self._param_channel_axes = param_channel_axes
+
+        def forward(self, x):  # pylint: disable=arguments-differ
+            if self.input_quantizers[0]:
+                x = self.input_quantizers[0](x)
+            with self._patch_quantized_parameters():
+                out = super().forward(x)
+            if self.output_quantizers[0]:
+                out = self.output_quantizers[0](out)
+            return out
+
+    # StackedLinear runs more than one op, so it must be a leaf to be seen as a single MatMul
+    modules_to_treat_as_leaf.extend([StackedLinear, QuantizedStackedLinear])
+    try:
+        yield QuantizedStackedLinear
+    finally:
+        QuantizationMixin.cls_to_qcls.pop(StackedLinear)
+        QuantizationMixin.qcls_to_cls.pop(QuantizedStackedLinear)
+        map_torch_types_to_onnx.pop(StackedLinear)
+        map_torch_types_to_onnx.pop(QuantizedStackedLinear)
+        modules_to_treat_as_leaf.remove(StackedLinear)
+        modules_to_treat_as_leaf.remove(QuantizedStackedLinear)
+
+
+class ModelWithStackedLinear(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc = torch.nn.Linear(8, 6)
+        self.stacked = StackedLinear(in_features=6)
+
+    def forward(self, x):
+        return self.stacked(self.fc(x))

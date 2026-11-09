@@ -25,6 +25,7 @@ from aimet_torch.v2.mixed_precision import (
 )
 import aimet_torch._base.nn.modules.custom as aimet_elementwise
 from .models_.test_models import SingleResidual, ModelWithTwoInputs
+from .models_.models_to_test import ModelWithStackedLinear, quantized_stacked_linear
 
 
 class ModelWithMultiInputMultiOutput(nn.Module):
@@ -1720,3 +1721,25 @@ class TestManualMixedPrecisionConfigurator:
                 assert isinstance(m.param_quantizers["weight"], QuantizeDequantize)
                 assert m.param_quantizers["weight"].symmetric == True
                 assert m.param_quantizers["weight"].shape != ()
+
+
+def test_stacked_weight_mixed_precision(tmp_path):
+    """
+    When: Change precision of a module with stacked weight under per-channel quantization
+    Then: The new weight quantizer keeps the scale per stacked weight and per output channel
+    """
+    torch.manual_seed(0)
+    with quantized_stacked_linear({"weight": (0, 1)}):
+        model = ModelWithStackedLinear()
+        dummy_input = torch.randn(2, 8)
+        sim = QuantizationSimModel(model, dummy_input)
+        mp_configurator = MixedPrecisionConfigurator(sim)
+        mp_configurator.set_precision(
+            sim.model.stacked, activation="int16", param={"weight": "int4"}
+        )
+        with open(os.path.join(tmp_path, "mmp_log.txt"), "w") as f:
+            mp_configurator.apply(f)
+
+    qdq = sim.model.stacked.param_quantizers["weight"]
+    assert qdq.bitwidth == 4
+    assert qdq.shape == (3, 4, 1)
