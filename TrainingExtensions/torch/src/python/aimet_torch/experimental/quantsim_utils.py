@@ -24,25 +24,38 @@ logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
 @overload
 def propagate_output_encodings(
-    sim: QuantizationSimModel, module_type: Type[torch.nn.Module]
+    sim: QuantizationSimModel,
+    module_type: Type[torch.nn.Module],
+    safe: bool = True,
 ):
     """Propagate output encodings of the given module type"""
 
 
 @overload
-def propagate_output_encodings(sim: QuantizationSimModel, qmodule: torch.nn.Module):
+def propagate_output_encodings(
+    sim: QuantizationSimModel, qmodule: torch.nn.Module, safe: bool = True
+):
     """Propagate output encodings of qmodule"""
 
 
 @overload
 def propagate_output_encodings(
-    sim: QuantizationSimModel, condition: Callable[[torch.nn.Module], bool]
+    sim: QuantizationSimModel,
+    condition: Callable[[torch.nn.Module], bool],
+    safe: bool = True,
 ):
     """Propagate output encodings of all the modules that satisfies the given condition."""
 
 
-def propagate_output_encodings(sim: QuantizationSimModel, arg):
-    """Propagate output encodings of all the modules that satisfies the given condition."""
+def propagate_output_encodings(sim: QuantizationSimModel, arg, safe: bool = True):
+    """
+    Propagate output encodings of all the modules that satisfy the given condition.
+
+    :param sim: Quantization simulation model
+    :param arg: Module type, qmodule, or condition selecting modules to propagate through
+    :param safe: If True, do not propagate through tensors consumed by multiple
+        distinct ops, avoiding encoding changes for unrelated consumers. Defaults to True
+    """
 
     if isinstance(arg, type) and issubclass(arg, torch.nn.Module):
         module_type = arg
@@ -62,27 +75,39 @@ def propagate_output_encodings(sim: QuantizationSimModel, arg):
         raise RuntimeError(msg)
 
     sim.connected_graph.assert_safe()
-    _propagate_output_encodings(sim, condition)
+    _propagate_output_encodings(sim, condition, safe)
 
 
 def _propagate_output_encodings(
-    sim: QuantizationSimModel, condition: Callable[[torch.nn.Module], bool]
+    sim: QuantizationSimModel,
+    condition: Callable[[torch.nn.Module], bool],
+    safe: bool = True,
 ):
     """Propagate output encodings of all the modules that satisfies the given condition."""
     # pylint: disable=redefined-builtin, protected-access
     cg = sim.connected_graph
 
     def _set_src_qtzr(x: Product, consumer: Op, qtzr: AffineQuantizerBase):
-        if len(x.consumers) > 1 and not all(qtzr._is_overwrite_allowed.values()):
-            # If qtzr has fixed output range and x has multiple consumers
-            # to avoid catastrophic accuracy drop.
-            #
-            # For example:
-            #
-            #       +-> Softmax -> ...
-            # x ----+-> ReLU --> QDQ (`qtzr`)
-            #                   ∈ [0,?]
-            return
+        has_multiple_consumers = len(set(x.consumers)) > 1
+        if has_multiple_consumers:
+            if safe or not all(qtzr._is_overwrite_allowed.values()):
+                # Do not propagate through tensors with multiple consumers in safe mode,
+                # or if qtzr has a fixed output range, to avoid catastrophic accuracy drop.
+                #
+                # For example:
+                #
+                #       +-> Softmax -> ...
+                # x ----+-> ReLU --> QDQ (`qtzr`)
+                #                   ∈ [0,?]
+                return
+
+            logger.warning(
+                "Propagating output encoding through input %d of op %s even though "
+                "it is consumed by multiple ops because safe=False. This may reduce "
+                "accuracy for other consumers.",
+                consumer.inputs.index(x),
+                consumer.name,
+            )
 
         producer = x.producer
 

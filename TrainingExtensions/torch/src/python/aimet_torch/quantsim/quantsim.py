@@ -990,6 +990,7 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
                 module in ops_to_tie
                 or (isinstance(module, QuantizedReLU) and module.output_quantizers[0])
             ),
+            safe=True,
         )
 
     def _disable_quantizers_for_constant_rescale_ops(self):

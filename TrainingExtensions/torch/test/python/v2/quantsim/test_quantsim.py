@@ -1967,6 +1967,44 @@ class TestQuantsimUtilities:
 
 
 class TestEncodingPropagation:
+    def test_multi_consumer_input(self):
+        """
+        Given: One Concat input is also consumed by another op
+        When: Quantsim is created
+        Then: Initialization does not tie that input to the Concat output
+        """
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear1 = torch.nn.Linear(8, 8)
+                self.linear2 = torch.nn.Linear(8, 8)
+                self.linear3 = torch.nn.Linear(8, 8)
+                self.cat = custom.Concat()
+
+            def forward(self, x):
+                x1 = self.linear1(x)
+                x2 = self.linear2(x)
+                return self.cat(x1, x2, x2), self.linear3(x1)
+
+        x = torch.randn(1, 8)
+        sim = QuantizationSimModel(Model(), x)
+
+        cat_qtzr = sim.model.cat.output_quantizers[0]
+        linear1_qtzr = sim.model.linear1.output_quantizers[0]
+
+        assert linear1_qtzr is not cat_qtzr
+        assert sim.model.linear2.output_quantizers[0] is cat_qtzr
+
+        # Propagation is safe by default and preserves the quantizer used by
+        # the other consumer.
+        propagate_output_encodings(sim, custom.Concat)
+        assert sim.model.linear1.output_quantizers[0] is linear1_qtzr
+
+        # Unsafe propagation remains available for callers that require it.
+        propagate_output_encodings(sim, custom.Concat, safe=False)
+        assert sim.model.linear1.output_quantizers[0] is cat_qtzr
+
     def test_output(self):
         """
         Given: model as below
