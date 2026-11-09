@@ -264,7 +264,7 @@ class ArtifactManager:
 
     def __init__(self, config: WorkflowConfig):
         self.config = config
-        self.api_base = "https://github.qualcomm.com/api/v3"
+        self.api_base = os.environ.get("GITHUB_API_URL", "https://api.github.com")
         self.headers = {
             "Authorization": f"token {config.token}",
             "Accept": "application/vnd.github.v3+json",
