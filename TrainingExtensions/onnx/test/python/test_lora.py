@@ -55,6 +55,7 @@ from aimet_onnx.experimental.lora import (
     get_lora_node_names_for_exclusion,
     set_lora_bitwidth,
     set_lora_encodings,
+    set_lora_scale_range,
     unfreeze_lora_quantizers,
 )
 from aimet_onnx.peft import (
@@ -438,11 +439,14 @@ class TestLoraFlows:
            so the graph has the base model's quantizers in the same places with the same
            settings. Load the base encodings frozen: each one matches its quantizer exactly, and
            only the tensors ``load_lora_adapters`` added are left without one.
-           ``set_lora_bitwidth`` sets the LoRA bit widths (int8 weights, int16 activations) and
-           disables the scale quantizers.
+           ``set_lora_bitwidth`` sets the LoRA bit widths (int8 weights, int16 activations), and
+           ``set_lora_scale_range`` gives every scale the range [0, 2]: every adapter here has
+           ``alpha / r`` = 2.
         4. Calibrate: only the LoRA quantizers update. The adapters keep their effect: the frozen
            base ranges and the shared merge quantizers don't clip it away.
-        5. Export the encodings per concurrency; the base encodings in them are unchanged.
+        5. Export the encodings per concurrency; the base encodings in them are unchanged, and
+           the scale encodings are the same in every concurrency, as QAIRT's adapter-only quant
+           updatable mode needs.
         6. The QDQ model is the final artifact: it runs in onnxruntime, and it can't be a base
            for ``load_lora_adapters`` again.
         """
@@ -461,6 +465,7 @@ class TestLoraFlows:
             "adapter_1": ["adapter_1"],
             "adapter_1_3": ["adapter_1", "adapter_3"],
         }
+        scale_encodings = {}
         for concurrency, adapter_names in concurrencies.items():
             # --- 2. Attach the concurrency's adapters ---
             lora_model = load_lora_adapters(
@@ -497,6 +502,7 @@ class TestLoraFlows:
             set_lora_bitwidth(
                 sim, lora_tensors, param_type="int8", activation_type="int16"
             )
+            set_lora_scale_range(sim, lora_tensors, "int16", 0.0, 2.0)
 
             # --- 4. Calibrate the LoRA quantizers ---
             sim.compute_encodings(calibration_data)
@@ -517,10 +523,11 @@ class TestLoraFlows:
             encodings = _export_encodings(sim, tmp_path, f"lora_v3_{concurrency}")
             for name, encoding in base_encodings.items():
                 assert encodings[name] == encoding
-            # Every added tensor has an encoding now, except the scales set_lora_bitwidth disabled
-            scales = set(lora_tensors.scales)
-            assert without_encoding - scales <= set(encodings)
-            assert not scales & set(encodings)
+            # Every added tensor has an encoding now, the scales included
+            assert without_encoding <= set(encodings)
+            for name in lora_tensors.scales:
+                scale_encodings.setdefault(name, encodings[name])
+                assert encodings[name] == scale_encodings[name]
 
             # --- 6. QDQ model ---
             qdq_model = sim.to_onnx_qdq()
@@ -776,3 +783,59 @@ class TestLoraAdapterQuantization:
             assert sim.qc_quantize_op_dict[name].bitwidth == 8
         for name in names.scales:
             assert not sim.qc_quantize_op_dict[name].enabled
+
+    def test_set_lora_scale_range(self, sim, names, tmp_path, calibration_data):
+        """Every scale exports the encoding of the range; ``set_lora_bitwidth`` leaves it on.
+
+        Every adapter in ``lora_model`` has ``alpha / r`` = 2. With the range fixed, every
+        concurrency exports the same scale encoding, as QAIRT's adapter-only quant updatable
+        mode needs.
+        """
+        count = set_lora_scale_range(sim, names, "int16", 0.0, 2.0)
+        set_lora_bitwidth(sim, names, param_type="int8", activation_type="int16")
+        sim.compute_encodings(calibration_data)
+
+        assert count == len(names.scales) > 0
+        encodings = _export_encodings(sim, tmp_path, "fixed_scale")
+        for name in names.scales:
+            assert sim.qc_quantize_op_dict[name].enabled
+            encoding = encodings[name]
+            assert encoding["bw"] == 16
+            assert encoding["dtype"] == "INT"
+            assert not encoding["is_sym"]
+            assert encoding["enc_type"] == "PER_TENSOR"
+            assert encoding["offset"] == [0]
+            assert encoding["scale"] == pytest.approx([2.0 / (2**16 - 1)])
+
+    def test_set_lora_scale_range_raises_on_scale_out_of_range(self, sim, names):
+        with pytest.raises(ValueError, match="outside the range"):
+            set_lora_scale_range(sim, names, "int16", 0.0, 1.0)
+
+    def test_set_lora_scale_range_raises_on_float_type(self, sim, names):
+        with pytest.raises(ValueError, match="integer type"):
+            set_lora_scale_range(sim, names, "float16", 0.0, 2.0)
+
+    def test_lora_scale_range_survives_disable_and_enable(
+        self, sim, names, tmp_path, calibration_data
+    ):
+        """``enable_lora_calibration`` turns the scales with a fixed range back on.
+
+        This is the cycle around a recipe on the LoRA sim. The scales export the same encoding
+        after it as before.
+        """
+        set_lora_scale_range(sim, names, int16, 0.0, 2.0)
+        set_lora_bitwidth(sim, names, param_type="int8", activation_type="int16")
+        sim.compute_encodings(calibration_data)
+        before = _export_encodings(sim, tmp_path, "before")
+
+        disable_lora_quantizers(sim, names)
+        for name in names.scales:
+            assert not sim.qc_quantize_op_dict[name].enabled
+        enable_lora_calibration(sim, names, int16, int8)
+        for name in names.scales:
+            assert sim.qc_quantize_op_dict[name].enabled
+
+        sim.compute_encodings(calibration_data)
+        after = _export_encodings(sim, tmp_path, "after")
+        for name in names.scales:
+            assert after[name] == before[name]

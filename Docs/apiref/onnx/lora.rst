@@ -59,6 +59,7 @@ model ``load_lora_adapters`` returned, not on the sim's graph; the names are the
     from aimet_onnx.experimental.lora import (
         get_lora_encodings,
         set_lora_bitwidth,
+        set_lora_scale_range,
     )
     from aimet_onnx.peft import get_lora_tensor_names, load_lora_adapters
 
@@ -76,6 +77,8 @@ model ``load_lora_adapters`` returned, not on the sim's graph; the names are the
     load_encodings_to_sim(sim, "base.encodings", strict=False, allow_overwrite=False,
                           disable_missing_quantizers=False)
     set_lora_bitwidth(sim, lora_tensors, param_type="int8", activation_type="int16")
+    # same range in every concurrency: 0 to the largest alpha / r of all adapters
+    set_lora_scale_range(sim, lora_tensors, "int16", 0.0, max_alpha_over_r)
     sim.compute_encodings(adapter_calibration_data)
     lora_encodings = get_lora_encodings(sim, lora_tensors)  # this concurrency's adapter encodings
 
@@ -87,7 +90,11 @@ model ``load_lora_adapters`` returned, not on the sim's graph; the names are the
       - What it does
     * - ``set_lora_bitwidth``
       - Sets the bit widths of the adapter weights and activations, and turns off the scale
-        quantizers
+        quantizers that have no fixed range
+    * - ``set_lora_scale_range``
+      - Sets the same fixed range on every scale, e.g. ``[0, largest alpha / r]``, so every
+        concurrency exports the same scale encoding, as QAIRT's adapter-only quant updatable mode
+        needs. Without it, the scales are off and have no encoding
     * - ``unfreeze_lora_quantizers``
       - Unfreezes the adapter quantizers and clears them, to calibrate them again
     * - ``get_lora_encodings`` / ``set_lora_encodings``
@@ -140,7 +147,8 @@ inputs**. You switch adapters by feeding different inputs, not by rebuilding the
   scale input, ``lora_scale``, which each adapter's inputs set to its ``alpha / r``.
 * The adapter weights are model inputs, so AIMET quantizes them like activations: their ranges
   cover every adapter seen during calibration. ``set_lora_bitwidth`` sets their bit width
-  (``param_type``). Like every scale, ``lora_scale`` is not quantized.
+  (``param_type``). Like every scale, ``lora_scale`` is not quantized unless you give it a fixed
+  range with ``set_lora_scale_range``.
 * Every run needs every adapter input. Feed ``adapter_inputs["base"]`` to run without an
   adapter, for example for techniques that tune the base weights such as SeqMSE. Add the adapter
   inputs to each batch after batching, so they don't get a batch dimension.
@@ -178,6 +186,8 @@ API
   # start-after
 
 .. autofunction:: aimet_onnx.experimental.lora.set_lora_bitwidth
+
+.. autofunction:: aimet_onnx.experimental.lora.set_lora_scale_range
 
 .. autofunction:: aimet_onnx.experimental.lora.unfreeze_lora_quantizers
 

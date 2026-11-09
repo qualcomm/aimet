@@ -11,8 +11,10 @@ workflows. All functions take ``lora_tensors``, the
 ``load_lora_adapters`` returned.
 """
 
+import numpy as np
 import onnx
-from aimet_onnx.common.defs import qtype
+from onnx import numpy_helper
+from aimet_onnx.common.defs import QuantizationDataType, qtype
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.peft.peft_utils import LoraTensorNames
 
@@ -71,8 +73,10 @@ def set_lora_bitwidth(
     scale_count = 0
     for name in lora_tensors.scales:
         if name in sim.qc_quantize_op_dict:
-            sim.qc_quantize_op_dict[name].enabled = False
-            scale_count += 1
+            qtzr = sim.qc_quantize_op_dict[name]
+            # pylint: disable-next=protected-access
+            qtzr.enabled = qtzr._encoding_min_max_fixed_vals is not None
+            scale_count += not qtzr.enabled
 
     _logger.info(
         "Set LoRA bitwidth: %d quantizers (params=%d-bit, activations=%d-bit), "
@@ -81,6 +85,76 @@ def set_lora_bitwidth(
         param_bw,
         activation_bw,
         scale_count,
+    )
+    return count
+
+
+def set_lora_scale_range(
+    sim,
+    lora_tensors: LoraTensorNames,
+    scale_type: str | qtype,
+    scale_min: float,
+    scale_max: float,
+) -> int:
+    """Set the same fixed range on every LoRA scale in lora_tensors.
+
+    :param sim: QuantizationSimModel instance
+    :param lora_tensors: LoRA tensor names from get_lora_tensor_names
+    :param scale_type: Integer quantization type for the scales (e.g., int16).
+    :param scale_min: Lower end of the range
+    :param scale_max: Upper end of the range; no scale may be larger
+    :return: Number of scale quantizers set
+    """
+    if isinstance(scale_type, str):
+        scale_type = qtype.from_string(scale_type)
+
+    dtype, bitwidth = scale_type.to_legacy_repr()
+    if dtype != QuantizationDataType.int:
+        raise ValueError(f"scale_type must be an integer type, got {scale_type}")
+    if not scale_min < scale_max:
+        raise ValueError(
+            f"scale_min ({scale_min}) must be smaller than scale_max ({scale_max})"
+        )
+
+    initializers = {i.name: i for i in sim.model.model.graph.initializer}
+    count = 0
+    for name in lora_tensors.scales:
+        if name not in sim.qc_quantize_op_dict:
+            continue
+        if name in initializers:  # a graph input (LoRA v1) has no value to check
+            value = numpy_helper.to_array(initializers[name])
+
+            low, high = np.asarray([scale_min, scale_max]).astype(value.dtype)
+            if value.min() < low or value.max() > high:
+                raise ValueError(
+                    f"LoRA scale '{name}' has values in [{value.min()}, {value.max()}], "
+                    f"outside the range [{scale_min}, {scale_max}]"
+                )
+
+        qtzr = sim.qc_quantize_op_dict[name]
+        if qtzr.is_encoding_frozen():
+            raise RuntimeError(
+                f"LoRA scale quantizer '{name}' is frozen, e.g. by loading encodings that "
+                f"include it. Call set_lora_scale_range() before freezing it."
+            )
+        qtzr.enabled = True
+        qtzr.set_precision(scale_type)
+        qtzr.use_symmetric_encodings = False
+        qtzr.set_fixed_encoding_range((scale_min, scale_max))
+        count += 1
+
+    if count == 0:
+        raise ValueError(
+            f"No LoRA scale quantizers found in sim for {len(lora_tensors.scales)} scales. "
+            f"First few names: {lora_tensors.scales[:3]}"
+        )
+
+    _logger.info(
+        "Set %d LoRA scale quantizers to the range [%s, %s] (%d-bit)",
+        count,
+        scale_min,
+        scale_max,
+        bitwidth,
     )
     return count
 
@@ -350,7 +424,7 @@ def disable_lora_quantizers(sim, lora_tensors: LoraTensorNames) -> int:
             sim.qc_quantize_op_dict[name].enabled = False
             count += 1
 
-    # Scales are already disabled by set_lora_bitwidth, but ensure it
+    # Scales too; enable_lora_calibration turns the ones with a fixed range back on
     for name in lora_tensors.scales:
         if name in sim.qc_quantize_op_dict:
             sim.qc_quantize_op_dict[name].enabled = False

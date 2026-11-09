@@ -13,6 +13,7 @@ from aimet_onnx.experimental.lora.adapter_utils import (
     get_lora_node_names_for_exclusion,
     set_lora_bitwidth,
     set_lora_encodings,
+    set_lora_scale_range,
     unfreeze_lora_quantizers,
 )
 
@@ -26,5 +27,6 @@ __all__ = [
     "get_lora_node_names_for_exclusion",
     "set_lora_bitwidth",
     "set_lora_encodings",
+    "set_lora_scale_range",
     "unfreeze_lora_quantizers",
 ]
