@@ -148,9 +148,7 @@ class TestEvaluationContextKey:
 
         def model_hash(**overrides):
             model = parse_diffusion_document(_doc(sd_checkpoint, **overrides)).model
-            return DiffusionEvaluationContext(
-                fp_cache=cache, model_config=model
-            )._model_hash
+            return DiffusionEvaluationContext(cache, model, "torch")._model_hash
 
         assert model_hash() == model_hash()
         assert model_hash() != model_hash(num_inference_steps=20)

@@ -21,29 +21,11 @@ from GenAILab.bench.diffusion.metrics import (
 from GenAILab.bench.diffusion.experiment import run_experiment
 from GenAILab.bench.fp_cache import DiskBackedFPCache
 
-from .conftest import TINY_SD
+from .conftest import FAKE_PARTI as _FAKE_PARTI, TINY_SD
 
 #: Real CLIP architecture and tokenizer, small enough for CPU. (The
 #: tiny-random-clip checkpoint's vocab is smaller than its tokenizer's.)
 SMALL_CLIP = "openai/clip-vit-base-patch32"
-
-_FAKE_PARTI = [
-    {"prompt": f"{category} prompt {i}", "category": category}
-    for category, count in [("Animals", 6), ("Food", 3), ("People", 1)]
-    for i in range(count)
-]
-
-
-@pytest.fixture
-def fake_parti(monkeypatch):
-    """Serve PartiPrompts from a 10-row stand-in instead of the Hub."""
-    monkeypatch.setattr(
-        diffusion_metrics,
-        "load_parti_prompts",
-        lambda num_prompts=64, sample_seed=0: stratified_sample(
-            _FAKE_PARTI, num_prompts, sample_seed
-        ),
-    )
 
 
 class TestStratifiedSample:
@@ -143,7 +125,8 @@ class TestDiffusionRunner:
             "seed": 0,
             "height": 64,
             "width": 64,
-            "scheduler": "DDIMScheduler",
+            "scheduler": "DPMSolverMultistepScheduler",
+            "framework": "torch",
         }
         assert entry["CLIPScore"]["scoring_version"] == 1
         assert "elapsed_ms" in entry["CLIPScore"]
@@ -178,6 +161,44 @@ class TestDiffusionRunner:
         assert (
             len(prompts) == 3
         )  # Generated once, scored and dumped from the same images.
+
+    def test_clip_runs_with_the_generator_evicted(
+        self, fake_parti, tmp_path, monkeypatch
+    ):
+        from GenAILab.qai_hub_lm.diffusion.generator import DiffusionGenerator
+
+        state = {"evicted": False, "seen": []}
+        original = DiffusionGenerator.evicted
+
+        def tracking_evicted(self):
+            cm = original(self)
+
+            class _Tracked:
+                def __enter__(_):
+                    cm.__enter__()
+                    state["evicted"] = True
+
+                def __exit__(_, *exc):
+                    state["evicted"] = False
+                    return cm.__exit__(*exc)
+
+            return _Tracked()
+
+        monkeypatch.setattr(DiffusionGenerator, "evicted", tracking_evicted)
+        monkeypatch.setattr(
+            diffusion_metrics,
+            "clip_scores",
+            lambda images, texts, *a, **k: state["seen"].append(state["evicted"])
+            or [1.0] * len(texts),
+        )
+        doc = {
+            "model": {"model_id": TINY_SD, "num_inference_steps": 1},
+            "metrics": [{"name": "CLIPScore", "num_prompts": 2}],
+        }
+        run_experiment(
+            doc, fp_cache=DiskBackedFPCache(tmp_path / "fp"), results_dir=tmp_path
+        )
+        assert state["seen"] == [True]
 
     def test_image_dump_config_output_dir_wins(self, fake_parti, tmp_path):
         doc = {

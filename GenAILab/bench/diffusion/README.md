@@ -1,10 +1,15 @@
 # Text-to-image diffusion (Stable Diffusion)
 
-FP inference of Stable Diffusion 1.x with torch, scored with CLIPScore. This runs
-separately from the LLM harness (`python -m GenAILab`) for now:
+FP inference of Stable Diffusion 1.x with torch or ONNX Runtime, scored with
+CLIPScore. This runs separately from the LLM harness (`python -m GenAILab`) for now:
 
 ```bash
+# torch
 python -m GenAILab.bench.torch.run_diffusion \
+    --config GenAILab/bench/diffusion/configs/diffusion_fp.yaml
+
+# ONNX Runtime
+python -m GenAILab.bench.onnx.run_diffusion \
     --config GenAILab/bench/diffusion/configs/diffusion_fp.yaml
 ```
 
@@ -18,7 +23,27 @@ images under `<results-dir>/images/<model>_<run_group>/`.
 | `--config <path>` | YAML config; may hold several documents separated by `---` |
 | `--results-dir <path>` | Where results and images go |
 | `--fp-cache-dir <path>` / `--clear-fp-cache` | FP results cache location / wipe it first |
+| `--onnx-cache-dir <path>` / `--clear-onnx-cache` | ONNX only: exported graphs location (default `GenAILab/artifacts/cache/diffusion_onnx/`) / wipe it first |
 | `--fail-fast` / `--pdb` | Stop at the first failed document / debug it |
+
+Each result records its `framework` under `model_modifiers`, and the FP results
+cache is keyed by framework, so torch and ONNX numbers are never mixed.
+
+## ONNX
+
+The ONNX runner exports each component (`text_encoder`, `unet`, `vae_decoder`)
+with the torch dynamo exporter at **opset 18**, with fixed shapes (batch 1, the
+configured resolution), and runs it with ONNX Runtime behind the same
+`DiffusionGenerator`. On CUDA, inputs and outputs stay in GPU memory between
+denoising steps. Exports are cached by model, checkpoint revision, dtype,
+resolution, opset, and the torch and diffusers versions, so only the first run
+of a configuration pays for them (about half a minute for SD1.5's UNet).
+
+Opset 18 is deliberate. With ONNX Runtime 1.23, newer opsets move Conv, Resize
+and normalization onto the CPU, and opset 23's fused `Attention` gives wrong
+results on CUDA at SD1.5's head size. Opset 18 cannot express bfloat16 Conv, so
+the ONNX runner supports `float32` and `float16` only and rejects `bfloat16`
+before loading the model.
 
 ## Layout
 
@@ -28,8 +53,13 @@ images under `<results-dir>/images/<model>_<run_group>/`.
   denoising loop (scheduler, classifier-free guidance, seeding).
 - [`config.py`](config.py) — config parsing.
 - [`metrics.py`](metrics.py) — `CLIPScore` and `ImageDump`.
-- [`experiment.py`](experiment.py) — runs one config document.
-- [`../torch/run_diffusion.py`](../torch/run_diffusion.py) — the command-line entry point.
+- [`experiment.py`](experiment.py) — runs one config document, with torch or ONNX.
+- [`onnx_cache.py`](onnx_cache.py) — the cache of exported ONNX graphs.
+- [`runner.py`](runner.py) — the loop over a config's documents, shared by the entry points.
+- [`../torch/run_diffusion.py`](../torch/run_diffusion.py), [`../onnx/run_diffusion.py`](../onnx/run_diffusion.py) — the command-line entry points.
+
+The ONNX export and the ONNX Runtime session adapter live in
+[`qai_hub_lm/diffusion/onnx.py`](../../qai_hub_lm/diffusion/onnx.py).
 
 `DiffusionGenerator` reproduces `StableDiffusionPipeline`, but calls the UNet at
 batch 1, once for the conditional and once for the unconditional prediction.
@@ -54,12 +84,12 @@ rejected: only FP inference is supported so far.
 | `model` key           | Required | Type  | Default | Notes |
 | --------------------- | -------- | ----- | ------- | ----- |
 | `model_id`            | yes      | str   | —       | Diffusers pipeline repo or local directory. Its `model_index.json` `_class_name` selects the model class and is reported as the model type. |
-| `dtype`               | no       | str   | `float32` | `float32`, `float16` or `bfloat16`. |
+| `dtype`               | no       | str   | `float32` | `float32`, `float16` or `bfloat16` (`bfloat16` is torch only). |
 | `height`, `width`     | no       | int   | checkpoint's native size (512 for SD1.5) | Multiples of the VAE scale factor (8 for SD). |
 | `num_inference_steps` | no       | int   | `10`    | Denoising steps. |
 | `guidance_scale`      | no       | float | `7.5`   | Classifier-free guidance; `<= 1` disables the unconditional pass. |
 | `negative_prompt`     | no       | str   | `""`    | Unconditional prompt for guidance. |
-| `scheduler`           | no       | str   | checkpoint's (PNDM for SD1.5) | Any diffusers scheduler class name, e.g. `EulerDiscreteScheduler`. |
+| `scheduler`           | no       | str   | `DPMSolverMultistepScheduler` | Any diffusers scheduler class name, e.g. `EulerDiscreteScheduler`. SD1.5's own default, PNDM, gives partly garbled images at 10 steps. |
 | `seed`                | no       | int   | `0`     | Prompt `i` of a metric is generated with seed `seed + i`. |
 
 LLM-only keys (`sequence_length`, `context_length`, `adaptations`, `encodings`)

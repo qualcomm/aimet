@@ -55,7 +55,8 @@ class TestPipelineParity:
     @pytest.mark.parametrize(
         "scheduler",
         [
-            None,  # the checkpoint's own (DDIM)
+            None,  # the model default (DPM++)
+            "DDIMScheduler",  # the checkpoint's own
             "PNDMScheduler",
             "EulerDiscreteScheduler",
             "EulerAncestralDiscreteScheduler",  # stochastic: draws from the generator

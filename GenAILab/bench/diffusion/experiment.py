@@ -1,9 +1,10 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Runs one text-to-image diffusion experiment document (torch, FP).
+"""Runs one text-to-image diffusion experiment document (FP, torch or ONNX).
 
-The command-line entry point is ``GenAILab/bench/torch/run_diffusion.py``.
+The command-line entry points are ``GenAILab/bench/torch/run_diffusion.py`` and
+``GenAILab/bench/onnx/run_diffusion.py``.
 """
 
 from __future__ import annotations
@@ -28,20 +29,29 @@ from GenAILab.bench.profiler import (
     write_stats_to_disk,
 )
 from GenAILab.qai_hub_lm.diffusion import stable_diffusion  # noqa: F401 — triggers registration
-from GenAILab.qai_hub_lm.diffusion.base import COMPONENTS
+from GenAILab.bench.diffusion.onnx_cache import DiffusionONNXCache, export_key
+from GenAILab.qai_hub_lm.diffusion import onnx as diffusion_onnx
+from GenAILab.qai_hub_lm.diffusion.base import COMPONENTS, DiffusionComponents
 from GenAILab.qai_hub_lm.diffusion.generator import DiffusionGenerator, GenerationConfig
+
+
+FRAMEWORKS = ("torch", "onnx")
 
 
 class DiffusionEvaluationContext(EvaluationContext):
     """An :class:`EvaluationContext` keyed by a diffusion model config.
 
     The base class hashes the LLM ``ModelConfig`` fields; a diffusion config
-    names what changes its images in ``cache_key_dict()`` instead.
+    names what changes its images in ``cache_key_dict()`` instead. The framework
+    is part of the key, so torch and ONNX results are never mixed.
     """
 
-    @staticmethod
-    def _model_config_to_dict(config) -> dict:
-        return config.cache_key_dict()
+    def __init__(self, fp_cache, model_config, framework: str):
+        self._framework = framework
+        super().__init__(fp_cache=fp_cache, model_config=model_config)
+
+    def _model_config_to_dict(self, config) -> dict:
+        return {**config.cache_key_dict(), "framework": self._framework}
 
 
 def run_experiment(
@@ -49,41 +59,62 @@ def run_experiment(
     *,
     fp_cache: DiskBackedFPCache,
     results_dir,
+    framework: str = "torch",
+    onnx_cache: DiffusionONNXCache | None = None,
 ):
     """Run one text-to-image experiment document and record its results.
 
-    FP inference only: there are no recipes or exports, so unlike the LLM
-    runners this takes no recipe cache or export directory.
+    FP inference only: there are no recipes. With ``framework="onnx"`` the
+    components are exported (or taken from ``onnx_cache``) and run as ONNX
+    Runtime sessions behind the same generator.
     """
+    if framework not in FRAMEWORKS:
+        raise ValueError(f"Unknown framework {framework!r}; expected {FRAMEWORKS}.")
+    if framework == "onnx" and onnx_cache is None:
+        raise ValueError("The ONNX framework needs an onnx_cache.")
     set_seed(42)
 
     config = parse_diffusion_document(doc)
     print(config)
     model_config = config.model
-    eval_ctx = DiffusionEvaluationContext(fp_cache=fp_cache, model_config=model_config)
+    dtype = getattr(torch, model_config.dtype)
+    if framework == "onnx":
+        # Fail before loading a multi-gigabyte pipeline.
+        diffusion_onnx.check_dtype(dtype)
+    eval_ctx = DiffusionEvaluationContext(fp_cache, model_config, framework)
 
     gc.collect()
     torch.cuda.empty_cache()
 
     model_cls = model_config.model_cls
-    pipeline = model_cls.instantiate_float_model(
-        model_config.model_id, dtype=getattr(torch, model_config.dtype)
-    )
+    pipeline = model_cls.instantiate_float_model(model_config.model_id, dtype=dtype)
     resolution = model_cls.default_resolution(pipeline)
     components = model_cls.build_components(pipeline, scheduler=model_config.scheduler)
     del pipeline  # The components hold every module still needed.
 
-    generator = DiffusionGenerator(
-        components,
-        GenerationConfig(
-            height=model_config.height or resolution,
-            width=model_config.width or resolution,
-            num_inference_steps=model_config.num_inference_steps,
-            guidance_scale=model_config.guidance_scale,
-            negative_prompt=model_config.negative_prompt,
-            seed=model_config.seed,
-        ),
+    generation_config = GenerationConfig(
+        height=model_config.height or resolution,
+        width=model_config.width or resolution,
+        num_inference_steps=model_config.num_inference_steps,
+        guidance_scale=model_config.guidance_scale,
+        negative_prompt=model_config.negative_prompt,
+        seed=model_config.seed,
     )
+    # Validates the resolution before an ONNX export bakes it in.
+    generator = DiffusionGenerator(components, generation_config)
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    if framework == "onnx":
+        components = _onnx_components(
+            model_cls,
+            components,
+            model_config,
+            generation_config,
+            onnx_cache,
+            device,
+            revision=_checkpoint_revision(model_config.model_id),
+        )
+        generator = DiffusionGenerator(components, generation_config)
 
     run_group = config.run_group or uuid.uuid4().hex[:16]
     results_folder = Path(results_dir)
@@ -92,7 +123,6 @@ def run_experiment(
         results_folder / "images" / f"{Path(model_config.model_id).name}_{run_group}"
     )
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     with generator.on_device(device):
         evaluation_results = run_metrics(
             config,
@@ -105,6 +135,9 @@ def run_experiment(
     report_modifiers.setdefault("height", generator.config.height)
     report_modifiers.setdefault("width", generator.config.width)
     report_modifiers.setdefault("scheduler", type(components.scheduler).__name__)
+    report_modifiers["framework"] = framework
+    if framework == "onnx":
+        report_modifiers["onnx_opset"] = diffusion_onnx.ONNX_OPSET
 
     write_stats_to_disk(
         output_folder=str(results_folder),
@@ -118,6 +151,63 @@ def run_experiment(
         run_group=run_group,
     )
     return evaluation_results
+
+
+def _onnx_components(
+    model_cls,
+    components: DiffusionComponents,
+    model_config,
+    generation_config: GenerationConfig,
+    onnx_cache: DiffusionONNXCache,
+    device: torch.device,
+    *,
+    revision: str | None,
+) -> DiffusionComponents:
+    """``components`` with each torch module replaced by its ONNX Runtime session."""
+    key = export_key(
+        model_config.model_id,
+        revision,
+        model_config.dtype,
+        generation_config.height,
+        generation_config.width,
+    )
+
+    def export(directory):
+        # Exported on the device the sessions will run on: fp16 graphs traced
+        # on the CPU would need fp16 CPU kernels torch does not always have.
+        with components.on_device(device):
+            diffusion_onnx.export_components(
+                model_cls,
+                components,
+                generation_config.height,
+                generation_config.width,
+                directory,
+            )
+
+    paths = onnx_cache.get_or_export(key, export)
+    onnx_components = diffusion_onnx.load_components(components, paths)
+    # The torch modules are no longer needed; drop them before ORT allocates.
+    for name in COMPONENTS:
+        setattr(components, name, None)
+    gc.collect()
+    torch.cuda.empty_cache()
+    return onnx_components
+
+
+def _checkpoint_revision(model_id: str) -> str | None:
+    """The commit hash of a Hub checkpoint, so an upstream update re-exports.
+
+    A local directory has no revision; its path is used instead.
+    """
+    if Path(model_id).is_dir():
+        return str(Path(model_id).resolve())
+    try:
+        from huggingface_hub import HfApi
+
+        return HfApi().model_info(model_id).sha
+    except Exception:  # pylint: disable=broad-exception-caught
+        # Offline: the cache is still keyed by everything else.
+        return None
 
 
 def run_metrics(

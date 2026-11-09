@@ -72,11 +72,21 @@ class DiffusionComponents:
 
     @property
     def dtype(self) -> torch.dtype:
-        return next(self.unet.parameters()).dtype
+        return _module_dtype(self.unet)
 
 
 def _module_device(module: torch.nn.Module) -> torch.device:
+    # A component with no parameters of its own (an ONNX session adapter)
+    # reports its placement directly.
+    if hasattr(module, "device"):
+        return torch.device(module.device)
     return next(module.parameters()).device
+
+
+def _module_dtype(module: torch.nn.Module) -> torch.dtype:
+    if hasattr(module, "dtype"):
+        return module.dtype
+    return next(module.parameters()).dtype
 
 
 _DIFFUSION_MODELS: dict[str, type[DiffusionModel]] = {}
@@ -135,8 +145,9 @@ class DiffusionModel(ABC):
     ) -> DiffusionComponents:
         """Split a loaded pipeline into :class:`DiffusionComponents`.
 
-        ``scheduler`` names a diffusers scheduler class to use instead of the
-        checkpoint's default; it is built from the default's config.
+        ``scheduler`` names a diffusers scheduler class, built from the
+        checkpoint's scheduler config. ``None`` means the model family's
+        default, which need not be the checkpoint's own.
         """
 
     @classmethod

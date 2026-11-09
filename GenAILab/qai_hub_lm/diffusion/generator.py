@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import contextlib
+import gc
 import inspect
 from dataclasses import dataclass
 
@@ -67,6 +68,20 @@ class DiffusionGenerator:
     @contextlib.contextmanager
     def on_device(self, device: torch.device | str):
         with self.components.on_device(device):
+            yield
+
+    @contextlib.contextmanager
+    def evicted(self):
+        """Free the accelerator memory the components hold, for the block.
+
+        For callers that need the device for something else (CLIPScore's CLIP
+        model) and will not generate until the block exits. Mirrors
+        ``Generator.evicted`` on the LLM side.
+        """
+        with self.on_device("cpu"):
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             yield
 
     @property

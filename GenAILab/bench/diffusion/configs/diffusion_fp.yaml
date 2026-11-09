@@ -1,5 +1,7 @@
-# Stable Diffusion 1.5 FP inference (torch). Run with:
+# Stable Diffusion 1.5 FP inference, fp32 and fp16. Run with either framework:
 #   python -m GenAILab.bench.torch.run_diffusion --config <this file>
+#   python -m GenAILab.bench.onnx.run_diffusion --config <this file>
+# The scheduler defaults to DPMSolverMultistepScheduler.
 # See GenAILab/bench/diffusion/README.md for the config schema.
 model:
   model_id: stable-diffusion-v1-5/stable-diffusion-v1-5

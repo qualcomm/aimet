@@ -144,9 +144,13 @@ class CLIPScore(ImageGenerationMetric):
         images = generate_images(
             generator, prompts, eval_ctx, _prompt_set_name(num_prompts, sample_seed)
         )
-        scores = clip_scores(
-            images, [p["prompt"] for p in prompts], clip_model, generator.device
-        )
+        device = generator.device
+        # Nothing generates while CLIP holds the GPU; SD1.5 and CLIP-L do not
+        # both fit on a 10 GB GPU in fp32.
+        with generator.evicted():
+            scores = clip_scores(
+                images, [p["prompt"] for p in prompts], clip_model, device
+            )
 
         by_category: dict[str, list[float]] = defaultdict(list)
         for prompt, score in zip(prompts, scores):

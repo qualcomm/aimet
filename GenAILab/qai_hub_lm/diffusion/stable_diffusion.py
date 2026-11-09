@@ -33,6 +33,11 @@ class StableDiffusion(DiffusionModel):
         VAE_DECODER: ("image",),
     }
 
+    #: Used when a config names no scheduler. SD1.5's checkpoint default, PNDM,
+    #: gives partly garbled images at the 10 steps GenAILab defaults to (as the
+    #: diffusers pipeline does too); DPM++ is clean at 10.
+    DEFAULT_SCHEDULER = "DPMSolverMultistepScheduler"
+
     @classmethod
     def instantiate_float_model(cls, model_id: str, dtype: torch.dtype = torch.float32):
         # Imported lazily so the LLM path never needs diffusers installed.
@@ -59,7 +64,9 @@ class StableDiffusion(DiffusionModel):
             unet=UNetWrapper(pipeline.unet),
             vae_decoder=VAEDecoderWrapper(pipeline.vae),
             tokenizer=pipeline.tokenizer,
-            scheduler=_resolve_scheduler(pipeline.scheduler, scheduler),
+            scheduler=_resolve_scheduler(
+                pipeline.scheduler, scheduler or cls.DEFAULT_SCHEDULER
+            ),
             latent_channels=pipeline.unet.config.in_channels,
             vae_scale_factor=pipeline.vae_scale_factor,
         )
@@ -107,9 +114,9 @@ class StableDiffusion(DiffusionModel):
         return cls._OUTPUT_NAMES[component]
 
 
-def _resolve_scheduler(default, name: str | None):
-    """The checkpoint's scheduler, or a named diffusers scheduler built from its config."""
-    if name is None or name == type(default).__name__:
+def _resolve_scheduler(default, name: str):
+    """The diffusers scheduler ``name``, built from the checkpoint's scheduler config."""
+    if name == type(default).__name__:
         return default
     import diffusers
 
