@@ -497,6 +497,55 @@ class TestHistogramEncodingAnalyzer:
         #
         #                                       (new_histogram)
 
+    @pytest.mark.parametrize(
+        "shape, block_size, get_slice",
+        [
+            ((4,), None, lambda x, i: x[:, :, i]),
+            ((3, 1), None, lambda x, i: x[:, i, :]),
+            ((2, 1, 1), None, lambda x, i: x[i, :, :]),
+            ((3, 4), None, lambda x, i: x[:, i // 4, i % 4]),
+            ((2, 3, 1), None, lambda x, i: x[i // 3, i % 3, :]),
+            ((2, 1, 4), None, lambda x, i: x[i // 4, :, i % 4]),
+            (
+                (2, 3, 2),
+                (1, 1, -1),
+                lambda x, i: x[i // 6, (i // 2) % 3, 2 * (i % 2) : 2 * (i % 2) + 2],
+            ),
+            (
+                (2, 1, 2),
+                (1, -1, 2),
+                lambda x, i: x[i // 2, :, 2 * (i % 2) : 2 * (i % 2) + 2],
+            ),
+        ],
+    )
+    def test_merge_stats_multidimensional(self, shape, block_size, get_slice):
+        """
+        Merging must update each histogram with the same input slice that was used to collect it,
+        matching the stats of an observer tracking that slice in isolation.
+        """
+        inputs = [
+            torch.arange(24, dtype=torch.float).view(2, 3, 4),
+            torch.arange(24, dtype=torch.float).view(2, 3, 4) * 1.5 - 10,
+        ]
+
+        observer = _HistogramObserver(shape, num_bins=5, block_size=block_size)
+        for x in inputs:
+            observer.merge_stats(observer.collect_stats(x), x)
+
+        for i, merged_histogram in enumerate(observer.stats):
+            expected_observer = _HistogramObserver((), num_bins=5)
+            for x in inputs:
+                hist_input = get_slice(x, i)
+                expected_observer.merge_stats(
+                    expected_observer.collect_stats(hist_input), hist_input
+                )
+            expected_histogram = expected_observer.stats[0]
+
+            assert torch.equal(merged_histogram.min, expected_histogram.min)
+            assert torch.equal(merged_histogram.max, expected_histogram.max)
+            assert torch.equal(merged_histogram.bin_edges, expected_histogram.bin_edges)
+            assert torch.equal(merged_histogram.histogram, expected_histogram.histogram)
+
 
 class TestPercentileEncodingAnalyzer:
     @pytest.fixture
