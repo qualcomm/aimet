@@ -486,14 +486,16 @@ class TestSeqMse:
         assert not sim.model.fc2.param_quantizers["weight"]._allow_overwrite
 
     def test_handle_grouped_block_quantizers(self):
-        model = Net().eval()
+        model = torch.nn.Linear(64, 64)
         model_2 = copy.deepcopy(model)
-        dummy_input = torch.randn(1, 1, 28, 28)
+        dummy_input = torch.randn(64, 64)
         sim = QuantizationSimModel(model, dummy_input, default_param_bw=4)
         sim_2 = QuantizationSimModel(model_2, dummy_input, default_param_bw=4)
+        aimet_torch.utils.remove_activation_quantizers(sim.model)
+        aimet_torch.utils.remove_activation_quantizers(sim_2.model)
         set_grouped_blockwise_quantization_for_weights(
             sim,
-            lambda m: m != sim.model.conv1,
+            [torch.nn.Linear],
             bitwidth=4,
             symmetric=True,
             decompressed_bw=8,
@@ -501,7 +503,7 @@ class TestSeqMse:
         )
         set_blockwise_quantization_for_weights(
             sim_2,
-            lambda m: m != sim_2.model.conv1,
+            [torch.nn.Linear],
             bitwidth=4,
             symmetric=True,
             block_size=4,

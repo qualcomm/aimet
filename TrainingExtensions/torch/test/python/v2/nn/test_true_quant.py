@@ -2539,6 +2539,37 @@ def test_htp_overflow_protection(module_factory):
 
 
 @torch.no_grad()
+def test_htp_overflow_protection_fallback():
+    """
+    Given: nn.Linear's input encoding is unknown or cannot be tracked reliably
+    When: Create quantsim
+    Then:
+    """
+    dummy_input = torch.ones(3, 3)
+    linear = torch.nn.Linear(3, 3)
+
+    weight = torch.tensor(
+        [
+            # Channel 0: moderate
+            [1e-1, 1.1e-1, 0.9e-1],
+            # Channel 1: tiny; obviously likely to cause bias overflow
+            [1e-8, 1.1e-8, 0.9e-8],
+            # Channel 2: flat zeros; also obviously likely to cause bias overflow
+            [0.0, 0.0, 0.0],
+        ]
+    )
+    linear.weight.copy_(weight)
+
+    # Create sim without input quantizer
+    sim = aimet_torch.QuantizationSimModel(linear, dummy_input, default_param_bw=4)
+    aimet_torch.utils.remove_input_quantizers(sim.model)
+    sim.compute_encodings(lambda model: model(dummy_input))
+
+    weight_scale = sim.model.param_quantizers["weight"].get_scale()
+    assert torch.allclose(weight_scale[1:], torch.tensor([0.25, 0.25]))
+
+
+@torch.no_grad()
 @pytest.mark.parametrize(
     "module_factory",
     [

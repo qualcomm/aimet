@@ -49,6 +49,7 @@ from aimet_torch.utils import (
     _ContextManager,
     _torch_compiler_is_exporting,
     _torch_compiler_is_compiling,
+    reduce,
 )
 from .base import BaseQuantizationMixin
 from aimet_torch.deepspeed_utils import SafeGatheredParameters
@@ -1025,11 +1026,12 @@ def _compute_encodings_with_overflow_protection(self):
             handle.remove()
 
     weight_qtzr = self.param_quantizers["weight"]
+    output_qtzr = self.output_quantizers[0]
 
-    if not (
-        isinstance(input_encoding_producer, AffineQuantizerBase)
-        and isinstance(weight_qtzr, AffineQuantizerBase)
-    ):
+    if not isinstance(weight_qtzr, AffineQuantizerBase):
+        return
+
+    if not isinstance(output_qtzr, AffineQuantizerBase):
         return
 
     output_qtzr = self.output_quantizers[0]
@@ -1037,15 +1039,21 @@ def _compute_encodings_with_overflow_protection(self):
     with SafeGatheredParameters(
         itertools.chain(
             weight_qtzr.parameters(),
-            input_encoding_producer.parameters(),
+            (input_encoding_producer.parameters() if input_encoding_producer else []),
             output_qtzr.parameters() if output_qtzr else [],
             [self.bias] if self.bias is not None else [],
         )
     ):
-        if not (
-            (input_encoding := input_encoding_producer.get_encodings())
-            and (weight_encoding := weight_qtzr.get_encodings())
-        ):
+        input_encoding = (
+            input_encoding_producer.get_encodings()
+            if isinstance(input_encoding_producer, AffineQuantizerBase)
+            else None
+        )
+
+        if not (weight_encoding := weight_qtzr.get_encodings()):
+            return
+
+        if not (output_encoding := output_qtzr.get_encodings()):
             return
 
         bias = (
@@ -1054,15 +1062,15 @@ def _compute_encodings_with_overflow_protection(self):
             else torch.zeros((), device=self.weight.device, dtype=self.weight.dtype)
         )
 
-        if output_qtzr := self.output_quantizers[0]:
-            output_encoding = output_qtzr.get_encodings()
-        else:
-            output_encoding = None
-
     if isinstance(weight_encoding, GroupedBlockEncoding):
         weight_scale = weight_encoding.per_channel_scale
     else:
         weight_scale = weight_encoding.scale
+
+    if weight_scale is None:
+        raise RuntimeError(
+            f"Weight scale is None for {type(self).__name__}. This should never happen."
+        )
 
     if weight_scale.ndim == 0:
         bias = bias.abs().amax()
@@ -1078,38 +1086,58 @@ def _compute_encodings_with_overflow_protection(self):
         # In this case, we can't analytically derive bias encoding
         return
 
-    # Prevent bias overflow (1)
-    adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
-        bias,
-        input_encoding.scale,
-        weight_scale.flatten().squeeze(),
-        # Slightly discount from 2**31 to account for numerical instability
-        num_steps=2**31 - 2**15,
-    )
-    adjusted_weight_scale = adjusted_weight_scale.reshape(weight_scale.shape)
+    if input_encoding:
+        # Prevent bias overflow (1)
+        adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
+            bias,
+            input_encoding.scale,
+            weight_scale.flatten().squeeze(),
+            # Slightly discount from 2**31 to account for numerical instability
+            num_steps=2**31 - 2**15,
+        )
+        adjusted_weight_scale = adjusted_weight_scale.reshape(weight_scale.shape)
 
-    if not isinstance(output_encoding, AffineEncoding):
-        return
+        # Prevent requantization scale underflow (2)
+        adjusted_weight_scale = _adjust_weight_scale_against_scale_underflow(
+            input_encoding.scale,
+            adjusted_weight_scale,
+            output_encoding.scale,
+        )
 
-    # Prevent requantization scale underflow (2)
-    adjusted_weight_scale = _adjust_weight_scale_against_scale_underflow(
-        input_encoding.scale,
-        adjusted_weight_scale,
-        output_encoding.scale,
-    )
+        # Prevent accumulator bias overflow (3)
+        bias_scale = (input_encoding.scale * adjusted_weight_scale).flatten().squeeze()
+        accumulator_bias = torch.round(bias / bias_scale) + torch.round(
+            output_encoding.offset * output_encoding.scale / bias_scale
+        )
+        # Use slightly discounted num_steps to account for floating point precision error
+        adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
+            accumulator_bias * bias_scale,
+            input_encoding.scale,
+            adjusted_weight_scale,
+            num_steps=2**31 - 2**15,
+        )
+    else:
+        # Since input scale is unknown, we can't analytically predict bias overflow.
+        # However, we can still try to prevent bias overflow in a best-effort fashion
+        # by increasing weight scale of zero-out channels as much as possible.
+        # Specifically, channel i is a zero-out channel if and only if
+        #
+        #   round(weight[i] / sw[i]) == 0
+        #   <-> max(abs(weight[i])) / sw[i] < 0.5
+        #
+        # where sw[i] is the weight scale of output channel i.
+        #
+        # If channel i is already a zero-out channel, we can safely increase
+        # sw[i] to any arbitrary value without affecting the output.
+        # This reduces the risk of bias overflow in zero-out channels
+        with SafeGatheredParameters([self.weight]):
+            weight_max_elem = reduce(self.weight.abs(), weight_scale.shape, torch.amax)
 
-    # Prevent accumulator bias overflow (3)
-    bias_scale = (input_encoding.scale * adjusted_weight_scale).flatten().squeeze()
-    accumulator_bias = torch.round(bias / bias_scale) + torch.round(
-        output_encoding.offset * output_encoding.scale / bias_scale
-    )
-    # Use slightly discounted num_steps to account for floating point precision error
-    adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
-        accumulator_bias * bias_scale,
-        input_encoding.scale,
-        adjusted_weight_scale,
-        num_steps=2**31 - 2**15,
-    )
+        is_zero_out_channel = weight_max_elem / weight_scale < 0.5
+        adjusted_weight_scale = torch.where(is_zero_out_channel, 0.25, weight_scale)
+
+        # Edge case: weight_scale might have been already greater than 0.25
+        adjusted_weight_scale.clamp_min_(weight_scale)
 
     # Adjusting the scale necessarily moves both ends of the encoding range, so a
     # partially-frozen quantizer (e.g. allow_overwrite(min=False, max=True), as set
