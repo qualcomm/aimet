@@ -17,6 +17,7 @@ except ImportError as exc:
 
 from aimet_torch.utils import modules_to_treat_as_leaf
 from aimet_torch.onnx_utils import map_torch_types_to_onnx
+from aimet_torch.nn.transformers.fused_experts import _FusedExpertsQuantizationMixin
 
 # Map Qwen3_5MoeRMSNorm and Qwen3_5MoeRMSNormGated to ONNX RMSNormalization so
 # that quantsim config for RMSNormalization will be applied to both variants
@@ -156,3 +157,17 @@ class QuantizedQwen3_5MoeTopKRouter(
 # The quantized subclass must be registered too, since the connected graph is built on the
 # quantsim model, whose gate is a QuantizedQwen3_5MoeTopKRouter rather than the base class.
 modules_to_treat_as_leaf.append(QuantizedQwen3_5MoeTopKRouter)
+
+
+# Map Qwen3_5MoeExperts, which stores the weights of all experts as 3D tensors, to ONNX MatMul
+# so that quantsim config for MatMul (e.g. per-channel weight quantization) is applied to its
+# weights, and treat it as a leaf in the connected graph so that its weights belong to that op.
+map_torch_types_to_onnx[modeling_qwen3_5_moe.Qwen3_5MoeExperts] = ["MatMul"]
+modules_to_treat_as_leaf.append(modeling_qwen3_5_moe.Qwen3_5MoeExperts)
+
+
+@QuantizationMixin.implements(modeling_qwen3_5_moe.Qwen3_5MoeExperts)
+class QuantizedQwen3_5MoeExperts(
+    _FusedExpertsQuantizationMixin, modeling_qwen3_5_moe.Qwen3_5MoeExperts
+):
+    """Quantized Qwen3.5 MoE fused experts"""

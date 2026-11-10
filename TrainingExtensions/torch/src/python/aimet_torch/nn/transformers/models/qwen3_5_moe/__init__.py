@@ -5,4 +5,5 @@ from .modeling_qwen3_5_moe import (
     QuantizedQwen3_5MoeRMSNorm,
     QuantizedQwen3_5MoeRMSNormGated,
     QuantizedQwen3_5MoeTopKRouter,
+    QuantizedQwen3_5MoeExperts,
 )

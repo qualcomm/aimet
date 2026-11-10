@@ -8,3 +8,9 @@ try:
 except ImportError:
     # transformers<5.0.0 uses an nn.Linear gate instead of Qwen3MoeTopKRouter
     pass
+
+try:
+    from .modeling_qwen3_moe import QuantizedQwen3MoeExperts
+except ImportError:
+    # transformers<5.0.0 uses per-expert Qwen3MoeMLP modules instead of Qwen3MoeExperts
+    pass

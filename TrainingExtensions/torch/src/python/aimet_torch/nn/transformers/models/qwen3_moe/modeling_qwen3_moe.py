@@ -17,6 +17,7 @@ except ImportError as exc:
 
 from aimet_torch.utils import modules_to_treat_as_leaf
 from aimet_torch.onnx_utils import map_torch_types_to_onnx
+from aimet_torch.nn.transformers.fused_experts import _FusedExpertsQuantizationMixin
 
 # Map Qwen3MoeRMSNorm to ONNX RMSNormalization so that
 # quantsim config for RMSNormalization will be applied to Qwen3MoeRMSNorm
@@ -124,3 +125,21 @@ if hasattr(modeling_qwen3_moe, "Qwen3MoeTopKRouter"):
     # The quantized subclass must be registered too, since the connected graph is built on the
     # quantsim model, whose gate is a QuantizedQwen3MoeTopKRouter rather than the base class.
     modules_to_treat_as_leaf.append(QuantizedQwen3MoeTopKRouter)
+
+
+if hasattr(modeling_qwen3_moe, "Qwen3MoeExperts"):
+    # transformers>=5.0.0 replaced the per-expert Qwen3MoeMLP modules with Qwen3MoeExperts,
+    # which stores the weights of all experts as 3D tensors. Map it to ONNX MatMul so that
+    # quantsim config for MatMul (e.g. per-channel weight quantization) is applied to its weights.
+    map_torch_types_to_onnx[modeling_qwen3_moe.Qwen3MoeExperts] = ["MatMul"]
+
+    # Treat the experts as a leaf in the connected graph. Without this, the connected graph traces
+    # into the experts, whose weights then belong to no op, so op-level config such as
+    # per-channel weight quantization for MatMul never reaches their weight quantizers.
+    modules_to_treat_as_leaf.append(modeling_qwen3_moe.Qwen3MoeExperts)
+
+    @QuantizationMixin.implements(modeling_qwen3_moe.Qwen3MoeExperts)
+    class QuantizedQwen3MoeExperts(
+        _FusedExpertsQuantizationMixin, modeling_qwen3_moe.Qwen3MoeExperts
+    ):
+        """Quantized Qwen3 MoE fused experts"""

@@ -742,6 +742,11 @@ class _QuantizationSimModelBase(ABC):
                     to export a model for on-target deployment, as the exported weights will not
                     match the quantized weights the target runs.
         """
+        # pylint: disable-next=import-outside-toplevel
+        from aimet_torch.onnx import _check_fused_experts
+
+        _check_fused_experts(self.model)
+
         if not apply_param_qdq:
             logger.warning(
                 "apply_param_qdq=False exports original floating point weights without "

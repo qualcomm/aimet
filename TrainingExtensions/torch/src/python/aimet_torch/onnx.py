@@ -148,6 +148,7 @@ def export(
 
     _check_opset_version(kwargs)
     _check_unsupported_args(model, force_activation_as, kwargs)
+    _check_fused_experts(model)
     _check_non_standard_quantizer(model)
 
     target_version = kwargs.pop("opset_version", _TORCH_DEFAULT_OPSET)
@@ -363,6 +364,29 @@ def _check_unsupported_args(model, force_activation_as, kwargs):
     if operator_export_type == torch.onnx.OperatorExportTypes.ONNX_ATEN:
         raise RuntimeError(
             "operator_export_type=OperatorExportTypes.ONNX_ATEN is not supported"
+        )
+
+
+def _check_fused_experts(model: torch.nn.Module):
+    try:
+        # pylint: disable-next=import-outside-toplevel
+        from aimet_torch.nn.transformers.fused_experts import (
+            _FusedExpertsQuantizationMixin,
+        )
+    except ImportError:
+        # transformers is not installed, so the model has no fused experts
+        return
+
+    fused_experts = [
+        name
+        for name, module in model.named_modules()
+        if isinstance(module, _FusedExpertsQuantizationMixin)
+    ]
+    if fused_experts:
+        raise RuntimeError(
+            f"Export of fused MoE experts is not supported yet; got {fused_experts}. "
+            "Fold the weight quantizers with sim.fold_param_quantizers(), save the state dict, "
+            "and unfuse the experts into per-expert nn.Linear modules before export."
         )
 
 

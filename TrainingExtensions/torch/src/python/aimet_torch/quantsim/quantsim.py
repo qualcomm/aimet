@@ -900,9 +900,9 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
                     orig_module = module.get_original_module()
                     setattr(starting_module, name, orig_module)
                     module = orig_module
-            # Recursively call children modules if present
-            if not utils.is_leaf_module(module):
-                cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
+            # Always recurse, since _add_quantization_wrappers wraps the children of every
+            # module, including modules_to_treat_as_leaf
+            cls._remove_quantization_wrappers(module, list_of_modules_to_exclude)
 
         if starting_module in list_of_modules_to_exclude and isinstance(
             starting_module, BaseQuantizationMixin
@@ -1145,6 +1145,7 @@ class QuantizationSimModelOnnxExporter:
         from aimet_torch.onnx import (
             _temporarily_convert_activation_to,
             _check_unsupported_args,
+            _check_fused_experts,
             _concretize_int32_bias_quantizers,
             _remove_fp16_quantizers,
             _remove_fp16_quantized_parameters,
@@ -1153,6 +1154,7 @@ class QuantizationSimModelOnnxExporter:
         )
 
         _check_unsupported_args(self.sim.model, force_activation_as, kwargs)
+        _check_fused_experts(self.sim.model)
 
         with contextlib.ExitStack() as stack:
             # Unfold all param quantizers to incorporate QuantizeLinear/DequantizeLinear
