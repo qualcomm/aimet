@@ -124,6 +124,14 @@ uv venv "$VENV_DIR" --python "$PYTHON_VERSION" --seed
 . "$VENV_DIR/bin/activate"
 uv pip install --upgrade pip wheel setuptools
 
+# Never install the CPU onnxruntime package alongside onnxruntime-gpu: both
+# install into the same `onnxruntime` import package, so whichever lands last
+# wins, and the CPU one has no CUDA EP. aimet-onnx on PyPI depends on
+# `onnxruntime`, so exclude it from every uv resolution in this script.
+UV_EXCLUDES_FILE="$VENV_DIR/uv-excludes.txt"
+echo "onnxruntime" > "$UV_EXCLUDES_FILE"
+export UV_EXCLUDE="$UV_EXCLUDES_FILE"
+
 # -----------------------------------------------------------------------
 # Python dependencies
 # -----------------------------------------------------------------------

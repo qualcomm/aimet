@@ -542,6 +542,8 @@ class QuantizationSimModel:
         for attr, value in (session_options_kwargs or {}).items():
             setattr(base_session_options, attr, value)
         self._ort_session_options = register_aimet_custom_ops(base_session_options)
+        if contains_tensor_type(model.model, onnx.TensorProto.BFLOAT16):
+            _disable_bf16_unsafe_ort_fusions(self._ort_session_options)
         self.param_names = []
         # Param quantizers that have been folded into their parameters via
         # fold_param_quantizers(). Their QcQuantizeOp nodes are removed from the
@@ -4554,6 +4556,25 @@ def _onnx_type_to_np_dtype(elem_type: int) -> Optional[np.dtype]:
         return helper.tensor_dtype_to_np_dtype(elem_type)
     except KeyError:
         return None
+
+
+# ORT graph optimizers that can emit nodes with no kernel on a bfloat16 model.
+# SimplifiedLayerNormFusion fuses an RMSNorm with a float32 stash, a bfloat16 output and a
+# constant bfloat16 gamma (e.g. after fold_param_quantizers()) into a SimplifiedLayerNormalization
+# of mixed float32/bfloat16 types, for which no CUDA kernel exists, so session creation fails.
+_BF16_UNSAFE_ORT_OPTIMIZERS = ("SimplifiedLayerNormFusion",)
+
+
+def _disable_bf16_unsafe_ort_fusions(session_options: ort.SessionOptions):
+    """Disable ORT optimizers that break session creation on bfloat16 models, keeping any already disabled."""
+    key = "optimization.disable_specified_optimizers"
+    try:
+        current = session_options.get_session_config_entry(key)
+    except RuntimeError:  # Raised when the key is unset
+        current = ""
+    disabled = [name for name in current.split(",") if name]
+    disabled += [name for name in _BF16_UNSAFE_ORT_OPTIMIZERS if name not in disabled]
+    session_options.add_session_config_entry(key, ",".join(disabled))
 
 
 def _default_providers(model: onnx.ModelProto) -> List[str]:

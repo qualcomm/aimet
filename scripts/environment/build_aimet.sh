@@ -172,7 +172,12 @@ if [ "$ENABLE_ONNX" = "ON" ]; then
   # left unbounded, the CUDA EP fails to load and onnxruntime silently
   # falls back to CPUExecutionProvider (a stderr warning, not an error),
   # Remove this cap once the pod driver is upgraded to r580+.
-  pip install --force-reinstall --no-deps "onnxruntime-gpu<=1.26"
+  # The reqs files above pull in the CPU `onnxruntime` package, which shares
+  # the `onnxruntime` import dir with onnxruntime-gpu. Uninstall it *before*
+  # reinstalling onnxruntime-gpu, since uninstalling after would delete files
+  # onnxruntime-gpu just wrote.
+  pip uninstall -y onnxruntime
+  pip install --force-reinstall --no-deps onnxruntime-gpu
 fi
 
 # -----------------------------------------------------------------------
