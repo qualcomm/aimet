@@ -5,6 +5,7 @@
 """This file contains unit tests for testing batch norm folding in ONNX"""
 
 import onnx
+import onnx_ir
 from onnx import load_model
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 import onnxruntime as rt
@@ -571,7 +572,9 @@ class TestBatchNormFold:
         output = rt.InferenceSession(
             model.SerializeToString(), providers=providers
         ).run(None, dummy_input)[0]
-        _update_standalone_batchnorm_ops(model)
+        ir_model = onnx_ir.from_proto(model)
+        _update_standalone_batchnorm_ops(ir_model)
+        model = onnx_ir.to_proto(ir_model)
         output_after_update = rt.InferenceSession(
             model.SerializeToString(), providers=providers
         ).run(None, dummy_input)[0]
@@ -591,7 +594,9 @@ class TestBatchNormFold:
         output = rt.InferenceSession(
             model.SerializeToString(), providers=providers
         ).run(None, dummy_input)[0]
-        _update_standalone_batchnorm_ops(model)
+        ir_model = onnx_ir.from_proto(model)
+        _update_standalone_batchnorm_ops(ir_model)
+        model = onnx_ir.to_proto(ir_model)
         output_after_update = rt.InferenceSession(
             model.SerializeToString(), providers=providers
         ).run(None, dummy_input)[0]
@@ -718,3 +723,204 @@ def test_fold_bfloat16_model(model_factory, input_shape):
     # bf16 Conv is rejected by the type checker regardless of folding
     if not any(n.op_type == "Conv" for n in bf16_model.graph.node):
         onnx.checker.check_model(bf16_model, full_check=True)
+
+
+def _conv_bn_graph(
+    conv_name,
+    bn_name,
+    *,
+    extra_nodes=(),
+    extra_inits=(),
+    extra_inputs=(),
+    conv_inputs=("x", "w"),
+    dynamic_bn_param=None,
+):
+    """Conv -> BatchNormalization with 4 output channels, built directly in ONNX."""
+    channels = 4
+    inits = [
+        onnx.numpy_helper.from_array(
+            np.random.rand(channels, 4, 1, 1).astype(np.float32), "w"
+        )
+    ]
+    for suffix, value in (("g", 1.0), ("b", 0.0), ("m", 0.5), ("v", 2.0)):
+        if suffix != dynamic_bn_param:
+            inits.append(
+                onnx.numpy_helper.from_array(
+                    np.full(channels, value, np.float32), f"bn.{suffix}"
+                )
+            )
+    nodes = [
+        onnx.helper.make_node("Conv", list(conv_inputs), ["y"], name=conv_name),
+        onnx.helper.make_node(
+            "BatchNormalization",
+            ["y", "bn.g", "bn.b", "bn.m", "bn.v"],
+            ["z"],
+            name=bn_name,
+        ),
+        *extra_nodes,
+    ]
+    out = extra_nodes[-1].output[0] if extra_nodes else "z"
+    graph = onnx.helper.make_graph(
+        nodes,
+        "g",
+        [
+            onnx.helper.make_tensor_value_info(
+                "x", onnx.TensorProto.FLOAT, (1, 4, 8, 8)
+            ),
+            *extra_inputs,
+        ],
+        [onnx.helper.make_tensor_value_info(out, onnx.TensorProto.FLOAT, None)],
+        initializer=inits + list(extra_inits),
+    )
+    return models_for_tests.make_model(
+        graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=8
+    )
+
+
+class TestBatchNormFoldRobustness:
+    """Graphs that the fold must handle without relying on node names or static inputs."""
+
+    def test_fold_unnamed_nodes(self):
+        """An unnamed Conv must not be confused with another unnamed node."""
+        np.random.seed(0)
+        constant = onnx.helper.make_node(
+            "Constant",
+            [],
+            ["k"],
+            name="",
+            value=onnx.numpy_helper.from_array(np.full((1, 4, 1, 1), 2.0, np.float32)),
+        )
+        mul = onnx.helper.make_node("Mul", ["z", "k"], ["o"], name="mul")
+        model = _conv_bn_graph("", "bn", extra_nodes=(constant, mul))
+        dummy_input = {"x": np.random.rand(1, 4, 8, 8).astype(np.float32)}
+        expected = rt.InferenceSession(
+            model.SerializeToString(), providers=providers
+        ).run(None, dummy_input)[0]
+
+        conv_bn, bn_conv = fold_all_batch_norms_to_weight(model)
+
+        assert len(conv_bn) == 1 and not bn_conv
+        assert conv_bn[0][0] is model.graph.node[0]
+        assert "BatchNormalization" not in [node.op_type for node in model.graph.node]
+        actual = rt.InferenceSession(
+            model.SerializeToString(), providers=providers
+        ).run(None, dummy_input)[0]
+        assert np.allclose(expected, actual, atol=1e-5)
+
+    def test_fold_with_name_reused_in_subgraph(self):
+        """The fold must edit the top-level Conv, not a subgraph node with the same name."""
+        np.random.seed(0)
+        branch_weight = onnx.numpy_helper.from_array(
+            np.random.rand(4, 4, 1, 1).astype(np.float32), "wb"
+        )
+        then_branch = onnx.helper.make_graph(
+            [onnx.helper.make_node("Conv", ["z", "wb"], ["t"], name="conv")],
+            "then",
+            [],
+            [onnx.helper.make_tensor_value_info("t", onnx.TensorProto.FLOAT, None)],
+            initializer=[branch_weight],
+        )
+        else_branch = onnx.helper.make_graph(
+            [onnx.helper.make_node("Identity", ["z"], ["e"], name="identity")],
+            "else",
+            [],
+            [onnx.helper.make_tensor_value_info("e", onnx.TensorProto.FLOAT, None)],
+        )
+        if_node = onnx.helper.make_node(
+            "If",
+            ["c"],
+            ["o"],
+            name="if",
+            then_branch=then_branch,
+            else_branch=else_branch,
+        )
+        cond = onnx.helper.make_tensor_value_info("c", onnx.TensorProto.BOOL, [])
+        model = _conv_bn_graph(
+            "conv", "bn", extra_nodes=(if_node,), extra_inputs=(cond,)
+        )
+        weight_before = onnx.numpy_helper.to_array(model.graph.initializer[0]).copy()
+
+        conv_bn, _ = fold_all_batch_norms_to_weight(model)
+
+        assert conv_bn[0][0] is model.graph.node[0]
+        assert list(model.graph.node[0].input) == ["x", "w", "conv.bias"]
+        assert not np.allclose(
+            onnx.numpy_helper.to_array(model.graph.initializer[0]), weight_before
+        )
+        (branch,) = [
+            attr.g
+            for attr in model.graph.node[-1].attribute
+            if attr.name == "then_branch"
+        ]
+        # The branch Conv now reads the BN input directly, and is otherwise unchanged
+        assert list(branch.node[0].input) == ["y", "wb"]
+        assert np.array_equal(
+            onnx.numpy_helper.to_array(branch.initializer[0]),
+            onnx.numpy_helper.to_array(branch_weight),
+        )
+
+    @pytest.mark.parametrize("dynamic", ["weight", "bias", "bn_param"])
+    def test_skip_fold_with_dynamic_input(self, dynamic):
+        """Leave Conv -> BN unchanged when the weight, bias or a BN parameter is not static."""
+        np.random.seed(0)
+        if dynamic == "weight":
+            extra = (
+                onnx.helper.make_tensor_value_info(
+                    "w", onnx.TensorProto.FLOAT, [4, 4, 1, 1]
+                ),
+            )
+            model = _conv_bn_graph("conv", "bn", extra_inputs=extra)
+            model.graph.initializer.pop(0)
+        elif dynamic == "bias":
+            extra = (
+                onnx.helper.make_tensor_value_info("bias", onnx.TensorProto.FLOAT, [4]),
+            )
+            model = _conv_bn_graph(
+                "conv", "bn", extra_inputs=extra, conv_inputs=("x", "w", "bias")
+            )
+        else:
+            extra = (
+                onnx.helper.make_tensor_value_info("bn.v", onnx.TensorProto.FLOAT, [4]),
+            )
+            model = _conv_bn_graph(
+                "conv", "bn", extra_inputs=extra, dynamic_bn_param="v"
+            )
+        conv_inputs = list(model.graph.node[0].input)
+
+        conv_bn, bn_conv = fold_all_batch_norms_to_weight(model)
+
+        assert not conv_bn and not bn_conv
+        assert [node.op_type for node in model.graph.node] == [
+            "Conv",
+            "BatchNormalization",
+        ]
+        assert list(model.graph.node[0].input) == conv_inputs
+
+    def test_fold_zero_bias_name_taken(self):
+        """The new zero bias must not reuse the name of an existing initializer."""
+        np.random.seed(0)
+        other_weight = onnx.numpy_helper.from_array(
+            np.random.rand(4, 4, 1, 1).astype(np.float32), "w2"
+        )
+        other_bias = onnx.numpy_helper.from_array(
+            np.full(4, 7.0, np.float32), "conv.bias"
+        )
+        other = onnx.helper.make_node(
+            "Conv", ["z", "w2", "conv.bias"], ["o"], name="other"
+        )
+        model = _conv_bn_graph(
+            "conv", "bn", extra_nodes=(other,), extra_inits=(other_weight, other_bias)
+        )
+        dummy_input = {"x": np.random.rand(1, 4, 8, 8).astype(np.float32)}
+        expected = rt.InferenceSession(
+            model.SerializeToString(), providers=providers
+        ).run(None, dummy_input)[0]
+
+        fold_all_batch_norms_to_weight(model)
+
+        names = [init.name for init in model.graph.initializer]
+        assert len(names) == len(set(names))
+        actual = rt.InferenceSession(
+            model.SerializeToString(), providers=providers
+        ).run(None, dummy_input)[0]
+        assert np.allclose(expected, actual, atol=1e-5)
