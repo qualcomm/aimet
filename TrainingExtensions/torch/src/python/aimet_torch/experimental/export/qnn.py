@@ -48,12 +48,12 @@ def _qnn_decompositions() -> dict[torch._ops.OperatorBase, Callable]:
                           ATen ... |
                                    |
                                    V
-                                 Lower    (`from_torch_exported_program`)
+                                 Lower    (`from_exported_program`)
                                    |
     quantization-friendly ATen ... |
                                    |
                                    V
-                                 Quantize (`compute_missing_encodings`)
+                                 Quantize (`compute_encodings`)
                                    |
                 quantized ATen ... |
                                    |

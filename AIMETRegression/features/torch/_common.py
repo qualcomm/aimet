@@ -551,9 +551,7 @@ def run_static_aten_calibration(
     activation_bw: int,
     calibration_callback: Callable[[torch.nn.Module], Any],
 ) -> ExportedProgram:
-    from aimet_torch.experimental.export.exported_program import (
-        ExportedProgram as AimetExportedProgram,
-    )
+    from aimet_torch.experimental.export.exported_program import AIMETExportedProgram
 
     batch_size = dummy_input.shape[0]
 
@@ -577,9 +575,9 @@ def run_static_aten_calibration(
             {0: torch.export.Dim("batch_size", max=65535)},
         ],
     )
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
-    with ep.compute_missing_encodings(param_bw=param_bw, activation_bw=activation_bw):
+    with ep.compute_encodings(param_bw=param_bw, activation_bw=activation_bw):
         calibration_callback(ep.module())
 
     return ep

@@ -11,9 +11,7 @@ import pytest
 import onnx_ir
 
 import aimet_torch
-from aimet_torch.experimental.export.exported_program import (
-    ExportedProgram as AimetExportedProgram,
-)
+from aimet_torch.experimental.export.exported_program import AIMETExportedProgram
 from aimet_torch.common.onnx._utils import (
     _is_grid_preserving_op,
     _is_metadata_op,
@@ -142,7 +140,7 @@ def test_qnn_ir_alignment(tmp_path: Path, op: torch._ops.OpOverload):
 
     model = Model(parameters=parameters, buffers=buffers)
     ep = torch.export.export(model, args, kwargs)
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
     expected = model(*args, **kwargs)
     out = ep.module()(*args, **kwargs)
@@ -150,9 +148,7 @@ def test_qnn_ir_alignment(tmp_path: Path, op: torch._ops.OpOverload):
     for out_, expected_ in zip(tree_iter(out), tree_iter(expected)):
         assert torch.allclose(out_, expected_, rtol=1e-3)
 
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    with ep.compute_encodings(param_bw=8, activation_bw=8, target_backend="htp_v69"):
         out = ep.module()(*args, **kwargs)
 
     for out_ in tree_iter(out):

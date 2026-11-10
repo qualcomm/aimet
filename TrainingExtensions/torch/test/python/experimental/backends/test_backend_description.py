@@ -18,9 +18,7 @@ from aimet_torch.experimental.export._utils import (
     _is_torch_ao_qdq_node,
 )
 import aimet_torch.quantization as Q
-from aimet_torch.experimental.export.exported_program import (
-    ExportedProgram as AIMETExportedProgram,
-)
+from aimet_torch.experimental.export.exported_program import AIMETExportedProgram
 from aimet_torch.experimental.backends.schema import BackendDescription, qtype
 
 
@@ -269,11 +267,9 @@ def test_fully_quantized(tmp_path, module, example_inputs, w8a16_op_schemas):
     Then: All nodes in the graph should be quantized with the correct dtype
     """
     ep = torch.export.export(module, example_inputs)
-    ep = AIMETExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         outputs = ep.module()(*example_inputs)
 
         if isinstance(outputs, torch.Tensor):

@@ -21,9 +21,7 @@ from aimet_torch.v2.experimental.export import export
 import aimet_torch.v2.quantization as Q
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
 from aimet_torch.quantization.affine import AffineQuantizerBase
-from aimet_torch.experimental.export.exported_program import (
-    ExportedProgram as AimetExportedProgram,
-)
+from aimet_torch.experimental.export.exported_program import AIMETExportedProgram
 from aimet_torch.model_preparer import prepare_model
 from aimet_torch.experimental.export.exported_program import _is_torch_ao_qdq_node
 from aimet_torch.batch_norm_fold import fold_all_batch_norms
@@ -326,7 +324,7 @@ def test_fp_model():
 @pytest.mark.parametrize(
     "device", ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"]
 )
-def test_compute_missing_encodings(tmp_path: Path, device: str):
+def test_compute_encodings(tmp_path: Path, device: str):
     """
     Given: Model with functional ops
     When: Export with aimet_torch.export.export and compute missing encodings
@@ -344,11 +342,9 @@ def test_compute_missing_encodings(tmp_path: Path, device: str):
     torch.export.save(ep, tmp_path / "model.pt2")
     ep = torch.export.load(tmp_path / "model.pt2")
 
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         output = ep.module()(*example_inputs)
         assert isinstance(output, Q.DequantizedTensor)
 
@@ -473,11 +469,9 @@ def test_multi_output_grid_preserving_ops(op: Callable[[torch.Tensor], Any]):
 
     model = MyModule()
     ep = aimet_torch.experimental.export.export(model, (x,))
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         _ = ep.module()(x)
 
     input_dq = next(
@@ -501,7 +495,7 @@ def test_multi_output_grid_preserving_ops(op: Callable[[torch.Tensor], Any]):
 
 
 @pytest.mark.parallel
-def test_compute_missing_encodings_with_constant():
+def test_compute_encodings_with_constant():
     """
     Given: Model with hardcoded constant that is neither a parameter nor a buffer
     When: Export with aimet_torch.export.export and compute missing encodings
@@ -536,11 +530,9 @@ def test_compute_missing_encodings_with_constant():
 
     _ = torch.export.export(sim.model, example_inputs)
     ep = aimet_torch.experimental.export.export(sim.model, example_inputs)
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         _ = ep.module()(*example_inputs)
 
     mul_node = next(
@@ -592,11 +584,9 @@ def test_dynamic_shape():
     for batch_size in [1, 3, 4]:
         _ = ep.module()(torch.randn(batch_size, 3, 32, 32))
 
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
+    ep = AIMETExportedProgram.from_exported_program(ep)
 
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         # Should still work with different batch size
         for batch_size in [1, 3, 4]:
             _ = ep.module()(torch.randn(batch_size, 3, 32, 32))
@@ -641,10 +631,8 @@ def test_preserve_graph_signature():
     assert user_inputs[1].arg.name == "_"
     assert user_inputs[2].arg.name == "z"
 
-    ep = AimetExportedProgram.from_torch_exported_program(ep)
-    with ep.compute_missing_encodings(
-        param_bw=8, activation_bw=16, target_backend="htp_v69"
-    ):
+    ep = AIMETExportedProgram.from_exported_program(ep)
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         _ = ep.module()(x, _, z)
 
     assert user_inputs[0].arg.name == "x"

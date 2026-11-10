@@ -8,6 +8,7 @@ from typing import Optional, Callable
 import torch
 from torch._C import _fx_map_arg
 from torch.export.graph_signature import TensorArgument
+from torch.export import ExportedProgram
 import aimet_torch
 from aimet_torch.quantization.affine import QuantizeDequantize, AffineEncoding
 from aimet_torch.experimental.export.export import _post_process
@@ -27,7 +28,7 @@ from aimet_torch.experimental.export.qnn import _qnn_decompositions
 from aimet_torch.experimental.backends import BackendDescription
 
 
-class ExportedProgram(torch.export.ExportedProgram):
+class AIMETExportedProgram(ExportedProgram):
     """
     Quantization-friendly ExportedProgram subclass for QNN.
 
@@ -38,12 +39,12 @@ class ExportedProgram(torch.export.ExportedProgram):
                           ATen ... |
                                    |
                                    V
-                                 Lower    (`from_torch_exported_program`)
+                                 Lower    (`from_exported_program`)
                                    |
     quantization-friendly ATen ... |
                                    |
                                    V
-                                 Quantize (`compute_missing_encodings`)
+                                 Quantize (`compute_encodings`)
                                    |
                 quantized ATen ... |
                                    |
@@ -57,11 +58,9 @@ class ExportedProgram(torch.export.ExportedProgram):
     """
 
     @classmethod
-    def from_torch_exported_program(
-        cls, ep: torch.export.ExportedProgram
-    ) -> "ExportedProgram":
+    def from_exported_program(cls, ep: ExportedProgram) -> "AIMETExportedProgram":
         """
-        Convert a PyTorch ExportedProgram to AIMET ExportedProgram,
+        Convert a PyTorch ExportedProgram to AIMETExportedProgram,
         lowering ATen IR to quantization-friendly IR for QNN
         """
         # Run QNN decompositions to perform post-export quantization based on QNN-friendly IR
@@ -72,7 +71,7 @@ class ExportedProgram(torch.export.ExportedProgram):
         self,
         decomp_table: Optional[dict[torch._ops.OperatorBase, Callable]] = None,
         decompose_custom_triton_ops: bool = False,
-    ) -> "ExportedProgram":
+    ) -> "AIMETExportedProgram":
         ep = super().run_decompositions(decomp_table, decompose_custom_triton_ops)
 
         # super().run_decompositions() can ambiguate metadata of some constant nodes
@@ -96,7 +95,7 @@ class ExportedProgram(torch.export.ExportedProgram):
         return self._shallow_copy_as_subclass(ep)
 
     @classmethod
-    def _shallow_copy_as_subclass(cls, ep: torch.export.ExportedProgram):
+    def _shallow_copy_as_subclass(cls, ep: ExportedProgram):
         """
         Cast a shallow-copy of PyTorch ExprotedProgram to aimet subclass
         """
@@ -108,7 +107,7 @@ class ExportedProgram(torch.export.ExportedProgram):
         return new_ep
 
     @contextmanager
-    def compute_missing_encodings(
+    def compute_encodings(
         self,
         param_bw: int,
         activation_bw: int,
@@ -129,7 +128,7 @@ class ExportedProgram(torch.export.ExportedProgram):
             >>> ep = aimet_torch.experimental.export.export(sim.model, (dummy_input,))
             >>> torch.export.save(ep, "partially_quantized_model.pt2")
             >>> # Add missing quantizers and compute encodings
-            >>> with ep.compute_missing_encodings(param_bw=8, activation_bw=16):
+            >>> with ep.compute_encodings(param_bw=8, activation_bw=16):
             ...     for inp in calibration_dataloader:
             ...         ep.module()(inp)
             ...
