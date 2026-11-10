@@ -13,11 +13,13 @@ from aimet_torch.quantization.affine import (
     GroupedBlockQuantizeDequantize,
 )
 from aimet_torch.quantization.float import FloatQuantizeDequantize
-from aimet_torch.utils import get_device
+from aimet_torch.nn.transformers.fused_experts import _FusedExpertsQuantizationMixin
+from aimet_torch.utils import get_device, get_param_channel_axis
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 
 modules_with_in_out_channels = (
+    _FusedExpertsQuantizationMixin,
     torch.nn.Linear,
     torch.nn.Conv1d,
     torch.nn.Conv2d,
@@ -26,6 +28,11 @@ modules_with_in_out_channels = (
     torch.nn.ConvTranspose2d,
     torch.nn.ConvTranspose3d,
 )
+
+
+def _get_weight_names(module: torch.nn.Module) -> Tuple[str, ...]:
+    """Return the names of the weights to quantize blockwise in the module"""
+    return tuple(getattr(module, "_param_channel_axes", None) or ()) or ("weight",)
 
 
 def _get_quantizer_device_or_default(
@@ -50,25 +57,16 @@ def _get_in_channels_dim(module: torch.nn.Module):
         (torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d),
     ):
         return 0
+    if isinstance(module, _FusedExpertsQuantizationMixin):
+        # Weights of shape [num_experts, out_features, in_features]
+        return -1
     return 1
 
 
-def _get_out_channels_dim(module: torch.nn.Module):
-    """Get input channels dimension for the given module"""
-    if not isinstance(module, modules_with_in_out_channels):
-        raise AssertionError(
-            f"Out channels not defined for module of type {type(module)}"
-        )
-    if isinstance(
-        module,
-        (torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d),
-    ):
-        return 1
-    return 0
-
-
 def _get_block_size_array_for_module(
-    module: torch.nn.Module, block_size: Union[int, Tuple[int, ...]]
+    module: torch.nn.Module,
+    block_size: Union[int, Tuple[int, ...]],
+    weight_name: str = "weight",
 ):
     """
     Return block size array for a module given a single block size value, assuming that the block size value is to be
@@ -85,19 +83,23 @@ def _get_block_size_array_for_module(
             f"the argument for identifying modules to set to exclude unsupported types."
         )
         raise RuntimeError(error_msg)
-    assert hasattr(module, "weight")
+    assert hasattr(module, weight_name)
 
     # Initialize block sizes with -1, meaning blocks will span the entire dimension for each axis
-    block_size_array = [-1] * len(module.weight.shape)
+    block_size_array = [-1] * getattr(module, weight_name).ndim
 
-    # Set in channels dimension block size to block_size, and set out channels dimension block size to 1 (per channel)
+    # Set in channels dimension block size to block_size, and set channel axes block size to 1 (per channel)
     block_size_array[_get_in_channels_dim(module)] = block_size
-    block_size_array[_get_out_channels_dim(module)] = 1
+    channel_axes = get_param_channel_axis(module, weight_name)
+    for axis in channel_axes if isinstance(channel_axes, tuple) else (channel_axes,):
+        block_size_array[axis] = 1
     return block_size_array
 
 
 def _get_block_grouping_array_for_module(
-    module: torch.nn.Module, block_grouping: Union[int, Tuple[int, ...]]
+    module: torch.nn.Module,
+    block_grouping: Union[int, Tuple[int, ...]],
+    weight_name: str = "weight",
 ):
     """
     Return block grouping array for a module given a single block grouping value, assuming that the block grouping value
@@ -114,10 +116,10 @@ def _get_block_grouping_array_for_module(
             f"the argument for identifying modules to set to exclude unsupported types."
         )
         raise RuntimeError(error_msg)
-    assert hasattr(module, "weight")
+    assert hasattr(module, weight_name)
 
     # Initialize block grouping with 1, meaning no blocks will be grouped together in each dimension
-    block_grouping_array = [1] * len(module.weight.shape)
+    block_grouping_array = [1] * getattr(module, weight_name).ndim
 
     # Set in channels dimension block size to block_grouping
     block_grouping_array[_get_in_channels_dim(module)] = block_grouping
@@ -147,11 +149,13 @@ def _parse_arg_for_condition(arg):
 
 
 def _get_weight_quantizer_shape_from_block_size(
-    quant_layer: torch.nn.Module, block_size: Tuple[int, ...]
+    quant_layer: torch.nn.Module,
+    block_size: Tuple[int, ...],
+    weight_name: str = "weight",
 ) -> Optional[List[int]]:
     """Given a block size, get the corresponding weight quantizer shape"""
-    weight_shape = quant_layer.weight.shape
-    block_size = _get_block_size_array_for_module(quant_layer, block_size)
+    weight_shape = getattr(quant_layer, weight_name).shape
+    block_size = _get_block_size_array_for_module(quant_layer, block_size, weight_name)
     assert len(block_size) == len(weight_shape)
     quantizer_shape = []
     for idx, shape in enumerate(weight_shape):
@@ -364,22 +368,28 @@ def _get_layers_to_quantizer_shapes_for_block_size(sim, condition, block_size):
     layer_to_quantizer_shape_dict = {}
     invalid_layers_for_block_size = []
     for name, quant_layer in sim.named_qmodules():
-        if (
-            condition(quant_layer)
-            and "weight" in quant_layer.param_quantizers
-            and quant_layer.param_quantizers["weight"] is not None
-        ):
-            assert hasattr(quant_layer, "weight")
-            layer_to_quantizer_shape_dict[quant_layer] = (
-                _get_weight_quantizer_shape_from_block_size(quant_layer, block_size)
+        if not condition(quant_layer):
+            continue
+        for weight_name in _get_weight_names(quant_layer):
+            if (
+                weight_name not in quant_layer.param_quantizers
+                or quant_layer.param_quantizers[weight_name] is None
+            ):
+                continue
+            assert hasattr(quant_layer, weight_name)
+            quantizer_shape = _get_weight_quantizer_shape_from_block_size(
+                quant_layer, block_size, weight_name
             )
-            if layer_to_quantizer_shape_dict[quant_layer] is None:
-                invalid_layers_for_block_size.append((name, quant_layer.weight.shape))
+            layer_to_quantizer_shape_dict[(quant_layer, weight_name)] = quantizer_shape
+            if quantizer_shape is None:
+                weight_shape = getattr(quant_layer, weight_name).shape
+                invalid_layers_for_block_size.append((name, weight_name, weight_shape))
 
     if invalid_layers_for_block_size:
-        for name, shape in invalid_layers_for_block_size:
+        for name, weight_name, shape in invalid_layers_for_block_size:
             error_str = (
-                f"Quant layer {name} has shape {shape} which does not align with block_size {block_size}. "
+                f"Quant layer {name} has {weight_name} of shape {shape} which does not align with "
+                f"block_size {block_size}. "
                 f"Each dimension's shape must divide evenly with the corresponding block size."
             )
             raise RuntimeError(error_str)
@@ -399,12 +409,14 @@ def _set_blockwise_quantization_for_weights(
     layer_to_quantizer_shape_dict = _get_layers_to_quantizer_shapes_for_block_size(
         sim, condition, block_size
     )
-    for layer, quantizer_shape in layer_to_quantizer_shape_dict.items():
-        layer_block_size = _get_block_size_array_for_module(layer, block_size)
-        device = _get_quantizer_device_or_default(
-            layer.param_quantizers["weight"], model_device
+    for (layer, weight_name), quantizer_shape in layer_to_quantizer_shape_dict.items():
+        layer_block_size = _get_block_size_array_for_module(
+            layer, block_size, weight_name
         )
-        layer.param_quantizers["weight"] = QuantizeDequantize(
+        device = _get_quantizer_device_or_default(
+            layer.param_quantizers[weight_name], model_device
+        )
+        layer.param_quantizers[weight_name] = QuantizeDequantize(
             quantizer_shape, bitwidth, symmetric, None, layer_block_size
         ).to(device)
 
@@ -535,15 +547,17 @@ def _set_grouped_blockwise_quantization_for_weights(
     layer_to_quantizer_shape_dict = _get_layers_to_quantizer_shapes_for_block_size(
         sim, condition, block_size
     )
-    for layer, quantizer_shape in layer_to_quantizer_shape_dict.items():
-        layer_block_size = _get_block_size_array_for_module(layer, block_size)
+    for (layer, weight_name), quantizer_shape in layer_to_quantizer_shape_dict.items():
+        layer_block_size = _get_block_size_array_for_module(
+            layer, block_size, weight_name
+        )
         layer_block_grouping = _get_block_grouping_array_for_module(
-            layer, block_grouping
+            layer, block_grouping, weight_name
         )
         device = _get_quantizer_device_or_default(
-            layer.param_quantizers["weight"], model_device
+            layer.param_quantizers[weight_name], model_device
         )
-        layer.param_quantizers["weight"] = GroupedBlockQuantizeDequantize(
+        layer.param_quantizers[weight_name] = GroupedBlockQuantizeDequantize(
             quantizer_shape,
             bitwidth,
             symmetric,

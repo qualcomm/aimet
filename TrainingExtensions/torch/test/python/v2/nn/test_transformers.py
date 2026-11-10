@@ -498,6 +498,93 @@ def test_fused_experts_original_model(experts_cls, config_cls, tmp_path):
 
 
 @pytest.mark.parametrize("experts_cls, config_cls", FUSED_EXPERTS_CLASSES)
+@pytest.mark.parametrize("lpbq", [False, True])
+def test_fused_experts_blockwise(experts_cls, config_cls, lpbq):
+    """
+    When: Set blockwise (BQ) or grouped blockwise (LPBQ) quantization for fused experts
+    Then: 1) Each fused weight is quantized in blocks along the input channel axis
+          2) The encodings match quantizing each expert as its own nn.Linear with the same
+             block size
+    """
+    from aimet_torch.quantization.affine import (
+        QuantizeDequantize,
+        GroupedBlockQuantizeDequantize,
+    )
+    from aimet_torch.quantsim.config_utils import (
+        set_blockwise_quantization_for_weights,
+        set_grouped_blockwise_quantization_for_weights,
+    )
+
+    experts, inputs = _make_fused_experts(experts_cls, config_cls)
+    num_experts, two_inter, hidden = experts.gate_up_proj.shape
+    inter = two_inter // 2
+    block_size = 4
+
+    sim = aimet_torch.QuantizationSimModel(
+        _ExpertsWrapper(experts), inputs, default_param_bw=4
+    )
+    if lpbq:
+        set_grouped_blockwise_quantization_for_weights(
+            sim, [experts_cls], 4, True, 8, block_size, -1
+        )
+    else:
+        set_blockwise_quantization_for_weights(sim, [experts_cls], 4, True, block_size)
+    sim.compute_encodings(lambda model, _: model(*inputs), None)
+
+    qexperts = sim.model.experts
+    gate_up_qtzr = qexperts.param_quantizers["gate_up_proj"]
+    down_qtzr = qexperts.param_quantizers["down_proj"]
+    assert gate_up_qtzr.shape == (num_experts, two_inter, hidden // block_size)
+    assert down_qtzr.shape == (num_experts, hidden, inter // block_size)
+    for qtzr in (gate_up_qtzr, down_qtzr):
+        assert type(qtzr) is (
+            GroupedBlockQuantizeDequantize if lpbq else QuantizeDequantize
+        )
+        assert qtzr.block_size == [1, 1, block_size]
+        if lpbq:
+            assert qtzr.block_grouping == [1, 1, -1]
+
+    # Reference: each expert as gate/up/down nn.Linear with a blockwise weight quantizer
+    def linear_weight_scale(weight):
+        shape = (weight.shape[0], weight.shape[1] // block_size)
+        if lpbq:
+            qtzr = GroupedBlockQuantizeDequantize(
+                shape, 4, True, 8, None, (1, block_size), (1, -1)
+            )
+        else:
+            qtzr = QuantizeDequantize(shape, 4, True, block_size=(1, block_size))
+        with qtzr.compute_encodings():
+            qtzr(weight)
+        return qtzr.get_scale()
+
+    with torch.no_grad():
+        for e in range(num_experts):
+            gate_scale = linear_weight_scale(experts.gate_up_proj[e, :inter])
+            up_scale = linear_weight_scale(experts.gate_up_proj[e, inter:])
+            down_scale = linear_weight_scale(experts.down_proj[e])
+            assert torch.equal(gate_up_qtzr.get_scale()[e, :inter], gate_scale)
+            assert torch.equal(gate_up_qtzr.get_scale()[e, inter:], up_scale)
+            assert torch.equal(down_qtzr.get_scale()[e], down_scale)
+
+
+@pytest.mark.parametrize("experts_cls, config_cls", FUSED_EXPERTS_CLASSES)
+def test_fused_experts_blockwise_invalid_block_size(experts_cls, config_cls):
+    """
+    When: Set blockwise quantization for fused experts with a block size that
+          one of the fused weights doesn't divide evenly into
+    Then: Raise, naming the fused weight that doesn't align
+    """
+    from aimet_torch.quantsim.config_utils import set_blockwise_quantization_for_weights
+
+    experts, inputs = _make_fused_experts(experts_cls, config_cls)
+    sim = aimet_torch.QuantizationSimModel(_ExpertsWrapper(experts), inputs)
+
+    # gate_up_proj in_features (hidden=32) divides by 16, down_proj in_features (inter=8) doesn't
+    with pytest.raises(RuntimeError, match="experts has down_proj of shape"):
+        set_blockwise_quantization_for_weights(sim, [experts_cls], 4, True, 16)
+
+
+@pytest.mark.parametrize("experts_cls, config_cls", FUSED_EXPERTS_CLASSES)
 @pytest.mark.parametrize(
     "export_api", ["sim.export", "sim.onnx.export", "aimet_torch.onnx.export"]
 )

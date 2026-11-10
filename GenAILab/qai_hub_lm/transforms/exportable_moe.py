@@ -15,10 +15,9 @@ consumed by a data-dependent loop over ``nonzero()``) with per-expert
 ``predicated``
     One ``torch.cond`` per expert, lowering to an ONNX ``If`` that ORT skips.
 
-Unfusing is what makes per-expert encodings addressable: an indexed slice of an
-``nn.Parameter`` is not a leaf module, so aimet-torch attaches no weight
-quantizer, and ONNX lowers it to ``Gather`` -> ``MatMul``, making the weight
-arrive as an activation.
+Unfusing is what makes per-expert encodings exportable: aimet-torch quantizes
+the fused 3D parameters too, but ONNX lowers an indexed slice of them to
+``Gather`` -> ``MatMul``, making the weight arrive as an activation.
 
 ``force_all`` is a buffer rather than a Python flag so it survives export as an
 initializer and can be flipped post-export (:func:`set_onnx_force_all`): one

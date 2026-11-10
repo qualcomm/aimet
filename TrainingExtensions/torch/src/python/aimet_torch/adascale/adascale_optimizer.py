@@ -31,6 +31,14 @@ except ImportError:
     Qwen3Model = Qwen3DecoderLayer = None
 
 try:
+    from transformers.models.qwen3_moe.modeling_qwen3_moe import (
+        Qwen3MoeModel,
+        Qwen3MoeDecoderLayer,
+    )
+except ImportError:
+    Qwen3MoeModel = Qwen3MoeDecoderLayer = None
+
+try:
     from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
         Qwen2_5_VLTextModel,
         Qwen2_5_VLDecoderLayer,
@@ -55,6 +63,14 @@ except ImportError:
     Qwen3_5TextModel = Qwen3_5DecoderLayer = None
 
 try:
+    from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import (
+        Qwen3_5MoeTextModel,
+        Qwen3_5MoeDecoderLayer,
+    )
+except ImportError:
+    Qwen3_5MoeTextModel = Qwen3_5MoeDecoderLayer = None
+
+try:
     from transformers.models.gemma4.modeling_gemma4 import (
         Gemma4TextModel,
         Gemma4TextDecoderLayer,
@@ -70,6 +86,7 @@ from aimet_torch.common.early_stopping import (
 from aimet_torch.common.progress import progress_bar
 from aimet_torch import QuantizationSimModel
 from aimet_torch.nn import QuantizedLinear, compute_param_encodings, QuantizedConv2d
+from aimet_torch.nn.transformers.fused_experts import _FusedExpertsQuantizationMixin
 from aimet_torch.utils import (
     default_forward_fn,
     remove_all_quantizers,
@@ -137,6 +154,14 @@ if Qwen3Model is not None and Qwen3DecoderLayer is not None:
             )
         }
     )
+if Qwen3MoeModel is not None and Qwen3MoeDecoderLayer is not None:
+    adascale_model_config_dict.update(
+        {
+            Qwen3MoeModel: AdaScaleModelConfig(
+                block_type=Qwen3MoeDecoderLayer, beta_gamma_lr=1e-3, scales_lr=5e-4
+            )
+        }
+    )
 if Qwen3VLTextModel is not None and Qwen3VLTextDecoderLayer is not None:
     adascale_model_config_dict.update(
         {
@@ -156,6 +181,19 @@ if Qwen3_5TextModel is not None and Qwen3_5DecoderLayer is not None:
                 block_type=Qwen3_5DecoderLayer,
                 beta_gamma_lr=1e-3,
                 scales_lr=5e-4,
+                allow_mutation_on_saved_tensors=True,
+            )
+        }
+    )
+
+if Qwen3_5MoeTextModel is not None and Qwen3_5MoeDecoderLayer is not None:
+    adascale_model_config_dict.update(
+        {
+            Qwen3_5MoeTextModel: AdaScaleModelConfig(
+                block_type=Qwen3_5MoeDecoderLayer,
+                beta_gamma_lr=1e-3,
+                scales_lr=5e-4,
+                # Same linear-attention cache updates as Qwen3_5TextModel
                 allow_mutation_on_saved_tensors=True,
             )
         }
@@ -214,7 +252,22 @@ def _mse_loss_fn(
     return (fp_out - qt_out).abs().pow(p).sum(1).mean()
 
 
-supported_modules: List = [QuantizedLinear, QuantizedConv2d]
+# Matched with isinstance. _FusedExpertsQuantizationMixin stands for the quantized fused experts
+# class of every transformers MoE model (e.g. QuantizedQwen3MoeExperts), which all derive from it
+supported_modules: List = [
+    QuantizedLinear,
+    QuantizedConv2d,
+    _FusedExpertsQuantizationMixin,
+]
+
+
+def _get_checkpoint_key(module_name: str, weight_name: str) -> str:
+    """
+    Return the key of a weight in the AdaScale checkpoints of apply_adascale(checkpoint_dir=...).
+    The key of a weight named "weight" is its module name, as in the checkpoints saved before
+    modules could have other weights, so that a run resumed after an AIMET upgrade still loads them.
+    """
+    return module_name if weight_name == "weight" else f"{module_name}.{weight_name}"
 
 
 class PerBlockCheckpointManager:
@@ -680,17 +733,21 @@ class AdaScale:
 
         adascale_params = {}
         for name, module in block.named_modules():
-            if isinstance(module, tuple(supported_modules)):
-                weight_quantizer = module.param_quantizers["weight"]
-
-                if isinstance(weight_quantizer, AdaScaleQuantizeDequantize):
-                    # Extract AdaScale parameters
-                    quantizer_state = weight_quantizer.state_dict()
-                    if "extra_state" in quantizer_state:
-                        quantizer_state.pop("extra_state")
-                    if "_extra_state" in quantizer_state:
-                        quantizer_state.pop("_extra_state")
-                    adascale_params[name] = quantizer_state
+            if not isinstance(module, tuple(supported_modules)):
+                continue
+            for weight_name, weight_qtzr in module.param_quantizers.named_children():
+                if weight_name == "bias":
+                    continue
+                if not isinstance(weight_qtzr, AdaScaleQuantizeDequantize):
+                    continue
+                # Extract AdaScale parameters
+                quantizer_state = weight_qtzr.state_dict()
+                if "extra_state" in quantizer_state:
+                    quantizer_state.pop("extra_state")
+                if "_extra_state" in quantizer_state:
+                    quantizer_state.pop("_extra_state")
+                key = _get_checkpoint_key(name, weight_name)
+                adascale_params[key] = quantizer_state
 
         adascale_params = AdaScale.flatten_state_dict(adascale_params)
 
@@ -710,13 +767,18 @@ class AdaScale:
         adascale_params = AdaScale.unflatten_state_dict(adascale_params)
 
         for name, module in block.named_modules():
-            if name in adascale_params:
-                weight_quantizer = module.param_quantizers["weight"]
-
-                if isinstance(weight_quantizer, AdaScaleQuantizeDequantize):
-                    quantizer_state = adascale_params[name]
-                    # Restore parameters
-                    weight_quantizer.load_state_dict(quantizer_state)
+            if not isinstance(module, tuple(supported_modules)):
+                continue
+            for weight_name, weight_qtzr in module.param_quantizers.named_children():
+                if weight_name == "bias":
+                    continue
+                if not isinstance(weight_qtzr, AdaScaleQuantizeDequantize):
+                    continue
+                key = _get_checkpoint_key(name, weight_name)
+                if key not in adascale_params:
+                    continue
+                # Restore parameters
+                weight_qtzr.load_state_dict(adascale_params[key])
 
         block.to(device=device)
 
@@ -810,27 +872,32 @@ class AdaScale:
     def _replace_with_adascale_weight_quantizers(cls, block: torch.nn.Module):
         """Replace all the weight quantizers in supported modules with adascale quantizers"""
         for layer in block.modules():
-            if isinstance(layer, tuple(supported_modules)):
-                if not isinstance(layer.param_quantizers["weight"], QuantizeDequantize):
+            if not isinstance(layer, tuple(supported_modules)):
+                continue
+            for weight_name, weight_qtzr in layer.param_quantizers.named_children():
+                if weight_name == "bias":
                     continue
-                layer.param_quantizers["weight"] = cls._get_adascale_qdq_mapping()[
-                    type(layer)
-                ](layer.param_quantizers["weight"], layer.weight.shape)
+                if not isinstance(weight_qtzr, QuantizeDequantize):
+                    continue
+                layer.param_quantizers[weight_name] = cls._get_adascale_qdq_cls(layer)(
+                    weight_qtzr, getattr(layer, weight_name).shape
+                )
 
     @classmethod
     @torch.no_grad()
     def fold_adascale_quantizers(cls, module: torch.nn.Module):
         for layer in module.modules():
-            if isinstance(layer, tuple(supported_modules)) and isinstance(
-                layer.param_quantizers["weight"], AdaScaleQuantizeDequantize
-            ):
-                layer.weight.copy_(
-                    layer.param_quantizers["weight"].get_folded_weight(layer.weight)
-                )
-                layer.param_quantizers["weight"] = layer.param_quantizers[
-                    "weight"
-                ].get_qdq()
-                layer.param_quantizers["weight"].allow_overwrite(False)
+            if not isinstance(layer, tuple(supported_modules)):
+                continue
+            for weight_name, weight_qtzr in layer.param_quantizers.named_children():
+                if weight_name == "bias":
+                    continue
+                if not isinstance(weight_qtzr, AdaScaleQuantizeDequantize):
+                    continue
+                weight = getattr(layer, weight_name)
+                weight.copy_(weight_qtzr.get_folded_weight(weight))
+                layer.param_quantizers[weight_name] = weight_qtzr.get_qdq()
+                layer.param_quantizers[weight_name].allow_overwrite(False)
                 layer.requires_grad_(False)
 
     @staticmethod
@@ -841,12 +908,16 @@ class AdaScale:
         all_scale_parameters = []
         all_beta_gamma_parameters = []
         for module in non_leaf_module.modules():
-            if isinstance(module, tuple(supported_modules)) and isinstance(
-                module.param_quantizers["weight"], AdaScaleQuantizeDequantize
-            ):
-                beta_gamma_params, scale_parameters = module.param_quantizers[
-                    "weight"
-                ].get_adascale_trainable_parameters()
+            if not isinstance(module, tuple(supported_modules)):
+                continue
+            for weight_name, weight_qtzr in module.param_quantizers.named_children():
+                if weight_name == "bias":
+                    continue
+                if not isinstance(weight_qtzr, AdaScaleQuantizeDequantize):
+                    continue
+                beta_gamma_params, scale_parameters = (
+                    weight_qtzr.get_adascale_trainable_parameters()
+                )
                 all_beta_gamma_parameters.extend(beta_gamma_params)
                 all_scale_parameters.extend(scale_parameters)
         return all_beta_gamma_parameters, all_scale_parameters
@@ -862,7 +933,18 @@ class AdaScale:
         return {
             QuantizedLinear: AdaScaleLinearQuantizeDequantize,
             QuantizedConv2d: AdaScaleConv2dQuantizeDequantize,
+            # Each expert in the fused experts weights is a linear layer
+            _FusedExpertsQuantizationMixin: AdaScaleLinearQuantizeDequantize,
         }
+
+    @classmethod
+    def _get_adascale_qdq_cls(cls, layer: torch.nn.Module) -> Type:
+        """Return the AdaScale QDQ class for the layer, matched with isinstance"""
+        return next(
+            qdq_cls
+            for module_cls, qdq_cls in cls._get_adascale_qdq_mapping().items()
+            if isinstance(layer, module_cls)
+        )
 
 
 class _SamplingIterable:

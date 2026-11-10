@@ -13,7 +13,7 @@ import copy
 import pytest
 import torch
 from torch.utils.data import Dataset, DataLoader
-from typing import List
+from typing import List, Tuple
 from transformers import (
     LlamaConfig,
     LlamaForCausalLM,
@@ -25,6 +25,10 @@ from transformers import (
     MistralForCausalLM,
     Qwen3Config,
     Qwen3ForCausalLM,
+    Qwen3MoeConfig,
+    Qwen3MoeForCausalLM,
+    Qwen3_5MoeTextConfig,
+    Qwen3_5MoeForCausalLM,
 )
 from transformers.models.llama.modeling_llama import LlamaModel
 from transformers import set_seed
@@ -129,6 +133,29 @@ MODEL_CONFIGS = {
     },
 }
 
+# Models with fused MoE experts, whose 3D expert weights AdaScale optimizes
+MOE_CONFIG_KWARGS = {
+    **MODEL_CONFIGS["qwen3"]["config_kwargs"],
+    "num_experts": 4,
+    "num_experts_per_tok": 2,
+    "moe_intermediate_size": HIDDEN_SIZE // 2,
+}
+FUSED_EXPERTS_MODEL_CONFIGS = {
+    "qwen3_moe": {
+        "config_class": Qwen3MoeConfig,
+        "model_class": Qwen3MoeForCausalLM,
+        "config_kwargs": MOE_CONFIG_KWARGS,
+    },
+    "qwen3_5_moe": {
+        "config_class": Qwen3_5MoeTextConfig,
+        "model_class": Qwen3_5MoeForCausalLM,
+        "config_kwargs": {
+            **MOE_CONFIG_KWARGS,
+            "shared_expert_intermediate_size": HIDDEN_SIZE * 2,
+        },
+    },
+}
+
 supported_modules: List = [QuantizedLinear, QuantizedConv2d]
 
 
@@ -174,6 +201,16 @@ def fxt_dataloader():
             return self._size
 
     return DataLoader(dataset=_Dataset(), batch_size=1, shuffle=False)
+
+
+@pytest.fixture(params=list(FUSED_EXPERTS_MODEL_CONFIGS.keys()))
+def fxt_fused_experts_quantsim(request, fxt_dummy_input):
+    model_config = FUSED_EXPERTS_MODEL_CONFIGS[request.param]
+    set_seed(0)
+    config = model_config["config_class"](**model_config["config_kwargs"])
+    model = model_config["model_class"](config)
+    model.eval()
+    return get_quantsim_ready_model(model, fxt_dummy_input)
 
 
 @pytest.fixture
@@ -257,6 +294,15 @@ def run_n_times_then_stop(func: callable, n: int):
 
     wrapper._count = 0
     return wrapper
+
+
+def get_fused_experts(model: torch.nn.Module) -> List[Tuple[str, torch.nn.Module]]:
+    """Helper to get the names and modules of the quantized fused experts in model"""
+    return [
+        (name, module)
+        for name, module in model.named_modules()
+        if hasattr(module, "_param_channel_axes")
+    ]
 
 
 def count_adascale_quantizers(model):
@@ -1003,6 +1049,43 @@ class TestAdaScaleBasicFunctionality:
                     restored_state[key].cpu(), expected_tensor.cpu()
                 ), f"Mismatch after restore for layer {name}, key {key}"
 
+    def test_adascale_skips_bias_quantizer(self):
+        """
+        When: Run the AdaScale steps on a linear layer with a bias quantizer
+        Then: 1) Only the weight quantizer is replaced, extracted, trained and folded
+              2) The checkpoint key of the weight is the module name, as in the
+                 checkpoints saved before modules could have other weights
+        """
+        block = torch.nn.Sequential(QuantizedLinear(8, 8))
+        layer = block[0]
+        layer.param_quantizers["weight"] = QuantizeDequantize((8, 1), 4, True)
+        layer.param_quantizers["bias"] = QuantizeDequantize((), 8, True)
+        bias_quantizer = layer.param_quantizers["bias"]
+        with layer.param_quantizers["weight"].compute_encodings():
+            layer.param_quantizers["weight"](layer.weight)
+
+        AdaScale._replace_with_adascale_weight_quantizers(block)
+        assert isinstance(
+            layer.param_quantizers["weight"], AdaScaleLinearQuantizeDequantize
+        )
+        assert layer.param_quantizers["bias"] is bias_quantizer
+
+        adascale_params = AdaScale.extract_adascale_params(block)
+        assert {key.split("/")[0] for key in adascale_params} == {"0"}
+
+        beta_gamma_params, scale_params = AdaScale._get_adascale_trainable_params(block)
+        weight_quantizer = layer.param_quantizers["weight"]
+        expected_beta_gamma, expected_scale = (
+            weight_quantizer.get_adascale_trainable_parameters()
+        )
+        assert [id(p) for p in beta_gamma_params + scale_params] == [
+            id(p) for p in expected_beta_gamma + expected_scale
+        ]
+
+        AdaScale.fold_adascale_quantizers(block)
+        assert type(layer.param_quantizers["weight"]) is QuantizeDequantize
+        assert layer.param_quantizers["bias"] is bias_quantizer
+
     def test_fold_adascale_quantizers(self, fxt_block):
         """Test folding AdaScale parameters into weights"""
         AdaScale._replace_with_adascale_weight_quantizers(fxt_block)
@@ -1476,3 +1559,120 @@ class TestAdaScaleResumability:
                     f"blocks_completed={blocks_completed}); "
                     f"max diff: {torch.max(torch.abs(baseline_weight - resumed_weight))}"
                 )
+
+
+@pytest.mark.parallel
+class TestAdaScaleFusedExperts:
+    """Test AdaScale on the 3D weights of fused MoE experts"""
+
+    def test_adascale_block(self, fxt_fused_experts_quantsim):
+        """
+        When: Run AdaScale on a MoE block, then fold the AdaScale quantizers
+        Then: 1) Each fused experts weight gets a linear AdaScale quantizer, whose scales are per
+                 expert: s2 per weight element and s3 per expert output channel
+              2) Every expert's AdaScale parameters are trained
+              3) Folding keeps the block output and leaves plain QuantizeDequantize quantizers
+        """
+        block = AdaScale._get_blocks(fxt_fused_experts_quantsim)[0].mlp
+        ((_, experts),) = get_fused_experts(block)
+        inputs = [((torch.randn(1, SEQUENCE_LENGTH, HIDDEN_SIZE),), {})]
+        # Large learning rates, so that a few iterations move every AdaScale parameter
+        AdaScale.adascale_block(
+            block,
+            inputs,
+            qt_inputs=None,
+            num_iterations=NUM_ITERATIONS,
+            beta_gamma_lr=1e-2,
+            scales_lr=1e-2,
+        )
+
+        for name in experts._param_channel_axes:
+            weight = getattr(experts, name)
+            quantizer = experts.param_quantizers[name]
+            assert isinstance(quantizer, AdaScaleLinearQuantizeDequantize)
+            assert quantizer.s2.shape == weight.shape
+            assert quantizer.s3.shape == quantizer.shape == (*weight.shape[:2], 1)
+            for param in (quantizer.beta, quantizer.gamma, quantizer.s2, quantizer.s3):
+                # [num_experts, ...]: each expert's slice moved from its zero init
+                assert (param.flatten(1).abs().sum(dim=1) > 0).all()
+
+        with remove_activation_quantizers(block), torch.no_grad():
+            expected = block(*inputs[0][0])
+            AdaScale.fold_adascale_quantizers(block)
+            assert torch.allclose(block(*inputs[0][0]), expected, atol=1e-6)
+
+        for name in experts._param_channel_axes:
+            assert type(experts.param_quantizers[name]) is QuantizeDequantize
+
+    def test_save_and_load_completed_block(
+        self, fxt_fused_experts_quantsim, fxt_checkpoint_dir
+    ):
+        """
+        When: Save the AdaScale params of a block with fused experts, and load them back
+        Then: Each fused experts weight has its own checkpoint entry, which is restored
+        """
+        manager = PerBlockCheckpointManager(fxt_checkpoint_dir)
+        block = AdaScale._get_blocks(fxt_fused_experts_quantsim)[0]
+        ((experts_name, experts),) = get_fused_experts(block)
+        AdaScale._replace_with_adascale_weight_quantizers(block)
+
+        quantizers = [experts.param_quantizers[n] for n in experts._param_channel_axes]
+        with torch.no_grad():
+            for quantizer in quantizers:
+                for idx, param in enumerate(quantizer.parameters()):
+                    param.fill_(0.1 * (idx % 10 + 1))
+        expected_states = [deepcopy(q.state_dict()) for q in quantizers]
+
+        adascale_params = AdaScale.extract_adascale_params(block)
+        assert {f"{experts_name}.{name}" for name in experts._param_channel_axes} <= {
+            key.split("/")[0] for key in adascale_params
+        }
+        manager.save_completed_block(block=block, block_idx=0)
+
+        # Corrupt the AdaScale params
+        with torch.no_grad():
+            for quantizer in quantizers:
+                for param in quantizer.parameters():
+                    param.fill_(999.0)
+
+        manager.load_completed_block(block, block_idx=0)
+
+        for quantizer, expected_state in zip(quantizers, expected_states):
+            for key, tensor in quantizer.state_dict().items():
+                if key in ("extra_state", "_extra_state"):
+                    continue
+                assert torch.equal(tensor, expected_state[key]), key
+
+    def test_apply_adascale(self, fxt_fused_experts_quantsim):
+        """
+        When: Apply AdaScale to a model with fused experts
+        Then: The fused experts weights of every decoder layer are updated, and their AdaScale
+              quantizers are folded
+        """
+        # All-ones attention mask: the linear attention layers of Qwen3.5 pass the attention mask
+        # of fxt_dataloader (all zeros) to SDPA as int, which SDPA rejects
+        data_loader = DataLoader(
+            [
+                (
+                    torch.randint(0, VOCAB_SIZE, (SEQUENCE_LENGTH,)),
+                    torch.ones(SEQUENCE_LENGTH, dtype=torch.int),
+                )
+                for _ in range(2)
+            ],
+            batch_size=1,
+        )
+        experts = get_fused_experts(fxt_fused_experts_quantsim.model)
+        assert len(experts) == NUM_HIDDEN_LAYERS
+        original_weights = [
+            (getattr(e, name).detach().clone(), e, name)
+            for _, e in experts
+            for name in e._param_channel_axes
+        ]
+
+        AdaScale.apply_adascale(
+            fxt_fused_experts_quantsim, data_loader, num_iterations=NUM_ITERATIONS
+        )
+
+        for original_weight, e, name in original_weights:
+            assert not torch.equal(getattr(e, name), original_weight)
+            assert type(e.param_quantizers[name]) is QuantizeDequantize

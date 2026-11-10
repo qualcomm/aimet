@@ -1193,10 +1193,9 @@ class TestTorchQuantsimIntegration:
             with torch.no_grad():
                 self._run(backend, sim)
 
-    def test_unadapted_fused_experts_are_silently_unquantized(self, backend):
-        """An unadapted model does not fail to build a sim: the fused Experts
-        module is not a quantizable leaf, so its weights never get quantizers and
-        the whole MoE silently runs in float.
+    def test_unadapted_fused_experts_are_quantized(self, backend):
+        """Without the adaptation, aimet-torch quantizes the fused Experts module
+        itself, so its 3D weights still get quantizers.
         """
         torch.manual_seed(0)
         model = modeling_qwen3_moe.Qwen3MoeForCausalLM(_toy_config()).eval()
@@ -1218,7 +1217,4 @@ class TestTorchQuantsimIntegration:
                 )
 
         assert fused_params > 0, "expected fused experts in an unadapted model"
-        assert quantized == 0, (
-            "fused expert weights unexpectedly got quantizers; the silent-float "
-            "hazard this test documents may have been fixed upstream"
-        )
+        assert quantized == fused_params
