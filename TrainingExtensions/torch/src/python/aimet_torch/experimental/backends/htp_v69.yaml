@@ -143,6 +143,15 @@ ops:
 
   - op_type: aten::conv1d | aten::conv2d | aten::conv3d
     type_constraints:
+      w4a16:
+        input: uint16
+        weight: int4[channel_axis=0]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        dilation: null
+        groups: null
+        $ret[0]: uint16
       w8a8:
         input: uint8
         weight: int8[channel_axis=0]
@@ -173,6 +182,16 @@ ops:
 
   - op_type: aten::conv_transpose1d | aten::conv_transpose2d.input | aten::conv_transpose3d.input
     type_constraints:
+      w4a16:
+        input: uint16
+        weight: int4[channel_axis=1]
+        bias: int32[channel_axis=0]
+        stride: null
+        padding: null
+        output_padding: null
+        groups: null
+        dilation: null
+        $ret[0]: uint16
       w8a8:
         input: uint8
         weight: int8[channel_axis=1]
@@ -356,6 +375,11 @@ ops:
 
   - op_type: aten::linear
     type_constraints:
+      w4a16:
+        input: uint16
+        weight: int4[channel_axis=0]
+        bias: int32[channel_axis=0]
+        $ret[0]: uint16
       w8a8:
         input: uint8
         weight: int8[channel_axis=0]

@@ -148,7 +148,7 @@ class OpSignature(_OpSignature):
     @classmethod
     @lru_cache(None)
     def allowed_tags(cls):
-        return {"w8a8", "w8a16", "w16a16", "a8", "a16", "a8xa8", "a16xa8"}
+        return {"w4a16", "w8a8", "w8a16", "w16a16", "a8", "a16", "a8xa8", "a16xa8"}
 
 
 @dataclass(frozen=True)
@@ -377,6 +377,13 @@ class BackendDescription:
         Configure graph module for quantization according to the backend description.
         """
         match (weight_bw, activation_bw):
+            case (4, 16):
+                qtzn_profile = {
+                    # If w4a16 kernel doesn't exist, fallback to w16a16 or w8a16
+                    "*": ["w4a16", "w16a16", "w8a16", "a16"],
+                    "aten::mm": ["a16xa16", "a16xa8"],
+                    "aten::bmm": ["a16xa16", "a16xa8"],
+                }
             case (8, 8):
                 qtzn_profile = {
                     "*": ["w8a8", "a8"],
@@ -390,8 +397,9 @@ class BackendDescription:
                     "aten::bmm": ["a16xa16", "a16xa8"],
                 }
             case (16, 16):
+                # If w16a16 kernel doesn't exist, fallback to w8a16
                 qtzn_profile = {
-                    "*": ["w16a16", "a16"],
+                    "*": ["w16a16", "w8a16", "a16"],
                     "aten::mm": ["a16xa16", "a16xa8"],
                     "aten::bmm": ["a16xa16", "a16xa8"],
                 }
