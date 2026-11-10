@@ -2057,41 +2057,40 @@ def _get_node_attribute(node: NodeProto, name: str):
 
 
 def contains_tensor_type(
-    model: ModelProto, tensor_type: int | List[int], include_if: bool = True
-):
+    model: ModelProto | onnx_ir.Model,
+    tensor_type: int | List[int],
+    include_if: bool = True,
+) -> bool:
     """
     Returns True if the model contains the specified tensor type(s).
+
+    A ``ModelProto`` is read through a no-copy ``onnx_ir`` view. An ``onnx_ir.Model`` is read as-is.
     """
+    if isinstance(model, ModelProto):
+        model = onnx_ir.from_proto(model)
     if isinstance(tensor_type, int):
         tensor_type = [tensor_type]
+    tensor_type = {onnx_ir.DataType(t) for t in tensor_type}
     # Control-flow bodies can compute in a different type than the top-level graph
-    graphs = list(_iterate_graphs_recursive(model.graph, include_if=include_if))
+    graphs = list(_iterate_graphs_recursive_ir(model.graph, include_if=include_if))
     if any(
-        tensor.type.tensor_type.elem_type in tensor_type
+        value.dtype in tensor_type
         for graph in graphs
-        for tensor in itertools.chain(graph.input, graph.output)
+        for value in itertools.chain(
+            graph.inputs, graph.outputs, graph.initializers.values()
+        )
     ):
         return True
 
-    if any(
-        tensor.data_type in tensor_type
-        for graph in graphs
-        for tensor in graph.initializer
-    ):
-        return True
-
-    for node in (node for graph in graphs for node in graph.node):
+    for node in (node for graph in graphs for node in graph):
         if node.op_type == "Cast":
-            cast_type = _get_node_attribute(node, "to")
-            if cast_type in tensor_type:
+            cast_type = node.attributes.get("to")
+            if cast_type is not None and cast_type.as_int() in tensor_type:
                 return True
 
         if node.op_type in ("Constant", "ConstantOfShape"):
-            value = _get_node_attribute(node, "value")
-            if value is None:
-                continue
-
-            if value.data_type in tensor_type:
+            value = node.attributes.get("value")
+            if value is not None and value.as_tensor().dtype in tensor_type:
                 return True
 
     return False

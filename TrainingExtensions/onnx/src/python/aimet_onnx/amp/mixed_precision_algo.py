@@ -13,6 +13,7 @@ import itertools
 from typing import Any, Callable, Tuple, List, Dict
 import json
 import numpy as np
+import onnx_ir
 import onnxruntime as ort
 
 from aimet_onnx.common import quantsim
@@ -457,7 +458,9 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
             os.makedirs(results_dir)
         path = os.path.join(results_dir, "encodings_with_param.encodings")
         # pylint: disable=protected-access
-        self._sim._export_encodings(path, quantsim.encoding_version)
+        self._sim._export_encodings(
+            onnx_ir.from_proto(self._sim.model.model), path, quantsim.encoding_version
+        )
 
     def _export_activation_encodings(self, path: str):
         """
@@ -470,7 +473,9 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
             os.makedirs(results_dir)
         path = os.path.join(results_dir, "encodings_with_act.encodings")
         # pylint: disable=protected-access
-        self._sim._export_encodings(path, quantsim.encoding_version)
+        self._sim._export_encodings(
+            onnx_ir.from_proto(self._sim.model.model), path, quantsim.encoding_version
+        )
 
     def _load_param_encodings(self, path: str):
         """

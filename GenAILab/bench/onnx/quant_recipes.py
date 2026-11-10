@@ -172,7 +172,7 @@ class RemoveQuantization(QuantizationTechnique):
         **kwargs,
     ):
         # Remove all quantization nodes from the ONNX model.
-        quantsim.model.model = quantsim.remove_quantizers(quantsim.model.model)
+        quantsim._reset_model(quantsim.remove_quantizers(quantsim.model.model))
         quantsim._rebuild_session()
 
 

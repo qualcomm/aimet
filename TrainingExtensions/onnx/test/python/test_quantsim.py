@@ -7302,6 +7302,60 @@ def test_fp16_bias_export_uses_fp32_scale():
     )
 
 
+@pytest.mark.parametrize("constant_bias", [False, True])
+def test_export_matmul_add_int32_bias(constant_bias):
+    """
+    Given: MatMul -> Add where the bias is an initializer or a Constant node
+    When: export() with int32 bias
+    Then: bias encoding is exported with scale input_scale * weight_scale
+    """
+    model = models_for_tests.matmul_bias_add_model()
+    if constant_bias:
+        bias_init = next(t for t in model.graph.initializer if t.name == "add.bias")
+        bias = copy.deepcopy(bias_init)
+        model.graph.initializer.remove(bias_init)
+        model.graph.node.insert(
+            0,
+            onnx.helper.make_node(
+                "Constant", [], ["add.bias"], value=bias, name="add_bias_const"
+            ),
+        )
+
+    quantsim_config = {
+        "defaults": {
+            "ops": {"is_output_quantized": "True"},
+            "params": {"is_quantized": "True", "is_symmetric": "True"},
+        },
+        "params": {"bias": {"is_quantized": "False"}},
+        "op_type": {},
+        "supergroup_pass_list": ["MatmulAdd"],
+        "supergroups": [],
+        "model_input": {"is_input_quantized": "True"},
+        "model_output": {"is_output_quantized": "True"},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        config_file = os.path.join(tmp, "quantsim_config.json")
+        with open(config_file, "w") as f:
+            json.dump(quantsim_config, f)
+        sim = QuantizationSimModel(model, config_file=config_file)
+
+        with aimet_onnx.compute_encodings(sim):
+            sim.session.run(None, {"input": np.random.randn(10, 10).astype(np.float32)})
+
+        sim.export(tmp, "model", export_int32_bias=True, encoding_version="2.0.0")
+        with open(os.path.join(tmp, "model.encodings")) as f:
+            encodings = json.load(f)
+
+    bias_enc = next(
+        (enc for enc in encodings["encodings"] if enc["name"] == "add.bias"), None
+    )
+    assert bias_enc is not None
+    expected = np.array(
+        sim.qc_quantize_op_dict["matmul.weight"].export_encodings("2.0.0")["y_scale"]
+    ) * np.array(sim.qc_quantize_op_dict["input"].export_encodings("2.0.0")["y_scale"])
+    assert np.allclose(bias_enc["y_scale"], expected)
+
+
 def _parse_type(type_str: str) -> tuple[str, int]:
     if type_str.startswith("int"):
         return "int", int(type_str[3:])

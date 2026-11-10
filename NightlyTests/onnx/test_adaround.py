@@ -50,8 +50,8 @@ class TestAdaroundAcceptance:
         out_after_ada = sim.session.run(None, dummy_input)
         assert not np.array_equal(out_before_ada[0], out_after_ada[0])
 
-        sim.remove_quantizers(sim.model.model)
-        for node in sim.model.nodes():
+        fp_model = sim.remove_quantizers(sim.model.model)
+        for node in fp_model.graph.node:
             if node.op_type in AdaroundSupportedModules:
                 assert sim.qc_quantize_op_dict[node.input[1]]._is_encoding_frozen
 

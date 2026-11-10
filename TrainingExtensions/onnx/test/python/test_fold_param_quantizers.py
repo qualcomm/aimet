@@ -10,6 +10,7 @@ import tempfile
 import ml_dtypes
 import numpy as np
 import onnx
+import onnx_ir
 import onnxruntime as ort
 import pytest
 import torch
@@ -121,7 +122,9 @@ class TestFoldParamQuantizers:
         }[weight_name]
 
         # The expected QDQ value is what the partial-model QDQ computation produces.
-        expected = sim._get_qdq_parameters()[weight_name].flatten()
+        expected = sim._get_qdq_parameters(onnx_ir.from_proto(sim.model.model).graph)[
+            weight_name
+        ].flatten()
 
         sim.fold_param_quantizers()
 
@@ -390,11 +393,37 @@ class TestFoldParamQuantizers:
         graph = helper.make_graph([node], "g", [], [])
         model = helper.make_model(graph)
         new_value = np.asarray(values) * 2
-        QuantizationSimModel._overwrite_parameters(model, {"c": new_value})
+        model = onnx_ir.to_proto(
+            QuantizationSimModel._overwrite_parameters(
+                onnx_ir.from_proto(model), {"c": new_value}
+            )
+        )
 
         written = model.graph.node[0].attribute[0]
         assert written.name == attr
         assert np.allclose(getattr(written, expected_field), new_value)
+
+    def test_fold_replaces_proto_and_refreshes_caches(self):
+        """
+        Folding swaps in a new ModelProto. Cached references (the value map and the
+        ConnectedGraph) must point into that new proto, not the old one.
+        """
+        sim, _, _ = _make_calibrated_sim()
+        old_proto = sim.model.model
+
+        sim.fold_param_quantizers()
+
+        new_proto = sim.model.model
+        assert new_proto is not old_proto
+        folded = set(sim._folded_param_quantizers)
+        producers = (value.producer() for value in sim._value_map().values())
+        assert not any(
+            node is not None
+            and node.op_type == "QcQuantizeOp"
+            and node.inputs[0].name in folded
+            for node in producers
+        )
+        assert sim.connected_graph.model is new_proto
 
 
 def _bf16_sim(param_type, *, lpbq=False):

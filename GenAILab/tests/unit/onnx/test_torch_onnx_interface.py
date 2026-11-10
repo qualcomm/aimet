@@ -83,7 +83,7 @@ class TestBF16Inference:
     def test_remove_quantizers_keeps_model_runnable(self):
         sim = _float_sim(_onnx_model(torch.bfloat16))
         # What the RemoveQuantization recipe does.
-        sim.model.model = sim.remove_quantizers(sim.model.model)
+        sim._reset_model(sim.remove_quantizers(sim.model.model))
         sim._rebuild_session()
 
         x = torch.ones(2, 4, dtype=torch.bfloat16, device="cuda")

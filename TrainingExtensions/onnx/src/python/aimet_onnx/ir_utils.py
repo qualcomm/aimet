@@ -69,21 +69,40 @@ def set_static_tensor(value: onnx_ir.Value, array: np.ndarray) -> None:
             f"from the current dtype {current.dtype}. Cast before writing back."
         )
 
-    if value.const_value is not None:
-        value.const_value = replacement
+    producer = value.producer()
+    if producer is not None and producer.op_type == "Constant":
+        # Constant node: the data lives in the node's attribute, not on the Value.
+        # get_const_tensor accepts several attribute spellings, but only ``value``
+        # holds a tensor; the others are scalar/list forms that a weight never uses.
+        attr_name = next(iter(producer.attributes))
+        if attr_name != "value":
+            raise ValueError(
+                f"Constant node '{producer.name}' holds its data in attribute "
+                f"'{attr_name}'; only the 'value' (tensor) form can be overwritten."
+            )
+        producer.attributes["value"] = onnx_ir.AttrTensor("value", replacement)
+        # _get_all_constants_ir caches the tensor on const_value; keep it in sync
+        # so reads through the Value see the new data too.
+        if value.const_value is not None:
+            value.const_value = replacement
         return
 
-    # Constant node: the data lives in the node's attribute, not on the Value.
-    # get_const_tensor accepts several attribute spellings, but only ``value``
-    # holds a tensor; the others are scalar/list forms that a weight never uses.
-    node = value.producer()
-    attr_name = next(iter(node.attributes))
-    if attr_name != "value":
-        raise ValueError(
-            f"Constant node '{node.name}' holds its data in attribute "
-            f"'{attr_name}'; only the 'value' (tensor) form can be overwritten."
-        )
-    node.attributes["value"] = onnx_ir.AttrTensor("value", replacement)
+    value.const_value = replacement
+
+
+def static_shape(value: onnx_ir.Value) -> Optional[Tuple[int, ...]]:
+    """Return the concrete shape of a constant value, or None when it has no static shape."""
+    shape = value.shape
+    if shape is None and value.const_value is not None:
+        shape = value.const_value.shape
+    return tuple(shape) if shape is not None else None
+
+
+def float_dtype(value: Optional[onnx_ir.Value]) -> np.dtype:
+    """Return the dtype of ``value``, or float32 when ``value`` is None or its type is unknown."""
+    if value is None or value.dtype is None:
+        return np.float32
+    return value.dtype.numpy()
 
 
 def remove_quantizers(model: onnx_ir.Model) -> None:

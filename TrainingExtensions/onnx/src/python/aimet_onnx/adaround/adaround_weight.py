@@ -6,7 +6,6 @@
 
 """Top level API for Adaptive Rounding - Post-Training Quantization (PTQ)"""
 
-import copy
 import tempfile
 from typing import Dict, List, Collection, Optional
 from aimet_onnx.common.progress import progress_bar  # pylint: disable=import-error
@@ -74,8 +73,7 @@ class Adaround:
 
         module_act_func_pair = get_module_act_func_pair(sim.connected_graph)
 
-        fp32_model = copy.deepcopy(sim.model.model)
-        fp32_model = QuantizationSimModel.remove_quantizers(fp32_model)
+        fp32_model = QuantizationSimModel.remove_quantizers(sim.model.model)
 
         with (
             utils.disable_quantizers(sim, set(sim.activation_names))
