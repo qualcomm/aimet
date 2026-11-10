@@ -1729,6 +1729,12 @@ _RECON_RELRMS_FLOOR = 1e-3
 # Number of least-squares scale-refinement iterations (see _refine_scale_ls).
 _DECOMPOSE_LS_ITERS = 4
 
+# Max number of elements processed at once by _decompose_prequantized_tensor.
+# Every stage of the decomposition allocates several full-size fp32
+# temporaries, so the tensor is processed in chunks of whole blocks to keep the
+# peak memory bounded regardless of the tensor size.
+_DECOMPOSE_CHUNK_NUMEL = 2**24
+
 
 @torch.no_grad()
 def _storage_ulp_rel(x: torch.Tensor) -> float:
@@ -1833,37 +1839,13 @@ def _memory_efficient_inplace_sort(x: torch.Tensor, *args, **kwargs):
 
 
 @torch.no_grad()
-def _select_divisor(
-    x, absmax, min_nonzero, zero_point_shift, max_level, ulp_rel, eps=1e-12
-):
-    """Pick the coarsest divisor ``k`` (``scale = anchor / k``) that explains each
-    block's grid, without assuming the smallest nonzero magnitude equals one step.
+def _divisor_estimates(x, absmax, min_nonzero, zero_point_shift, eps=1e-12):
+    """Two complementary per-block estimates of the divisor ``k = anchor / step``
+    (see _select_divisor), from which the candidate divisors are drawn.
 
-    Anchoring the scale at ``absmax`` and sweeping candidate divisors recovers the
-    step even for blocks whose codes never reach +/-1 (e.g. a depthwise conv with
-    only a handful of taps per channel), which a "min nonzero == 1 * scale"
-    assumption cannot handle.  Selection is a two-stage relative-margin gate:
-    reject divisors clearly worse than the best off-grid fraction, then among
-    survivors take the smallest (coarsest grid) whose mean on-grid deviation is
-    within ``_FIT_MARGIN`` of the best.  The per-element on-grid tolerance is set
-    from the tensor's measured storage precision (``ulp_rel``).
-
-    Returns ``(k_chosen [B] long, accepted [B] bool)``.
+    Returns ``(k_est_min [B], k_est_gap [B])``.
     """
-    B, _ = x.shape
-    device = x.device
-    nonzero = x.abs() > eps
-    nnz = nonzero.sum(dim=1, dtype=x.dtype).clamp(min=1)
-    active = torch.isfinite(min_nonzero) & (absmax > 0)
-
-    # The shifted grid (zero_point_shift == 0.5) places codes at the half
-    # integers, i.e. its stored values are odd multiples of half the step, so its
-    # anchor is 2 * absmax and its divisors are the odd integers up to
-    # 2 * max_level + 1.  The dense grid (zero_point_shift == 0) uses absmax and
-    # every integer divisor up to max_level.  Only these two shifts are supported.
-    shifted_grid = zero_point_shift == 0.5
-    anchor = (2.0 if shifted_grid else 1.0) * absmax
-    max_k = (2 * max_level + 1) if shifted_grid else max_level
+    anchor = (2.0 if zero_point_shift == 0.5 else 1.0) * absmax
     # Two complementary per-block estimates of the divisor k = anchor / step:
     #   - min-nonzero anchor: assumes the smallest nonzero magnitude is one step.
     #     Correct when the block's codes reach +/-1, wrong when they do not
@@ -1872,7 +1854,8 @@ def _select_divisor(
     #     sorted magnitudes.  Correct precisely when codes are consecutive (so the
     #     gap is one step) even if they never reach +/-1, which recovers the true
     #     fine grid of near-constant channels the min-nonzero anchor collapses.
-    # Both windows are searched; the on-grid fit below picks whichever k fits.
+    # Both windows are searched; the on-grid fit in _select_divisor picks
+    # whichever k fits.
     k_est_min = absmax / min_nonzero.clamp(min=eps)
     xs = _memory_efficient_inplace_sort(x.abs(), dim=1)
     gaps = xs[:, 1:] - xs[:, :-1]
@@ -1887,11 +1870,37 @@ def _select_divisor(
         min_gap = torch.where(torch.isfinite(min_gap), min_gap, anchor.clamp(min=eps))
     del gaps
     k_est_gap = anchor / min_gap.clamp(min=eps)
-    del min_gap
-    cand = _candidate_divisors(
-        [k_est_min, k_est_gap], active, max_k, odd_only=shifted_grid, device=device
-    )
-    del k_est_min, k_est_gap
+    return k_est_min, k_est_gap
+
+
+@torch.no_grad()
+def _select_divisor(x, absmax, min_nonzero, cand, zero_point_shift, ulp_rel, eps=1e-12):
+    """Pick the coarsest divisor ``k`` (``scale = anchor / k``) out of the
+    candidate divisors ``cand`` that explains each block's grid, without assuming
+    the smallest nonzero magnitude equals one step.
+
+    Anchoring the scale at ``absmax`` and sweeping candidate divisors recovers the
+    step even for blocks whose codes never reach +/-1 (e.g. a depthwise conv with
+    only a handful of taps per channel), which a "min nonzero == 1 * scale"
+    assumption cannot handle.  Selection is a two-stage relative-margin gate:
+    reject divisors clearly worse than the best off-grid fraction, then among
+    survivors take the smallest (coarsest grid) whose mean on-grid deviation is
+    within ``_FIT_MARGIN`` of the best.  The per-element on-grid tolerance is set
+    from the tensor's measured storage precision (``ulp_rel``).
+
+    Returns ``(k_chosen [B] long, accepted [B] bool)``.
+    """
+    B, _ = x.shape
+    nonzero = x.abs() > eps
+    nnz = nonzero.sum(dim=1, dtype=x.dtype).clamp(min=1)
+    active = torch.isfinite(min_nonzero) & (absmax > 0)
+
+    # The shifted grid (zero_point_shift == 0.5) places codes at the half
+    # integers, i.e. its stored values are odd multiples of half the step, so its
+    # anchor is 2 * absmax (and its candidate divisors are the odd integers).
+    # The dense grid (zero_point_shift == 0) uses absmax.  Only these two shifts
+    # are supported.
+    anchor = (2.0 if zero_point_shift == 0.5 else 1.0) * absmax
     num_cand = cand.numel()
 
     rel_noise = _ULP_SAFETY * ulp_rel
@@ -2019,7 +2028,8 @@ def _decompose_prequantized_tensor(
     scale_shape: tuple[int, ...],
     block_size: tuple[int, ...] | None = None,
     zero_point_shift: float = 0.0,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    return_input_q: bool = True,
+) -> tuple[torch.Tensor | None, torch.Tensor]:
     """
     Decompose a pre-quantized tensor (input_qdq) into an integer tensor (input_q)
     and float scale (scale), recovering the grid the tensor already lies on.
@@ -2040,6 +2050,11 @@ def _decompose_prequantized_tensor(
     ``_DecompositionError`` is raised so the caller falls back to min/max
     calibration.  The recovered scale is refined to the per-block least-squares
     optimum (see _refine_scale).
+
+    The tensor is processed in chunks of whole blocks (see
+    ``_DECOMPOSE_CHUNK_NUMEL``) so that the peak memory stays bounded.  Pass
+    ``return_input_q=False`` when only the scale is needed, to skip
+    materializing ``input_q`` (``None`` is returned in its place).
     """
     if len(scale_shape) > len(input_qdq.shape):
         raise ValueError
@@ -2076,8 +2091,9 @@ def _decompose_prequantized_tensor(
     for d in block_count_dims:
         num_blocks *= reshaped.shape[d]
 
-    # (num_blocks, block_numel); compute in fp32 for a stable divisor search.
-    x = permuted.reshape(num_blocks, -1).float()
+    # (num_blocks, block_numel); each chunk is upcast to fp32 for a stable
+    # divisor search.
+    x = permuted.reshape(num_blocks, -1)
 
     # Early exit: a block that lies on a uniform [qmin, qmax] affine grid has
     # at most (max(abs(qmin), abs(qmax)) + 1) distinct magnitudes (including 0).
@@ -2091,7 +2107,7 @@ def _decompose_prequantized_tensor(
         # If the chunk contains more than num_levels distinct values,
         # it's guaranteed the whole block doesn't fit into [qmin, qmax] grid.
         K = 64
-        xs = x[:K, : num_levels * 2].abs()
+        xs = x[:K, : num_levels * 2].float().abs()
         xs = xs.sort(dim=1).values
         num_distinct_elems = (xs[:, 1:] != xs[:, :-1]).sum(dim=1) + 1
         if torch.any(num_distinct_elems > num_levels):
@@ -2101,48 +2117,119 @@ def _decompose_prequantized_tensor(
         else:
             del xs, num_distinct_elems
 
-    x_abs = x.abs()
-    absmax = x_abs.amax(dim=1)
-    x_abs.masked_fill_(x_abs <= 0, float("inf"))
-    min_nonzero = x_abs.amin(dim=1)
-    del x_abs
+    # Every step below is independent per block except for a few tensor-wide
+    # reductions (storage precision, candidate divisors, accept gates), so the
+    # blocks are processed in chunks to bound the peak memory.  Pass 1 gathers
+    # the per-block statistics that feed the tensor-wide reductions, pass 2
+    # recovers the scale of each chunk against the tensor-wide candidates.
+    chunk_rows = max(1, _DECOMPOSE_CHUNK_NUMEL // max(x.shape[1], 1))
+    chunks = x.split(chunk_rows) if num_blocks > 0 else (x,)
+
+    # Pass 1.  The shifted grid's divisors are the odd integers up to
+    # 2 * max_level + 1; the dense grid's are every integer up to max_level.
+    absmax, min_nonzero, k_est_min, k_est_gap = [], [], [], []
+    # Storage precision of the whole tensor is the tightest over its chunks,
+    # ignoring all-zero chunks which carry no fingerprint (see _storage_ulp_rel).
+    ulp_rel = None
+    for x_chunk in chunks:
+        x_chunk = x_chunk.float()
+        x_abs = x_chunk.abs()
+        absmax_chunk = x_abs.amax(dim=1)
+        x_abs.masked_fill_(x_abs <= 0, float("inf"))
+        min_nonzero_chunk = x_abs.amin(dim=1)
+        del x_abs
+        if bool((x_chunk != 0).any()):
+            ulp_chunk = _storage_ulp_rel(x_chunk)
+            ulp_rel = ulp_chunk if ulp_rel is None else min(ulp_rel, ulp_chunk)
+        k_min, k_gap = _divisor_estimates(
+            x_chunk, absmax_chunk, min_nonzero_chunk, zero_point_shift
+        )
+        absmax.append(absmax_chunk)
+        min_nonzero.append(min_nonzero_chunk)
+        k_est_min.append(k_min)
+        k_est_gap.append(k_gap)
+        del x_chunk
+    if ulp_rel is None:
+        ulp_rel = _ULP_REL_FP32
+    absmax = torch.cat(absmax)
+    min_nonzero = torch.cat(min_nonzero)
     active = torch.isfinite(min_nonzero) & (absmax > 0)
-    ulp_rel = _storage_ulp_rel(x)
-
-    k_chosen, accepted = _select_divisor(
-        x, absmax, min_nonzero, zero_point_shift, max_level, ulp_rel
+    cand = _candidate_divisors(
+        [torch.cat(k_est_min), torch.cat(k_est_gap)],
+        active,
+        (2 * max_level + 1) if zero_point_shift == 0.5 else max_level,
+        odd_only=zero_point_shift == 0.5,
+        device=x.device,
     )
-    del absmax, min_nonzero
-    scale = _refine_scale(x, k_chosen, zero_point_shift, qmin, qmax)
-    del k_chosen
-    # Inactive (all-zero) blocks have no grid to recover; give them the minimum
-    # representable scale.  Active blocks keep their recovered scale, clamped to
-    # the same floor since AIMET never produces a scale below min_scale in
-    # practice -- a smaller scale would trigger a known HTP underflow bug.
-    scale.clamp_min_(min_scale).masked_fill_(~active, min_scale)
+    del k_est_min, k_est_gap
 
-    # Tensor-level verification, gates scaled to the measured noise floor.
-    s_col = scale.unsqueeze(1)
-    codes = (x / s_col).sub_(zero_point_shift).round_().clamp_(qmin, qmax)
-    recon = (codes + zero_point_shift).mul_(s_col)
+    # Pass 2
+    scale, accepted, codes = [], [], []
+    recon_sqerr = x.new_zeros((), dtype=torch.float64)
+    x_sqnorm = x.new_zeros((), dtype=torch.float64)
+    code_absmax = torch.zeros((), device=x.device)
+    start = 0
+    for x_chunk in chunks:
+        end = start + x_chunk.shape[0]
+        x_chunk = x_chunk.float()
+        k_chosen, accepted_chunk = _select_divisor(
+            x_chunk,
+            absmax[start:end],
+            min_nonzero[start:end],
+            cand,
+            zero_point_shift,
+            ulp_rel,
+        )
+        scale_chunk = _refine_scale(x_chunk, k_chosen, zero_point_shift, qmin, qmax)
+        del k_chosen
+        # Inactive (all-zero) blocks have no grid to recover; give them the minimum
+        # representable scale.  Active blocks keep their recovered scale, clamped to
+        # the same floor since AIMET never produces a scale below min_scale in
+        # practice -- a smaller scale would trigger a known HTP underflow bug.
+        scale_chunk.clamp_min_(min_scale).masked_fill_(~active[start:end], min_scale)
+
+        # Tensor-level verification, gates scaled to the measured noise floor.
+        s_col = scale_chunk.unsqueeze(1)
+        codes_chunk = (
+            (x_chunk / s_col).sub_(zero_point_shift).round_().clamp_(qmin, qmax)
+        )
+        recon = (codes_chunk + zero_point_shift).mul_(s_col)
+        recon_sqerr += recon.sub_(x_chunk).norm().double().square()
+        del recon
+        x_sqnorm += x_chunk.norm().double().square()
+        if codes_chunk.numel():
+            code_absmax = torch.maximum(code_absmax, codes_chunk.abs().amax())
+
+        scale.append(scale_chunk)
+        accepted.append(accepted_chunk)
+        if return_input_q:
+            codes.append(codes_chunk)
+        del x_chunk, codes_chunk
+        start = end
+
+    scale = torch.cat(scale)
+    accepted = torch.cat(accepted)
 
     # All-zero blocks reconstruct exactly (0 == 0) and count as matched.
     matched = (accepted & active) | ~active
     matched_frac = matched.float().mean().item() if num_blocks > 0 else 0.0
-    recon_relrms = recon.sub_(x).norm() / x.norm().clamp(min=1e-12)
-    del recon
+    recon_relrms = (recon_sqerr.sqrt() / x_sqnorm.sqrt().clamp(min=1e-12)).item()
     recon_gate = max(_RECON_RELRMS_MULT * ulp_rel, _RECON_RELRMS_FLOOR)
-    code_absmax = int(codes.abs().amax().item()) if codes.numel() else 0
+    code_absmax = int(code_absmax.item())
 
     if not (
         code_absmax > 0
         and matched_frac >= _MIN_MATCHED_FRAC
-        and recon_relrms.item() <= recon_gate
+        and recon_relrms <= recon_gate
     ):
         raise _DecompositionError(
-            f"not QDQ-like: matched={matched_frac:.4f}, relRMS={recon_relrms.item():.2e} "
+            f"not QDQ-like: matched={matched_frac:.4f}, relRMS={recon_relrms:.2e} "
             f"(gate={recon_gate:.2e}, ulp_rel={ulp_rel:.2e}), code_absmax={code_absmax}"
         )
+
+    scale = scale.reshape(scale_shape)
+    if not return_input_q:
+        return None, scale
 
     # Map codes back to the original layout, and scale to scale_shape.
     inv_perm = tuple(
@@ -2151,6 +2238,6 @@ def _decompose_prequantized_tensor(
             torch.tensor(block_count_dims + block_size_dims)
         ).tolist()
     )
+    codes = torch.cat(codes)
     input_q = codes.reshape(permuted_shape).permute(*inv_perm).reshape(orig_shape)
-    scale = scale.reshape(scale_shape)
     return input_q, scale

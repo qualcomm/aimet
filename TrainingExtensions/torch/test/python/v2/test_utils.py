@@ -680,6 +680,77 @@ def test_decomposition_single_element_blocks():
     assert torch.allclose(input_q.flatten()[:3].abs(), torch.ones(3))
 
 
+@pytest.mark.parametrize("zero_point_shift, qmin, qmax", [(0.0, -8, 7), (0.5, -2, 1)])
+@pytest.mark.parametrize("block_size", [None, (1, 16)])
+@pytest.mark.parametrize("chunk_numel", [1, 64, 1000])
+def test_decomposition_chunked_matches_unchunked(
+    zero_point_shift: float, qmin: int, qmax: int, block_size, chunk_numel: int
+):
+    """
+    When: A pre-quantized tensor is decomposed with a chunk size small enough to
+          split the blocks across many chunks
+    Then: The result is identical to decomposing it in a single chunk, including
+          all-zero blocks and blocks whose codes never reach +/-1
+    """
+    torch.manual_seed(0)
+    rows, cols = 37, 64
+    num_blocks = cols // block_size[1] if block_size else 1
+    codes = torch.randint(qmin, qmax + 1, (rows, cols)).float()
+    codes[5] = 0  # all-zero block
+    scale = torch.rand(rows, num_blocks, 1) * 0.1 + 1e-3
+    input_qdq = ((codes.view(rows, num_blocks, -1) + zero_point_shift) * scale).view(
+        rows, cols
+    )
+    input_qdq[5] = 0
+    input_qdq = input_qdq.bfloat16().float()
+    kwargs = dict(
+        scale_shape=(rows, num_blocks),
+        block_size=block_size,
+        zero_point_shift=zero_point_shift,
+    )
+
+    with mock.patch("aimet_torch.utils._DECOMPOSE_CHUNK_NUMEL", rows * cols):
+        input_q_ref, scale_ref = _decompose_prequantized_tensor(
+            input_qdq, qmin, qmax, **kwargs
+        )
+    with mock.patch("aimet_torch.utils._DECOMPOSE_CHUNK_NUMEL", chunk_numel):
+        input_q, scale = _decompose_prequantized_tensor(input_qdq, qmin, qmax, **kwargs)
+        no_input_q, scale_only = _decompose_prequantized_tensor(
+            input_qdq, qmin, qmax, **kwargs, return_input_q=False
+        )
+
+    assert torch.equal(input_q, input_q_ref)
+    assert torch.equal(scale, scale_ref)
+    assert no_input_q is None
+    assert torch.equal(scale_only, scale_ref)
+
+
+@pytest.mark.cuda
+@torch.no_grad()
+def test_decomposition_peak_memory_bounded():
+    """
+    When: A large pre-quantized weight is decomposed with return_input_q=False
+    Then: The peak memory overhead is bounded by the chunk size rather than
+          growing with the tensor size (previously ~13 bytes per element)
+    """
+    rows, cols = 32768, 2048  # 64M elements, 4x _DECOMPOSE_CHUNK_NUMEL
+    codes = torch.randint(-8, 8, (rows, cols), device="cuda", dtype=torch.int8)
+    scale = torch.rand(rows, 1, device="cuda") * 0.01 + 1e-3
+    weight = (codes.float() * scale).bfloat16()
+    del codes, scale
+
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    baseline = torch.cuda.memory_allocated()
+    _decompose_prequantized_tensor(
+        weight, -8, 7, scale_shape=(rows, 1), return_input_q=False
+    )
+    overhead = torch.cuda.max_memory_allocated() - baseline
+
+    # Weight itself is 128 MiB in bf16; the old implementation needed ~800 MiB.
+    assert overhead <= weight.numel() * weight.element_size() * 2
+
+
 @pytest.mark.cuda
 @torch.no_grad()
 def test_decomposition_memory_overhead():

@@ -367,6 +367,7 @@ class BaseQuantizationMixin(abc.ABC):
                             scale_shape=param_qtzr.shape,
                             block_size=param_qtzr.block_size,
                             zero_point_shift=param_qtzr.zero_point_shift,
+                            return_input_q=False,
                         )
                         param_qtzr.set_range(
                             scale * param_qtzr.qmin, scale * param_qtzr.qmax
