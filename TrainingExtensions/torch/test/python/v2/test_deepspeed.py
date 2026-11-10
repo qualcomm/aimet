@@ -203,23 +203,9 @@ def deepspeed_zero3_offload_config():
     }
 
 
-@pytest.fixture
-def per_channel_quantsim_config():
-    with open(
-        os.path.join(quantsim_config.__path__[0], "default_config_per_channel.json")
-    ) as f:
-        config = json.load(f)
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        with open(os.path.join(tmp_dir, "config_file.json"), "w") as f:
-            json.dump(config, f)
-        yield os.path.join(tmp_dir, "config_file.json")
-
-
 @pytest.mark.cuda
 def test_deepspeed_zero3_offload(
     unlabeled_data_loader,
-    per_channel_quantsim_config,
     init_process_group,
     deepspeed_zero3_offload_config,
 ):
@@ -238,7 +224,6 @@ def test_deepspeed_zero3_offload(
         model_baseline,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
@@ -272,7 +257,6 @@ def test_deepspeed_zero3_offload(
         model,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
@@ -463,7 +447,6 @@ def test_deepspeed_zero3_offload(
 @pytest.mark.cuda
 def test_deepspeed_zero3_offload_buckets_sync(
     unlabeled_data_loader,
-    per_channel_quantsim_config,
     init_process_group,
     deepspeed_zero3_offload_config,
 ):
@@ -490,7 +473,6 @@ def test_deepspeed_zero3_offload_buckets_sync(
         model,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
@@ -542,7 +524,6 @@ def test_deepspeed_zero3_offload_buckets_sync(
 @pytest.mark.cuda
 def test_deepspeed_zero3_offload_fallback(
     unlabeled_data_loader,
-    per_channel_quantsim_config,
     init_process_group,
     deepspeed_zero3_offload_config,
 ):
@@ -562,7 +543,6 @@ def test_deepspeed_zero3_offload_fallback(
         model_baseline,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
@@ -596,7 +576,6 @@ def test_deepspeed_zero3_offload_fallback(
         model,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
@@ -766,7 +745,6 @@ def test_deepspeed_zero3_offload_fallback(
 @pytest.mark.parametrize("loss_fn", ["mse", "l1", "sqnr"])
 @pytest.mark.cuda
 def test_seqmse_with_zero3_offload(
-    per_channel_quantsim_config,
     init_process_group,
     unlabeled_data_loader,
     deepspeed_zero3_offload_config,
@@ -780,7 +758,6 @@ def test_seqmse_with_zero3_offload(
         model_baseline,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=False,
     )
@@ -814,7 +791,6 @@ def test_seqmse_with_zero3_offload(
         model,
         torch.randn(1, 1, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
@@ -907,9 +883,7 @@ def test_seqmse_with_zero3_offload(
 
 
 @pytest.mark.cuda
-def test_conv_transpose(
-    per_channel_quantsim_config, init_process_group, deepspeed_zero3_offload_config
-):
+def test_conv_transpose(init_process_group, deepspeed_zero3_offload_config):
     """
     Given: Model containing ConvTransposeNd, pre-partitioned with deepspeed zero3 offload
     """
@@ -931,7 +905,6 @@ def test_conv_transpose(
         model,
         torch.randn(1, 10, 28, 28).cuda(),
         default_param_bw=4,
-        config_file=per_channel_quantsim_config,
         quant_scheme=QuantScheme.training_range_learning_with_tf_init,
         in_place=True,
     )
