@@ -122,10 +122,15 @@ def _solve_triangular(attn, chunk_size, order=4):
     mask_acc = (idx[:, None] - idx[None, :] <= order).to(attn.dtype)
 
     M_mat = I - attn
-    acc = I + attn
-    power = attn
+    # Only the first ``order`` subdiagonals contribute to the seed. For a
+    # strictly lower-triangular matrix, product paths cannot return to this
+    # band after leaving it, so masking before the powers preserves M0 while
+    # keeping discarded entries from inflating intermediate quantizer ranges.
+    seed_attn = attn * mask_acc
+    acc = I + seed_attn
+    power = seed_attn
     for _ in range(2, order + 1):
-        power = torch.matmul(power, attn)
+        power = torch.matmul(power, seed_attn)
         acc = acc + power
     M0 = mask_acc * acc
 
