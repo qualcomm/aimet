@@ -3,7 +3,7 @@
 
 """ONNX-ir related utility functions"""
 
-from typing import Optional, Tuple
+from typing import Collection, Dict, List, Optional, Tuple
 
 import numpy as np
 import onnx_ir
@@ -308,3 +308,94 @@ def get_constant_value(value: Optional[onnx_ir.Value]) -> Optional[onnx_ir.Value
     if is_static(value):
         return value
     return None
+
+
+def outer_scope_values(node: onnx_ir.Node, graph: onnx_ir.Graph) -> List[onnx_ir.Value]:
+    """
+    Values of ``graph`` that the subgraph attributes of ``node`` (Scan/Loop/If bodies)
+    read by name, including through nested bodies. They are inputs of ``node`` even though
+    ``node.inputs`` omits them.
+    """
+    return [
+        inp
+        for subgraph in _subgraphs(node)
+        for inner in onnx_ir.traversal.RecursiveGraphIterator(subgraph)
+        for inp in inner.inputs
+        if inp is not None and inp.graph is graph
+    ]
+
+
+def body_initializers(node: onnx_ir.Node) -> List[str]:
+    """Names of the initializers declared in the subgraph attributes of ``node``
+    (Scan/Loop/If bodies), including nested bodies."""
+    names = []
+    for subgraph in _subgraphs(node):
+        names.extend(subgraph.initializers)
+        # The iterator visits the nodes of nested bodies too
+        for inner in onnx_ir.traversal.RecursiveGraphIterator(subgraph):
+            for nested in _subgraphs(inner):
+                names.extend(nested.initializers)
+    return names
+
+
+def _subgraphs(node: onnx_ir.Node) -> List[onnx_ir.Graph]:
+    subgraphs = []
+    for attr in node.attributes.values():
+        if attr.type == onnx_ir.AttributeType.GRAPH:
+            subgraphs.append(attr.as_graph())
+        elif attr.type == onnx_ir.AttributeType.GRAPHS:
+            subgraphs.extend(attr.as_graphs())
+    return subgraphs
+
+
+def walk_back(
+    graph: onnx_ir.Graph,
+    name_to_value: Dict[str, onnx_ir.Value],
+    intermediate_tensors: Collection[str],
+    output_names: Collection[str],
+) -> Tuple[List[str], List[str]]:
+    """
+    Walk back from ``output_names`` with ``intermediate_tensors`` as a barrier.
+
+    :param graph: Graph to walk.
+    :param name_to_value: Value mapping of ``graph``.
+    :param intermediate_tensors: Names the walk stops at.
+    :param output_names: Names to walk back from.
+    :return: ``(required, initializers)``: the names the subgraph needs as inputs (the
+        barrier names it reaches plus any graph input it reaches), and the names of the
+        initializers it reads, including those declared in the bodies of the nodes it walks.
+    """
+    declared = {name_to_value[n] for n in intermediate_tensors if n in name_to_value}
+    visited_values = set(declared)
+    visited_nodes = set()
+    stack = [name_to_value[n] for n in output_names if n in name_to_value]
+    required: set[str] = set()
+    initializers: set[str] = set()
+    seen = set(intermediate_tensors)
+
+    while stack:
+        value = stack.pop()
+        if value in declared:
+            required.add(value.name)
+        if value in visited_values:
+            continue
+        visited_values.add(value)
+        producer = value.producer()
+        if producer is None:
+            if value.is_initializer():
+                initializers.add(value.name)
+            elif value.name and value.name not in seen:
+                required.add(value.name)
+                seen.add(value.name)
+            continue
+        if producer in visited_nodes:
+            continue
+        visited_nodes.add(producer)
+        initializers.update(body_initializers(producer))
+        # Control-flow bodies read tensors of this graph by name, not as node inputs
+        for inp in [*producer.inputs, *outer_scope_values(producer, graph)]:
+            if inp is None:
+                continue
+            stack.append(inp)
+
+    return list(required), list(initializers)

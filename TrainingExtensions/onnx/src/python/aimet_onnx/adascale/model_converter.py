@@ -101,48 +101,14 @@ def required_block_inputs(
     Return input names the subgraph requires from intermediate tensors or graph inputs.
 
     Walks back from ``output_names`` with ``intermediate_tensors`` as a barrier; any
-    producer-less, non-initializer value reached is an unbounded graph input.
+    producer-less, non-initializer value reached is an unbounded graph input. Values a
+    Scan/Loop/If body reads from the enclosing graph count as inputs of that node.
     """
-
     name_to_value = onnx_ir.convenience.create_value_mapping(graph)
-    declared = {name_to_value[n] for n in intermediate_tensors if n in name_to_value}
-    visited_values = set(declared)
-    visited_nodes = set()
-    stack = [name_to_value[n] for n in output_names if n in name_to_value]
-    required: set[str] = set()
-    seen = set(intermediate_tensors)
-
-    while stack:
-        value = stack.pop()
-        if value in declared:
-            required.add(value.name)
-        if value in visited_values:
-            continue
-        visited_values.add(value)
-        producer = value.producer()
-        if producer is None:
-            if not value.is_initializer() and value.name and value.name not in seen:
-                required.add(value.name)
-                seen.add(value.name)
-            continue
-        if producer in visited_nodes:
-            continue
-        visited_nodes.add(producer)
-        # Control-flow bodies read tensors of this graph by name, not as node inputs
-        captured = [
-            inp
-            for attr in producer.attributes.values()
-            if attr.type == onnx_ir.AttributeType.GRAPH
-            for node in onnx_ir.traversal.RecursiveGraphIterator(attr.as_graph())
-            for inp in node.inputs
-            if inp is not None and inp.graph is graph
-        ]
-        for inp in [*producer.inputs, *captured]:
-            if inp is None:
-                continue
-            stack.append(inp)
-
-    return list(required)
+    required, _ = ir_utils.walk_back(
+        graph, name_to_value, intermediate_tensors, output_names
+    )
+    return required
 
 
 @contextlib.contextmanager

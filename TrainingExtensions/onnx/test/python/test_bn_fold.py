@@ -268,6 +268,10 @@ class TestBatchNormFold:
     def test_model_output_is_preserved_with_shared_tensors(
         self, shared_conv_weight, shared_bn_weight, shared_stat
     ):
+        # The weights and input are random. Unseeded, they depend on how many draws earlier
+        # tests on the worker took, and rare draws put an output near zero, where the
+        # fold's rounding exceeds rtol
+        np.random.seed(0)
         model = ONNXModel(
             models_for_tests.shared_tensor_batchnorm_model_with_identities(
                 shared_conv_weight=shared_conv_weight,

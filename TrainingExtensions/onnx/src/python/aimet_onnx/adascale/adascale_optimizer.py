@@ -5,6 +5,7 @@
 
 import collections
 import contextlib
+import functools
 from typing import Callable, Collection, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 import numpy as np
@@ -28,9 +29,11 @@ from aimet_onnx.adascale.utils import (
 )
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.utils import (
+    _run_session_to_numpy,
     get_torch_device,
 )
 from aimet_onnx import ir_utils
+from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive_ir
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.llm_topology.block_boundaries import (
     get_decoder_block_boundaries,
@@ -47,7 +50,10 @@ from aimet_onnx.adascale.quantizer import (
 )
 
 from aimet_onnx.adascale.activation_sampler import ActivationSampler
+from aimet_onnx.blockwise_sampler import BlockwiseSampler, SamplingPlan, _build_session
 from aimet_onnx.adascale.model_converter import (
+    _get_tensor_consumers,
+    filter_op,
     get_pt_block,
     copy_pt_weights_to_onnx,
     copy_pt_encodings_to_sim,
@@ -87,6 +93,11 @@ def _mse_loss_fn(
     """
     return (fp_out - qt_out).abs().pow(p).sum(1).mean()
 
+
+# Temporary flag: sample block inputs with BlockwiseSampler, which advances a cache one block
+# at a time, instead of re-running every earlier block per block.
+# TODO: default to True once PPL parity with the full-prefix sampler is shown.
+_BLOCKWISE_SAMPLING = False
 
 _DEBUG_NUM_PARTIAL_ITERATIONS = None
 _DEBUG_NUM_PARTIAL_ITERATIONS_START = None
@@ -230,6 +241,7 @@ def _log_block_report(
     block_seconds: float,
     elapsed_seconds: float,
     remaining_seconds: float,
+    cache_bytes: Optional[int],
 ):
     """Log the loss and timing lines for one optimized block, and its phases and memory at debug."""
     if report.initial_loss is not None and report.final_loss is not None:
@@ -278,6 +290,8 @@ def _log_block_report(
             f"GPU {(total - free) / 1024**3:.1f}/{total / 1024**3:.1f} GB used, "
             f"torch peak {torch.cuda.max_memory_allocated() / 1024**3:.1f} GB"
         )
+    if cache_bytes is not None:
+        memory.append(f"sample cache {cache_bytes / 1024**3:.2f} GB")
     _logger.debug("%s: memory: %s", label, " | ".join(memory))
 
 
@@ -296,9 +310,33 @@ def _is_optimized(quantizer: Optional[QcQuantizeOp]) -> bool:
     )
 
 
+def _may_update_weight(
+    model: onnx_ir.Model, quantizer_dict: Dict[str, QcQuantizeOp]
+) -> Callable[[str], bool]:
+    """
+    Whether AdaScale may still change an initializer: a weight of a MatMul/Gemm/Conv,
+    including one in a control-flow body, whose quantizer it still optimizes. Copy-back
+    writes only these, and freezes each one's quantizer once its block is optimized.
+    """
+    weights = {
+        name
+        for graph in _iterate_graphs_recursive_ir(model.graph, include_loop=True)
+        for name, value in graph.initializers.items()
+        if any(
+            consumer.op_type in filter_op for consumer in _get_tensor_consumers(value)
+        )
+    }
+    return functools.partial(_is_unfrozen_weight, weights, quantizer_dict)
+
+
+def _is_unfrozen_weight(
+    weights: Collection[str], quantizer_dict: Dict[str, QcQuantizeOp], name: str
+) -> bool:
+    return name in weights and _is_optimized(quantizer_dict.get(name))
+
+
 def _check_every_branch_runs(
     model: onnx_ir.Model,
-    model_path: str,
     quantizer_dict: Dict[str, QcQuantizeOp],
     inputs: Collection[Dict[str, np.ndarray]],
     providers,
@@ -313,7 +351,6 @@ def _check_every_branch_runs(
     checked when its block is optimized instead.
 
     :param model: Unquantized model
-    :param model_path: Path where ``model`` is saved
     :param quantizer_dict: Quantizers of the sim
     :param inputs: Model input samples
     :param providers: Providers to run ``model`` with
@@ -363,9 +400,29 @@ def _check_every_branch_runs(
     if not cond_names:
         return
 
-    sampler = ActivationSampler(cond_names, model_path, providers)
-    conds = [dict(zip(cond_names, sampler.sample_acts(sample))) for sample in inputs]
-    del sampler
+    # Only the part of the model computing the conds is saved and run. A cond that is a graph
+    # input is read from the samples: ORT mishandles a graph output that is also an input.
+    graph_inputs = [value.name for value in model.graph.inputs]
+    computed = [name for name in cond_names if name not in graph_inputs]
+    conds = [
+        {name: sample[name] for name in cond_names if name in graph_inputs}
+        for sample in inputs
+    ]
+    if computed:
+        with tempfile.TemporaryDirectory() as tempdir:
+            session = _build_session(
+                model,
+                {name: inputs[0][name] for name in graph_inputs},
+                computed,
+                providers,
+                tempdir,
+            )
+            for sample, cond in zip(inputs, conds):
+                feed = {name: sample[name] for name in graph_inputs}
+                cond.update(
+                    zip(computed, _run_session_to_numpy(session, feed, computed))
+                )
+            del session
     for weight_name, enclosing_ifs in branch_weights:
         checked = [
             (node, branch)
@@ -539,18 +596,44 @@ class AdaScale:
                         for idx, end_residual in enumerate(end_residuals)
                     ]
 
-                    # Save the unquantized model + weights once. Its
-                    # dtype matches the sim's float dtype (fp16 by default).
-                    onnx_ir.save(
-                        unquantized_model,
-                        unquantized_path,
-                        external_data="unquantized_model.data",
-                    )
+                    qt_sampler = fp_sampler = None
+                    if _BLOCKWISE_SAMPLING:
+                        # One plan for both: the unquantized model keeps the sim's tensor
+                        # names
+                        plan = SamplingPlan(
+                            sim_model.graph,
+                            all_block_inputs,
+                            [[end_residual] for end_residual in end_residuals],
+                        )
+                        qt_sampler = BlockwiseSampler(
+                            sim_model,
+                            plan,
+                            inputs,
+                            sim.providers,
+                            may_update=_may_update_weight(
+                                sim_model, sim.qc_quantize_op_dict
+                            ),
+                            label="quantized",
+                        )
+                        fp_sampler = BlockwiseSampler(
+                            unquantized_model,
+                            plan,
+                            inputs,
+                            sim.providers,
+                            label="float",
+                        )
+                    else:
+                        # Save the unquantized model + weights once. Its
+                        # dtype matches the sim's float dtype (fp16 by default).
+                        onnx_ir.save(
+                            unquantized_model,
+                            unquantized_path,
+                            external_data="unquantized_model.data",
+                        )
 
                     block_indices = cls._blocks_to_optimize(len(block_end_points))
                     _check_every_branch_runs(
                         unquantized_model,
-                        unquantized_path,
                         sim.qc_quantize_op_dict,
                         inputs,
                         sim.providers,
@@ -561,11 +644,13 @@ class AdaScale:
                     )
 
                     _logger.info(
-                        "Optimizing %d of %d blocks with %d samples, %d iterations per block",
+                        "Optimizing %d of %d blocks with %d samples, %d iterations per "
+                        "block, %s sampling",
                         len(block_indices),
                         len(block_end_points),
                         len(inputs),
                         num_iterations,
+                        "blockwise" if _BLOCKWISE_SAMPLING else "full-prefix",
                     )
                     run_start = time.perf_counter()
 
@@ -586,14 +671,18 @@ class AdaScale:
                                 )
 
                             block_start = sample_start = time.perf_counter()
-                            fp_inputs, qsim_inputs = cls._sample_full_prefix(
-                                sim_model,
-                                sim_path,
-                                unquantized_path,
-                                block_inputs,
-                                inputs,
-                                sim.providers,
-                            )
+                            if _BLOCKWISE_SAMPLING:
+                                fp_inputs = fp_sampler.sample_block(idx)
+                                qsim_inputs = qt_sampler.sample_block(idx)
+                            else:
+                                fp_inputs, qsim_inputs = cls._sample_full_prefix(
+                                    sim_model,
+                                    sim_path,
+                                    unquantized_path,
+                                    block_inputs,
+                                    inputs,
+                                    sim.providers,
+                                )
                             gc.collect()
                             torch.cuda.empty_cache()
                             report = _BlockReport()
@@ -633,6 +722,10 @@ class AdaScale:
                                 remaining_seconds=elapsed
                                 / count
                                 * (len(block_indices) - count),
+                                cache_bytes=fp_sampler.cache_nbytes()
+                                + qt_sampler.cache_nbytes()
+                                if _BLOCKWISE_SAMPLING
+                                else None,
                             )
 
                             blocks_done = count
@@ -644,6 +737,9 @@ class AdaScale:
                             _format_duration(time.perf_counter() - run_start),
                         )
                 finally:
+                    # Release the cached activations before the session is rebuilt
+                    qt_sampler = fp_sampler = None
+                    gc.collect()
                     sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
                     sim._rebuild_session()  # pylint: disable=protected-access
 
