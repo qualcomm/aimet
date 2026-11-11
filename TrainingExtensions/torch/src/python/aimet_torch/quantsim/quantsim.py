@@ -745,7 +745,12 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
             if isinstance(module, (BaseQuantizationMixin, _V2LazyQuantizeWrapper)):
                 yield name, module
 
-    def quantizers(self):
+    def quantizers(
+        self,
+        memo: set["Module"] | None = None,
+        prefix: str = "",
+        remove_duplicate: bool = True,
+    ):
         """
         Generator that yields all quantizers
 
@@ -754,9 +759,17 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
             >>> for quantizer in sim.quantizers():
             ...     print(quantizer)
         """
-        yield from (module for _, module in self.named_quantizers())
+        yield from (
+            module
+            for _, module in self.named_quantizers(memo, prefix, remove_duplicate)
+        )
 
-    def named_quantizers(self):
+    def named_quantizers(
+        self,
+        memo: set[torch.nn.Module] | None = None,
+        prefix: str = "",
+        remove_duplicate: bool = True,
+    ):
         """
         Generator that yields all quantizers along with their names
 
@@ -765,7 +778,7 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
             >>> for name, quantizer in sim.named_quantizers():
             ...     print(f"{name}: {type(quantizer)}")
         """
-        for name, module in self.model.named_modules():
+        for name, module in self.model.named_modules(memo, prefix, remove_duplicate):
             if isinstance(module, QuantizerBase):
                 yield name, module
 
@@ -780,7 +793,11 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
         """
         yield from (param for _, param in self.named_quantizer_parameters())
 
-    def named_quantizer_parameters(self):
+    def named_quantizer_parameters(
+        self,
+        prefix: str = "",
+        remove_duplicate: bool = True,
+    ):
         """
         Generator that yields all quantization parameters along with their names
 
@@ -790,11 +807,14 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
             ...     print(f"{name}: {param.size()}")
         """
         memo = set()
-        for module_name, module in self.named_quantizers():
+        for module_name, module in self.named_quantizers(
+            prefix=prefix, remove_duplicate=remove_duplicate
+        ):
             for param_name, param in module.named_parameters(recurse=False):
                 if param in memo:
                     continue
-                memo.add(param)
+                if remove_duplicate:
+                    memo.add(param)
                 full_name = f"{module_name}.{param_name}" if module_name else param_name
                 yield full_name, param
 
@@ -811,7 +831,10 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
         """
         state_dict = {}
 
-        for name, qtzr in self.named_quantizers():
+        # NOTE: remove_duplicate=False to export tied quantizers' state dict separately.
+        # This also aligns with torch.nn.Module.state_dict() behavior,
+        # which exports tied module/parameters' state dict separately.
+        for name, qtzr in self.named_quantizers(remove_duplicate=False):
             state_dict.update(qtzr.state_dict(prefix=f"{name}." if name else ""))
 
         return state_dict

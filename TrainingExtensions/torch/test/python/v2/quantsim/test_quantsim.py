@@ -2743,6 +2743,128 @@ class TestEncodingPropagation:
         out2 = sim2.model(x)
         assert torch.equal(out, out2)
 
+        """
+        sim.quantizers(remove_duplicate=False) should yield tied quantizers repeatedly
+        """
+        sim = QuantizationSimModel(model, x)
+        # share output quantizer between conv and relu
+        sim.model[0].output_quantizers[0] = sim.model[1].output_quantizers[0]
+
+        qtzrs = list(sim.quantizers(remove_duplicate=False))
+        assert len(qtzrs) == 5
+        assert len(set(qtzrs)) == 4
+        assert qtzrs.count(sim.model[0].output_quantizers[0]) == 2
+
+        """
+        sim.named_quantizers(remove_duplicate=False) should yield tied quantizers under every name
+        """
+        named_qtzrs = list(sim.named_quantizers(remove_duplicate=False))
+        assert {name for name, _ in named_qtzrs} == {
+            "0.input_quantizers.0",
+            "0.param_quantizers.weight",
+            "0.output_quantizers.0",
+            "1.output_quantizers.0",
+            "2.output_quantizers.0",
+        }
+        assert (
+            dict(named_qtzrs)["0.output_quantizers.0"]
+            is dict(named_qtzrs)["1.output_quantizers.0"]
+        )
+
+        """
+        sim.named_quantizers(prefix=...) should prepend prefix to every name
+        """
+        named_qtzrs = dict(sim.named_quantizers(prefix="foo"))
+        assert set(named_qtzrs) == {
+            "foo.0.input_quantizers.0",
+            "foo.0.param_quantizers.weight",
+            "foo.0.output_quantizers.0",
+            "foo.2.output_quantizers.0",
+        }
+
+        """
+        sim.quantizers(memo=...) should skip quantizers already in memo
+        """
+        skipped = sim.model[2].output_quantizers[0]
+        qtzrs = list(sim.quantizers(memo={skipped}))
+        assert len(qtzrs) == 3
+        assert skipped not in qtzrs
+
+        """
+        sim.named_quantizer_parameters(prefix=...) should prepend prefix to every name
+        """
+        sim = QuantizationSimModel(model, x)
+        expected = [name for name, _ in sim.named_quantizer_parameters()]
+        names = [name for name, _ in sim.named_quantizer_parameters(prefix="foo")]
+        assert names
+        assert names == [f"foo.{name}" for name in expected]
+
+        """
+        sim.named_quantizer_parameters(remove_duplicate=False) should
+        yield tied quantizers' parameters under every name
+        """
+        sim = QuantizationSimModel(model, x)
+        # share output quantizer between conv and relu
+        sim.model[0].output_quantizers[0] = sim.model[1].output_quantizers[0]
+
+        named_q_params = list(sim.named_quantizer_parameters(remove_duplicate=False))
+        assert len(named_q_params) == 10
+        assert len({id(param) for _, param in named_q_params}) == 8
+        named_q_params = dict(named_q_params)
+        assert (
+            named_q_params["0.output_quantizers.0.min"]
+            is named_q_params["1.output_quantizers.0.min"]
+        )
+        assert (
+            named_q_params["0.output_quantizers.0.max"]
+            is named_q_params["1.output_quantizers.0.max"]
+        )
+
+        """
+        sim.quantizer_state_dict should export tied quantizers' state dict separately
+        """
+        model = custom.Concat()
+        x = (torch.randn(5, 5), torch.randn(5, 5))
+        sim = QuantizationSimModel(model, x)
+        # Tie input/output quantizers
+        sim.model.input_quantizers[0] = sim.model.input_quantizers[1] = (
+            sim.model.output_quantizers[0]
+        )
+        sim.compute_encodings(lambda model: model(*x))
+        out = sim.model(*x)
+
+        state_dict = sim.quantizer_state_dict()
+        # tied quantizer is exported under both names, with identical values
+        assert state_dict.keys() >= {
+            "input_quantizers.0.min",
+            "input_quantizers.0.max",
+            "input_quantizers.1.min",
+            "input_quantizers.1.max",
+            "output_quantizers.0.min",
+            "output_quantizers.0.max",
+        }
+        assert torch.equal(
+            state_dict["input_quantizers.0.min"],
+            state_dict["input_quantizers.1.min"],
+        )
+        assert torch.equal(
+            state_dict["input_quantizers.0.min"],
+            state_dict["output_quantizers.0.min"],
+        )
+        assert torch.equal(
+            state_dict["input_quantizers.0.max"],
+            state_dict["input_quantizers.1.max"],
+        )
+        assert torch.equal(
+            state_dict["input_quantizers.0.max"],
+            state_dict["output_quantizers.0.max"],
+        )
+
+        sim2 = QuantizationSimModel(model, x)
+        sim2.model.load_state_dict(state_dict, strict=False)
+        assert all(qtzr.is_initialized() for qtzr in sim2.quantizers())
+        assert torch.equal(out, sim2.model(*x))
+
 
 class ReshapeConv(torch.nn.Module):
     def __init__(self, functional: bool):
