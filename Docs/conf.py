@@ -243,6 +243,8 @@ autodoc_mock_imports = []
 # aimet_onnx
 autodoc_mock_imports.extend(
     [
+        "_aimet_common.libpymo",
+        "_aimet_common.libquant_info",
         "aimet_onnx.common.libpymo",
         "aimet_onnx.common.libquant_info",
     ]

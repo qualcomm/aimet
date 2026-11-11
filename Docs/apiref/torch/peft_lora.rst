@@ -62,4 +62,4 @@ API
 ===
 **The following API can be used to replace PEFT lora layers definition with AIMET lora layers definition**
 
-.. automethod:: aimet_torch.peft.replace_lora_layers_with_quantizable_layers
+.. autofunction:: aimet_torch.peft.replace_lora_layers_with_quantizable_layers
