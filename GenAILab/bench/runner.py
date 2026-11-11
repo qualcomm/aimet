@@ -10,8 +10,6 @@ per framework. It can also be run directly::
 """
 
 import argparse
-import ctypes
-import ctypes.util
 import pdb
 import sys
 import traceback
@@ -96,32 +94,6 @@ def add_run_arguments(parser):
             help="Start the debugger when an experiment fails (default: %(default)s)",
         ),
     ]
-
-
-def _configure_process():
-    """Process-wide setup that must happen before torch/onnxruntime are imported."""
-    # glibc's malloc keeps freed large blocks in per-thread arenas instead of
-    # returning them to the OS once the arena has already grown, so host RSS
-    # climbs monotonically across model-load/export cycles even though live
-    # heap usage doesn't (https://github.com/pytorch/pytorch/issues/41486).
-    # Lowering the mmap/trim thresholds forces those large blocks through
-    # mmap/munmap instead, which glibc does release immediately. mallopt() takes
-    # effect for all allocations made after the call, so this must run before
-    # torch/onnxruntime/transformers do any sizeable allocating.
-    try:
-        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
-        m_trim_threshold = -1
-        m_mmap_threshold = -3
-        libc.mallopt(m_trim_threshold, 65536)
-        libc.mallopt(m_mmap_threshold, 65536)
-    except (OSError, AttributeError):
-        pass  # non-glibc platform; no-op
-
-    import onnxruntime as ort
-
-    # Suppress verbose onnxruntime INFO/WARNING messages (e.g. EP selection,
-    # graph optimisation notes) that clutter the output.  Level 3 = ERROR only.
-    ort.set_default_logger_severity(3)
 
 
 def load_documents(config_path, force_export=False):
@@ -220,7 +192,12 @@ def main(argv=None):
     add_run_arguments(parser)
     args = parser.parse_args(argv)
 
-    _configure_process()
+    import onnxruntime as ort  # pylint: disable=import-outside-toplevel
+
+    # Suppress verbose onnxruntime INFO/WARNING messages (e.g. EP selection,
+    # graph optimisation notes) that clutter the output.  Level 3 = ERROR only.
+    ort.set_default_logger_severity(3)
+
     sys.exit(run(args))
 
 
