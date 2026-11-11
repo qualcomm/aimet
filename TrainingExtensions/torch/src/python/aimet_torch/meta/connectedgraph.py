@@ -448,7 +448,8 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         output_map = {}
         for idx, inp in enumerate(top_level_inputs):
             shape = get_torch_tensortype_shape(inp)
-            product = self._add_product(f"input_{idx}", shape=shape)
+            dtype = _get_JIT_dtype(inp)
+            product = self._add_product(f"input_{idx}", shape=shape, dtype=dtype)
             product.is_model_input = True
             output_map[inp] = product
 
@@ -851,7 +852,8 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         """
         for idx, output in enumerate(outputs):
             shape = get_torch_tensortype_shape(output)
-            product = self._add_product(f"{op.name}#{idx}", shape)
+            dtype = _get_JIT_dtype(output)
+            product = self._add_product(f"{op.name}#{idx}", shape, dtype)
             op.output_products.append(product)
             product.producer = op
             output_map[output] = product
@@ -1124,6 +1126,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                             constant_product = self._add_product(
                                 f"constant_{self._constant_count}",
                                 op.output_products[0].shape,
+                                op.output_products[0].dtype,
                             )
                             constant_product._is_const = True
                             constant_product._is_parm = op.output_products[0].is_parm
@@ -1224,7 +1227,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                         # Create a product for each consumer of tuple unpack, to represent a distinct tensor feeding
                         # into each consumer.
                         new_product = self._add_product(
-                            f"{inp_name}_#{idx}", shape=output_product.shape
+                            f"{inp_name}_#{idx}",
+                            shape=output_product.shape,
+                            dtype=output_product.dtype,
                         )
                         for consumer in output_product.consumers:
                             # Replace consumer's input product with the input product of this op
@@ -1342,7 +1347,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                     i += 1
                     new_product_name = f"{producer_name}_to_{consumer.name}_{i}"
 
-                new_product = Product(new_product_name, shape=product.shape)
+                new_product = Product(
+                    new_product_name, shape=product.shape, dtype=product.dtype
+                )
 
                 new_product.producer = product.producer
                 new_product.is_model_input = product.is_model_input
@@ -1395,24 +1402,36 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             if module.weight is not None:
                 product_name = module_name + ".weight"
                 self._create_and_add_param_product_if_not_exists(
-                    conn_graph_op, product_name, list(module.weight.shape)
+                    conn_graph_op,
+                    product_name,
+                    list(module.weight.shape),
+                    module.weight.dtype,
                 )
             if module.bias is not None:
                 product_name = module_name + ".bias"
                 self._create_and_add_param_product_if_not_exists(
-                    conn_graph_op, product_name, list(module.bias.shape)
+                    conn_graph_op,
+                    product_name,
+                    list(module.bias.shape),
+                    module.bias.dtype,
                 )
         if op_type == "BatchNormalization":
             # If batch_norm, fill in rest of bn params
             if module.running_mean is not None:
                 product_name = module_name + ".running_mean"
                 self._create_and_add_param_product_if_not_exists(
-                    conn_graph_op, product_name, list(module.running_mean.shape)
+                    conn_graph_op,
+                    product_name,
+                    list(module.running_mean.shape),
+                    module.running_mean.dtype,
                 )
             if module.running_var is not None:
                 product_name = module_name + ".running_var"
                 self._create_and_add_param_product_if_not_exists(
-                    conn_graph_op, product_name, list(module.running_var.shape)
+                    conn_graph_op,
+                    product_name,
+                    list(module.running_var.shape),
+                    module.running_var.dtype,
                 )
 
     def _remove_inputs_for_ops(self):
@@ -1439,7 +1458,11 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 op.inputs = inputs_to_keep
 
     def _create_and_add_param_product_if_not_exists(
-        self, op: Op, product_name: str, shape: List[int]
+        self,
+        op: Op,
+        product_name: str,
+        shape: List[int],
+        dtype,
     ):
         """
         Given a name of a product, create it if it doesn't exist, and attach it to the specified op as a parameter.
@@ -1450,7 +1473,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         product = self._products.get(product_name, None)
 
         if product is None:
-            product = Product(product_name, shape)
+            product = Product(product_name, shape, dtype)
             product.is_parm = True
             self._products[product_name] = product
 
@@ -1629,6 +1652,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         # Save the preceding Op's output Product shape.
         # This is needed to create the new product from the preceding Op to the newly being inserted Split Op.
         new_product_shape = preceding_op.outputs[0].shape
+        new_product_dtype = preceding_op.outputs[0].dtype
 
         # Since the preceding Op was behaving like a Split Op, it  would have 2 products with the preceding Op as the
         # producer. Delete these products from the product dictionary.
@@ -1651,7 +1675,9 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                     ) from e
 
         new_product_name = preceding_op.name + "__to__" + split_op.name
-        new_product = self._add_product(new_product_name, new_product_shape)
+        new_product = self._add_product(
+            new_product_name, new_product_shape, new_product_dtype
+        )
         new_product.producer = preceding_op
         preceding_op.outputs = [new_product]
         preceding_op.outputs[0].consumers.append(split_op)
@@ -1671,13 +1697,18 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         """
         split_op_product_name = split_op.name + "__to__" + "multiple_ops"
         split_op_product_shape = preceding_op.outputs[0].shape
+        split_op_product_dtype = preceding_op.outputs[0].dtype
         split_op_product = self._add_product(
-            split_op_product_name, split_op_product_shape
+            split_op_product_name,
+            split_op_product_shape,
+            split_op_product_dtype,
         )
         split_op_product.producer = split_op
         return split_op_product
 
-    def _add_product(self, name: str, shape: Union[List[int], None]) -> Product:
+    def _add_product(
+        self, name: str, shape: Union[List[int], None], dtype: torch.dtype | None
+    ) -> Product:
         """
         Add product to self._products dictionary
         :param name: Name of product
@@ -1686,7 +1717,7 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         """
         if name in self._products:
             raise _UnsafeGraphError
-        product = Product(name, shape)
+        product = Product(name, shape, dtype)
         self._products[name] = product
         return product
 
@@ -2097,3 +2128,29 @@ def _get_constant_value(node: torch._C.Node) -> Union[torch.Tensor, int, float, 
     if isinstance(value, (torch.Tensor, int, float, bool)):
         return value
     return None
+
+
+_torch_dtype_map = {
+    "Float": torch.float32,
+    "Half": torch.float16,
+    "BFloat16": torch.bfloat16,
+    "Double": torch.float64,
+    "Int": torch.int32,
+    "Long": torch.int64,
+    "Short": torch.int16,
+    "Byte": torch.uint8,
+    "Char": torch.int8,
+    "Bool": torch.bool,
+}
+
+
+def _get_JIT_dtype(value: torch.Value) -> torch.dtype | None:
+    """
+    Return torch.dtype corresponding to the JIT value's type,
+    or None if the type is not a tensor type.
+    """
+    if not isinstance(value.type(), torch.TensorType):
+        return None
+
+    dtype_str = value.type().scalarType()
+    return _torch_dtype_map.get(dtype_str, None)

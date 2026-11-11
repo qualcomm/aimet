@@ -3868,3 +3868,24 @@ def test_stacked_weight_per_channel():
             with ref_qdq.compute_encodings():
                 ref_qdq(weight)
             assert torch.equal(out[i], ref_qdq(weight))
+
+
+@pytest.mark.parametrize(
+    "module_cls", [custom.Add, custom.Subtract, custom.Multiply, custom.Divide]
+)
+def test_no_quantizer_for_integer_tensors(module_cls):
+    """
+    Given: Add/Sub/Mul/Div taking integer tensors as input
+    When: Create QuantizationSimModel
+    Then: Input and output quantizers should be disabled for the module
+    """
+    module = module_cls()
+    x = torch.arange(1, 10)
+    y = torch.arange(1, 10)
+    sim = aimet_torch.QuantizationSimModel(module, (x, y))
+    assert (
+        sim.model.input_quantizers[0]
+        == sim.model.input_quantizers[1]
+        == sim.model.output_quantizers[0]
+        == None
+    )

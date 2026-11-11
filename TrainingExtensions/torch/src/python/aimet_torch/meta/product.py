@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from typing import Optional
+import torch
 
 from aimet_torch.common.connected_graph.product import Product as _Product
 from ..nn import BaseQuantizationMixin
@@ -11,9 +12,10 @@ _V2 = True
 
 
 class Product(_Product):
-    def __init__(self, name, shape):
+    def __init__(self, name, shape, dtype: torch.dtype | None):
         super().__init__(name, shape)
         self.constant_value = None
+        self.dtype = dtype
 
     def is_quantized(self):
         producer: Optional[Op] = self._producer

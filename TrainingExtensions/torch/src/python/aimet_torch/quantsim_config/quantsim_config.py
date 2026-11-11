@@ -7,6 +7,7 @@
 import copy
 from abc import abstractmethod
 from typing import Dict, List, Tuple, Set, Union
+import itertools
 import torch
 from torch.nn.modules import ConvTranspose2d
 
@@ -49,6 +50,12 @@ from aimet_torch.onnx_utils import (
 )
 from aimet_torch.translation_mapping import aimet_op_to_backend_op_name_map
 from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper, LazyQuantizer
+from aimet_torch.nn.modules import (
+    QuantizedAdd,
+    QuantizedMultiply,
+    QuantizedSubtract,
+    QuantizedDivide,
+)
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.Quant)
 MAP_PYTORCH_PARAM_NAME_TO_QUANTSIM_NAME = {
@@ -154,7 +161,43 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                     "Supported Kernel check for valid dtype and bitwidth overrides completed"
                 )
         self._set_quantsim_configs()
+        self._disable_quantizers_with_non_float_input()
         self._generate_and_apply_op_instance_specific_config()
+
+    def _disable_quantizers_with_non_float_input(self):
+        """
+        Disable quantizers with integer or boolean inputs.
+        Some modules such as Add, Multiply, Subtract, Divide can take
+        both float and integer as input. For these modules,
+        we can disable quantizers if all inputs are non-float
+        """
+        for op in self._conn_graph.ordered_ops:
+            curr_module = self._module_to_quantsim_wrapper_dict.get(
+                op.get_module(), None
+            )
+
+            if not curr_module:
+                continue
+
+            if not isinstance(
+                # pylint: disable=protected-access
+                curr_module._module_to_wrap,
+                (
+                    QuantizedAdd,
+                    QuantizedMultiply,
+                    QuantizedSubtract,
+                    QuantizedDivide,
+                ),
+            ):
+                continue
+
+            if all(
+                inp.dtype and not inp.dtype.is_floating_point for inp in op.inputs[:2]
+            ):
+                for qtzr in itertools.chain(
+                    curr_module.input_quantizers, curr_module.output_quantizers
+                ):
+                    qtzr.enabled = False
 
     def _create_named_modules_to_tensor_quantizers_dict(
         self,
