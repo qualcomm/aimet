@@ -14,13 +14,14 @@ from torchvision.models import resnet18, mobilenet_v3_large
 from torch.export import ExportedProgram
 from torch._export.utils import _detect_fake_mode_from_gm
 from torch.export.graph_signature import InputKind
+import torch.nn.functional as F
 import aimet_torch
 from aimet_torch import QuantizationSimModel
 from aimet_torch.nn import QuantizationMixin
 from aimet_torch.v2.experimental.export import export
 import aimet_torch.v2.quantization as Q
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
-from aimet_torch.quantization.affine import AffineQuantizerBase
+from aimet_torch.quantization.affine import AffineQuantizerBase, quantize_dequantize
 from aimet_torch.experimental.export.exported_program import AIMETExportedProgram
 from aimet_torch.model_preparer import prepare_model
 from aimet_torch.experimental.export.exported_program import _is_torch_ao_qdq_node
@@ -346,7 +347,6 @@ def test_compute_encodings(tmp_path: Path, device: str):
 
     with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
         output = ep.module()(*example_inputs)
-        assert isinstance(output, Q.DequantizedTensor)
 
     for node in ep.graph.nodes:
         if _is_torch_ao_qdq_node(node):
@@ -638,3 +638,31 @@ def test_preserve_graph_signature():
     assert user_inputs[0].arg.name == "x"
     assert user_inputs[1].arg.name == "_"
     assert user_inputs[2].arg.name == "z"
+
+
+@torch.no_grad()
+@pytest.mark.parallel
+def test_compute_encodings_activation_passthrough():
+    """
+    When: Call compute_encodings
+    Then: Quantizers that take dynamic inputs (e.g. activation quantizers)
+          should be set to passthrough mode throughout compute_encodings
+    """
+    model = torch.nn.Linear(10, 10, bias=False)
+    x = torch.randn(1, 10)
+    ep = torch.export.export(model, (x,))
+    ep = AIMETExportedProgram.from_exported_program(ep)
+
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
+        out = ep.module()(x)
+
+    weight_scale = ep.state_dict["p_weight_qdq_scale"].reshape(-1, 1)
+    weight_qdq = quantize_dequantize(
+        model.weight,
+        scale=weight_scale,
+        offset=torch.zeros_like(weight_scale),
+        qmin=-128,
+        qmax=127,
+    )
+    expected_out = F.linear(x, weight_qdq)
+    assert torch.allclose(out, expected_out)

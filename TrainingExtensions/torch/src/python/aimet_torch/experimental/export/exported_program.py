@@ -3,13 +3,12 @@
 
 # pylint: disable=protected-access
 import operator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Optional, Callable
 import torch
 from torch._C import _fx_map_arg
 from torch.export.graph_signature import TensorArgument
 from torch.export import ExportedProgram
-import aimet_torch
 from aimet_torch.quantization.affine import QuantizeDequantize, AffineEncoding
 from aimet_torch.experimental.export.export import _post_process
 from aimet_torch.experimental.export._utils import (
@@ -153,7 +152,7 @@ class AIMETExportedProgram(ExportedProgram):
         # calibrate encodings of the newly added quantizers. While the control
         # flow is yielded, the user is expected to run forward passes with
         # calibration dataset
-        with aimet_torch.nn.compute_encodings(self.module()):
+        with self._compute_encodings():
             yield
 
         newly_added_qtzrs = [
@@ -175,6 +174,50 @@ class AIMETExportedProgram(ExportedProgram):
             "Added and calibrated encodings for the following missing quantizers:"
             f"\n{newly_added_qtzrs}"
         )
+
+    @contextmanager
+    def _compute_encodings(self):
+        # Quantizers that take static inputs (e.g. weight, bias)
+        static_quantizers: dict[QuantizeDequantize, list[torch.Tensor]] = {}
+        # Quantizers that take dynamic inputs (e.g. activation)
+        dynamic_quantizers: set[QuantizeDequantize] = set()
+
+        for node in self.graph.nodes:
+            qdq = _get_aimet_qdq_module(node)
+
+            if not qdq:
+                continue
+
+            inp, *_ = node.all_input_nodes
+            static_input = self._get_static_tensor(inp)
+
+            if static_input is None:
+                dynamic_quantizers.add(qdq)
+            else:
+                static_quantizers.setdefault(qdq, []).append(static_input)
+
+        for qdq, static_inputs in static_quantizers.items():
+            if qdq in dynamic_quantizers:
+                # Edge case: A tied quantizer can take static and dynamic at the same time.
+                # For example:
+                #
+                #    (dynamic)
+                #        x1 -> QDQ ->
+                #                    cat -> ...
+                #        x2 -> QDQ ->
+                #    (static)
+                #
+                # In this case, treat the tied quantizer as dynamic.
+                continue
+
+            with qdq.compute_encodings():
+                for static_input in static_inputs:
+                    qdq(static_input)
+
+        with ExitStack() as stack:
+            for qdq in dynamic_quantizers:
+                stack.enter_context(qdq._compute_encodings(passthrough=True))
+            yield
 
     @_refresh_output_specs
     def _add_missing_quantizers(self, param_bw: int, activation_bw: int):
@@ -396,9 +439,15 @@ class AIMETExportedProgram(ExportedProgram):
         qdq_node.replace_all_uses_with(dq_node)
         self.graph.erase_node(qdq_node)
 
-    def _is_static_tensor(self, node: torch.fx.Node) -> bool:
+    def _get_static_tensor(self, node: torch.fx.Node) -> torch.Tensor | None:
+        """
+        Args:
+            node: A placeholder node in the graph
+        Returns:
+            The static tensor value corresponding to the placeholder node
+        """
         if node.op != "placeholder":
-            return False
+            return None
 
         try:
             param_name = next(
@@ -408,9 +457,15 @@ class AIMETExportedProgram(ExportedProgram):
                 and input_spec.arg.name == node.name
             )
         except StopIteration:
-            return False
+            param_name = None
 
-        return param_name in self.state_dict
+        if param_name is None:
+            return None
+
+        return self.state_dict.get(param_name, None)
+
+    def _is_static_tensor(self, node: torch.fx.Node) -> bool:
+        return self._get_static_tensor(node) is not None
 
     def _fold_param_qantizers(self):
         for node in self.graph_module.graph.nodes:

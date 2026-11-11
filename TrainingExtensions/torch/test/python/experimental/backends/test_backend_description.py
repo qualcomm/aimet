@@ -276,8 +276,6 @@ def test_fully_quantized(tmp_path, module, example_inputs, w8a16_op_schemas):
             outputs = (outputs,)
 
         for output in outputs:
-            if output.numel() > 0 and output.is_floating_point():
-                assert isinstance(output, Q.DequantizedTensor)
             assert not output.isnan().any()
 
     # Make sure ExportedProgram object can be saved and loaded correctly
