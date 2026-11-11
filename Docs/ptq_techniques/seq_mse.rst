@@ -186,12 +186,21 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../apiref/torch/seq_mse.rst
-            :start-after: # start-after
+        .. autofunction:: aimet_torch.seq_mse.apply_seq_mse
+            :noindex:
+
+        .. autoclass:: aimet_torch.seq_mse.SeqMseParams
+            :members:
+            :noindex:
+
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. include:: ../apiref/onnx/seq_mse.rst
-            :start-after: # start-after
+        .. autofunction:: aimet_onnx.apply_seq_mse
+            :noindex:
+
+        .. note::
+            SeqMSE parameters are passed directly as keyword arguments to ``apply_seq_mse``; there is no
+            separate parameters class for ``aimet-onnx``.
 
 

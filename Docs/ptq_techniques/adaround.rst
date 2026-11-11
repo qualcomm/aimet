@@ -38,22 +38,19 @@ Setup
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. container:: tab-heading
+        .. image:: ../images/adaround-workflow.png
+            :width: 900px
 
-            .. image:: ../images/adaround-workflow.png
-                :width: 900px
-
-            Load the model for AdaRound. The following code example converts PyTorch MobileNetV2 to ONNX and uses it in the subsequent code.
+        .. note::
+            We recommend simplifying the ONNX model with onnx-simplifier before applying AdaRound.
+            Simplification folds constants and removes redundant nodes, giving AdaRound a cleaner
+            graph in which to identify and optimize the weight tensors of its supported node
+            types (``Conv``, ``ConvTranspose``, ``MatMul``, ``Gemm``).
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
             :start-after: # Set up model
             :end-before: # End of model
-
-        .. container:: tab-heading
-
-            AdaRound optimization requires an unlabeled dataset.
-            This example uses the ImageNet validation data.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
@@ -105,8 +102,6 @@ Use AIMET's QuantSim to simulate quantization.
 
     .. tab-item:: ONNX
         :sync: onnx
-
-        Compute activation encodings after applying adaround.
 
         .. literalinclude:: ../snippets/onnx/apply_adaround.py
             :language: python
@@ -174,15 +169,24 @@ API
 .. tab-set::
     :sync-group: platform
 
-
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/adaround.rst
-           :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        .. note::
+            AdaRound parameters are passed directly as keyword arguments to ``apply_adaround``;
+            there is no separate parameters class for ``aimet-onnx``.
 
     .. tab-item:: PyTorch
         :sync: torch
 
         .. include:: ../apiref/torch/adaround.rst
-            :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        .. include:: ../apiref/torch/adaround.rst
+            :start-after: # start-after parameters
+            :end-before: # end-before parameters

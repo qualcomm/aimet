@@ -4,6 +4,9 @@
 Quantization-aware training
 ###########################
 
+.. note::
+    Not supported in ``aimet-onnx``.
+
 Quantization-aware training (QAT) finds better optimized solutions than post-training quantization (PTQ)
 by fine-tuning the model parameters in the presence of quantization noise. This higher accuracy comes with
 the usual costs of neural network training, including longer training times and the need for labeled data
@@ -55,22 +58,10 @@ Step 1: Setup
 
 Set up the model, data loader, and callback functions.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-
-        .. literalinclude:: ../snippets/torch/apply_qat.py
-            :language: python
-            :start-after: # setup
-            :end-before: # step_1
-
-    .. tab-item:: ONNX
-        :sync: ONNX
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_qat.py
+    :language: python
+    :start-after: # setup
+    :end-before: # step_1
 
 .. _techniques-qat-encodings:
 
@@ -79,28 +70,16 @@ Step 2: Compute initial quantization parameters
 
 Compute initial quantization parameters and evaluate accuracy.
 
-.. tab-set::
-    :sync-group: platform
+.. literalinclude:: ../snippets/torch/apply_qat.py
+    :language: python
+    :start-after: # step_1
+    :end-before: # step_2
 
-    .. tab-item:: PyTorch
-        :sync: torch
+.. rst-class:: script-output
 
-        .. literalinclude:: ../snippets/torch/apply_qat.py
-            :language: python
-            :start-after: # step_1
-            :end-before: # step_2
+    .. code-block:: none
 
-        .. rst-class:: script-output
-
-            .. code-block:: none
-
-                Quantized accuracy (W8A8): 0.68016
-
-    .. tab-item:: ONNX
-        :sync: ONNX
-
-        Not supported.
-
+        Quantized accuracy (W8A8): 0.68016
 
 .. _techniques-qat-calibrate:
 
@@ -109,47 +88,21 @@ Step 3: Run quantization-aware training
 
 Train the model to fine-tune quantization parameters.
 
-.. tab-set::
-    :sync-group: platform
+.. literalinclude:: ../snippets/torch/apply_qat.py
+    :language: python
+    :start-after: # step_2
+    :end-before: # step_3
 
-    .. tab-item:: PyTorch
-        :sync: torch
+.. rst-class:: script-output
 
-        .. literalinclude:: ../snippets/torch/apply_qat.py
-            :language: python
-            :start-after: # step_2
-            :end-before: # step_3
+    .. code-block:: none
 
-        .. rst-class:: script-output
-
-            .. code-block:: none
-
-                Model accuracy after QAT: 0.70838
-
-    .. tab-item:: ONNX
-        :sync: ONNX
-
-        Not supported.
-
+        Model accuracy after QAT: 0.70838
 
 API
 ===
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        **Top level APIs**
-
-        .. autoclass:: aimet_torch.QuantizationSimModel
-            :members: compute_encodings, export
-            :member-order: bysource
-            :no-index:
-
-    .. tab-item:: ONNX
-        :sync: ONNX
-
-        Not supported.
-
+.. autoclass:: aimet_torch.QuantizationSimModel
+    :members: compute_encodings, export
+    :member-order: bysource
+    :no-index:

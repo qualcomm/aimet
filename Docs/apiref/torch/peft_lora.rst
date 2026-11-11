@@ -60,6 +60,6 @@ Step 5: For another adapter concurrency we repeat steps 1 to 4
 
 API
 ===
-**The following API can be used to replace PEFT lora layers definition with AIMET lora layers definition**
+.. rubric:: The following API can be used to replace PEFT lora layers definition with AIMET lora layers definition
 
 .. autofunction:: aimet_torch.peft.replace_lora_layers_with_quantizable_layers

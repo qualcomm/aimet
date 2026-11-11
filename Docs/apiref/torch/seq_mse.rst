@@ -7,11 +7,11 @@ aimet_torch.seq_mse
 ..
   # start-after
 
-**Top level APIs**
+.. rubric:: Top level APIs
 
 .. autofunction:: aimet_torch.seq_mse.apply_seq_mse
 
-**Sequential MSE parameters**
+.. rubric:: Sequential MSE parameters
 
 .. autoclass:: aimet_torch.seq_mse.SeqMseParams
     :members:

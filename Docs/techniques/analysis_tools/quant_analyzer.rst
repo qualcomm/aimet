@@ -276,10 +276,28 @@ API
         :sync: torch
 
         .. include:: ../../apiref/torch/quant_analyzer.rst
-            :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        You can avoid running all the utilities that QuantAnalyzer offers and only run those of your interest.
+        For this you need to have the :class:`QuantizationSimModel` object, Then you call the desired
+        QuantAnalyzer utility of your interest and pass the same object to it.
+
+        .. include:: ../../apiref/torch/quant_analyzer.rst
+            :start-after: # start-after specific-utility
+            :end-before: # end-before specific-utility
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../../apiref/onnx/quant_analyzer.rst
-           :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        You can avoid running all the utilities that QuantAnalyzer offers and only run those of your interest.
+        For this you need to have the :class:`QuantizationSimModel` object, Then you call the desired
+        QuantAnalyzer utility of your interest and pass the same object to it.
+
+        .. include:: ../../apiref/onnx/quant_analyzer.rst
+            :start-after: # start-after specific-utility
+            :end-before: # end-before specific-utility

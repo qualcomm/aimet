@@ -27,8 +27,6 @@ aimet_onnx API
 ..
   # start-after
 
-AIMET quantization for ONNX models provides the following functionality.
-
 - :ref:`aimet_onnx.quantsim <apiref-onnx-quantsim>`
 - :ref:`aimet_onnx.apply_adaround <apiref-onnx-adaround>`
 - :ref:`aimet_onnx.apply_seq_mse <apiref-onnx-seq-mse>`

@@ -116,12 +116,11 @@ The following code examples show how to configure convolution and linear layers 
     .. tab-item:: ONNX
         :sync: onnx
 
-        Not supported.
+        .. note::
+            Not supported in ``aimet-onnx``.
 
 API
 ===
-
-**Top-level API to configure BQ quantization**
 
 As described above, the Qualcomm runtime is constrained to running floating point activations for layers that use  blockwise quantization. We provide the following utility function to help transform multiple layers' quantizers to float quantization:
 

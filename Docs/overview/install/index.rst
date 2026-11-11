@@ -1,5 +1,12 @@
 .. _install-index:
 
+.. |torch_whl_suffix| replace:: -py310-none-any.whl
+.. |whl_suffix| replace:: -cp310-abi3-manylinux_2_34_x86_64.whl
+.. |win_amd64_whl_suffix| replace:: -cp310-abi3-win_amd64.whl
+.. |win_arm64_whl_suffix| replace:: -cp310-abi3-win_arm64.whl
+.. |macos_arm64_whl_suffix| replace:: -cp310-abi3-macosx_15_0_arm64.whl
+.. |download_url| replace:: https://github.com/qualcomm/aimet/releases/download/
+
 ############
 Installation
 ############
@@ -103,44 +110,57 @@ Use one of the following commands to install AIMET based on your choice of frame
 All wheels below use the CPython stable ABI (``cp310-abi3``) and install on any Python 3.10+ interpreter
 without needing a version-specific URL.
 
+PyTorch
+~~~~~~~
+
+.. code-block:: bash
+
+    python3 -m pip install |download_url||version|/aimet_torch-|version||torch_whl_suffix|
+
+ONNX
+~~~~
+
 .. tab-set::
     :sync-group: platform
 
-    .. tab-item:: ONNX
-        :sync: onnx
+    .. tab-item:: Linux (x86-64)
+        :sync: linux-x86
 
-        Linux (x86-64):
+        .. code-block:: bash
 
-        .. parsed-literal::
-
-            python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\ |whl_suffix|
+            python3 -m pip install |download_url||version|/aimet_onnx-|version||whl_suffix|
             # Optional: To accelerate quantization with CUDA
             python3 -m pip install onnxruntime-gpu
 
-        Windows (x86-64), CPU only:
+    .. tab-item:: Windows (x86-64)
+        :sync: win-x86
 
-        .. parsed-literal::
+        .. code-block:: bash
 
-            python -m pip install |download_url|\ |version|/aimet_onnx-|version|\ |win_amd64_whl_suffix|
+            python -m pip install |download_url||version|/aimet_onnx-|version||win_amd64_whl_suffix|
 
-        Windows (ARM64), CPU only:
+        .. note::
+            CPU only.
 
-        .. parsed-literal::
+    .. tab-item:: Windows (ARM64)
+        :sync: win-arm64
 
-            python -m pip install |download_url|\ |version|/aimet_onnx-|version|\ |win_arm64_whl_suffix|
+        .. code-block:: bash
 
-        macOS (Apple Silicon/ARM64), CPU only, requires macOS 15 or later:
+            python -m pip install |download_url||version|/aimet_onnx-|version||win_arm64_whl_suffix|
 
-        .. parsed-literal::
+        .. note::
+            CPU only.
 
-            python3 -m pip install |download_url|\ |version|/aimet_onnx-|version|\ |macos_arm64_whl_suffix|
+    .. tab-item:: macOS (ARM64)
+        :sync: macos-arm64
 
-    .. tab-item:: PyTorch
-        :sync: torch
+        .. code-block:: bash
 
-        .. parsed-literal::
+            python3 -m pip install |download_url||version|/aimet_onnx-|version||macos_arm64_whl_suffix|
 
-            python3 -m pip install |download_url|\ |version|/aimet_torch-|version|\ |torch_whl_suffix|
+        .. note::
+            CPU only. Requires macOS 15 or later.
 
 Verifying the installation
 --------------------------
@@ -230,10 +250,3 @@ For most users, the recommended way to install AIMET is by using the pre-built p
 
 However, if you prefer to work with the latest source code or plan to contribute to AIMET development, you’ll need to build it from source.
 To do so, follow the steps outlined for building the latest AIMET codebase manually, see :ref:`Build AIMET from source <build-from-source>`.
-
-.. |torch_whl_suffix| replace:: \-py310-none-any.whl
-.. |whl_suffix| replace:: \-cp310-abi3-manylinux_2_34_x86_64.whl
-.. |win_amd64_whl_suffix| replace:: \-cp310-abi3-win_amd64.whl
-.. |win_arm64_whl_suffix| replace:: \-cp310-abi3-win_arm64.whl
-.. |macos_arm64_whl_suffix| replace:: \-cp310-abi3-macosx_15_0_arm64.whl
-.. |download_url| replace:: \https://github.com/qualcomm/aimet/releases/download/

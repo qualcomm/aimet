@@ -255,14 +255,10 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        **Top level APIs**
-
         .. autoclass:: aimet_torch.QuantizationSimModel
             :members: compute_encodings, export, load_encodings
             :member-order: bysource
             :no-index:
-
-        **Quant Scheme Enum**
 
         .. autoclass:: aimet_torch.common.defs.QuantScheme
             :members:
@@ -271,23 +267,18 @@ API
     .. tab-item:: ONNX
         :sync: onnx
 
+        .. note::
 
-        **Top level APIs**
+            - We recommend you use onnx-simplifier before creating the QuantSim model.
+            - Since ONNX Runtime is used for optimized inference only, ONNX framework supports Post Training Quantization schemes (such as TF or TF-enhanced) to compute the encodings.
 
         .. autoclass:: aimet_onnx.QuantizationSimModel
             :members: compute_encodings, export
             :member-order: bysource
             :noindex:
 
-        .. note::
-
-            - We recommend you use onnx-simplifier before creating the QuantSim model.
-            - Since ONNX Runtime is used for optimized inference only, ONNX framework supports Post Training Quantization schemes (such as TF or TF-enhanced) to compute the encodings.
-
         .. autofunction:: aimet_onnx.quantsim.load_encodings_to_sim
             :noindex:
-
-        **Quant Scheme Enum**
 
         .. autoclass:: aimet_onnx.common.defs.QuantScheme
             :members:

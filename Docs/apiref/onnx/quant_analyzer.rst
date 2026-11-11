@@ -7,23 +7,34 @@ aimet_onnx.quant_analyzer
 ..
   # start-after
 
-**Top level APIs**
+.. rubric:: Top level APIs
+
+..
+  # start-after toplevel
 
 .. note::
     It is recommended to use onnx-simplifier before applying quant-analyzer.
 
 .. autoclass:: aimet_onnx.quant_analyzer.QuantAnalyzer
+    :noindex:
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.enable_per_layer_mse_loss
+    :noindex:
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.analyze
+    :noindex:
 
-**Alternatively, you can run specific utility**
+..
+  # end-before toplevel
+
+.. rubric:: Alternatively, you can run specific utility
 
 You can avoid running all the utilities that QuantAnalyzer offers and only run those of your interest.
 For this you need to have the :class:`QuantizationSimModel` object, Then you call the desired
 QuantAnalyzer utility of your interest and pass the same object to it.
 
+..
+  # start-after specific-utility
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.create_quantsim_and_encodings
    :noindex:
@@ -45,3 +56,6 @@ QuantAnalyzer utility of your interest and pass the same object to it.
 
 .. automethod:: aimet_onnx.quant_analyzer.QuantAnalyzer.export_per_layer_mse_loss
    :noindex:
+
+..
+  # end-before specific-utility

@@ -31,10 +31,6 @@ Load the model.
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. container:: tab-heading
-
-            This example uses the MobileNetV2 model.
-
         .. literalinclude:: ../snippets/torch/apply_bnf.py
             :language: python
             :start-after: # Step 1
@@ -56,10 +52,6 @@ Load the model.
 
     .. tab-item:: ONNX
         :sync: onnx
-
-        .. container:: tab-heading
-
-            This example converts the PyTorch MobileNetV2 to ONNX and subsequently uses the ONNX model.
 
         .. literalinclude:: ../snippets/onnx/apply_bnf.py
             :language: python
@@ -91,16 +83,12 @@ Prepare the model, if required by the model framework.
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. container:: tab-heading
-
-            No preparation step is needed for PyTorch.
+        No preparation step is needed for PyTorch.
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. container:: tab-heading
-
-            We recommend that you simplify the ONNX model as follows.
+        We recommend that you simplify the ONNX model as follows.
 
         .. literalinclude:: ../snippets/onnx/apply_bnf.py
             :language: python
@@ -138,10 +126,6 @@ Perform the batch norm folding.
 
     .. tab-item:: PyTorch
         :sync: torch
-
-        .. container:: tab-heading
-
-            Execute the AIMET BNF API.
 
         .. literalinclude:: ../snippets/torch/apply_bnf.py
             :language: python

@@ -4,6 +4,9 @@
 Manual mixed precision
 ######################
 
+.. note::
+    Not supported in ``aimet-onnx``.
+
 Context
 =======
 
@@ -29,21 +32,10 @@ Manual mixed precision is supported only on PyTorch models.
 Setup
 -----
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [setup]
-            :end-before: [set_precision_leaf]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [setup]
+    :end-before: [set_precision_leaf]
 
 Step 1: Applying MMP API options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -59,97 +51,44 @@ MMP provides the following APIs to change layers' precision. The APIs can be cal
 Set precision of a leaf layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [set_precision_leaf]
-            :end-before: [set_precision_non_leaf]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [set_precision_leaf]
+    :end-before: [set_precision_non_leaf]
 
 Set precision of a non-leaf layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [set_precision_non_leaf]
-            :end-before: [set_precision_type]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [set_precision_non_leaf]
+    :end-before: [set_precision_type]
 
 Set precision based on layer type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [set_precision_type]
-            :end-before: [set_precision_model_input]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [set_precision_type]
+    :end-before: [set_precision_model_input]
 
 Set model input precision
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [set_precision_model_input]
-            :end-before: [set_precision_model_output]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [set_precision_model_input]
+    :end-before: [set_precision_model_output]
 
 If a model has more than one input tensor (for example, the structure is [In1, In2]), you can set just one of them (say In2) to a new precision (say P1) by setting ``activation=[None, P1]`` in the above API.
 
 Set model output precision
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [set_precision_model_output]
-            :end-before: [apply]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [set_precision_model_output]
+    :end-before: [apply]
 
 If a model has more than one output tensor (for example, the structure is [Out1, Out2, Out3]), you can set just one of them (say Out2) to a new precision (say P1) by setting ``activation=[None, P1, None]`` in the above API.
 
@@ -159,37 +98,15 @@ Step 2: Applying the profile
 
 All of the `set precision` family of calls from step 1 are processed at once when the following ``apply(...)`` API is called.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../../snippets/torch/apply_mmp.py
-            :language: python
-            :start-after: [apply]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. literalinclude:: ../../snippets/torch/apply_mmp.py
+    :language: python
+    :start-after: [apply]
 
 The ``apply`` call generates a report detailing how the request was inferred, propagated to other layers, and eventually realized.
 
 API
 ===
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. include:: ../../apiref/torch/mp.rst
-            :start-after: # start-after mmp
-            :end-before: # end-before mmp
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. include:: ../../apiref/torch/mp.rst
+    :start-after: # start-after mmp
+    :end-before: # end-before mmp

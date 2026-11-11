@@ -65,10 +65,6 @@ Load the model.
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. container:: tab-heading
-
-            This code example uses MobileNetV2.
-          
         .. literalinclude:: ../snippets/torch/apply_cle.py
             :start-after: # Step 1
             :end-before: [step_1]
@@ -118,11 +114,7 @@ Load the model.
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. container:: tab-heading
-
-            Load the model for cross-layer equalization. This example converts PyTorch MobileNetV2 to ONNX and uses it in the subsequent code. 
-            
-            We recommend simplifying the ONNX model before applying AIMET functionalities. After simplification, the model contains consecutive convolutions, which can be optimized through cross-layer equalization. 
+        We recommend simplifying the ONNX model before applying AIMET functionalities. After simplification, the model contains consecutive convolutions, which can be optimized through cross-layer equalization.
 
         .. literalinclude:: ../snippets/onnx/apply_cle.py
             :language: python
@@ -179,8 +171,6 @@ Apply cross-layer equalization.
     .. tab-item:: PyTorch
         :sync: torch
 
-        Execute the AIMET cross-layer equalization API function.
-        
         .. literalinclude:: ../snippets/torch/apply_cle.py
             :language: python
             :start-after: [step_1]
@@ -212,10 +202,6 @@ Apply cross-layer equalization.
 
     .. tab-item:: ONNX
         :sync: onnx
-
-        .. container:: tab-heading
-
-            Execute the AIMET cross-layer equalization API function.
 
         .. literalinclude:: ../snippets/onnx/apply_cle.py
             :language: python

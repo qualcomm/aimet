@@ -6,10 +6,11 @@ aimet_torch.spinquant
 
 ..
   # start-after
-
-**Top level APIs**
+  # start-after toplevel
 
 .. autofunction:: aimet_torch.spinquant.apply_spinquant
+    :no-index:
 
 ..
+  # end-before toplevel
   # end-before

@@ -13,7 +13,7 @@ model validator currently checks for the following conditions:
 In this section, we present models failing the validation checks, and show how to run the model validator, as well as
 how to fix the models so the validation checks pass.
 
-**Example 1: Model with reused modules**
+.. rubric:: Example 1: Model with reused modules
 
 We begin with the following model, which contains two relu modules sharing the same module instance.
 
@@ -63,7 +63,7 @@ Now, after rerunning the model validator, all checks pass::
     Utils - INFO - Running validator check <function validate_for_missing_modules at 0x7ff5703eff28>
     Utils - INFO - All validation checks passed.
 
-**Example 2: Model with functionals**
+.. rubric:: Example 2: Model with functionals
 
 We start with the following model, which uses a torch linear functional layer in the forward pass:
 

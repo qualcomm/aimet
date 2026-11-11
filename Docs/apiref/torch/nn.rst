@@ -90,7 +90,7 @@ API reference
 
 .. _api-built-in-quantized-modules:
 
-**Built-in quantized modules**
+.. rubric:: Built-in quantized modules
 
 .. autosummary::
     :toctree: generated

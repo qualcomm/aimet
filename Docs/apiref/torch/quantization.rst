@@ -387,7 +387,7 @@ Note that:
 API reference
 =============
 
-**Quantized tensors**
+.. rubric:: Quantized tensors
 
 .. autosummary::
     :toctree: generated
@@ -400,7 +400,7 @@ API reference
 
 .. _api-beta-quantizers:
 
-**Quantizers**
+.. rubric:: Quantizers
 
 .. autosummary::
     :toctree: generated
@@ -411,7 +411,7 @@ API reference
     affine.QuantizeDequantize
     float.FloatQuantizeDequantize
 
-**Functional APIs**
+.. rubric:: Functional APIs
 
 .. autosummary::
     :toctree: generated

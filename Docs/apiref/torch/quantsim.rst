@@ -13,7 +13,7 @@ aimet_torch.quantsim
 .. autoclass:: aimet_torch.quantsim.QuantizationSimModelOnnxExporter
    :members: export
 
-**Quant Scheme Enum**
+.. rubric:: Quant Scheme Enum
 
 .. autoclass:: aimet_torch.common.defs.QuantScheme
     :members:

@@ -6,11 +6,10 @@ aimet_onnx.apply_adaround
 
 ..
   # start-after
-
-.. note::
-     It is recommended to use onnx-simplifier before adarounding the model.
-
-**Top-level API**
+  # start-after toplevel
 
 .. autofunction:: aimet_onnx.apply_adaround
     :no-index:
+
+..
+  # end-before toplevel

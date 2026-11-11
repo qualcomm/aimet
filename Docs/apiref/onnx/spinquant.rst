@@ -7,11 +7,21 @@ aimet_onnx.spinquant
 ..
   # start-after
 
-**Top level APIs**
+.. rubric:: Top level APIs
+
+..
+  # start-after toplevel
 
 .. autofunction:: aimet_onnx.spinquant.apply_spinquant
+    :no-index:
 
-**Model topology**
+..
+  # end-before toplevel
+
+.. rubric:: Model topology
+
+..
+  # start-after topology
 
 SpinQuant places every rotation using an ``LlmTopology``, which describes the structure of the
 decoder stack: which linears read from and write to the residual stream (R1), which are the V and O
@@ -23,9 +33,12 @@ result as ``topology``::
     sim = QuantizationSimModel(onnx_model, ...)   # built on the rotated graph
 
 .. autofunction:: aimet_onnx.llm_topology.analyze_llm_topology
+    :no-index:
 
 .. autoclass:: aimet_onnx.llm_topology.LlmTopology
     :members:
+    :no-index:
 
 ..
+  # end-before topology
   # end-before

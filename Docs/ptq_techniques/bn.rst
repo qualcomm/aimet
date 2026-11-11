@@ -4,10 +4,13 @@
 Batch norm re-estimation
 ########################
 
+.. note::
+    Not supported in ``aimet-onnx``.
+
 Context
 =======
 
-Batch norm re-estimation (BN re-estimation) uses a small subset of training data to re-estimate the statistics of the batch norm (BN) layers in a model. AIMET then folds the BN layers into the preceding convolution or linear layers. 
+Batch norm re-estimation (BN re-estimation) uses a small subset of training data to re-estimate the statistics of the batch norm (BN) layers in a model. AIMET then folds the BN layers into the preceding convolution or linear layers.
 
 BN re-estimation is recommended under the following conditions:
 
@@ -33,134 +36,66 @@ Execution
 Setup
 ~~~~~
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_bn.py
-            :language: python
-            :start-after: [setup]
-            :end-before: [step_1]
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_bn.py
+    :language: python
+    :start-after: [setup]
+    :end-before: [step_1]
 
 Step 1
 ~~~~~~
 
-Create the quantization simulation mdoel (QuantizationSimModel).
+Create the quantization simulation model (QuantizationSimModel).
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        When creating the QuantizationSimModel model, ensure that per channel quantization is enabled. Update the config file if needed. 
-
-        .. literalinclude:: ../snippets/torch/apply_bn.py
-            :language: python
-            :start-after: [step_1]
-            :end-before: [step_2]
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_bn.py
+    :language: python
+    :start-after: [step_1]
+    :end-before: [step_2]
 
 Step 2
 ~~~~~~
 
 Perform Quantization-aware training (QAT).
 
-QAT involves training your model for a few additional epochs (usually 15-20). When training, be aware of the hyper-parameters being used. 
+QAT involves training your model for a few additional epochs (usually 15-20). When training, be aware of the hyper-parameters being used.
 
-.. tab-set::
-    :sync-group: platform
+.. literalinclude:: ../snippets/torch/apply_bn.py
+    :language: python
+    :start-after: [step_2]
+    :end-before: [step_3]
 
-    .. tab-item:: PyTorch
-        :sync: torch
+.. rst-class:: script-output
 
-        .. literalinclude:: ../snippets/torch/apply_bn.py
-            :language: python
-            :start-after: [step_2]
-            :end-before: [step_3]
+  .. code-block:: none
 
-        .. rst-class:: script-output
-
-          .. code-block:: none
-
-            Model accuracy before BN re-estimation: 0.0428
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+    Model accuracy before BN re-estimation: 0.0428
 
 Step 3
 ~~~~~~
 
-Re-estimate the BN statistics and fold the BN layers. 
+Re-estimate the BN statistics and fold the BN layers.
 
-.. tab-set::
-    :sync-group: platform
+.. literalinclude:: ../snippets/torch/apply_bn.py
+    :language: python
+    :start-after: [step_3]
+    :end-before: [step_4]
 
-    .. tab-item:: PyTorch
-        :sync: torch
+.. rst-class:: script-output
 
-        .. literalinclude:: ../snippets/torch/apply_bn.py
-            :language: python
-            :start-after: [step_3]
-            :end-before: [step_4]
+  .. code-block:: none
 
-        .. rst-class:: script-output
-
-          .. code-block:: none
-
-            Model accuracy after BN re-estimation: 0.5876
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+    Model accuracy after BN re-estimation: 0.5876
 
 Step 4
 ~~~~~~
 
 If BN re-estimation resulted in satisfactory accuracy, export the model.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_bn.py
-            :language: python
-            :start-after: [step_4]
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_bn.py
+    :language: python
+    :start-after: [step_4]
 
 API
 ===
-.. tab-set::
-    :sync-group: platform
 
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. include:: ../apiref/torch/bn.rst
-            :start-after: # start-after
-
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. include:: ../apiref/torch/bn.rst
+    :start-after: # start-after

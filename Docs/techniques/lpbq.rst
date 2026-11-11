@@ -96,8 +96,6 @@ This function can be called multiple times to set different LPBQ configuration f
 API
 ===
 
-**Top-level API to configure LPBQ quantization**
-
 .. tab-set::
     :sync-group: platform
 

@@ -1,0 +1,119 @@
+/*
+ * Performance summary table
+ *
+ * Keep Lumina's own table look (header shading, row hover, borders) instead
+ * of porting over the old Furo styling. Lumina renders tables as
+ * `display: block; overflow-x: auto` by default, which breaks the rowspan
+ * model-name column; force it back to `display: table` and layer on a
+ * subtle divider between each model's group of rows (one <tbody> per model)
+ * plus centering for the numeric columns.
+ */
+.lumina-article table.perf-table {
+    display: table;
+    width: 100%;
+}
+
+/* Separate each model's group of rows with a divider, since the single
+ * thead/tbody structure otherwise reads as one undifferentiated block. */
+.lumina-article table.perf-table tbody {
+    border-top: 1px solid var(--lumina-border);
+}
+
+.lumina-article table.perf-table thead + tbody {
+    border-top: none;
+}
+
+/* Emphasize the model name (the rowspan cell at the start of each group)
+ * and center it vertically against the full height of its row group. */
+.lumina-article table.perf-table tbody tr:first-child td:first-child {
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+/* Center the four numeric columns (PPL, MMLU, Time, CUDA). Use nth-last-child
+ * so the rule holds in rowspan rows that omit the leading model-name cell. */
+.lumina-article table.perf-table th:nth-last-child(1),
+.lumina-article table.perf-table th:nth-last-child(2),
+.lumina-article table.perf-table th:nth-last-child(3),
+.lumina-article table.perf-table th:nth-last-child(4),
+.lumina-article table.perf-table td:nth-last-child(1),
+.lumina-article table.perf-table td:nth-last-child(2),
+.lumina-article table.perf-table td:nth-last-child(3),
+.lumina-article table.perf-table td:nth-last-child(4) {
+    text-align: center;
+}
+
+/*
+ * Tab-set vertical rhythm
+ *
+ * Lumina zeroes the margin on code blocks inside .sd-tab-content (so the
+ * first/last block sits flush with the tab panel edge), but a <p> between
+ * two code blocks (e.g. the "Load the model..." / "...requires an unlabeled
+ * dataset" captions in adaround.rst's tab-set) only carries margin-bottom,
+ * not margin-top. That leaves 0px above the paragraph and the text reads as
+ * crammed against the preceding code block.
+ */
+.sd-tab-content p {
+    margin-top: 1.125rem;
+}
+
+/* Lumina zeroes the tab panel's own padding (.sd-tab-set > .sd-tab-content
+ * { padding: 0 }) because code blocks and images carry their own inset.
+ * Plain text content -- a caption paragraph, a bullet list -- has no such
+ * inset of its own and ends up flush against the panel's edges. Give it the
+ * same horizontal gutter code blocks use (1.25rem). Admonitions (.. note::)
+ * are exempt: they already carry their own margin/padding as self-contained
+ * boxes, so this would just double their inset. */
+.sd-tab-content > p,
+.sd-tab-content > ul,
+.sd-tab-content > ol {
+    margin-inline: 1.25rem;
+}
+
+/* When two code blocks are adjacent with no caption between them (e.g.
+ * adaround.rst's model-setup and dataloader-setup snippets), the zeroed
+ * margin leaves them visually fused into one block. Restore a gap.
+ * `literalinclude`/`code-block` render as <div class="highlight-LANG"> or
+ * <div class="literal-block-wrapper"> wrapping the Lumina-styled
+ * div.highlight -- the adjacency rule has to key off those outer wrappers. */
+.sd-tab-content > [class*="highlight-"] + [class*="highlight-"],
+.sd-tab-content > .literal-block-wrapper + .literal-block-wrapper,
+.sd-tab-content > [class*="highlight-"] + .literal-block-wrapper,
+.sd-tab-content > .literal-block-wrapper + [class*="highlight-"] {
+    margin-top: 1.25rem;
+}
+
+/* Hide the "Expand all / Collapse all" text toolbar Lumina inserts above
+ * API signature lists -- it's redundant with the per-signature chevron
+ * (dt.sig > .lumina-api-toggle), which stays as the discoverability cue
+ * that a signature is clickable to reveal its docstring. */
+.lumina-api-toolbar {
+    display: none !important;
+}
+
+/* A class/function with no docstring (e.g. a dataclass whose only "doc" is
+ * its auto-generated __init__ signature) renders an empty <dd>. Lumina
+ * strips the dt.sig left/right padding and indent for this case (see
+ * dl:has(> dt.sig) > dt.sig:has(+ dd:empty) in api.css), leaving the
+ * signature flush left and misaligned with its chevroned/indented
+ * siblings. Restore just the padding/indent -- NOT a bottom border, which
+ * would frame the empty <dd> below it plus the dl's normal margin as a
+ * visible blank box. */
+.lumina-article dl:has(> dt.sig) > dt.sig:has(+ dd:empty) {
+    padding-inline-start: 2.75rem;
+    padding-inline-end: 1.5rem;
+    min-height: 3.5rem;
+}
+
+/*
+ * Font stack
+ *
+ * Lumina bundles its own webfonts (Source Sans 3 / JetBrains Mono) by
+ * default. Revert to the native OS font stack the old Furo-based docs used,
+ * so the site matches https://qualcomm.github.io/aimet-pages look-and-feel
+ * instead of introducing a new branded typeface.
+ */
+:root {
+    --lumina-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    --lumina-font-mono: "SFMono-Regular", Menlo, Consolas, Monaco, "Liberation Mono", "Lucida Console", monospace;
+}

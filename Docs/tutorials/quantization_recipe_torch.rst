@@ -196,5 +196,3 @@ Contact Us
 Please reach out to us if you encounter any issue with this tutorial or applying recipes to similar models.
 
 - `Slack Community <https://qualcomm-ai-hub.slack.com/archives/C08JKBE0UHY>`_
-</content>
-</invoke>

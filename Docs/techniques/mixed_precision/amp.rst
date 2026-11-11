@@ -204,10 +204,28 @@ API
         :sync: torch
 
         .. include:: ../../apiref/torch/mp.rst
-            :start-after: # start-after amp
+            :start-after: # start-after amp-toplevel
+            :end-before: # end-before amp-toplevel
+
+        .. include:: ../../apiref/torch/mp.rst
+            :start-after: # start-after amp-quantizergroups
+            :end-before: # end-before amp-quantizergroups
+
+        .. include:: ../../apiref/torch/mp.rst
+            :start-after: # start-after amp-callback
+            :end-before: # end-before amp-callback
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../../apiref/onnx/amp.rst
-           :start-after: # start-after
+            :start-after: # start-after amp-toplevel
+            :end-before: # end-before amp-toplevel
+
+        .. include:: ../../apiref/onnx/amp.rst
+            :start-after: # start-after amp-quantizergroups
+            :end-before: # end-before amp-quantizergroups
+
+        .. include:: ../../apiref/onnx/amp.rst
+            :start-after: # start-after amp-callback
+            :end-before: # end-before amp-callback

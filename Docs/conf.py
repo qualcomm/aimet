@@ -37,8 +37,17 @@ else:
 
 included_features = []
 
+def _expand_api_disclosures(app, pagename, templatename, context, doctree):
+    # API reference pages are consulted for exact call signatures, so default
+    # their autodoc entries to expanded; everywhere else (tutorials,
+    # techniques) stays collapsed per the theme's global default.
+    if pagename == 'apiref/index' or pagename.startswith('apiref/'):
+        context['theme_api_expanded'] = 'true'
+
+
 def setup(app):
     app.add_config_value('included_features', included_features, 'env')
+    app.connect('html-page-context', _expand_api_disclosures)
 
 
 # -- General configuration ---------------------------------------------------
@@ -63,7 +72,8 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx_design',
-    'sphinx_copybutton'
+    'sphinx_copybutton',
+    'sphinx_substitution_extensions'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -101,32 +111,27 @@ autosectionlabel_prefix_document = True
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'furo'
-html_title = 'AIMET'
-# html_short_title = 'AIMET Docs v. ' + version
-# html_logo = 'images/brain_logo.png'
-# html_favicon = 'images/brain_logo16.png'
+html_theme = 'lumina'
+html_title = 'AI Model Efficiency Toolkit'
+# Lumina's header shows shorttitle only when it differs from docstitle
+# (html_title); otherwise it falls back to the full `project` name, which is
+# long enough to collide with the header's search box.
+html_short_title = 'AIMET'
+html_favicon = '_static/ai-hub-workbench-icon.png'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
 html_theme_options = {
-    "sidebar_hide_name": False,                  # Default is False
-    "top_of_page_buttons": [],
-    "navigation_with_keys": True,
-#    "announcement": "<em>Important</em> announcement!",
-    "footer_icons": [                            # This is ugly. Will fix later.
-        {
-            "name": "GitHub",
-            "url": "https://github.com/qualcomm/aimet",
-            "html": """
-                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
-                </svg>
-            """,
-            "class": "",
-        },
+    "light_logo": "ai-hub-workbench-icon.png",
+    "dark_logo": "ai-hub-workbench-icon.png",
+    "accent_color": "#2A2AEA",  # Qualcomm AI Hub's primary brand color
+    # Must be a list of dicts, not a colon-delimited string -- the latter
+    # gets iterated character-by-character, generating one bogus icon link
+    # per character and breaking the header layout.
+    "social_links": [
+        {"icon": "github", "url": "https://github.com/qualcomm/aimet"},
     ],
 }
 
@@ -135,28 +140,15 @@ html_theme_options = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files = ['aimet-furo.css']    # Changes from default theme file.
+html_css_files = ['aimet-lumina.css']
 
-# Custom sidebar templates, must be a dictionary that maps document names
-# to template names.
-#
-# The default sidebars (for documents that don't match any pattern) are
-# defined by theme itself.  Builtin themes are using these templates by
-# default: ``['localtoc.html', 'relations.html', 'sourcelink.html',
-# 'searchbox.html']``.
-#
-# furo theme sidebars
-html_sidebars = {
-    "**": [
-        "sidebar/brand.html",
-        "sidebar/doc_versions.html",
-        "sidebar/search.html",
-        "sidebar/scroll-start.html",
-        "sidebar/navigation.html",
-        "sidebar/scroll-end.html",
-    ]
-}
-# Custom TOC settings
+# NOTE: html_sidebars/_templates/sidebar/* (brand.html, doc_versions.html,
+# navigation.html, etc.) were Furo-specific overrides (relying on Furo's
+# furo_navigation_tree context variable and sidebar-tree/doc-versions
+# markup) and have been removed as part of the theme switch -- Lumina
+# supplies its own sidebar/version-switcher via the version_switcher_json/
+# version_switcher_match theme options, which is a separate follow-up since
+# it needs a JSON manifest of releases this build doesn't currently have.
 
 # Parameters for use in templates
 
@@ -170,13 +162,20 @@ html_context = {
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'AIMETdoc'
 
-# Use this section to define substitution patterns that get exported to each rst page
-rst_epilog = """
+# Use this section to define substitution patterns that get exported to each rst page.
+# This must be rst_prolog (not rst_epilog): sphinx_substitution_extensions resolves
+# |version|-style substitutions inside code-block directives at directive-run time,
+# which happens before an rst_epilog appended at the end of the document is parsed.
+rst_prolog = """
 .. |author| replace:: {author}
 .. |project| replace:: {project}
 .. |default-quantsim-config-file| replace:: aimet_common/quantsim_config/default_config.json
 .. |version| replace:: {version}
 """.format(project=project, author=author, version=version)
+
+# Apply substitutions to every code-block by default, so pages don't need to opt
+# in with :substitutions: on each block. Use :nosubstitutions: to opt a block out.
+substitutions_default_enabled = True
 
 # -- Options for LaTeX output ------------------------------------------------
 

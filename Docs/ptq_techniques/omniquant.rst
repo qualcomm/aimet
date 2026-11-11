@@ -4,6 +4,9 @@
 OmniQuant
 #########
 
+.. note::
+    Not supported in ``aimet-onnx``.
+
 Context
 =======
 
@@ -34,46 +37,25 @@ Procedure
 Setup
 ~~~~~
 
-.. tab-set::
-    :sync-group: platform
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [setup]
+    :end-before: # End of [setup]
 
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [setup]
-            :end-before: # End of [setup]
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [prepare-dataloader]
-            :end-before: # End of [prepare-dataloader]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [prepare-dataloader]
+    :end-before: # End of [prepare-dataloader]
 
 Step 1
 ~~~~~~
 
 Use AIMET's :ref:`quantization simulation<quantsim-index>` to create a QuantSimModel object.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [create-sim]
-            :end-before: # End of [create-sim]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [create-sim]
+    :end-before: # End of [create-sim]
 
 Step 2
 ~~~~~~
@@ -83,95 +65,43 @@ It is recommended to use a minimum of 800 iterations when applying apply_omniqua
 The `learnt scales` are dumped as safetensors when we do apply_omniquant. These scales can be used for quantizing lora adapters.
 The usage of the dumped scale is not supported in the current release.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [apply-omniquant]
-            :end-before: # End of [apply-omniquant]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [apply-omniquant]
+    :end-before: # End of [apply-omniquant]
 
 Step 3
 ~~~~~~
 
 Compute encodings for remaining parameters of the model.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [compute_encodings]
-            :end-before: # End of [compute_encodings]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [compute_encodings]
+    :end-before: # End of [compute_encodings]
 
 Step 4
 ~~~~~~
 
 Evaluate the quantized model.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [evaluation]
-            :end-before: # End of [evaluation]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [evaluation]
+    :end-before: # End of [evaluation]
 
 Step 5
 ~~~~~~
 
 If the resulting quantized accuracy is satisfactory, export the model.
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. literalinclude:: ../snippets/torch/apply_omniquant.py
-            :language: python
-            :start-after: # [export]
-            :end-before: # End of [export]
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
+.. literalinclude:: ../snippets/torch/apply_omniquant.py
+    :language: python
+    :start-after: # [export]
+    :end-before: # End of [export]
 
 API
 ===
 
-.. tab-set::
-    :sync-group: platform
-
-    .. tab-item:: PyTorch
-        :sync: torch
-
-        .. include:: ../apiref/torch/omniquant.rst
-            :start-after: # start-after
-    .. tab-item:: ONNX
-        :sync: onnx
-
-        Not supported.
-
-
+.. include:: ../apiref/torch/omniquant.rst
+    :start-after: # start-after

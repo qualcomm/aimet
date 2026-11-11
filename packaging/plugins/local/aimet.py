@@ -242,7 +242,7 @@ def optional_dependencies() -> dict[str, list[str]]:
         ],
         "test": test_deps,
         "docs": [
-            "furo",
+            "sphinx-lumina-theme",
             "nbsphinx",
             "pandoc",
             "sphinx",
@@ -251,6 +251,7 @@ def optional_dependencies() -> dict[str, list[str]]:
             "sphinx-design",
             "sphinx-jinja",
             "sphinx-rtd-theme",
+            "sphinx-substitution-extensions",
             "sphinx-tabs",
         ],
     }

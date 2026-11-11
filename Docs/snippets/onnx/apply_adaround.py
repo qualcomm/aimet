@@ -48,6 +48,7 @@ else:
 # End of model
 
 # Set up dataloader
+# AdaRound optimization requires an unlabeled dataset; this example uses the ImageNet validation data.
 import torchvision
 from torchvision import transforms
 import itertools

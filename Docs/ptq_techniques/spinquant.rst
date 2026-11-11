@@ -221,10 +221,20 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/spinquant.rst
-            :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        .. note::
+            ``aimet-torch``'s ``apply_spinquant`` infers the model's decoder structure
+            automatically; it does not take an explicit ``topology`` argument.
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/spinquant.rst
-            :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        .. include:: ../apiref/onnx/spinquant.rst
+            :start-after: # start-after topology
+            :end-before: # end-before topology

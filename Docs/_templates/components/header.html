@@ -1,0 +1,261 @@
+<header class="fixed top-0 left-0 right-0 z-50 border-b border-lumina-border bg-lumina-bg/80 backdrop-blur-sm">
+
+    {% include "components/announcement.html" %}
+
+    <div class="lumina-header-inner mx-auto flex h-14 max-w-[90rem] items-center justify-between px-4 lg:px-6">
+        {# Logo + project name #}
+        <div class="flex items-center gap-3">
+            <a href="{{ pathto(root_doc) }}"
+               class="flex items-center gap-2 text-lumina-text no-underline hover:opacity-80 transition-opacity">
+                {% if lumina_light_logo is defined and lumina_dark_logo is defined and lumina_light_logo and lumina_dark_logo %}
+                    <img src="{{ lumina_light_logo }}"
+                         alt="{{ project }} logo"
+                         class="lumina-logo-light h-7 w-auto">
+                    <img src="{{ lumina_dark_logo }}"
+                         alt="{{ project }} logo"
+                         class="lumina-logo-dark h-7 w-auto">
+                {% elif lumina_light_logo is defined and lumina_light_logo %}
+                    <img src="{{ lumina_light_logo }}"
+                         alt="{{ project }} logo"
+                         class="h-7 w-auto">
+                {% elif lumina_dark_logo is defined and lumina_dark_logo %}
+                    <img src="{{ lumina_dark_logo }}"
+                         alt="{{ project }} logo"
+                         class="h-7 w-auto">
+                {% elif logo_url is defined and logo_url %}
+                    <img src="{{ logo_url }}" alt="{{ project }} logo" class="h-7 w-auto">
+                {% elif theme_logo_icon and theme_logo_icon != "" %}
+                    {{ lumina_icon(theme_logo_icon, size=theme_logo_icon_size|default(24) |int, css_class="lumina-logo-icon") }}
+                {% else %}
+                    {# Default Lumina logomark — geometric light prism #}
+                    <svg class="lumina-logo h-7 w-7"
+                         viewBox="0 0 32 32"
+                         fill="none"
+                         xmlns="http://www.w3.org/2000/svg"
+                         aria-hidden="true">
+                        <path d="M16 3L28 27H4L16 3Z" stroke="var(--lumina-accent)" stroke-width="2" fill="none" />
+                        <path class="lumina-logo-facet-l" d="M16 10L8 27H16" fill="var(--lumina-accent)" />
+                        <path class="lumina-logo-facet-r" d="M16 10L24 27H16" fill="var(--lumina-accent)" />
+                        <line x1="16" y1="3" x2="16" y2="10" stroke="var(--lumina-accent)" stroke-width="2" />
+                    </svg>
+                {% endif %}
+            </a>
+            {% if not theme_logo_only or theme_logo_only == "false" %}
+                {# Title and version stack vertically below each other.
+                   Each gets its own <a> (home vs. the cross-version
+                   listing) since they're sibling links, not nested. #}
+                <span class="flex flex-col leading-tight">
+                    <a href="{{ pathto(root_doc) }}"
+                       class="font-semibold text-base text-lumina-text no-underline hover:opacity-80 transition-opacity">{{ shorttitle if shorttitle != docstitle else project }}</a>
+                    {% if version %}
+                        <a href="{{ pathto('versions') }}"
+                           class="text-xs text-lumina-text-muted hover:text-lumina-accent no-underline"
+                           title="{{ _('See other versions') }}">v{{ version }}</a>
+                    {% endif %}
+                </span>
+            {% endif %}
+
+            {% include "components/version-switcher.html" %}
+
+        </div>
+        {# Center nav links #}
+        {% if theme_nav_links and theme_nav_links != "" %}
+            <nav class="hidden md:flex items-center gap-6"
+                 aria-label="{{ _('Top navigation') }}">
+                {% for link in theme_nav_links %}
+                    {% if link.children is defined %}
+                        {# Dropdown nav item #}
+                        <div class="relative"
+                             x-data="navDropdown()"
+                             @mouseenter="show()"
+                             @mouseleave="hide()"
+                             @keydown="handleKeydown($event)">
+                            <button x-ref="trigger"
+                                    @click="toggle()"
+                                    class="flex items-center gap-1 text-[0.8125rem] font-medium text-lumina-text-muted hover:text-lumina-text transition-colors cursor-pointer bg-transparent border-none p-0"
+                                    :aria-expanded="open"
+                                    aria-haspopup="true">
+                                {{ link.title }}
+                                <svg class="h-3.5 w-3.5 transition-transform duration-200"
+                                     :class="open && 'rotate-180'"
+                                     fill="none"
+                                     stroke="currentColor"
+                                     viewBox="0 0 24 24"
+                                     stroke-width="2"
+                                     stroke-linecap="round"
+                                     stroke-linejoin="round"
+                                     aria-hidden="true">
+                                    {{ lumina_icon_inner("chevron-down") }}
+                                </svg>
+                            </button>
+                            <div x-show="open"
+                                 x-cloak
+                                 x-transition:enter="transition ease-out duration-150"
+                                 x-transition:enter-start="opacity-0 -translate-y-1"
+                                 x-transition:enter-end="opacity-100 translate-y-0"
+                                 x-transition:leave="transition ease-in duration-100"
+                                 x-transition:leave-start="opacity-100"
+                                 x-transition:leave-end="opacity-0"
+                                 @mouseenter="cancelHide()"
+                                 @mouseleave="hide()"
+                                 class="absolute start-0 top-full mt-1 min-w-[10rem] rounded-lg border border-lumina-border bg-lumina-bg py-1 shadow-lg"
+                                 role="menu">
+                                {% for child in link.children %}
+                                    <a href="{{ child.url }}"
+                                       class="block px-3 py-1.5 text-[0.8125rem] text-lumina-text-muted hover:text-lumina-text hover:bg-lumina-bg-secondary transition-colors no-underline"
+                                       role="menuitem">{{ child.title }}</a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        {# Flat nav link #}
+                        <a href="{{ link.url }}"
+                           class="text-[0.8125rem] font-medium text-lumina-text-muted hover:text-lumina-text transition-colors no-underline">{{ link.title }}</a>
+                    {% endif %}
+                {% endfor %}
+            </nav>
+        {% endif %}
+        {# Right side: search + theme toggle + social #}
+        <div class="flex items-center gap-2">
+            {# Search trigger #}
+            <button data-search-trigger
+                    class="flex items-center gap-2 rounded-lg border border-lumina-border bg-lumina-bg-secondary px-3 py-2 text-[0.8125rem] text-lumina-text-muted hover:border-lumina-accent transition-colors cursor-pointer lg:min-w-56"
+                    aria-label="{{ _('Search documentation') }}"
+                    aria-haspopup="dialog">
+                {{ lumina_icon("search", size=16, css_class="shrink-0") }}
+                <span class="hidden lg:inline flex-1 text-start">{{ _("Search docs...") }}</span>
+                <kbd data-search-shortcut
+                     class="hidden lg:inline rounded border border-lumina-border bg-lumina-bg px-1.5 py-0.5 text-[0.6875rem] font-[family-name:var(--lumina-font-mono)] tracking-[0.02em]">⌘K</kbd>
+            </button>
+            {# Theme toggle #}
+            <button data-theme-toggle
+                    x-data="themeToggle()"
+                    @click="cycle()"
+                    class="relative flex h-9 w-9 items-center justify-center rounded-md text-lumina-text-muted hover:text-lumina-text hover:bg-lumina-bg-secondary transition-colors cursor-pointer"
+                    aria-label="{{ _('Toggle color theme') }}"
+                    title="{{ _('Toggle color theme') }}"
+                    :aria-label="mode === 'light' ? $t('Switch to dark mode') : mode === 'dark' ? $t('Switch to system theme') : $t('Switch to light mode')"
+                    :title="mode === 'light' ? $t('Switch to dark mode') : mode === 'dark' ? $t('Switch to system theme') : $t('Switch to light mode')">
+                {# Sun icon (light mode active) #}
+                <svg x-show="mode === 'light'"
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 rotate-[-90deg] scale-0"
+                     x-transition:enter-end="opacity-100 rotate-0 scale-100"
+                     x-transition:leave="transition ease-in duration-150"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0 scale-0"
+                     class="h-5 w-5 absolute"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     viewBox="0 0 24 24"
+                     aria-hidden="true">
+                    {{ lumina_icon_inner("sun") }}
+                </svg>
+                {# Moon icon (dark mode active) #}
+                <svg x-show="mode === 'dark'"
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 rotate-90 scale-0"
+                     x-transition:enter-end="opacity-100 rotate-0 scale-100"
+                     x-transition:leave="transition ease-in duration-150"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0 scale-0"
+                     class="h-5 w-5 absolute"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     viewBox="0 0 24 24"
+                     aria-hidden="true">
+                    {{ lumina_icon_inner("moon") }}
+                </svg>
+                {# Monitor icon (auto mode active) #}
+                <svg x-show="mode === 'auto'"
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 scale-0"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-150"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0 scale-0"
+                     class="h-5 w-5 absolute"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     viewBox="0 0 24 24"
+                     aria-hidden="true">
+                    {{ lumina_icon_inner("monitor") }}
+                </svg>
+            </button>
+            {% if lumina_wide_layout_mode == "toggle" %}
+                {# Layout width toggle — only visible on wide screens #}
+                <button x-data="layoutToggle()"
+                        @click="toggle()"
+                        class="hidden xl:flex h-9 w-9 items-center justify-center rounded-md text-lumina-text-muted hover:text-lumina-text hover:bg-lumina-bg-secondary transition-colors cursor-pointer"
+                        aria-label="{{ _('Toggle layout width') }}"
+                        title="{{ _('Toggle layout width') }}"
+                        :aria-label="wide ? $t('Switch to normal layout') : $t('Switch to wide layout')"
+                        :title="wide ? $t('Switch to normal layout') : $t('Switch to wide layout')"
+                        type="button">
+                    {# Expand icon (normal mode) #}
+                    <svg x-show="!wide"
+                         class="h-4 w-4"
+                         viewBox="0 0 24 24"
+                         fill="none"
+                         stroke="currentColor"
+                         aria-hidden="true"
+                         stroke-width="2"
+                         stroke-linecap="round"
+                         stroke-linejoin="round">
+                        {{ lumina_icon_inner("maximize-2") }}
+                    </svg>
+                    {# Collapse icon (wide mode) #}
+                    <svg x-show="wide"
+                         x-cloak
+                         class="h-4 w-4"
+                         viewBox="0 0 24 24"
+                         fill="none"
+                         stroke="currentColor"
+                         aria-hidden="true"
+                         stroke-width="2"
+                         stroke-linecap="round"
+                         stroke-linejoin="round">
+                        {{ lumina_icon_inner("minimize-2") }}
+                    </svg>
+                </button>
+            {% endif %}
+            {# Social links #}
+            {% if theme_social_links and theme_social_links != "" %}
+                {% for link in theme_social_links %}
+                    <a href="{{ link.url }}"
+                       class="rounded-md p-2 text-lumina-text-muted hover:text-lumina-text transition-colors no-underline"
+                       target="_blank"
+                       rel="noopener"
+                       title="{{ link.icon | capitalize }}"
+                       aria-label="{{ link.icon | capitalize }} {{ _("(opens in new tab)") }}">
+                        {% if link.icon == "github" %}
+                            <svg class="h-5 w-5"
+                                 fill="currentColor"
+                                 viewBox="0 0 24 24"
+                                 aria-hidden="true">
+                                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                            </svg>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            {% endif %}
+            {# Mobile hamburger — hidden on landing page which has no sidebar #}
+            {% if not is_landing %}
+                <button data-sidebar-toggle
+                        class="rounded-md p-2 text-lumina-text-muted hover:text-lumina-text hover:bg-lumina-bg-secondary transition-colors lg:hidden cursor-pointer"
+                        aria-label="{{ _('Toggle navigation') }}"
+                        aria-expanded="false"
+                        aria-controls="lumina-sidebar-drawer">{{ lumina_icon("menu", size=20) }}</button>
+            {% endif %}
+        </div>
+    </div>
+</header>

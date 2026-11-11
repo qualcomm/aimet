@@ -226,10 +226,20 @@ API
         :sync: torch
 
         .. include:: ../apiref/torch/adascale.rst
-            :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        .. note::
+            ``aimet-torch``'s ``apply_adascale`` infers decoder block boundaries automatically; it
+            does not take an explicit ``topology`` argument.
 
     .. tab-item:: ONNX
         :sync: onnx
 
         .. include:: ../apiref/onnx/adascale.rst
-            :start-after: # start-after
+            :start-after: # start-after toplevel
+            :end-before: # end-before toplevel
+
+        .. include:: ../apiref/onnx/adascale.rst
+            :start-after: # start-after topology
+            :end-before: # end-before topology

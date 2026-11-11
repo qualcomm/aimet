@@ -34,11 +34,6 @@ aimet_torch API
 ..
   # start-after
 
-aimet_torch
-===========
-
-AIMET quantization for PyTorch models provides the following functionality.
-
 - :ref:`aimet_torch.quantsim <apiref-torch-quantsim>`
 - :ref:`aimet_torch.nn <apiref-torch-nn>`
 - :ref:`aimet_torch.quantization <apiref-torch-quantization>`

@@ -21,6 +21,7 @@ dummy_input = torch.randn(1, 3, 224, 224).to(device)
 from aimet_torch import QuantizationSimModel
 from aimet_torch.common.quantsim_config.utils import get_path_for_per_channel_config
 
+# Use a per-channel quantization config; update it if your model needs a different config.
 sim = QuantizationSimModel(model=model, dummy_input=dummy_input, config_file=get_path_for_per_channel_config())
 # [step_2]
 num_epochs = 20

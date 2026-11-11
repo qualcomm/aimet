@@ -17,14 +17,14 @@ AIMET PyTorch ModelPreparer API requires minimum PyTorch 1.9 version.
 Code Examples
 -------------
 
-**Required imports**
+.. rubric:: Required imports
 
 .. literalinclude:: ../../legacy/torch_code_examples/model_preparer_code_example.py
    :language: python
    :start-after: # ModelPreparer imports
    :end-before: # End of import statements
 
-**Example 1: Model with Functional relu**
+.. rubric:: Example 1: Model with Functional relu
 
 We begin with the following model, which contains two functional relus and relu method inside forward method.
 
@@ -46,7 +46,7 @@ prepared_model should have all three functional relus now converted to :mod:`tor
 model guidelines.
 
 
-**Example 2: Model with reused torch.nn.ReLU module**
+.. rubric:: Example 2: Model with reused torch.nn.ReLU module
 
 We begin with the following model, which contains torch.nn.ReLU module which is used at multiple instances inside
 model forward function.
@@ -67,7 +67,7 @@ the outputs of both models.
 
 prepared_model should have separate independent torch.nn.Module instances which satisfy model guidelines.
 
-**Example 3: Model with elementwise Add**
+.. rubric:: Example 3: Model with elementwise Add
 
 We begin with the following model, which contains elementwise Add operation inside model forward function.
 
@@ -91,7 +91,8 @@ Limitations
 .. note::
     Limitations of torch.fx symbolic trace: https://pytorch.org/docs/stable/fx.html#limitations-of-symbolic-tracing
 
-**1. Dynamic control flow is not supported by torch.fx**
+.. rubric:: 1. Dynamic control flow is not supported by torch.fx
+
 Loops or if-else statement where condition may depend on some of the input values. It can only trace one execution
 path and all the other branches that weren't traced will be ignored. For example, following simple function when traced,
 will fail with TraceError saying that 'symbolically traced variables cannot be used as inputs to control flow'::
@@ -151,7 +152,7 @@ Workaround for this problem:
         model_transformed = prepare_model(model)
 
 
-**3. Customizing the behavior of tracing by overriding the Tracer.is_leaf_module() API**
+.. rubric:: 3. Customizing the behavior of tracing by overriding the Tracer.is_leaf_module() API
 
 In symbolic tracing, leaf modules appears as node rather than being traced through and all the standard torch.nn modules
 are default set of leaf modules. But this behavior can be changed by overriding the Tracer.is_leaf_module() API.
@@ -181,7 +182,7 @@ traced through. For example, let's examine following code snippet where we don't
 
 In this example, 'self.custom' is preserved as node and not being traced through.
 
-**4. Tensor constructors are not traceable**
+.. rubric:: 4. Tensor constructors are not traceable
 
 For example, let's examine following code snippet::
 
