@@ -37,6 +37,7 @@ from aimet_torch import QuantizationSimModel
 from aimet_torch.adascale.adascale_optimizer import (
     AdaScale,
     AdaScaleModelConfig,
+    _get_adascale_qdq_cls,
     adascale_model_config_dict,
     apply_adascale,
     PerBlockCheckpointManager,
@@ -156,8 +157,6 @@ FUSED_EXPERTS_MODEL_CONFIGS = {
     },
 }
 
-supported_modules: List = [QuantizedLinear, QuantizedConv2d]
-
 
 # ============================================================================
 # Fixtures
@@ -259,7 +258,7 @@ def get_quantsim_ready_model(model, dummy_input: dict):
 def has_adascale_quantizers(block: torch.nn.Module) -> bool:
     """Check if block already has AdaScale quantizers installed"""
     for module in block.modules():
-        if isinstance(module, tuple(supported_modules)):
+        if _get_adascale_qdq_cls(module) is not None:
             weight_quantizer = module.param_quantizers["weight"]
             if isinstance(weight_quantizer, AdaScaleQuantizeDequantize):
                 return True
@@ -1124,7 +1123,7 @@ class TestCheckpointManagerFunctionality:
         AdaScale._replace_with_adascale_weight_quantizers(fxt_block)
 
         for module in fxt_block.modules():
-            if isinstance(module, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(module) is not None:
                 weight_quantizer = module.param_quantizers["weight"]
                 if isinstance(weight_quantizer, AdaScaleQuantizeDequantize):
                     with torch.no_grad():
@@ -1147,7 +1146,7 @@ class TestCheckpointManagerFunctionality:
 
         # Corrupt the AdaScale params
         for module in fxt_block.modules():
-            if isinstance(module, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(module) is not None:
                 if isinstance(
                     module.param_quantizers["weight"], AdaScaleQuantizeDequantize
                 ):
@@ -1571,10 +1570,12 @@ class TestAdaScaleFusedExperts:
         Then: 1) Each fused experts weight gets a linear AdaScale quantizer, whose scales are per
                  expert: s2 per weight element and s3 per expert output channel
               2) Every expert's AdaScale parameters are trained
-              3) Folding keeps the block output and leaves plain QuantizeDequantize quantizers
+              3) The router weight gets a linear AdaScale quantizer too, which is trained
+              4) Folding keeps the block output and leaves plain QuantizeDequantize quantizers
         """
         block = AdaScale._get_blocks(fxt_fused_experts_quantsim)[0].mlp
         ((_, experts),) = get_fused_experts(block)
+        router = block.gate
         inputs = [((torch.randn(1, SEQUENCE_LENGTH, HIDDEN_SIZE),), {})]
         # Large learning rates, so that a few iterations move every AdaScale parameter
         AdaScale.adascale_block(
@@ -1596,6 +1597,12 @@ class TestAdaScaleFusedExperts:
                 # [num_experts, ...]: each expert's slice moved from its zero init
                 assert (param.flatten(1).abs().sum(dim=1) > 0).all()
 
+        quantizer = router.param_quantizers["weight"]
+        assert isinstance(quantizer, AdaScaleLinearQuantizeDequantize)
+        assert quantizer.s2.shape == router.weight.shape
+        for param in (quantizer.beta, quantizer.gamma, quantizer.s2, quantizer.s3):
+            assert param.abs().sum() > 0
+
         with remove_activation_quantizers(block), torch.no_grad():
             expected = block(*inputs[0][0])
             AdaScale.fold_adascale_quantizers(block)
@@ -1603,6 +1610,7 @@ class TestAdaScaleFusedExperts:
 
         for name in experts._param_channel_axes:
             assert type(experts.param_quantizers[name]) is QuantizeDequantize
+        assert type(router.param_quantizers["weight"]) is QuantizeDequantize
 
     def test_save_and_load_completed_block(
         self, fxt_fused_experts_quantsim, fxt_checkpoint_dir
@@ -1624,9 +1632,10 @@ class TestAdaScaleFusedExperts:
         expected_states = [deepcopy(q.state_dict()) for q in quantizers]
 
         adascale_params = AdaScale.extract_adascale_params(block)
-        assert {f"{experts_name}.{name}" for name in experts._param_channel_axes} <= {
-            key.split("/")[0] for key in adascale_params
-        }
+        assert {
+            *(f"{experts_name}.{name}" for name in experts._param_channel_axes),
+            "mlp.gate",
+        } <= {key.split("/")[0] for key in adascale_params}
         manager.save_completed_block(block=block, block_idx=0)
 
         # Corrupt the AdaScale params
@@ -1643,11 +1652,30 @@ class TestAdaScaleFusedExperts:
                     continue
                 assert torch.equal(tensor, expected_state[key]), key
 
+    def test_get_adascale_qdq_cls(self, fxt_fused_experts_quantsim):
+        """
+        When: Get the AdaScale QDQ class of each module of a MoE decoder layer
+        Then: Linear QDQ for the linear layers, fused experts, and router, and None for the
+              other modules, including other quantized modules with weights such as RMSNorm
+        """
+        block = AdaScale._get_blocks(fxt_fused_experts_quantsim)[0]
+        ((_, experts),) = get_fused_experts(block)
+        linear_like = {experts, block.mlp.gate} | {
+            m for m in block.modules() if isinstance(m, QuantizedLinear)
+        }
+        for module in block.modules():
+            expected = (
+                AdaScaleLinearQuantizeDequantize if module in linear_like else None
+            )
+            assert _get_adascale_qdq_cls(module) is expected, type(module)
+        # Unquantized modules have no weight quantizers to replace
+        assert _get_adascale_qdq_cls(torch.nn.Linear(2, 2)) is None
+
     def test_apply_adascale(self, fxt_fused_experts_quantsim):
         """
         When: Apply AdaScale to a model with fused experts
-        Then: The fused experts weights of every decoder layer are updated, and their AdaScale
-              quantizers are folded
+        Then: The fused experts and router weights of every decoder layer are updated, and their
+              AdaScale quantizers are folded
         """
         # All-ones attention mask: the linear attention layers of Qwen3.5 pass the attention mask
         # of fxt_dataloader (all zeros) to SDPA as int, which SDPA rejects
@@ -1663,11 +1691,17 @@ class TestAdaScaleFusedExperts:
         )
         experts = get_fused_experts(fxt_fused_experts_quantsim.model)
         assert len(experts) == NUM_HIDDEN_LAYERS
+        routers = [
+            m
+            for n, m in fxt_fused_experts_quantsim.model.named_modules()
+            if n.endswith("mlp.gate")
+        ]
+        assert len(routers) == NUM_HIDDEN_LAYERS
         original_weights = [
             (getattr(e, name).detach().clone(), e, name)
             for _, e in experts
             for name in e._param_channel_axes
-        ]
+        ] + [(r.weight.detach().clone(), r, "weight") for r in routers]
 
         AdaScale.apply_adascale(
             fxt_fused_experts_quantsim, data_loader, num_iterations=NUM_ITERATIONS

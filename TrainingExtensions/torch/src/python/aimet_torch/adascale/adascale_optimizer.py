@@ -85,8 +85,13 @@ from aimet_torch.common.early_stopping import (
 )
 from aimet_torch.common.progress import progress_bar
 from aimet_torch import QuantizationSimModel
-from aimet_torch.nn import QuantizedLinear, compute_param_encodings, QuantizedConv2d
-from aimet_torch.nn.transformers.fused_experts import _FusedExpertsQuantizationMixin
+from aimet_torch.nn import (
+    BaseQuantizationMixin,
+    QuantizedLinear,
+    compute_param_encodings,
+    QuantizedConv2d,
+)
+from aimet_torch.onnx_utils import map_torch_types_to_onnx
 from aimet_torch.utils import (
     default_forward_fn,
     remove_all_quantizers,
@@ -252,13 +257,19 @@ def _mse_loss_fn(
     return (fp_out - qt_out).abs().pow(p).sum(1).mean()
 
 
-# Matched with isinstance. _FusedExpertsQuantizationMixin stands for the quantized fused experts
-# class of every transformers MoE model (e.g. QuantizedQwen3MoeExperts), which all derive from it
-supported_modules: List = [
-    QuantizedLinear,
-    QuantizedConv2d,
-    _FusedExpertsQuantizationMixin,
-]
+def _get_adascale_qdq_cls(module: torch.nn.Module) -> Optional[Type]:
+    """Return the AdaScale QDQ class for the weights of module, or None if it is not supported"""
+    if isinstance(module, QuantizedConv2d):
+        return AdaScaleConv2dQuantizeDequantize
+
+    # Quantized modules that quantsim configures as a linear op: besides QuantizedLinear
+    if isinstance(module, QuantizedLinear) or (
+        isinstance(module, BaseQuantizationMixin)
+        and {"Gemm", "MatMul"} & set(map_torch_types_to_onnx.get(type(module), ()))
+    ):
+        return AdaScaleLinearQuantizeDequantize
+
+    return None
 
 
 def _get_checkpoint_key(module_name: str, weight_name: str) -> str:
@@ -733,7 +744,7 @@ class AdaScale:
 
         adascale_params = {}
         for name, module in block.named_modules():
-            if not isinstance(module, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(module) is None:
                 continue
             for weight_name, weight_qtzr in module.param_quantizers.named_children():
                 if weight_name == "bias":
@@ -767,7 +778,7 @@ class AdaScale:
         adascale_params = AdaScale.unflatten_state_dict(adascale_params)
 
         for name, module in block.named_modules():
-            if not isinstance(module, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(module) is None:
                 continue
             for weight_name, weight_qtzr in module.param_quantizers.named_children():
                 if weight_name == "bias":
@@ -872,14 +883,14 @@ class AdaScale:
     def _replace_with_adascale_weight_quantizers(cls, block: torch.nn.Module):
         """Replace all the weight quantizers in supported modules with adascale quantizers"""
         for layer in block.modules():
-            if not isinstance(layer, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(layer) is None:
                 continue
             for weight_name, weight_qtzr in layer.param_quantizers.named_children():
                 if weight_name == "bias":
                     continue
                 if not isinstance(weight_qtzr, QuantizeDequantize):
                     continue
-                layer.param_quantizers[weight_name] = cls._get_adascale_qdq_cls(layer)(
+                layer.param_quantizers[weight_name] = _get_adascale_qdq_cls(layer)(
                     weight_qtzr, getattr(layer, weight_name).shape
                 )
 
@@ -887,7 +898,7 @@ class AdaScale:
     @torch.no_grad()
     def fold_adascale_quantizers(cls, module: torch.nn.Module):
         for layer in module.modules():
-            if not isinstance(layer, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(layer) is None:
                 continue
             for weight_name, weight_qtzr in layer.param_quantizers.named_children():
                 if weight_name == "bias":
@@ -908,7 +919,7 @@ class AdaScale:
         all_scale_parameters = []
         all_beta_gamma_parameters = []
         for module in non_leaf_module.modules():
-            if not isinstance(module, tuple(supported_modules)):
+            if _get_adascale_qdq_cls(module) is None:
                 continue
             for weight_name, weight_qtzr in module.param_quantizers.named_children():
                 if weight_name == "bias":
@@ -927,24 +938,6 @@ class AdaScale:
         """Helper to update requires_grad to the input `val` for all the params in `adascale_params`"""
         for p in adascale_params:
             p.requires_grad = val
-
-    @staticmethod
-    def _get_adascale_qdq_mapping() -> dict:
-        return {
-            QuantizedLinear: AdaScaleLinearQuantizeDequantize,
-            QuantizedConv2d: AdaScaleConv2dQuantizeDequantize,
-            # Each expert in the fused experts weights is a linear layer
-            _FusedExpertsQuantizationMixin: AdaScaleLinearQuantizeDequantize,
-        }
-
-    @classmethod
-    def _get_adascale_qdq_cls(cls, layer: torch.nn.Module) -> Type:
-        """Return the AdaScale QDQ class for the layer, matched with isinstance"""
-        return next(
-            qdq_cls
-            for module_cls, qdq_cls in cls._get_adascale_qdq_mapping().items()
-            if isinstance(layer, module_cls)
-        )
 
 
 class _SamplingIterable:
