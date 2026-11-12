@@ -12,8 +12,10 @@ from pathlib import Path
 
 from aimet_onnx.quantsim import load_encodings_to_sim
 from aimet_onnx.llm_topology import analyze_llm_topology
+from aimet_onnx.llm_topology.topology import ACTIVE_NORM_MODEL_TYPES
 
 from GenAILab.bench.yaml_config_parser import YAMLConfigParser
+from GenAILab.qai_hub_lm.models.utils.layer_cache import resolve_model_type
 from GenAILab.bench.analysis import run_analysis
 from GenAILab.bench.profiler import (
     ComponentRecipeStats,
@@ -217,7 +219,13 @@ def run_experiment(
     # in missing names, but a raw export has not been through that, so a graph
     # from an exporter that leaves nodes unnamed raises here with a clear message
     # instead of failing opaquely later.
-    topology = analyze_llm_topology(entry.backbone, entry.config.model_type)
+    #
+    # analyze_llm_topology takes a VLM's top-level model_type when it analyzes
+    # it by active norms, else the text config's (its name tables are keyed on
+    # that), so a composite model like Qwen3-ASR resolves to its decoder.
+    topology = analyze_llm_topology(
+        entry.backbone, resolve_model_type(entry.config, ACTIVE_NORM_MODEL_TYPES)
+    )
 
     # Apply the pre-sim chain generically (name -> registered
     # PreQuantizationTechnique -> apply(float_model, **flags)); the onnx float
@@ -324,6 +332,7 @@ def run_experiment(
             recipe_cache=recipe_cache,
             adaptations=config.model.adaptations,
             pre_sim=config.recipe.pre_sim,
+            audio_frames=audio_frames,
             topology=topology,
         )
 
@@ -360,6 +369,7 @@ def run_experiment(
                 recipe_cache=recipe_cache,
                 adaptations=config.model.adaptations,
                 pre_sim=config.recipe.pre_sim,
+                audio_frames=audio_frames,
             )
 
     # Finalize embedding quantization after recipes have had a chance to

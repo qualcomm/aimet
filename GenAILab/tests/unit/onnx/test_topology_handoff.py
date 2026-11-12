@@ -119,6 +119,44 @@ class TestRecipesConsumeSuppliedTopology:
         mock_analyze.assert_not_called()
 
 
+class TestAdaScaleModelConfigLookup:
+    """AdaScale picks its per-model settings by the generator config's model_type."""
+
+    @staticmethod
+    def _config_used(model_type, text_model_type, table):
+        from GenAILab.bench.onnx.quant_recipes import AdaScale
+
+        generator = MagicMock()
+        generator.config.model_type = model_type
+        generator.config.text_config.model_type = text_model_type
+        generator.config.text_config.num_hidden_layers = 2
+        with (
+            patch(
+                "GenAILab.bench.onnx.quant_recipes._prefill_inputs",
+                return_value=[{"input_ids": None}],
+            ),
+            patch("GenAILab.bench.onnx.quant_recipes.apply_adascale") as mock_adascale,
+            patch.dict(
+                "GenAILab.bench.onnx.quant_recipes.adascale_model_config_dict",
+                table,
+                clear=True,
+            ),
+        ):
+            AdaScale.apply(MagicMock(), generator, MagicMock(), topology=MagicMock())
+        return mock_adascale.call_args.args[2]
+
+    def test_composite_without_entry_uses_its_decoder_entry(self):
+        """Qwen3-ASR has no entry: it runs with its qwen3 decoder's settings."""
+        qwen3 = MagicMock(name="qwen3")
+        assert self._config_used("qwen3_asr", "qwen3", {"qwen3": qwen3}) is qwen3
+
+    def test_composite_with_entry_keeps_it(self):
+        """A listed composite (qwen3_vl) is not re-routed to its text config."""
+        qwen3_vl = MagicMock(name="qwen3_vl")
+        table = {"qwen3_vl": qwen3_vl, "qwen3_vl_text": MagicMock()}
+        assert self._config_used("qwen3_vl", "qwen3_vl_text", table) is qwen3_vl
+
+
 class TestChainsThreadTopology:
     """Both chains pass the topology to every step they run."""
 

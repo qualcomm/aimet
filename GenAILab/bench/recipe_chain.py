@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
+import inspect
 from typing import TYPE_CHECKING
 
 import torch
@@ -19,6 +20,18 @@ from GenAILab.qai_hub_lm.transforms.exportable_moe import forced_expert_activati
 
 if TYPE_CHECKING:
     from GenAILab.bench.yaml_config_parser import ResolvedStep
+
+
+def _loader_accepts(dataset_cls, name: str) -> bool:
+    """Whether ``dataset_cls.load_encoded_dataset`` takes the keyword ``name``.
+
+    A ``**kwargs`` loader (``Interleaved``) takes everything and filters per
+    sub-dataset itself.
+    """
+    params = inspect.signature(dataset_cls.load_encoded_dataset).parameters
+    return name in params or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
 
 
 def apply_quantization_chain(
@@ -37,6 +50,7 @@ def apply_quantization_chain(
     component="backbone",
     recipe_cache=None,
     pre_sim=None,
+    audio_frames=None,
     topology=None,
     adaptations=None,
 ):
@@ -87,8 +101,16 @@ def apply_quantization_chain(
             # depending on its sub-datasets, so it only requires a processor
             # when the model actually provides one.
             if not issubclass(dataset_cls, TextDataset):
-                if image_size is not None:
+                # Only datasets that take them: an image dataset has no
+                # audio_frames, an audio one no image_size.
+                if image_size is not None and _loader_accepts(
+                    dataset_cls, "image_size"
+                ):
                     dataset_kwargs.setdefault("image_size", image_size)
+                if audio_frames is not None and _loader_accepts(
+                    dataset_cls, "audio_frames"
+                ):
+                    dataset_kwargs.setdefault("audio_frames", audio_frames)
                 if not issubclass(dataset_cls, Interleaved):
                     assert isinstance(tokenizer, ProcessorMixin), (
                         f"Multimodal dataset {dataset_cls.__name__} requires a "
@@ -107,11 +129,23 @@ def apply_quantization_chain(
                 gen_ctx = generator.on_device(torch.device("cpu"))
             else:
                 gen_ctx = contextlib.nullcontext()
+            # `generator` (needed for ``generator.pad_audio_item`` on
+            # statically-shaped audio export) is passed only to the loader
+            # call, not merged into ``dataset_kwargs`` -- that dict is also
+            # stored verbatim in ``RecipeStepStats`` for the JSON report, and
+            # a live model object there is not JSON-serializable.
+            load_kwargs = dict(dataset_kwargs)
+            if (
+                audio_frames is not None
+                and not issubclass(dataset_cls, TextDataset)
+                and _loader_accepts(dataset_cls, "model")
+            ):
+                load_kwargs.setdefault("model", generator)
             with gen_ctx:
                 train_dataset = dataset_cls.load_encoded_dataset(
                     dataset_tokenizer,
                     context_length,
-                    **dataset_kwargs,
+                    **load_kwargs,
                 )
         else:
             train_dataset = None

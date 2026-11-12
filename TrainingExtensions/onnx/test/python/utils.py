@@ -48,11 +48,11 @@ def patch_fuse_supergroups(enabled: bool):
 def force_random_weight_init(vocab_size: int | None = None):
     """Patch ``AutoModelForCausalLM.from_pretrained`` to build from config with set vocab size."""
     from transformers import AutoModelForCausalLM
-    from GenAILab.qai_hub_lm.models.utils.layer_cache import _resolve_text_config
+    from GenAILab.qai_hub_lm.models.utils.layer_cache import resolve_text_config
 
     def _from_config_stub(model_id, config=None, **kwargs):
         # Find decoder vocab_size if nested
-        text_config = _resolve_text_config(config)
+        text_config = resolve_text_config(config)
         if vocab_size is not None:
             text_config.vocab_size = vocab_size
         return AutoModelForCausalLM.from_config(text_config)

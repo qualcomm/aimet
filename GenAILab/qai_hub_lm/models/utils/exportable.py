@@ -14,7 +14,7 @@ from .layer_cache import (
     AttentionType,
     all_states,
     build_layer_cache_descriptors,
-    _resolve_text_config,
+    resolve_text_config,
 )
 
 
@@ -119,7 +119,7 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
 
     def _build_cache(self, states: dict[str, torch.Tensor]):
         """Build a cache object from the carried state inputs, keyed by state name."""
-        resolved = _resolve_text_config(self.config)
+        resolved = resolve_text_config(self.config)
         descriptors = build_layer_cache_descriptors(resolved)
         has_linear = any(d.attention_type == AttentionType.LINEAR for d in descriptors)
 
@@ -307,7 +307,7 @@ class ONNXExportableModuleWithCache(torch.nn.Module):
                 flat_output_past_key_values.append(cache_layer.indexer_keys)
         if any(s.name == PAST_POSITION_IDS for s in all_states(descriptors)):
             owner, attr = indexer_position_ids_owner(
-                new_past_key_values, _resolve_text_config(self.config)
+                new_past_key_values, resolve_text_config(self.config)
             )
             flat_output_past_key_values.append(getattr(owner, attr).transpose(0, 1))
 

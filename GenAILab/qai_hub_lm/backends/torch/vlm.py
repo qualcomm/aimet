@@ -23,7 +23,7 @@ from GenAILab.qai_hub_lm.models.components import model_components
 from GenAILab.qai_hub_lm.models.utils.exportable import ONNXExportableModuleWithCache
 from GenAILab.qai_hub_lm.models.utils.layer_cache import (
     build_layer_cache_descriptors,
-    _resolve_text_config,
+    resolve_text_config,
 )
 from GenAILab.qai_hub_lm.backends.torch.quantsim_utils import (
     _apply_block_granularity_to_decoder_stack,
@@ -86,7 +86,7 @@ class VLM_Torch:
         )
 
         # Backbone
-        text_config = _resolve_text_config(model.config)
+        text_config = resolve_text_config(model.config)
         layer_cache_descs = build_layer_cache_descriptors(text_config)
 
         language_model = cls.get_language_model(model)

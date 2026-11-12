@@ -163,6 +163,7 @@ def run_experiment(
                 recipe_cache=recipe_cache,
                 adaptations=config.model.adaptations,
                 pre_sim=config.recipe.pre_sim,
+                audio_frames=audio_frames,
             )
 
         # One chain per modality encoder. Each runs with the backbone's
@@ -192,6 +193,7 @@ def run_experiment(
                     recipe_cache=recipe_cache,
                     adaptations=config.model.adaptations,
                     pre_sim=config.recipe.pre_sim,
+                    audio_frames=audio_frames,
                 )
 
         # Finalize embedding quantization after recipes have had a chance to

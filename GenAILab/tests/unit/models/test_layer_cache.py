@@ -13,11 +13,12 @@ from GenAILab.qai_hub_lm.models.utils.layer_cache import (
     AttentionType,
     LayerCacheDescriptor,
     StateKind,
-    _resolve_text_config,
     all_states,
     build_layer_cache_descriptors,
     cache_state_names,
     kv_length_dynamic_axes,
+    resolve_model_type,
+    resolve_text_config,
 )
 
 
@@ -295,7 +296,7 @@ class TestResolveTextConfig:
             text_config: TextCfg = None
 
         vlm_cfg = VLMCfg(text_config=TextCfg())
-        assert _resolve_text_config(vlm_cfg) is vlm_cfg.text_config
+        assert resolve_text_config(vlm_cfg) is vlm_cfg.text_config
 
     def test_returns_same_config_for_plain_llm(self):
         @dataclass
@@ -303,7 +304,7 @@ class TestResolveTextConfig:
             num_hidden_layers: int = 4
 
         cfg = LLMCfg()
-        assert _resolve_text_config(cfg) is cfg
+        assert resolve_text_config(cfg) is cfg
 
     def test_ignores_non_config_text_config(self):
         @dataclass
@@ -312,7 +313,42 @@ class TestResolveTextConfig:
             text_config: dict = None
 
         cfg = Cfg(text_config={"num_hidden_layers": 8})
-        assert _resolve_text_config(cfg) is cfg
+        assert resolve_text_config(cfg) is cfg
+
+
+class TestResolveModelType:
+    @staticmethod
+    def _composite(model_type: str, text_model_type: str):
+        @dataclass
+        class TextCfg:
+            model_type: str
+            num_hidden_layers: int = 4
+
+        @dataclass
+        class CompositeCfg:
+            model_type: str
+            text_config: TextCfg
+
+        return CompositeCfg(model_type, TextCfg(text_model_type))
+
+    def test_listed_composite_keeps_its_own_entry(self):
+        # qwen3_vl is listed and qwen3_vl_text is not: it must keep its own name.
+        cfg = self._composite("qwen3_vl", "qwen3_vl_text")
+        assert resolve_model_type(cfg, {"qwen3", "qwen3_vl"}) == "qwen3_vl"
+
+    def test_unlisted_composite_resolves_to_its_decoder(self):
+        cfg = self._composite("qwen3_asr", "qwen3")
+        assert resolve_model_type(cfg, {"qwen3", "qwen3_vl"}) == "qwen3"
+
+    def test_plain_llm_keeps_its_model_type(self):
+        @dataclass
+        class LLMCfg:
+            model_type: str = "llama"
+            num_hidden_layers: int = 4
+
+        # Unlisted and not composite: returned as-is, so the caller's own
+        # unknown-model error still names it.
+        assert resolve_model_type(LLMCfg(), {"qwen3"}) == "llama"
 
 
 class TestQwen4ExpStates:

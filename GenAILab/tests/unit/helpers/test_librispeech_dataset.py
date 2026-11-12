@@ -13,6 +13,7 @@ import torch
 
 from GenAILab.bench.datasets import (
     AUDIO_SAMPLING_RATE,
+    Interleaved,
     LazyLibriSpeechDataset,
     LibriSpeech,
     MultimodalDataset,
@@ -243,6 +244,8 @@ class TestLibriSpeechWrapper:
         captured = {}
 
         class _Fake:
+            column_names = ["file", "audio", "text", "speaker_id", "id"]
+
             def __init__(self, items):
                 self.items = items
 
@@ -256,14 +259,26 @@ class TestLibriSpeechWrapper:
             def __len__(self):
                 return len(self.items)
 
-        def fake_load_dataset(repo, config, split=None, revision=None):
-            captured.update(repo=repo, config=config, split=split, revision=revision)
+        def fake_load_dataset(
+            repo, data_files=None, split=None, revision=None, verification_mode=None
+        ):
+            captured.update(
+                repo=repo,
+                data_files=data_files,
+                split=split,
+                revision=revision,
+                verification_mode=verification_mode,
+            )
             return _Fake(_raw_dataset(5))
 
         monkeypatch.setattr("GenAILab.bench.datasets.load_dataset", fake_load_dataset)
         raw = LibriSpeech.load_dataset("test.clean")
         assert captured["repo"] == "openslr/librispeech_asr"
-        assert captured["config"] == "all"
+        # Scoped to this split's parquet shard(s) only, so `datasets` never
+        # downloads/prepares the other splits of the 'all' config.
+        assert captured["data_files"] == {"test.clean": "all/test.clean/*.parquet"}
+        # The repo's dataset_infos.json declares every split; skip the split check.
+        assert captured["verification_mode"] == "no_checks"
         assert captured["split"] == "test.clean"
         assert captured["revision"] == LibriSpeech.REVISION
         # Audio decoding is done by decode_audio_column, not by `datasets`.
@@ -271,8 +286,22 @@ class TestLibriSpeechWrapper:
         assert captured["cast"][1].decode is False
         assert len(raw) == 5
 
+    def test_load_dataset_rejects_missing_columns(self, monkeypatch):
+        # verification_mode="no_checks" would let a re-laid-out repo load; the
+        # column check makes it fail at the load site instead.
+        class _NoText:
+            column_names = ["file", "audio"]
+
+        monkeypatch.setattr(
+            "GenAILab.bench.datasets.load_dataset", lambda *a, **k: _NoText()
+        )
+        with pytest.raises(ValueError, match=r"missing column\(s\) \['text'\]"):
+            LibriSpeech.load_dataset("test.clean")
+
     def test_num_samples_takes_the_head_of_the_split(self, monkeypatch):
         class _Fake:
+            column_names = ["file", "audio", "text", "speaker_id", "id"]
+
             def __init__(self, items):
                 self.items = items
 
@@ -355,3 +384,43 @@ class TestGenericChatTemplateBranch:
         audio_kwargs = processor.calls[0]["processor_kwargs"]["audio_kwargs"]
         assert audio_kwargs["sampling_rate"] == AUDIO_SAMPLING_RATE
         assert "sampling_rate" not in processor.calls[0]
+
+
+class TestInterleavedForwarding:
+    def test_audio_kwargs_reach_a_librispeech_sub_dataset(self, monkeypatch):
+        monkeypatch.setattr(
+            LibriSpeech, "load_dataset", staticmethod(lambda *a, **k: _raw_dataset(2))
+        )
+        model = object()
+        wrapper = Interleaved.load_encoded_dataset(
+            _FakeASRProcessor(),
+            context_length=512,
+            source_datasets=[{"name": "LibriSpeech", "split": "validation.clean"}],
+            audio_frames=3000,
+            model=model,
+            # Not a LibriSpeech kwarg: must be dropped, not raise TypeError.
+            image_size=(224, 224),
+        )
+        (sub,) = wrapper.datasets
+        assert isinstance(sub, LazyLibriSpeechDataset)
+        assert sub.audio_frames == 3000
+        assert sub.model is model
+
+    def test_sub_dataset_config_wins_over_parent_kwargs(self, monkeypatch):
+        monkeypatch.setattr(
+            LibriSpeech, "load_dataset", staticmethod(lambda *a, **k: _raw_dataset(2))
+        )
+        wrapper = Interleaved.load_encoded_dataset(
+            _FakeASRProcessor(),
+            context_length=512,
+            source_datasets=[
+                {
+                    "name": "LibriSpeech",
+                    "split": "validation.clean",
+                    "audio_frames": 1000,
+                }
+            ],
+            audio_frames=3000,
+            model=object(),
+        )
+        assert wrapper.datasets[0].audio_frames == 1000

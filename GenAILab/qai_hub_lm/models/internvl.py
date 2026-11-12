@@ -22,7 +22,7 @@ from .base import VLM
 from .generator import Generator, VLM_Generator
 from .utils.layer_cache import (
     LayerCacheDescriptor,
-    _resolve_text_config,
+    resolve_text_config,
 )
 
 
@@ -292,7 +292,7 @@ class InternVL_VLM(VLM):
         **kwargs,
     ):
         config = model.config if hasattr(model, "config") else None
-        text_config = _resolve_text_config(config) if config else None
+        text_config = resolve_text_config(config) if config else None
         hidden_size = text_config.hidden_size if text_config else 4096
 
         dummy_inputs_embeds = torch.zeros(

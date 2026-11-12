@@ -6,6 +6,7 @@
 from abc import ABC, abstractmethod
 import ast
 import gc
+import inspect
 import re
 import warnings
 
@@ -126,9 +127,13 @@ class Interleaved(MultimodalDataset):
             - name: AOKVQA
               split: train
 
-    Parent kwargs like ``image_size`` are automatically forwarded to
-    sub-datasets whose ``load_encoded_dataset`` signature accepts them.
+    Parent kwargs like ``image_size`` and ``audio_frames`` are automatically
+    forwarded to multimodal sub-datasets whose ``load_encoded_dataset``
+    signature accepts them.
     """
+
+    #: Parent kwargs forwarded to multimodal sub-datasets that accept them.
+    FORWARDED_KWARGS = ("image_size", "audio_frames", "model")
 
     @staticmethod
     def load_dataset(split: str):
@@ -146,13 +151,16 @@ class Interleaved(MultimodalDataset):
             sub_name = sub_config.pop("name")
             sub_cls = YAMLConfigParser.get_dataset(sub_name)
             # Text datasets need just the tokenizer; multimodal datasets
-            # need the full processor and get image_size forwarded.
+            # need the full processor and get the parent kwargs they accept
+            # (an image dataset takes image_size, an audio one audio_frames).
             if issubclass(sub_cls, TextDataset):
                 sub_tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
             else:
                 sub_tokenizer = tokenizer
-                if "image_size" in kwargs:
-                    sub_config.setdefault("image_size", kwargs["image_size"])
+                params = inspect.signature(sub_cls.load_encoded_dataset).parameters
+                for key in cls.FORWARDED_KWARGS:
+                    if key in kwargs and key in params:
+                        sub_config.setdefault(key, kwargs[key])
             loaded.append(
                 sub_cls.load_encoded_dataset(
                     sub_tokenizer, context_length, **sub_config
@@ -1645,12 +1653,30 @@ class LibriSpeech(MultimodalDataset):
 
     @staticmethod
     def load_dataset(split: str = "test.clean", num_samples: int | None = None):
+        # data_files scopes the download to this split's parquet shard(s) only --
+        # passing `config=` instead makes `datasets` download_and_prepare() every
+        # split of the 'all' config (~62 GB) on first use, regardless of `split`.
+        # Shards live at all/<split>/<shard>.parquet at REVISION; a glob that
+        # matches nothing raises FileNotFoundError here rather than loading empty.
         raw_dataset = load_dataset(
             LibriSpeech.REPO_ID,
-            LibriSpeech.CONFIG,
+            data_files={split: f"{LibriSpeech.CONFIG}/{split}/*.parquet"},
             split=split,
             revision=LibriSpeech.REVISION,
+            # data_files only supplies this one split's shard(s), but the repo's
+            # pinned dataset_infos.json still declares every split of the 'all'
+            # config -- skip the expected-vs-recorded split check or `datasets`
+            # raises ExpectedMoreSplitsError for the splits we deliberately didn't load.
+            verification_mode="no_checks",
         )
+        # no_checks skips every verification, not just the split count, so check
+        # the columns used downstream here rather than fail far from the load.
+        missing = {"audio", "text"} - set(raw_dataset.column_names)
+        if missing:
+            raise ValueError(
+                f"{LibriSpeech.REPO_ID}@{LibriSpeech.REVISION} split {split!r} is "
+                f"missing column(s) {sorted(missing)}; got {raw_dataset.column_names}."
+            )
         # decode=False keeps the encoded FLAC bytes: decoding happens in
         # decode_audio_column, which does not require datasets' torchcodec
         # backend to be installed.

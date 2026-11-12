@@ -11,7 +11,7 @@ import torch
 from GenAILab.qai_hub_lm.models.base import SimCollection
 from GenAILab.qai_hub_lm.models.components import VISUAL, spec
 from GenAILab.qai_hub_lm.models.generator import Generator, VLM_Generator
-from GenAILab.qai_hub_lm.models.utils.layer_cache import _resolve_text_config
+from GenAILab.qai_hub_lm.models.utils.layer_cache import resolve_text_config
 
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import TorchONNXInterface
 
@@ -228,7 +228,7 @@ def generator_factory(
             model_kwargs.update(sim_collection.extras)
         return mixed_cls(
             backbone_model=TorchONNXInterface(
-                sim_collection.backbone, _resolve_text_config(sim_collection.config)
+                sim_collection.backbone, resolve_text_config(sim_collection.config)
             ),
             embedding=sim_collection.embedding,
             tokenizer=tokenizer,

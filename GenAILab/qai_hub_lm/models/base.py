@@ -23,7 +23,7 @@ from .utils.layer_cache import (
     attention_mask_input_names,
     cache_state_names,
     kv_length_dynamic_axes,
-    _resolve_text_config,
+    resolve_text_config,
 )
 
 
@@ -98,7 +98,7 @@ class LLM(ABC):
         )
 
         if small_model:
-            text_cfg = _resolve_text_config(llm_config)
+            text_cfg = resolve_text_config(llm_config)
             text_cfg.num_hidden_layers = 2
             if hasattr(text_cfg, "layer_types") and text_cfg.layer_types is not None:
                 text_cfg.layer_types = text_cfg.layer_types[:2]

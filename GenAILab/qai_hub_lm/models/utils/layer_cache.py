@@ -3,6 +3,7 @@
 
 """Per-layer cache descriptors for models with heterogeneous attention types."""
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from enum import Enum
 
@@ -172,7 +173,7 @@ class LayerCacheDescriptor:
         raise ValueError(f"Unknown attention type: {self.attention_type}")
 
 
-def _resolve_text_config(config: PretrainedConfig) -> PretrainedConfig:
+def resolve_text_config(config: PretrainedConfig) -> PretrainedConfig:
     """Resolve a composite VLM config to its text decoder config.
 
     VLM configs (e.g. Gemma3Config) nest text decoder attributes under
@@ -188,6 +189,20 @@ def _resolve_text_config(config: PretrainedConfig) -> PretrainedConfig:
     return config
 
 
+def resolve_model_type(config: PretrainedConfig, known: Collection[str]) -> str:
+    """Return the ``model_type`` to look ``config`` up by in a table keyed on it.
+
+    ``config.model_type`` if ``known`` has it, else that of its text decoder
+    config (:func:`resolve_text_config`). Tables like AdaScale's list some
+    composite models only under their top-level name (``qwen3_vl``, not
+    ``qwen3_vl_text``), so those keep it; a composite model around an
+    already-listed decoder (Qwen3-ASR around ``qwen3``) needs no entry.
+    """
+    if config.model_type in known:
+        return config.model_type
+    return resolve_text_config(config).model_type
+
+
 def build_layer_cache_descriptors(
     config: PretrainedConfig,
 ) -> list[LayerCacheDescriptor]:
@@ -197,9 +212,9 @@ def build_layer_cache_descriptors(
     ``config.sliding_window_pattern`` to determine each layer's cache type.
 
     For composite VLM configs the text decoder sub-config is resolved
-    automatically via :func:`_resolve_text_config`.
+    automatically via :func:`resolve_text_config`.
     """
-    config = _resolve_text_config(config)
+    config = resolve_text_config(config)
     num_kv_shared = getattr(config, "num_kv_shared_layers", 0)
     num_layers = config.num_hidden_layers - num_kv_shared
     sliding_window = getattr(config, "sliding_window", None)
@@ -286,7 +301,7 @@ def build_layer_cache_descriptors(
 
 def ple_layer_ids(config: PretrainedConfig) -> list[int]:
     """One-indexed ids of Qwen4-Exp's per-layer-embedding (PLE) layers, if any."""
-    ids = getattr(_resolve_text_config(config), "ple_layer_ids", None)
+    ids = getattr(resolve_text_config(config), "ple_layer_ids", None)
     return list(ids) if isinstance(ids, (list, tuple)) else []
 
 

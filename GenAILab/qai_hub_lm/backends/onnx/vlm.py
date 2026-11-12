@@ -28,7 +28,7 @@ from GenAILab.qai_hub_lm.models.components import model_components, spec
 from GenAILab.qai_hub_lm.models.utils.exportable import ONNXExportableModuleWithCache
 from GenAILab.qai_hub_lm.models.utils.layer_cache import (
     build_layer_cache_descriptors,
-    _resolve_text_config,
+    resolve_text_config,
 )
 
 from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
@@ -292,7 +292,7 @@ class VLM_ONNX:
         )
 
         model = cls.instantiate_model(model_id, small_model).to(dtype=dtype)
-        text_config = _resolve_text_config(model.config)
+        text_config = resolve_text_config(model.config)
         layer_cache_descs = build_layer_cache_descriptors(text_config)
 
         language_model = cls.get_language_model(model)

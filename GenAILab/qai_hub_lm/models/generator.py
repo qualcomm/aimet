@@ -34,7 +34,7 @@ from .utils.layer_cache import (
     all_states,
     build_layer_cache_descriptors,
     cache_state_names,
-    _resolve_text_config,
+    resolve_text_config,
 )
 from .utils.rope_embedding import RopeEmbedding, RopeEmbeddingProtocol
 
@@ -331,7 +331,7 @@ class Generator(GenerationMixin, torch.nn.Module):
     @functools.cached_property
     def layer_cache_descriptors(self):
         try:
-            return build_layer_cache_descriptors(_resolve_text_config(self.config))
+            return build_layer_cache_descriptors(resolve_text_config(self.config))
         except AttributeError as e:
             raise RuntimeError(
                 f"Failed to build layer_cache_descriptors from config "

@@ -31,6 +31,7 @@ from GenAILab.qai_hub_lm.schema import (
     SpinQuantSpec,
 )
 from GenAILab.qai_hub_lm.models.generator import Generator
+from GenAILab.qai_hub_lm.models.utils.layer_cache import resolve_model_type
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import kwargs_to_dict
 
 
@@ -351,7 +352,11 @@ class AdaScale(QuantizationTechnique):
         apply_adascale(
             quantsim,
             inputs,
-            adascale_model_config_dict[generator.config.model_type],
+            # A composite model around a listed decoder (Qwen3-ASR around
+            # qwen3) resolves to that decoder's entry.
+            adascale_model_config_dict[
+                resolve_model_type(generator.config, adascale_model_config_dict)
+            ],
             num_iterations,
             topology=topology,
         )
