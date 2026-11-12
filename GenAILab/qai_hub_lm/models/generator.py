@@ -461,6 +461,7 @@ class Generator(GenerationMixin, torch.nn.Module):
         tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict | None], None, None
     ]:
         input_length = inputs.shape[1]
+        attention_mask = attention_mask[:, -input_length:]
         for idx in range(0, input_length, sequence_length)[::-1]:
             idx = input_length - idx
             position_ids_slice = (
