@@ -519,6 +519,8 @@ class SpinQuant:
             if unit_offset
             else torch.ones_like(norm.weight.data)
         )
+        if getattr(norm, "bias", None) is not None:
+            norm.bias.data.zero_()
 
     @staticmethod
     def _find_vlm_config(model: torch.nn.Module) -> VLMSpinQuantConfig | None:
