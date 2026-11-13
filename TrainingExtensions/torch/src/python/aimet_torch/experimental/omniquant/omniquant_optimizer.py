@@ -162,7 +162,11 @@ class Omniquant:
                 sampler.sample()
             ):
                 qt_let_pair_list = transformer_processor.get_let_module_pair(qt_block)
-                transformer_processor.init_let_params(qt_let_pair_list, num_repeats)
+                transformer_processor.init_let_params(
+                    qt_let_pair_list,
+                    num_repeats,
+                    quant_sim.model.config.num_key_value_heads,
+                )
                 qt_block = qt_block.to(device)
 
                 def _set_qt_params_trainable(qt_block):
@@ -425,7 +429,9 @@ def update_lora_weights(
                     for module in getattr(let_module, "lora_A").values():
                         if foll.shape != module.in_features:
                             num_repeats = module.in_features // foll.shape[0]
-                        foll = torch.repeat_interleave(foll, dim=0, repeats=num_repeats)
+                        if num_repeats > 1:
+                            foll = foll.reshape(hf_model.config.num_key_value_heads, -1)
+                            foll = foll.repeat_interleave(num_repeats, dim=0).flatten()
                         new_weight = module.weight * (foll.unsqueeze(0))
                         module.weight.copy_(new_weight)
 
@@ -458,7 +464,9 @@ def update_base_model_with_omniquant_metadata(
                 # Ex pair:  self_attn.v_proj and self_attn.o_prj  for llama in gqa
                 if foll.shape != let_module.weight.shape[1]:
                     num_repeats = let_module.weight.shape[1] // foll.shape[0]
-                foll = torch.repeat_interleave(foll, dim=0, repeats=num_repeats)
+                if num_repeats > 1:
+                    foll = foll.reshape(model.config.num_key_value_heads, -1)
+                    foll = foll.repeat_interleave(num_repeats, dim=0).flatten()
                 new_weight = let_module.weight * foll
                 let_module.weight.copy_(new_weight)
             if prev is not None:
