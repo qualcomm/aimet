@@ -839,7 +839,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC):  # pylint: disable=too-many-instance-at
                         )
                         # Sort accuracy list, first by descending accuracy score, then by descending order of addition of bitwidths if accuracy
                         # scores are identical, if that is also identical we sort by relative bit ops change in descending order
-                        # If bit ops reduction is also the same, then we sort in ascending order based on occurence of
+                        # If bit ops reduction is also the same, then we sort in ascending order based on occurrence of
                         # quantizer group in the model
                         accuracy_list = sort_accuracy_list(
                             accuracy_list, index_of_quantizer_group
@@ -972,7 +972,7 @@ class GreedyMixedPrecisionAlgo(abc.ABC):  # pylint: disable=too-many-instance-at
             self._export_accuracy_list(
                 accuracy_list, self._results_dir, "accuracy_list_reverse"
             )
-            # quant_group_to_candidate_dict will be having the order of candidates as occured in accuracy_list_reverse for every quantizer group
+            # quant_group_to_candidate_dict will be having the order of candidates as occurred in accuracy_list_reverse for every quantizer group
             quant_group_to_candidate_dict = create_quant_group_to_candidate_dict(
                 accuracy_list
             )

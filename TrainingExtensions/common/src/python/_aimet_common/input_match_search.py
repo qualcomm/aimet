@@ -251,7 +251,7 @@ class InputMatchSearch:
         If the Kernel size is bigger than or equal to the Padding size, this function returns the height range and
         width range that includes all the pixels. If the Padding is bigger than Kernel size, this function returns a
         smaller height and and width range. In this scenario, randomly picking an output pixel close to the border
-        of the output is not going to contribute to teh reconstruction process since the padded values are all 0s.
+        of the output is not going to contribute to the reconstruction process since the padded values are all 0s.
 
         :param layer_attributes: (kernel_size, stride, padding)
         :param out_shape: shape of the output (Num Samples, Num Output channels, activation height, activation width)
