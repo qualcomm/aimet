@@ -15,6 +15,7 @@ The steps are as follows:
 
 import os
 import argparse
+import pickle
 import torch
 
 from torch.nn import functional as F
@@ -26,8 +27,6 @@ import torchvision.transforms as transforms
 import pytorch_lightning as pl
 from pytorch_lightning import LightningModule
 from torchmetrics import Accuracy
-
-from aimet_torch import quantsim
 
 
 # =======================define module==========================#
@@ -54,7 +53,8 @@ class LitImageNet(LightningModule):
         # ImageNet specific attributes
         self.num_classes = num_classes
         file_path = model_path
-        quant_sim = quantsim.load_checkpoint(file_path)
+        with open(file_path, "rb") as file:
+            quant_sim = pickle.load(file)
         self.model = quant_sim.model
         self.accuracy = Accuracy()
 

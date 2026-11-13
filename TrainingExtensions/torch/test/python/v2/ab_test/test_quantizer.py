@@ -36,10 +36,6 @@ from ..models_.test_models import (
 )
 from ..models_.models_to_test import ModelWith5Output
 from aimet_torch.onnx_utils import OnnxExportApiArgs
-from aimet_torch.v2.quantsim import (
-    check_accumulator_overflow,
-    compute_encodings_for_sims,
-)
 import aimet_torch.v2.nn as aimet_nn
 from aimet_torch.nn.fake_quant._legacy_impl import _FakeQuantizedUnaryOpMixin
 from aimet_torch.v2.quantization.affine import QuantizeDequantize
@@ -2548,48 +2544,6 @@ class TestQuantizationSimStaticGrad:
                 )  # Earlier criteria 13, changing it to 10, removing 3 maxpool
                 assert len(encodings["param_encodings"]) == 5
 
-    def test_compute_encodings_for_multiple_sims(self):
-        class SecondModel(torch.nn.Module):
-            def __init__(self, const_inp_shape):
-                super(SecondModel, self).__init__()
-                self.add = aimet_modules.Add()
-                self.sub = aimet_modules.Subtract()
-                self.batchnorm = torch.nn.BatchNorm1d(10)
-                self.const_tensor = torch.randn(const_inp_shape)
-
-            def forward(self, inp, inp2):
-                x = self.add(inp, self.const_tensor)
-                x = self.batchnorm(x)
-                x = self.sub(x, inp2)
-                return x
-
-        model = ModelWithTwoInputsOneToAdd()
-        model.eval()
-        dummy_input = (torch.rand(32, 1, 100, 100), torch.rand(32, 10, 22, 22))
-        model_1_out = model(*dummy_input)
-        model_2 = SecondModel(model_1_out.shape)
-        model_2.eval()
-        dummy_input_2 = torch.randn(model_1_out.shape)
-        sim1 = QuantizationSimModel(model, dummy_input)
-        sim2 = QuantizationSimModel(model_2, (dummy_input_2, dummy_input_2))
-
-        def forward_pass_callback(model_list, _):
-            x = model_list[0](*dummy_input)
-            x = model_list[1](x, dummy_input_2)
-            return x
-
-        sim2.model.train()
-        running_mean = sim2.model.batchnorm.running_mean.clone().detach()
-        compute_encodings_for_sims([sim1, sim2], forward_pass_callback, None)
-
-        # Check that even though sim2 was in training mode prior to compute encodings, it was placed in eval mode
-        # during compute encodings, and that it was placed back to training mode afterwards.
-        assert sim2.model.training
-        assert torch.equal(running_mean, sim2.model.batchnorm.running_mean)
-        assert sim1.model.conv1_a.output_quantizers[0].is_initialized()
-        assert sim2.model.add.input_quantizers[0].is_initialized()
-        assert sim2.model.add.input_quantizers[1].is_initialized()
-
     @pytest.mark.skip("load_and_freeze_encodings not supported yet")
     def test_load_and_freeze_encodings(self):
         model = SmallMnist()
@@ -3267,16 +3221,6 @@ class TestQuantizationSimLearnedGrid:
             event for event in prof.key_averages() if event.key == "[memory]"
         ][0]
         assert abs(memory_stats.cpu_memory_usage) < 1.1 * (100 * (10**6))
-
-    def test_accumulator_overflow(self):
-        torch.manual_seed(0)
-        model = models.resnet18()
-        model = model.eval()
-        layer, range_used = check_accumulator_overflow(model, 8, 32)
-
-        assert layer == "layer4.1.conv1"
-
-        # self.assertAlmostEqual(100 * range_used, 0.263623, places=3)
 
     def test_export_prelu_encoding_and_check_load_encodings(self):
         """Test that prelu weight is exported correctly"""

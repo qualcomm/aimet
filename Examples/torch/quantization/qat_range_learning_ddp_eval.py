@@ -15,6 +15,7 @@ The steps are as follows:
 # pylint: skip-file
 
 import os
+import pickle
 import socket
 import argparse
 
@@ -31,7 +32,6 @@ import torchmetrics
 
 from aimet_common.defs import QuantScheme
 from aimet_torch.quantsim import QuantizationSimModel
-from aimet_torch import quantsim
 from aimet_torch import batch_norm_fold
 from aimet_torch.model_preparer import prepare_model
 
@@ -258,7 +258,8 @@ def main():
 
     # STEP 3
     quant_sim.model.to("cpu")
-    quantsim.save_checkpoint(quant_sim, args.output_file)
+    with open(args.output_file, "wb") as file:
+        pickle.dump(quant_sim, file)
 
 
 if __name__ == "__main__":

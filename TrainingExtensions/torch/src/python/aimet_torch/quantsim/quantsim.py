@@ -49,9 +49,6 @@ from aimet_torch._base.quantsim import (
     logger,
     unquantizable_modules,
     QuantParams,
-    save_checkpoint,
-    load_checkpoint,
-    check_accumulator_overflow,
 )
 from aimet_torch.onnx_utils import _onnx_model_size_larger_than_max_protobuf
 from aimet_torch import nn as aimet_nn
@@ -77,11 +74,7 @@ __all__ = [
     "QuantizationSimModel",
     "QuantizationSimModelOnnxExporter",
     "QuantParams",
-    "save_checkpoint",
-    "load_checkpoint",
-    "check_accumulator_overflow",
     "load_encodings_to_sim",
-    "compute_encodings_for_sims",
 ]
 
 unquantizable_modules = (QuantizerBase, *unquantizable_modules)
@@ -1326,51 +1319,3 @@ def load_encodings_to_sim(
         requires_grad=None,
         allow_overwrite=None,
     )
-
-
-@deprecated(
-    r"""
-Use aimet_torch.nn.compute_encodings contextmanager on each sim.model instead. For example:
-```
-with torch.no_grad(), \
-        aimet_torch.nn.compute_encodings(sim_0.model), \
-        aimet_torch.nn.compute_encodings(sim_1.model), \
-        aimet_torch.nn.compute_encodings(sim_2.model):
-    # Run forward pass with calibration dataset
-```
-""".strip(),
-    deletion_planned="2.44.0",
-)
-def compute_encodings_for_sims(
-    sim_list: Sequence[QuantizationSimModel],
-    forward_pass_callback: Callable,
-    forward_pass_callback_args: Any,
-):
-    """
-    Compute encodings for a list of QuantSims.
-
-    :param sim_list: List of QuantSims to compute encodings for.
-    :param forward_pass_callback: A callback function that simply runs forward passes on the models. This callback
-        function should use representative data for the forward pass, so the calculated encodings work for all
-        data samples. This callback internally chooses the number of data samples it wants to use for calculating
-        encodings.
-        The callback expects exactly two inputs:
-            - List of models which are involved in the forward pass. The models are taken directly from calling
-            sim.model for each sim in sim_list, passed in the same order in which the sims appear in sim_list.
-            - Forward pass callback args
-    :param forward_pass_callback_args: These argument(s) are passed to the forward_pass_callback as-is. Up to
-        the user to determine the type of this parameter. E.g. could be simply an integer representing the number
-        of data samples to use. Or could be a tuple of parameters or an object representing something more complex.
-        If set to None, forward_pass_callback will be invoked with no parameters.
-    """
-    ctx_managers = [torch.no_grad()]
-    for sim in sim_list:
-        ctx_managers.append(utils.in_eval_mode(sim.model))
-        ctx_managers.append(aimet_nn.compute_encodings(sim.model))
-
-    with contextlib.ExitStack() as stack:
-        for mgr in ctx_managers:
-            stack.enter_context(mgr)
-        _ = forward_pass_callback(
-            [sim.model for sim in sim_list], forward_pass_callback_args
-        )
