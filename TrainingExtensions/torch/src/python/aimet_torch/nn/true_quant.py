@@ -1139,6 +1139,10 @@ def _compute_encodings_with_overflow_protection(self):
         # Edge case: weight_scale might have been already greater than 0.25
         adjusted_weight_scale.clamp_min_(weight_scale)
 
+        if torch.equal(adjusted_weight_scale.flatten(), weight_scale.flatten()):
+            # No adjustment needed, avoid lossy round trip to min-max
+            return
+
     # Adjusting the scale necessarily moves both ends of the encoding range, so a
     # partially-frozen quantizer (e.g. allow_overwrite(min=False, max=True), as set
     # for ops with a one-sided encoding constraint) can't be adjusted either.
