@@ -8880,6 +8880,71 @@ def test_derive_data_movement_op_encodings_through_cast(cast_to, expect_propagat
     assert derived.keys() == ({"output"} if expect_propagation else set())
 
 
+@pytest.mark.parametrize("config_file", [None, "htp_v81"])
+@pytest.mark.parametrize(
+    "src_dtype, np_dtype, expect_quantized",
+    [
+        (onnx.TensorProto.BOOL, np.bool_, True),
+        (onnx.TensorProto.INT32, np.int32, True),
+        (onnx.TensorProto.UINT32, np.uint32, True),
+        (onnx.TensorProto.INT64, np.int64, True),
+        (onnx.TensorProto.UINT64, np.uint64, True),
+        (onnx.TensorProto.FLOAT, np.float32, False),
+    ],
+)
+def test_non_float_to_float_cast_output_quantized(
+    tmp_dir, config_file, src_dtype, np_dtype, expect_quantized
+):
+    """
+    Given: mask_input -> Cast(to=FLOAT) -> mask -> Mul(input, mask) -> output
+    When: Create QuantizationSimModel, compute_encodings() and export()
+    Then: The Cast output quantizer should be enabled, and its encoding exported, if
+          mask_input is a bool or integer, even though the config disables Cast outputs.
+          A float-to-float Cast output should stay unquantized, as the config says
+    """
+    model = onnx.helper.make_model(
+        onnx.helper.make_graph(
+            name="cast_to_float",
+            inputs=[
+                onnx.helper.make_tensor_value_info(
+                    "input", onnx.TensorProto.FLOAT, [4]
+                ),
+                onnx.helper.make_tensor_value_info("mask_input", src_dtype, [4]),
+            ],
+            outputs=[
+                onnx.helper.make_tensor_value_info(
+                    "output", onnx.TensorProto.FLOAT, [4]
+                )
+            ],
+            nodes=[
+                onnx.helper.make_node(
+                    "Cast", ["mask_input"], ["mask"], to=onnx.TensorProto.FLOAT
+                ),
+                onnx.helper.make_node("Mul", ["input", "mask"], ["output"]),
+            ],
+        ),
+        opset_imports=[onnx.helper.make_opsetid("", 17)],
+    )
+    kwargs = {"config_file": config_file} if config_file else {}
+    sim = QuantizationSimModel(model, **kwargs)
+    assert sim.qc_quantize_op_dict["mask"].enabled == expect_quantized
+
+    sim.compute_encodings(
+        [
+            {
+                "input": np.array([-1.0, -0.5, 0.5, 1.0], dtype=np.float32),
+                "mask_input": np.array([0, 1, 1, 0]).astype(np_dtype),
+            }
+        ]
+    )
+    if not expect_quantized:
+        return
+
+    encodings = _export_encodings(sim, tmp_dir, "1.0.0")
+    activation_encodings = {e["name"] for e in encodings["activation_encodings"]}
+    assert "mask" in activation_encodings
+
+
 def test_derive_data_movement_op_encodings_not_backward_through_cast():
     """
     Given: input (int64) -> Cast(to=FLOAT) -> output

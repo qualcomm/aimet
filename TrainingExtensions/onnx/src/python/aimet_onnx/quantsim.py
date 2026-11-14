@@ -169,6 +169,9 @@ _quantize_subgraphs = False
 
 data_types_to_quantize = [np.float32, np.float16, _BFLOAT16]
 
+# Input dtypes of a Cast whose float output is always quantized, regardless of config
+_NON_FLOAT_CAST_INPUT_DTYPES = (np.bool_, np.int32, np.uint32, np.int64, np.uint64)
+
 _DEPRECATED_ARGS = {
     "rounding_mode",
     "default_param_bw",
@@ -606,6 +609,7 @@ class QuantizationSimModel:
             self.activation_names,
             self.input_quantizers_name,
         )
+        self._enable_non_float_cast_output_quantizers()
         self._hw_version = quantsim_configurator._get_hw_version()
         self._supported_kernels = quantsim_configurator.get_supported_kernels()
         self._op_to_supported_kernel = (
@@ -1307,6 +1311,25 @@ class QuantizationSimModel:
 
             # Override symmetry for input weights
             input_weight_quantizer.use_symmetric_encodings = expected_op_symmetry
+
+    def _enable_non_float_cast_output_quantizers(self):
+        """
+        Enable the output quantizer of every Cast from a bool or integer tensor to a float.
+
+        The config files disable Cast output quantizers, assuming a float-to-float Cast whose
+        output encoding is derived from its input's. A bool or integer input has no encoding
+        to derive from, so the Cast output must be quantized itself.
+        """
+        for graph in self._graphs_to_quantize():
+            for node in graph.node:
+                if node.op_type != "Cast" or not node.input:
+                    continue
+                input_dtype = self.activation_dtypes.get(node.input[0])
+                if input_dtype not in _NON_FLOAT_CAST_INPUT_DTYPES:
+                    continue
+                qtzr = self.qc_quantize_op_dict.get(node.output[0])
+                if qtzr is not None:
+                    qtzr.enabled = True
 
     def _apply_exception_rules(self):
         """
