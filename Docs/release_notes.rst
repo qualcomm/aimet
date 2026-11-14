@@ -6,6 +6,81 @@
 Release notes
 #############
 
+2.44.0
+======
+
+* New Features
+    * Torch
+        * Support quantizing over multiple channel axes (`41d7f97`_)
+        * Support AdaScale for MoE top-k routers (`d7f5f4b`_)
+
+* Bug fixes and Improvements
+    * ONNX
+        * Optimize sampling efficiency in AdaScale (`9cc3764`_, `41d4f61`_)
+        * Fix unsafe quantizer tying behavior for unquantized concat inputs (`72ef63f`_)
+        * Optimize param quantizer fold memory footprint (`375709f`_)
+        * Improve AdaScale progress logging (`a122660`_)
+        * Improve SeqMSE progress logging (`2740013`_)
+        * Reduce SeqMSE CPU memory usage during activation caching (`7d44844`_)
+        * Log effective quantizer name in ``set_tensor_precision`` API (`1b0158d`_)
+        * Allow running SeqMSE for QuantSims with tf-enhanced QuantScheme (`1878a56`_)
+        * Fix detection of non-affine RMSNorm followed by Mul op (`c34be4c`_)
+
+    * Torch
+        * Fix slowdown in AdaScale from global ``allow_mutation_on_saved_tensors`` flag (`416501a`_)
+        * Propagate output quantizers for all grid-equivariant op types (`ceff47c`_)
+        * Preserve zero-point shift when restoring affine quantizers (`677f753`_)
+        * Fix blockwise export with singleton output channels (`c998316`_)
+        * Preserve channel slices when merging calibration histograms (`827cd4e`_)
+        * Fix unsafe tying of output quantizers consumed by multiple ops (`50abd95`_)
+        * Fix AdaScale linear block quantization weight scaling (`d913a33`_)
+        * Prevent HTP bias overflow for zero-weight channels (`704d290`_)
+        * Optimize memory usage when re-deriving quantization scale from weights (`e0122dc`_)
+        * Always keep int32 bias quantizer parameters in float32 (`a5070d1`_)
+        * Fix loading encodings for tied quantizers (`f8794fc`_)
+        * Skip instantiating quantizers for integer tensors (`5891c5d`_)
+
+    * Common
+        * Propagate encodings through float-to-float casts during export (`ec6ebb6`_)
+        * Fix broken API rendering in docs (`16854ba`_)
+        * Update docs theme (`6c6055e`_)
+
+* Deprecations
+    * Torch
+        * Remove ``save_checkpoint`` and ``load_checkpoint`` in favor of direct pickle usage (`253b7c0`_)
+        * Remove ``check_accumulator_overflow`` (`253b7c0`_)
+        * Remove ``compute_encodings_for_sims`` (`253b7c0`_)
+
+.. _41d7f97: https://github.com/qualcomm/aimet/commit/41d7f97ac67395c5d722b5f224be1a59fb3ffc1f
+.. _d7f5f4b: https://github.com/qualcomm/aimet/commit/d7f5f4b21ac47ba3ca8447922dfd3d9ad08f6e6d
+.. _9cc3764: https://github.com/qualcomm/aimet/commit/9cc37647621640738fbd342c6329863ffc77d61f
+.. _41d4f61: https://github.com/qualcomm/aimet/commit/41d4f61fa1f67fdb4dac07418281892ec0b2f1ea
+.. _72ef63f: https://github.com/qualcomm/aimet/commit/72ef63f1a631541f2d0173f2b267a9a5f98b95ec
+.. _375709f: https://github.com/qualcomm/aimet/commit/375709f802e50b84cc7837332a7ad7fb2804ae47
+.. _a122660: https://github.com/qualcomm/aimet/commit/a1226603f0db98e8ce935e3057cc8f77fb59821a
+.. _2740013: https://github.com/qualcomm/aimet/commit/274001377709f838a2c7c2e87f6ae313969d4973
+.. _7d44844: https://github.com/qualcomm/aimet/commit/7d44844c2517a93f83a514d45c901a0256a8cc88
+.. _1b0158d: https://github.com/qualcomm/aimet/commit/1b0158d8d7743ec7c52e1e7d53464b449d28d154
+.. _1878a56: https://github.com/qualcomm/aimet/commit/1878a5630c46a5265aac0a27c2dce64fb2f573cb
+.. _c34be4c: https://github.com/qualcomm/aimet/commit/c34be4ce04ddb2aa05ab031ba3bce3363ac37508
+.. _416501a: https://github.com/qualcomm/aimet/commit/416501aa589decd739451608166b3d8abefd2845
+.. _ceff47c: https://github.com/qualcomm/aimet/commit/ceff47c5782948db6d4841e752d6df49e1de291c
+.. _677f753: https://github.com/qualcomm/aimet/commit/677f753bf3a36a6a642eb59e42c981038535679d
+.. _c998316: https://github.com/qualcomm/aimet/commit/c998316daea06f0ab3e4db5d4e98f91457783b91
+.. _827cd4e: https://github.com/qualcomm/aimet/commit/827cd4e3243a754f04729f4c0674e19a73d63985
+.. _50abd95: https://github.com/qualcomm/aimet/commit/50abd9546724f158caa1a2a119a5f1eee77bc021
+.. _d913a33: https://github.com/qualcomm/aimet/commit/d913a3376141180cb5c94824c5cb428d516d6a06
+.. _704d290: https://github.com/qualcomm/aimet/commit/704d290c2ff06f6ff461fe53f07f1f36e8ca2700
+.. _e0122dc: https://github.com/qualcomm/aimet/commit/e0122dc2d19e664cd8d7ea4f1e69af56f3d81695
+.. _a5070d1: https://github.com/qualcomm/aimet/commit/a5070d14f970c50d6c3aef2737b22fad25c606e0
+.. _f8794fc: https://github.com/qualcomm/aimet/commit/f8794fc3df1f924e227d035c3ab888c242fe1fcc
+.. _5891c5d: https://github.com/qualcomm/aimet/commit/5891c5de8e781b58163029607f47724a358d99b7
+.. _ec6ebb6: https://github.com/qualcomm/aimet/commit/ec6ebb6c2a1dcbdd531efb99ee07fe6a8cea2853
+.. _16854ba: https://github.com/qualcomm/aimet/commit/16854ba095abad9690729dee5f8b5039fb8530bc
+.. _6c6055e: https://github.com/qualcomm/aimet/commit/6c6055e5ad0991831cad14892bdeef66eb4a959d
+.. _253b7c0: https://github.com/qualcomm/aimet/commit/253b7c018fecd0f65d985364dd380286ae9ec3dc
+
+
 2.43.0
 ======
 
