@@ -87,7 +87,7 @@ class LazyQuantizeWrapper(torch.nn.Module, ABC):  # pylint: disable=too-many-ins
         from aimet_torch.nn import BaseQuantizationMixin
 
         if isinstance(module_to_wrap, BaseQuantizationMixin):
-            # NOTE: AIMET v2 qmodule always only quantizes the paramters that it directly owns
+            # NOTE: AIMET v2 qmodule always only quantizes the parameters that it directly owns
             recurse = False
         else:
             # NOTE: This is only for backwards-compatibility with v1 quant wrapper
