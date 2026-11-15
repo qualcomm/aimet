@@ -8902,7 +8902,7 @@ def test_non_float_to_float_cast_output_quantized(
           mask_input is a bool or integer, even though the config disables Cast outputs.
           A float-to-float Cast output should stay unquantized, as the config says
     """
-    model = onnx.helper.make_model(
+    model = make_model(
         onnx.helper.make_graph(
             name="cast_to_float",
             inputs=[
