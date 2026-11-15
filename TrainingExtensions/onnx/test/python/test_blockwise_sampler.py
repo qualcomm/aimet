@@ -15,6 +15,7 @@ import onnxruntime as ort
 import pytest
 import torch
 from onnx import TensorProto, helper, numpy_helper
+from packaging import version
 
 from aimet_onnx import QuantizationSimModel, blockwise_sampler
 from aimet_onnx.adascale import adascale_optimizer
@@ -616,7 +617,20 @@ def _gemma4_end_points(model):
     ]
 
 
-@pytest.mark.parametrize("decoder", ["llama", "gemma4_shared_kv"])
+@pytest.mark.parametrize(
+    "decoder",
+    [
+        "llama",
+        pytest.param(
+            "gemma4_shared_kv",
+            marks=pytest.mark.skipif(
+                version.parse(ort.__version__) < version.parse("1.24.0"),
+                reason="onnxruntime 1.23 fails to build a session for this graph: assert in "
+                "its ReshapeFusion pass",
+            ),
+        ),
+    ],
+)
 def test_apply_adascale_blockwise_matches_full_prefix(decoder):
     """
     Given: A decoder AdaScale runs over, with each block's weights changed after its turn
