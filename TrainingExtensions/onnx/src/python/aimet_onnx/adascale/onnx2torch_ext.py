@@ -690,9 +690,12 @@ class OnnxScan(nn.Module, OnnxToTorchModule):
     def forward(self, *inputs: torch.Tensor):  # pylint: disable=missing-function-docstring
         n, m = self.num_carries, self.num_scan_inputs
         carries, scanned, outer = list(inputs[:n]), inputs[n : n + m], inputs[n + m :]
+        # Split each scanned input once: indexing x[t] every iteration costs a select (and its
+        # backward, a full-size zero-filled gradient) per slice per input
+        slices = [x.unbind(0) for x in scanned]
         scan_outputs = []
-        for t in range(scanned[0].shape[0]):
-            outputs = self.body(*carries, *(x[t] for x in scanned), *outer)
+        for xs_t in zip(*slices):
+            outputs = self.body(*carries, *xs_t, *outer)
             carries = list(outputs[:n])
             scan_outputs.append(outputs[n:])
         return tuple(carries + [torch.stack(ys) for ys in zip(*scan_outputs)])
