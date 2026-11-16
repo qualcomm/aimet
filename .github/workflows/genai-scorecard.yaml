@@ -138,7 +138,10 @@ jobs:
       !cancelled() &&
       github.repository_owner != 'qualcomm' &&
       needs.build-aimet-torch-gpu.result == 'success' &&
-      needs.build-aimet-onnx-gpu.result == 'success'
+      needs.build-aimet-onnx-gpu.result == 'success' &&
+      (github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.run_mode != 'ad_hoc' ||
+      github.event.inputs.ad_hoc_variants != 'onnx')
     runs-on: mlops-gpu-xlarge
     timeout-minutes: 10080     # 7 days
     steps:
@@ -166,7 +169,10 @@ jobs:
     if: |
       !cancelled() &&
       github.repository_owner != 'qualcomm' &&
-      needs.build-aimet-onnx-gpu.result == 'success'
+      needs.build-aimet-onnx-gpu.result == 'success' &&
+      (github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.run_mode != 'ad_hoc' ||
+      github.event.inputs.ad_hoc_variants != 'torch')
     runs-on: mlops-gpu-xlarge
     timeout-minutes: 10080     # 7 days
     steps:
