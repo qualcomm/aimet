@@ -134,6 +134,16 @@ adascale_model_config_dict = {
     "qwen3_5_text": AdaScaleModelConfig(
         model_type="qwen3_5", beta_gamma_lr=1e-3, scales_lr=5e-4
     ),
+    # Mixture-of-experts variants: the dense model's learning rates, not yet tuned.
+    "qwen3_moe": AdaScaleModelConfig(
+        model_type="qwen3", beta_gamma_lr=1e-3, scales_lr=5e-4
+    ),
+    "qwen3_5_moe": AdaScaleModelConfig(
+        model_type="qwen3_5", beta_gamma_lr=1e-3, scales_lr=5e-4
+    ),
+    "qwen3_5_moe_text": AdaScaleModelConfig(
+        model_type="qwen3_5", beta_gamma_lr=1e-3, scales_lr=5e-4
+    ),
     "phi3": AdaScaleModelConfig(model_type="phi3", beta_gamma_lr=1e-3, scales_lr=5e-4),
     "qwen2_5_vl": AdaScaleModelConfig(
         model_type="qwen2_5_vl", beta_gamma_lr=1e-3, scales_lr=5e-4

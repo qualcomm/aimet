@@ -714,6 +714,18 @@ class TestDecoderBlockBoundaries:
         )
         _assert_role_map(role_map, ir_model, backend)
 
+    def test_qwen3_moe_analyzed_by_active_norms(self):
+        """
+        Given: A tiny Qwen3-MoE decoder exported to ONNX
+        When: Its topology is analyzed for model_type "qwen3_moe", as GenAI Lab does
+        Then: It is analyzed by active norms and finds one block per layer
+        """
+        model, cfg = _build_block_topology_model("Qwen3MoeConfig")
+        onnx_model = export_onnx(model, sample_prefill_inputs(cfg), "torchscript")
+        topology = analyze_llm_topology(onnx_model, "qwen3_moe")
+        assert len(topology.blocks) == cfg.num_hidden_layers
+        assert len(topology.active_norms) == 2 * cfg.num_hidden_layers + 1
+
     @pytest.mark.parametrize("vlm_key", _VLM_BACKBONE_MODELS)
     def test_vlm_backbone_topology(self, vlm_key):
         """Build and validate the role map on a VLM language backbone."""

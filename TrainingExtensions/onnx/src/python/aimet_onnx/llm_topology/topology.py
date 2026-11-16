@@ -94,6 +94,9 @@ _PAST_VALUE_OUTPUT_NAME_PATTERN = re.compile(
 #: HF ``model_type`` values that :func:`analyze_llm_topology` analyzes by active
 #: norms rather than by HuggingFace module name. A VLM is listed under its
 #: top-level ``model_type``; ``qwen3_vl_text`` is also accepted for its backbone.
+#: Mixture-of-experts models are analyzed by active norms because the name table
+#: expects one MLP per layer: their blocks still have exactly two active norms,
+#: the post-attention norm feeding the router (and the experts it gates).
 ACTIVE_NORM_MODEL_TYPES = frozenset(
     {
         "gemma3",
@@ -107,7 +110,10 @@ ACTIVE_NORM_MODEL_TYPES = frozenset(
         "qwen2_5_vl",
         "qwen3",
         "qwen3_5",
+        "qwen3_5_moe",
+        "qwen3_5_moe_text",
         "qwen3_5_text",
+        "qwen3_moe",
         "qwen3_vl",
         "qwen3_vl_text",
     }
