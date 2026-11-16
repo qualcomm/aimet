@@ -9,7 +9,7 @@ aimet_torch.quantization
 Quantizers
 ==========
 
-AIMET quantizers are the low-level components of :ref:`quantized modules<api-torch-quantized-modules>` that
+AIMET quantizers are the low-level components of :ref:`quantized modules<api-built-in-quantized-modules>` that
 implement the quantization mechanism for PyTorch tensors.
 
 AIMET quantizers are PyTorch modules that take a torch.Tensor as input and return

@@ -958,47 +958,49 @@ def _compute_encodings_with_overflow_protection(self):
     """
     Compute encodings with additional protection against overflow/underflow.
 
-    Given
+    Given::
+
       y = round((xW + b) * sx * sw / sy - zy)
 
-    HTP implements this equation as either eq 1 or eq 2, depending on hw version and other parameters
+    HTP implements this equation as either eq 1 or eq 2, depending on hw version and other parameters::
+
       y = round(( xW + b                ) * sx * sw / sy - zy)
         = round(( xW + b                ) *     s'       - zy)  ... eq 1
         = round(( xW + b -       zy/s'  ) *     s'           )
         ≈ round(( xW + b - round(zy/s') ) *     s'           )
         = round(( xW + b'               ) *     s'           )  ... eq 2
 
-    where:
+    where::
 
-    | name |        description        |        dtype         |          equation          |
-    |------|---------------------------|----------------------|----------------------------|
-    |  x   | input                     | uint8 or uint16      | round(x_float / sx + zx)   |
-    |  W   | weight                    | int4, int8, or int16 | round(W_float / sw)        |
-    |  b   | bias                      | int32                | round(b_float / (sx * sw)) |
-    |  y   | output                    | dtype(x)             |        given above         |
-    |  sx  | input scale               | float                |             -              |
-    |  zx  | input zero_point          | dtype(x)             |             -              |
-    |  sw  | weight scale              | float                |             -              |
-    |  sy  | output scale              | float                |             -              |
-    |  zy  | output zero_point         | dtype(y)             |             -              |
-    |  s'  | requantization scale      | float                |        sx * sw / sy        |
-    |  b'  | combined accumulator bias | int32                |      b - round(zy / s')    |
+      | name |        description        |        dtype         |          equation          |
+      |------|---------------------------|----------------------|----------------------------|
+      |  x   | input                     | uint8 or uint16      | round(x_float / sx + zx)   |
+      |  W   | weight                    | int4, int8, or int16 | round(W_float / sw)        |
+      |  b   | bias                      | int32                | round(b_float / (sx * sw)) |
+      |  y   | output                    | dtype(x)             |        given above         |
+      |  sx  | input scale               | float                |             -              |
+      |  zx  | input zero_point          | dtype(x)             |             -              |
+      |  sw  | weight scale              | float                |             -              |
+      |  sy  | output scale              | float                |             -              |
+      |  zy  | output zero_point         | dtype(y)             |             -              |
+      |  s'  | requantization scale      | float                |        sx * sw / sy        |
+      |  b'  | combined accumulator bias | int32                |      b - round(zy / s')    |
 
 
-    This function adjusts the weight scale to prevent 3 possible scenarios of overflow/underflow
+    This function adjusts the weight scale to prevent 3 possible scenarios of overflow/underflow::
 
-    1. Bias Overflow
-       - occurs if:   |b| > 2**31
-       - bad because: Causes severe clipping error when exported as int32
+      1. Bias Overflow
+         - occurs if:   |b| > 2**31
+         - bad because: Causes severe clipping error when exported as int32
 
-    2. Requantization Scale Underflow
-       - occurs if:   s' <= 2**-24
-       - bad because: If exponent e <= -24, HexNN misinterprets s'=2**e as 2**(e+32)
-                      due to internal type casting bug
+      2. Requantization Scale Underflow
+         - occurs if:   s' <= 2**-24
+         - bad because: If exponent e <= -24, HexNN misinterprets s'=2**e as 2**(e+32)
+                        due to internal type casting bug
 
-    3. Accumulator Bias Overflow
-       - occurs if:   |b'| > 2**31
-       - bad because: HexNN internally stores b' as int32
+      3. Accumulator Bias Overflow
+         - occurs if:   |b'| > 2**31
+         - bad because: HexNN internally stores b' as int32
     """
     input_encoding_producer = None
 

@@ -197,11 +197,11 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../apiref/torch/bnf.rst
-            :start-after: # start-after
+        .. autofunction:: aimet_torch.batch_norm_fold.fold_all_batch_norms
+            :no-index:
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. include:: ../apiref/onnx/bnf.rst
-           :start-after: # start-after
+        .. autofunction:: aimet_onnx.batch_norm_fold.fold_all_batch_norms_to_weight
+            :no-index:

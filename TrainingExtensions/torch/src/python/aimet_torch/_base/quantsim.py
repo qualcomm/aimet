@@ -1978,8 +1978,8 @@ class _QuantizationSimModelBase(ABC):
             encodings require gradient computation during training.
             If None, ``requires_grad`` flag of the quantization parameters will be kept unchanged.
         :param bool allow_overwrite: Whether or not the quantization parameters loaded from the
-            encodings can be overwriiten by :ref:`compute_encodings` or another :ref:`load_encodings`.
-            If None, whether the quantizer is overwrieable will be kept unchanged.
+            encodings can be overwritten by :meth:`compute_encodings` or another :meth:`load_encodings`.
+            If None, whether the quantizer is overwriteable will be kept unchanged.
         """
         if isinstance(encodings, (str, os.PathLike)):
             with open(encodings, mode="r") as f:

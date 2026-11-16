@@ -34,7 +34,7 @@ In this section, we instantiate the base model, LoRa adapters, and dataset using
             :end-before: [create_quantsim]
 
 Create QuantizationSimModel
------
+---------------------------
 
 .. tab-set::
     :sync-group: platform
@@ -48,7 +48,7 @@ Create QuantizationSimModel
             :end-before: [calibration_callback]
 
 Calibration Callback
------
+--------------------
 
 .. tab-set::
     :sync-group: platform
@@ -62,7 +62,7 @@ Calibration Callback
             :end-before: [lora_training_callback]
 
 Training Callback
------
+-----------------
 
 .. tab-set::
     :sync-group: platform
@@ -76,7 +76,7 @@ Training Callback
             :end-before: [qwa_lora]
 
 Run QWA-LoRa
------
+------------
 
 .. tab-set::
     :sync-group: platform

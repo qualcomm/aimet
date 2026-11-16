@@ -1,3 +1,5 @@
+:orphan:
+
 .. _opt-guide-index:
 
 #######################
@@ -9,8 +11,6 @@ Quantization user guide
 
     AIMET features <quantization_tools>
     Quantization workflow <quantization_workflow>
-    Debugging guidelines <debugging_guidelines>
-    On-target inference <on_target_inference>
 
 This quantization user guide is organized into the following sections.
 
@@ -27,9 +27,9 @@ Quantization workflow
 Debugging guidelines
 ====================
 
-:doc:`Debugging guidelines <debugging_guidelines>` provides steps to improve the performance of a quantized model.
+:doc:`Debugging guidelines </tutorials/debugging_guidelines>` provides steps to improve the performance of a quantized model.
 
 On-target inference
 ===================
 
-:doc:`On-target inference <on_target_inference>` describes how to deploy a quantized model to a target runtime.
+:doc:`On-target inference </tutorials/on_target_inference>` describes how to deploy a quantized model to a target runtime.

@@ -1,8 +1,8 @@
-.. _examples-index:
+.. _examples-notebooks-index:
 
-########
+#################
 Example Notebooks
-########
+#################
 
 AIMET’s end-to-end examples are provided as **Jupyter Notebooks** designed to help you:
 
@@ -37,7 +37,7 @@ Following the tables, you’ll find step-by-step instructions on how to run thes
      - `Link <notebooks/torch/v2/qat.ipynb>`_
    * - Cross-layer equalization (CLE)
      - `Link <notebooks/onnx/quantization/cle.ipynb>`_
-     - `Link <notebooks/torch/quantization/cle_bc.ipynb>`_
+     - `Link <notebooks/torch/quantization/cle.ipynb>`_
    * - Adaptive rounding (AdaRound)
      - `Link <notebooks/onnx/quantization/adaround.ipynb>`_
      - `Link <notebooks/torch/quantization/adaround.ipynb>`_
@@ -91,7 +91,7 @@ To run the notebooks, follow the instructions below.
 
 3. Copy and paste the URL into your browser.
 
-4. Install AIMET and its dependencies using the instructions in :doc:`AIMET installation </install/index>`.
+4. Install AIMET and its dependencies using the instructions in :doc:`AIMET installation </overview/install/index>`.
 
 
 2. Download the example notebooks and related code
@@ -149,6 +149,19 @@ Set up your workspace using the following steps:
 .. toctree::
   :hidden:
 
-    Quantization Workflow <quantization-workflow>
-    QuantAnalyzer <quant_analyzer>
-    Automatic Mixed Precision <amp>
+  notebooks/onnx/quantization/quantsim
+  notebooks/onnx/quantization/cle
+  notebooks/onnx/quantization/adaround
+  notebooks/onnx/quantization/AMP
+  notebooks/onnx/quantization/quant_analyzer
+  notebooks/torch/quantization/qat
+  notebooks/torch/v2/qat
+  notebooks/torch/quantization/qat_range_learning
+  notebooks/torch/quantization/cle
+  notebooks/torch/quantization/adaround
+  notebooks/torch/quantization/AMP
+  notebooks/torch/quantization/bn_reestimation
+  notebooks/torch/quantization/quant_analyzer
+  notebooks/torch/compression/channel_pruning
+  notebooks/torch/compression/spatial_svd
+  notebooks/torch/compression/spatial_svd_channel_pruning

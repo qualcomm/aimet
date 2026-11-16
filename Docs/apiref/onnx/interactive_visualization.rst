@@ -10,7 +10,6 @@ aimet_onnx.analysis
 .. warning::
     This feature is under heavy development and API changes may occur without notice in future versions.
 
-Visualization Tools
-===================
+.. rubric:: Visualization Tools
 
 .. autofunction:: aimet_onnx.analysis.visualize_stats

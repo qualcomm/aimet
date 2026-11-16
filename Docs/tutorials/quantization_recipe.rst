@@ -245,7 +245,6 @@ GPU Memory Requirements:
 
 Recipes
 =======
-=======
 
 We present two recipes for INT4 weights, INT16 activations quantization using combinations of :ref:`Post-Training Quantization (PTQ) <featureguide-index>` techniques available in ``aimet-onnx``:
 

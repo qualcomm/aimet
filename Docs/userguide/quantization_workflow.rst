@@ -53,7 +53,7 @@ Add quantization/dequantization (QDQ) nodes to the model using QuantSim. Set wei
 Do the following:
 
 1. Ensure that the FP32 model adheres to framework-specific guidelines. For instance, in PyTorch QuantSim can only quantize math operations performed by :class:`torch.nn.Module` objects, while :class:`torch.nn.functional` calls will be incorrectly ignored. See framework-specific pages to learn more about such model guidelines.
-2. Once the model conforms to guidelines, create a quantization simulation (QuantSim) version of your model with the bit-width set to 16 bits for both weights and activations (W16A16). See :ref:`<quantsim-workflow>`.
+2. Once the model conforms to guidelines, create a quantization simulation (QuantSim) version of your model with the bit-width set to 16 bits for both weights and activations (W16A16). See :ref:`quantsim-workflow`.
 3. Ensure that the original FP32 model and the quantized model (QuantSim object) perform similarly during the forward pass.
 4. Compute the off-target quantized accuracy metric for the quantized model and verify that it agrees (approximately) with the FP32 model. If it does not, there might be a problem with the quantization nodes. You can help improve AIMET by reporting an issue to |aimet|_.
 

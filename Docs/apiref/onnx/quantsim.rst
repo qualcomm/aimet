@@ -28,3 +28,4 @@ aimet_onnx.quantsim
 
 .. autoclass:: aimet_onnx.common.defs.QuantScheme
     :members:
+    :no-index:

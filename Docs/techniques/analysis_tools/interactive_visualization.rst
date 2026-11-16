@@ -30,11 +30,24 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../../apiref/torch/interactive_visualization.rst
-            :start-after: # start-after
+        .. warning::
+            This feature is under heavy development and API changes may occur without notice in future versions.
+
+        .. currentmodule:: aimet_torch.v2
+
+
+        .. rubric:: Visualization Tools
+
+        .. autofunction:: aimet_torch.v2.visualization_tools.visualize_stats
+            :no-index:
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. include:: ../../apiref/onnx/interactive_visualization.rst
-            :start-after: # start-after
+        .. warning::
+            This feature is under heavy development and API changes may occur without notice in future versions.
+
+        .. rubric:: Visualization Tools
+
+        .. autofunction:: aimet_onnx.analysis.visualize_stats
+            :no-index:

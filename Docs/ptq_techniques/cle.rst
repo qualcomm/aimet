@@ -6,7 +6,7 @@ Cross-layer equalization
 
 Context
 =======
-Quantization of floating-point models into lower bitwidths introduces quantization noise on the weights and activations, which often reduces model performance. To minimize quantization noise, AIMET recommends a :ref:`quantization workflow <opt-guide-quantization-workflow>` that includes a variety of post training quantization (PTQ) techniques. You can learn more about these techniques `here <https://arxiv.org/pdf/1906.04721>`_.
+Quantization of floating-point models into lower bitwidths introduces quantization noise on the weights and activations, which often reduces model performance. To minimize quantization noise, AIMET recommends a :ref:`quantization workflow <tutorials-quantization-workflow>` that includes a variety of post training quantization (PTQ) techniques. You can learn more about these techniques `here <https://arxiv.org/pdf/1906.04721>`_.
 
 AIMET includes cross-layer equalization (CLE) that applies the following PTQ techniques sequentially:
 
@@ -240,12 +240,12 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../apiref/torch/cle.rst
-            :start-after: # start-after
+        .. autofunction:: aimet_torch.cross_layer_equalization.equalize_model
+            :no-index:
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. include:: ../apiref/onnx/cle.rst
-           :start-after: # start-after
+        .. autofunction:: aimet_onnx.cross_layer_equalization.equalize_model
+            :no-index:
 

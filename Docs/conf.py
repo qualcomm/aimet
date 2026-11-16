@@ -106,6 +106,13 @@ pygments_style = 'sphinx'
 # prefix each section label with the name of the document it is in, followed by a colon
 autosectionlabel_prefix_document = True
 
+# autosummary generates pages for both the ``affine.quantize`` function and the
+# ``affine.Quantize`` class; autosectionlabel lowercases labels, so their
+# auto-generated section labels collide. Nothing references them.
+suppress_warnings = [
+    "autosectionlabel.apiref/torch/generated/aimet_torch.quantization.affine.quantize",
+]
+
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

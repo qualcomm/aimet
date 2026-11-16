@@ -12,8 +12,8 @@ removes the input channels that were selected for pruning.
 
 Only 2D convolution (Conv2D) layers can be winnowed.
 
-Winnowing
----------
+Example
+-------
 
 The following figure illustrates winnowing. In this example, a module in a model has an
 input volume of **HxWx8**, where:
@@ -44,8 +44,8 @@ left side of the figure. The right side of the figure indicates the actions take
 
 1. The identified subset of input channels are removed from the Conv module (indicated in pink).
 2. The module just above the winnowed Conv module (colored orange) is `not` a Conv module. It
-could be a ReLU or a BatchNorm module. Its corresponding output and input channels are winnowed.
+   could be a ReLU or a BatchNorm module. Its corresponding output and input channels are winnowed.
 3. The module above the ReLU/BatchNorm is another Conv module. This Conv module's output
-channels (shown in pink) are winnowed.
+   channels (shown in pink) are winnowed.
 
 .. image:: ../../images/winnow_2.png

@@ -34,7 +34,7 @@ To use AdaScale, you need:
   ``Llama``, ``Qwen2``, ``Mistral``, ``Phi3``, ``Qwen3``, ``Qwen3.5``.
   PyTorch additionally supports vision-language models: ``Qwen2.5-VL``, ``Qwen3-VL``.
 - **ONNX only**: the model must be exported to ONNX with the input naming convention required by
-  AdaScale — `Step 2`_ handles this.
+  AdaScale — :ref:`Step 2 <adascale-step-2>` handles this.
 
 .. note::
    For a complete working example including all steps below, see
@@ -48,7 +48,7 @@ To use AdaScale, you need:
 Procedure
 ---------
 
-.. _Step 1:
+.. _adascale-step-1:
 
 Step 1: Load model
 ~~~~~~~~~~~~~~~~~~
@@ -75,7 +75,7 @@ with a static graph — required for both the PyTorch and ONNX workflows.
             :start-after: # [model-setup]
             :end-before: # End of [model-setup]
 
-.. _Step 2:
+.. _adascale-step-2:
 
 Step 2: Create QuantizationSimModel
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -86,7 +86,7 @@ For ONNX, this step also exports the model to ONNX first — the ONNX tab includ
 
 The ONNX tab additionally analyzes the model's decoder-stack structure with
 :ref:`analyze_llm_topology <apiref-onnx-adascale>`, on the **float** model and before the sim is
-created. A topology describes the model, not the sim, so derive it once here; `Step 3`_ hands it to
+created. A topology describes the model, not the sim, so derive it once here; :ref:`Step 3 <adascale-step-3>` hands it to
 AdaScale, which uses it to locate the decoder blocks.
 
 .. tab-set::
@@ -108,7 +108,7 @@ AdaScale, which uses it to locate the decoder blocks.
             :start-after: # [create-sim]
             :end-before: # End of [create-sim]
 
-.. _Step 3:
+.. _adascale-step-3:
 
 Step 3: Apply AdaScale
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -120,11 +120,12 @@ dataset; AdaScale derives per-block activations internally and uses them for BKD
 
 .. note::
    **ONNX only**: AdaScale is told where the decoder blocks are, rather than finding them itself.
-   Pass the ``LlmTopology`` analyzed from the float model in `Step 2`_ as ``topology`` — locating
+   Pass the ``LlmTopology`` analyzed from the float model in :ref:`Step 2 <adascale-step-2>` as ``topology`` — locating
    model structure belongs to AIMET's topology analysis, and AdaScale only optimizes the blocks it
    reports. The argument is optional today: omitting it discovers the topology internally from the
    sim's graph and warns. Passing it is the recommended usage, and may become required in a future
    release.
+
 This is the most time-consuming step; expect 2–6 hours depending on model size and iteration count
 (see the timing column in :ref:`Quantization recipes for LLMs <quantization-genai-recipe>`).
 

@@ -166,7 +166,7 @@ class MambaBlockTopology(BlockTopology):
 class LlmTopology:
     """Topology of an ONNX decoder-stack model: blocks + backbone-level roles + dims.
 
-    :param embed_tokens: Names of the token-embedding ``Gather``(s) that produce
+    :param embed_tokens: Names of the token-embedding ``Gather`` node(s) that produce
         the initial residual-stream activations.
     :param lm_head: Names of the vocabulary-projection linear(s) downstream of
         the final norm.

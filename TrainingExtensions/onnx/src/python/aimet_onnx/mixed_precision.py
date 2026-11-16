@@ -182,12 +182,17 @@ def choose_mixed_precision(
     a curve for Accuracy vs BitOps is saved under the results directory
 
     :param sim: Quantized sim model
-    :param candidates: List of tuples for all possible bitwidth values for activations and parameters
-                    Suppose the possible combinations are-
-                    ((Activation bitwidth - 8, Activation data type - int), (Parameter bitwidth - 16, parameter data type - int))
-                    ((Activation bitwidth - 16, Activation data type - float), (Parameter bitwidth - 16, parameter data type - float))
-                    candidates will be [((8, QuantizationDataType.int), (16, QuantizationDataType.int)),
-                                        ((16, QuantizationDataType.float), (16, QuantizationDataType.float))]
+    :param candidates: List of tuples for all possible bitwidth values for activations and parameters.
+                    Suppose the possible combinations are::
+
+                        ((Activation bitwidth - 8, Activation data type - int), (Parameter bitwidth - 16, parameter data type - int))
+                        ((Activation bitwidth - 16, Activation data type - float), (Parameter bitwidth - 16, parameter data type - float))
+
+                    Then candidates will be::
+
+                        [((8, QuantizationDataType.int), (16, QuantizationDataType.int)),
+                         ((16, QuantizationDataType.float), (16, QuantizationDataType.float))]
+
     :param eval_callback_for_phase1: Callable object used to measure sensitivity of each
                                  quantizer group during phase 1. The phase 1 involves finding accuracy list/sensitivity of each
                                  module. Therefore, a user might want to run the phase 1 with a smaller dataset
@@ -207,7 +212,7 @@ def choose_mixed_precision(
                     which are passed through the “candidates” field may not be supported based on the data passed
                     through “supported_kernels”. When the field “use_all_amp_candidates” is set to True, the AMP
                     algorithm will ignore the "supported_kernels" in the config file and continue to use all candidates.
-    :phase1_optimize: If user set this parameter to false then phase1 default logic will be executed else optimized logic will be executed.
+    :param phase1_optimize: If user set this parameter to false then phase1 default logic will be executed else optimized logic will be executed.
     :param amp_search_algo: A valid value from the Enum AMPSearchAlgo. Defines the search algorithm to be used for
                             the phase 2 of AMP.
 

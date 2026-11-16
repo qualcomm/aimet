@@ -66,7 +66,7 @@ Prerequisites
 To use SpinQuant, you need:
 
 - A pre-trained model loaded from HuggingFace.
-- **ONNX only**: the model must be exported to ONNX — `Step 2`_ handles this.
+- **ONNX only**: the model must be exported to ONNX — :ref:`Step 2 <spinquant-step-2>` handles this.
 
 .. note::
    For a complete working example, see
@@ -78,7 +78,7 @@ To use SpinQuant, you need:
 Procedure
 ---------
 
-.. _Step 1:
+.. _spinquant-step-1:
 
 Step 1: Load model
 ~~~~~~~~~~~~~~~~~~
@@ -105,7 +105,7 @@ with a static graph.
             :start-after: # [model-setup]
             :end-before: # End of [model-setup]
 
-.. _Step 2:
+.. _spinquant-step-2:
 
 Step 2: Create QuantizationSimModel
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -113,10 +113,10 @@ Step 2: Create QuantizationSimModel
 Create a :ref:`QuantizationSimModel <quantsim-index>` with the desired quantization configuration.
 
 **ONNX only**: this step instead exports the model to ONNX and analyzes its decoder-stack structure
-with :ref:`analyze_llm_topology <apiref-onnx-spinquant>`. The sim is created in `Step 3`_, *after*
+with :ref:`analyze_llm_topology <apiref-onnx-spinquant>`. The sim is created in :ref:`Step 3 <spinquant-step-3>`, *after*
 the rotation, because ONNX SpinQuant rewrites the float graph and R3 inserts new ops that only a sim
 built on the rotated graph can wrap in quantizers. A topology describes the model, not the sim, so
-derive it once here; `Step 3`_ hands it to SpinQuant, which uses it to place every rotation.
+derive it once here; :ref:`Step 3 <spinquant-step-3>` hands it to SpinQuant, which uses it to place every rotation.
 
 .. tab-set::
     :sync-group: platform
@@ -137,7 +137,7 @@ derive it once here; `Step 3`_ hands it to SpinQuant, which uses it to place eve
             :start-after: # [export-onnx]
             :end-before: # End of [export-onnx]
 
-.. _Step 3:
+.. _spinquant-step-3:
 
 Step 3: Apply SpinQuant
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -153,7 +153,7 @@ applies the R1 Hadamard rotation to all weight matrices in-place.
 
 .. note::
    **ONNX only**: SpinQuant is told where each rotation goes, rather than finding out itself. Pass
-   the ``LlmTopology`` analyzed in `Step 2`_ as ``topology`` — locating model structure belongs to
+   the ``LlmTopology`` analyzed in :ref:`Step 2 <spinquant-step-2>` as ``topology`` — locating model structure belongs to
    AIMET's topology analysis, and SpinQuant only rotates what it reports. The argument is optional
    today: omitting it analyzes the topology internally and warns. Passing it is the recommended
    usage, and may become required in a future release.

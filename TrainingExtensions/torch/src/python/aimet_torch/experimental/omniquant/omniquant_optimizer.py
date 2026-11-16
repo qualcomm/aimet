@@ -62,15 +62,15 @@ class Omniquant:
         output_path: str = OMNIQUANT_ARTIFACT_DIR,
     ):
         """
-        Returns model with with omniquant weight, and save metadata in safetensor format to output path. Metadata safetensor
+        Returns model with omniquant weight, and save metadata in safetensor format to output path. Metadata safetensor
         can be used in update_lora_weights to update lora adaptor weights for peft lora model.
 
         :param quant_sim: QuantizationSimModel object to optimize with Omniquant.
         :param dataloader: Dataloader used to train model.
         :param forward_fn: Model forward function used to cache intermediate data.
-                           Expect to have model and inputs as function argument. e.g. lambda model, inputs: model(*inputs)
+                           Expect to have model and inputs as function argument. e.g. ``lambda model, inputs: model(*inputs)``
         :param num_iterations: Number of iterations to train each block with omniquant.
-        :param output_path: Path to save {layer_name: scale} metadata safetensor.
+        :param output_path: Path to save ``{layer_name: scale}`` metadata safetensor.
         :return: Model with Omniquant weights.
         """
         num_batch = len(dataloader)

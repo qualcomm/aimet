@@ -20,7 +20,7 @@ The steps are shown as a flow chart in the following figure and are described in
 
 
 1. FP32 confidence checks
-------------------------
+-------------------------
 
 First, ensure that the floating-point and quantized model behave similarly in the forward pass,
 especially when using custom quantization pipelines. Set the quantized model bit-width to 32 bits

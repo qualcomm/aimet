@@ -26,8 +26,8 @@ To use AdaRound, you must:
 - Load a trained model
 - Create a training or validation dataloader for the model
 
-Workflow
---------
+Procedure
+---------
 
 Setup
 ~~~~~

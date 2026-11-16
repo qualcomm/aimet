@@ -13,7 +13,6 @@ aimet_torch.visualization_tools
 .. currentmodule:: aimet_torch.v2
 
 
-Visualization Tools
-===================
+.. rubric:: Visualization Tools
 
 .. autofunction:: aimet_torch.v2.visualization_tools.visualize_stats

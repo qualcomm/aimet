@@ -13,7 +13,7 @@ Post Training Quantization Techniques
     Cross-layer equalization <cle>
     AdaScale <adascale>
     Batch norm re-estimation <bn>
-    Quantized LoRa <quantized LoRa/index>
+    Quantized LoRa <quantized_LoRa/index>
     OmniQuant <omniquant>
     SpinQuant <spinquant>
 

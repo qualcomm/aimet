@@ -63,7 +63,7 @@ Users should instead define their model as::
 This will not be possible in certain cases where operations can only be represented as functionals and not as class
 definitions, but should be followed whenever possible.
 
-Also, User can also automate this by using :ref:`Model Preparer API<api-torch-model-preparer>`
+Also, User can also automate this by using :ref:`Model Preparer API<apiref-torch-model-preparer>`
 
 **Avoid reuse of class defined modules**
 

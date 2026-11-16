@@ -141,11 +141,21 @@ API
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. include:: ../../apiref/torch/layer_output_generation.rst
-            :start-after: # start-after
+        .. autoclass:: aimet_torch.layer_output_utils.LayerOutputUtil
+            :no-index:
+
+        .. automethod:: aimet_torch.layer_output_utils.LayerOutputUtil.generate_layer_outputs
+            :no-index:
+
+        .. autoclass:: aimet_torch.layer_output_utils.NamingScheme
+            :members:
+            :no-index:
 
     .. tab-item:: ONNX
         :sync: onnx
 
-        .. include:: ../../apiref/onnx/layer_output_generation.rst
-           :start-after: # start-after
+        .. autoclass:: aimet_onnx.layer_output_utils.LayerOutputUtil
+            :no-index:
+
+        .. automethod:: aimet_onnx.layer_output_utils.LayerOutputUtil.generate_layer_outputs
+            :no-index:

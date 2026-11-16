@@ -1524,8 +1524,8 @@ Release notes
         * Deprecated saving PyTorch model object during :func:`QuantizationsimModel.export` (`b5521f3`_)
 
 * Known Issues
-  * ONNX
-      * Adaround runs over 2x slower with onnxruntime 1.20 or higher. The root cause has been identified, and a fix is in progress
+    * ONNX
+        * Adaround runs over 2x slower with onnxruntime 1.20 or higher. The root cause has been identified, and a fix is in progress
 
 .. _cbe67ae: https://github.com/qualcomm/aimet/commit/cbe67ae291f3519f3207d438450d22964f5a8c0d
 .. _84edcf5: https://github.com/qualcomm/aimet/commit/84edcf580ac76afa8d128316e03c7737f2599c2d
@@ -1695,7 +1695,7 @@ Release notes
 
 * Upgrading
     * PyTorch
-        * aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x. If you are using low-level components of :class:`QuantizationSimModel`, please see :doc:`Migrate to aimet_torch 2 </apiref/torch/migration_guide>`.
+        * aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x. If you are using low-level components of :class:`QuantizationSimModel`, please see the Migrate to aimet_torch 2 guide in the `AIMET 2.x documentation <https://qualcomm.github.io/aimet-pages/releases/2.0.0/apiref/torch/migration_guide.html>`_.
 
 1.35.1
 ======

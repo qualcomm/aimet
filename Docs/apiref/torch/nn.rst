@@ -70,7 +70,7 @@ Before a module can compute a quantized forward pass, all quantizers must first 
 context. When a quantized module enters the `compute_encodings` context, it first disables all input and output quantization
 while the quantizers observe the statistics of the activation tensors passing through them. Upon exiting the context,
 the quantizers calculate appropriate quantization encodings based on these statistics (exactly *how* the encodings are
-computed is determined by each quantizer's :ref:`encoding analyzer<api-torch-encoding-analyzer>`).
+computed is determined by each quantizer's encoding analyzer).
 
 Example:
     >>> qlinear = aimet_torch.nn.QuantizedLinear(out_features=10, in_features=5)

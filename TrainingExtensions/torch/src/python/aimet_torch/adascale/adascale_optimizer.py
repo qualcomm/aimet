@@ -447,9 +447,10 @@ class AdaScale:
             >>> sim.export(...)
 
         .. note::
-        1. apply_adascale modifies the weights in-place in the model
-        2. compute encodings should not be called before the apply_adascale call
-        3. Activation quantizers will remain uninitialized throughout the feature, and so compute encodings needs to be called by the user afterwards. This is so activation encodings will be computed with updated weights taken into account.
+
+            1. apply_adascale modifies the weights in-place in the model
+            2. compute encodings should not be called before the apply_adascale call
+            3. Activation quantizers will remain uninitialized throughout the feature, and so compute encodings needs to be called by the user afterwards. This is so activation encodings will be computed with updated weights taken into account.
 
         Warning: This feature is currently considered experimental pending API changes
         """

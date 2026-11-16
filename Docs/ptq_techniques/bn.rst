@@ -97,5 +97,5 @@ If BN re-estimation resulted in satisfactory accuracy, export the model.
 API
 ===
 
-.. include:: ../apiref/torch/bn.rst
-    :start-after: # start-after
+.. autofunction:: aimet_torch.bn_reestimation.reestimate_bn_stats
+    :no-index:

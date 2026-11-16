@@ -103,5 +103,5 @@ If the resulting quantized accuracy is satisfactory, export the model.
 API
 ===
 
-.. include:: ../apiref/torch/omniquant.rst
-    :start-after: # start-after
+.. autofunction:: aimet_torch.experimental.omniquant.apply_omniquant
+    :no-index:

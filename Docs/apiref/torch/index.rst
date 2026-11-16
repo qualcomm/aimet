@@ -16,7 +16,6 @@ aimet_torch API
     aimet_torch.seq_mse <seq_mse>
     aimet_torch.adascale <adascale>
     aimet_torch.quantsim.config_utils <lpbq>
-    aimet_torch.manual_mixed_precision <mmp>
     aimet_torch.batch_norm_fold <bnf>
     aimet_torch.cross_layer_equalization <cle>
     aimet_torch.model_preparer <model_preparer>

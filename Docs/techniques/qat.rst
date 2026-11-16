@@ -30,7 +30,7 @@ In both variants, quantization parameters for model parameters (such as weight) 
 Typical recommendations
 =======================
 
-- **Initialization**: Apply PTQ techniques (such as :ref:`Sequential MSE <featureguide-seq-mse>`) before starting QAT.
+- **Initialization**: Apply PTQ techniques (such as :ref:`Sequential MSE <ptq-seq-mse>`) before starting QAT.
 
   *This is especially more important if there is a large drop in INT8 performance compared to the FP baseline.
   QAT is a fine-tuning technique that relies on a reasonably well-performing quantized model as a starting point.

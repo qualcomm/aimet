@@ -18,7 +18,7 @@ Terminology
 
 1. Base Model: Model without adapters
 2. Concurrency: Multiple adapters can be added to a model. 1 or more adapters which are active/enabled at the same time
-make a concurrency.
+   make a concurrency.
 
 
 User flow

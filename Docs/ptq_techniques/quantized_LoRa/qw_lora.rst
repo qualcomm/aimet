@@ -37,7 +37,7 @@ In this section, we instantiate the base model, LoRa adapters, and dataset using
             :end-before: [freeze_base_model_weights]
 
 Quantize and Update Base Model Weights
------
+--------------------------------------
 Step #1 of QW-LoRa
 
 In this section, we calculate quantization parameters for the base model weights, and use those parameters to update
@@ -60,7 +60,7 @@ the weights. A helper function to do this is provided below if you do not alread
             :end-before: [lora_training]
 
 LoRa Training
------
+-------------
 Step #2 of QW-LoRa
 
 

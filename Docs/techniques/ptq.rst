@@ -53,11 +53,6 @@ If you already have imagenet dataset locally that you would like to use, simply 
     .. tab-item:: PyTorch
         :sync: torch
 
-        .. important::
-
-            aimet_torch 2 is fully backward compatible with all the public APIs of aimet_torch 1.x. If you are
-            using low-level components of :class:`QuantizationSimModel`, see the :doc:`aimet_torch 1 to aimet_torch 2 Migration Guide<../apiref/torch/migration_guide>`.
-
         .. literalinclude:: ../snippets/torch/apply_quantsim.py
            :language: python
            :start-after: # PyTorch imports

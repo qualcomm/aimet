@@ -6,13 +6,6 @@
 Quantization simulation guide
 #############################
 
-.. toctree::
-    :hidden:
-
-    Post-Training Quantization (PTQ) <ptq>
-    Quantization Aware Training (QAT) <qat>
-    Blockwise Quantization <blockwise>
-
 Overview
 ========
 

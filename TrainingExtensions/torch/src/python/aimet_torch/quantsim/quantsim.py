@@ -172,8 +172,8 @@ class QuantizationSimModel(_QuantizationSimModelBase):  # pylint: disable=missin
     Class that simulates the quantized model execution on a target hardware backend.
 
     QuantizationSimModel simulates quantization of a given model by converting
-    all PyTorch modules into :ref:`quantized modules<api-torch-quantized-modules>`
-    with input/output/parameter :ref:`quantizers<api-torch-quantizers>` as necessary.
+    all PyTorch modules into :ref:`quantized modules<api-built-in-quantized-modules>`
+    with input/output/parameter :ref:`quantizers<api-beta-quantizers>` as necessary.
 
     Example:
 
@@ -740,7 +740,7 @@ Use sim.onnx.export() or aimet_torch.onnx.export() instead. For more information
 
     def quantizers(
         self,
-        memo: set["Module"] | None = None,
+        memo: set[torch.nn.Module] | None = None,
         prefix: str = "",
         remove_duplicate: bool = True,
     ):

@@ -36,7 +36,7 @@ The algorithm involves four phases as shown in the following image.
     :width: 700px
 
 Phase 0: Find quantizer groups
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *Quantizer group* is a set of quantizers whose configurations are interdependent on one another in a practical setup.
 For example, the input and weight quantizer of a Convolution layer will be grouped as a quantizer group because only certain combinations such as W8A8, W8A16, W16A16, etc. make sense in practice.
@@ -115,8 +115,9 @@ Use Cases
 .. note::
     In both use cases, `choose_mixed_precision` will exit early without exploring Pareto curve if the desired accuracy is either already achieved or deemed unattainable.
     For example, given W8A8 and W16A16 as candidates, mixed precision algorithm will exit early if one of the following is true:
-       - Setting all layers to W8A8 yields higher accuracy than the desired accuracy
-       - Setting all layers to W16A16 yields lower accuracy than the desired accuracy
+
+    - Setting all layers to W8A8 yields higher accuracy than the desired accuracy
+    - Setting all layers to W16A16 yields lower accuracy than the desired accuracy
 
 Workflow
 ========

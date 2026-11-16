@@ -16,7 +16,7 @@ Glossary
       The output of a node's activation function, passed as an input to the subsequent layer of the network.
 
    Activation Quantization
-      The process of converting the output values (:term:`activations`) of nodes from high precision (for example, 32-bit floating point) to lower precision (for example, 8-bit integer), reducing computation and memory requirements during :term:`inference`.
+      The process of converting the output values (:term:`activations <Activation>`) of nodes from high precision (for example, 32-bit floating point) to lower precision (for example, 8-bit integer), reducing computation and memory requirements during :term:`inference`.
 
    AdaRound
       A technique used to minimize :term:`quantization` errors by carefully selecting how to round weights. AdaRound is especially powerful in retaining accuracy of models that undergo aggressive :term:`quantization`.
@@ -61,10 +61,10 @@ Glossary
       A device at the "edge" of the network. Typically a personal computation device such as a mobile phone or a laptop.
 
    Encoding
-      The representation of model parameters (weights) and :term:`activations` in a compressed, quantized format. Different encoding schemes embody tradeoffs between model accuracy and efficiency.
+      The representation of model parameters (weights) and :term:`activations <Activation>` in a compressed, quantized format. Different encoding schemes embody tradeoffs between model accuracy and efficiency.
 
    FP32
-      32-bit floating-point precision, the default data type for representing weights and :term:`activations` in most deep learning frameworks.
+      32-bit floating-point precision, the default data type for representing weights and :term:`activations <Activation>` in most deep learning frameworks.
 
    Inference
       The process of employing a trained AI model for its intended purpose: prediction, classification, content generation, etc.
@@ -73,7 +73,7 @@ Glossary
       8-bit integer precision, commonly used by AIMET to reduce the memory size and computational demands during :term:`inference`.
 
    KL Divergence
-      Kullback-Leibler Divergence. A measure of the difference between two probability distributions. Used during :term:`quantization` calibration to maintain a similar distribution of :term:`activations` to the original floating-point model.
+      Kullback-Leibler Divergence. A measure of the difference between two probability distributions. Used during :term:`quantization` calibration to maintain a similar distribution of :term:`activations <Activation>` to the original floating-point model.
 
    Layer
       How nodes are organized in a model. The nodes in a layer are connected to the previous and subsequent layer via :term:`weights`.
@@ -85,13 +85,13 @@ Glossary
       A family of :term:`convolutional neural network` architectures developed at Google optimized to operate efficiently with constrained computational resources.
 
    Model
-      A computational structure made up of :term:`layers` of :term:`nodes` connected by :term:`weights`.
+      A computational structure made up of :term:`layers <Layer>` of :term:`nodes <Node>` connected by :term:`weights`.
 
    Neural Network Compression Framework
       Another :term:`compression` and optimization toolkit similar to AIMET.
 
    Node
-      A computation unit in a :model:`model`. Each node performs a mathematical function on an input to produce an output.
+      A computation unit in a :term:`model`. Each node performs a mathematical function on an input to produce an output.
 
    Normalization
       Scaling a feature such as a :term:`layer` to standardize the range of the feature.
@@ -121,7 +121,7 @@ Glossary
       A open-source deep learning framework developed by Facebook's AI Research lab (FAIR), widely used in research environments.
 
    QAT
-      :term:`Quantization Aware Training`.
+      :term:`Quantization-Aware Training`.
 
    QDQ
       Quantize and dequantize operations.
