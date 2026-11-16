@@ -748,10 +748,19 @@ class AdaScale:
                             _format_duration(time.perf_counter() - run_start),
                         )
                 finally:
-                    # Release the cached activations before the session is rebuilt
-                    qt_sampler = fp_sampler = None
+                    # Host memory peaks here, after the last block: hand the trained model back
+                    # with as few full copies of the weights alive as possible. Drop the
+                    # samplers (and their cached activations) and the unquantized clone, drop
+                    # the trained onnx_ir model once converted, and replace the sim's proto
+                    # rather than CopyFrom into it, which would keep the old one alive too.
+                    qt_sampler = fp_sampler = unquantized_model = None
                     gc.collect()
-                    sim.model.model.CopyFrom(onnx_ir.to_proto(sim_model))
+                    trained_proto = onnx_ir.to_proto(sim_model)
+                    sim_model = None
+                    gc.collect()
+                    sim._reset_model(trained_proto)  # pylint: disable=protected-access
+                    del trained_proto
+                    gc.collect()
                     sim._rebuild_session()  # pylint: disable=protected-access
 
     @staticmethod

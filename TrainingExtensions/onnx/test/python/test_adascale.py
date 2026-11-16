@@ -21,6 +21,7 @@ import pytest
 import aimet_onnx
 from aimet_onnx import QuantizationSimModel
 from aimet_onnx.quantsim import _quantize_subgraphs_enabled
+from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
 from aimet_onnx.common import libpymo
 from aimet_onnx.common.quantsim import calculate_delta_offset
 from aimet_onnx.adascale.adascale_optimizer import (
@@ -1161,6 +1162,47 @@ class TestAdascaleQuantizer:
         sim._compute_param_encodings(dummy_input=inputs[0])
         sim.qc_quantize_op_dict["w1"].enabled = False
         AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=1)
+
+    def test_apply_adascale_hands_back_a_replaced_model(self):
+        """
+        Given: An MoE sim whose experts AdaScale optimizes
+        When: AdaScale finishes
+        Then: The sim holds a new ModelProto (replaced, not copied into, so the old one is freed)
+              carrying the trained weights, its quantizer and graph lookups point into the new
+              one, and the rebuilt session runs
+        """
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route0": np.array([True]),
+                "route1": np.array([True]),
+            }
+            for _ in range(2)
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                models_for_tests.predicated_experts_model(),
+                default_param_bw=4,
+                providers=["CPUExecutionProvider"],
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+        old_proto = sim.model.model
+
+        def w1(proto):
+            for graph in _iterate_graphs_recursive(proto.graph):
+                for init in graph.initializer:
+                    if init.name == "w1":
+                        return numpy_helper.to_array(init)
+            raise AssertionError("w1 not found")
+
+        before = w1(old_proto).copy()
+        AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=5)
+
+        assert sim.model.model is not old_proto
+        assert sim.connected_graph.model is sim.model.model
+        assert not np.array_equal(w1(sim.model.model), before)
+        sim.session.run(None, inputs[0])
 
     def test_block_weight_read_by_both_branches_raises(self):
         """
