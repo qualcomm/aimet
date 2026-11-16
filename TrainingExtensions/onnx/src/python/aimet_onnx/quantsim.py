@@ -167,6 +167,10 @@ _fuse_supergroups = True
 # Experimental: also quantize tensors inside Scan bodies.
 _quantize_subgraphs = False
 
+# Opt-in: build the sim's ORT sessions to hold less device memory, at a possible cost in
+# speed. See _LOW_MEMORY_SESSION_OPTIONS and _LOW_MEMORY_CUDA_PROVIDER_OPTIONS.
+_low_memory_ort_sessions = False
+
 data_types_to_quantize = [np.float32, np.float16, _BFLOAT16]
 
 # Input dtypes of a Cast whose float output is always quantized, regardless of config
@@ -535,6 +539,8 @@ class QuantizationSimModel:
                 op_domain = "aimet.customop.cuda"
 
         self._op_domain = op_domain
+        if _low_memory_ort_sessions:
+            providers = _with_low_memory_cuda_options(providers)
         self.providers = providers
 
         self.qc_quantize_op_dict = {}
@@ -542,6 +548,10 @@ class QuantizationSimModel:
         self._param_type = param_type
         self._activation_type = activation_type
         base_session_options = ort.SessionOptions()
+        if _low_memory_ort_sessions:
+            # Applied first, so explicit session_options_kwargs still take precedence
+            for attr, value in _LOW_MEMORY_SESSION_OPTIONS.items():
+                setattr(base_session_options, attr, value)
         for attr, value in (session_options_kwargs or {}).items():
             setattr(base_session_options, attr, value)
         self._ort_session_options = register_aimet_custom_ops(base_session_options)
@@ -4598,6 +4608,49 @@ def _disable_bf16_unsafe_ort_fusions(session_options: ort.SessionOptions):
     disabled = [name for name in current.split(",") if name]
     disabled += [name for name in _BF16_UNSAFE_ORT_OPTIMIZERS if name not in disabled]
     session_options.add_session_config_entry(key, ",".join(disabled))
+
+
+# SessionOptions set on the sim's sessions while _low_memory_ort_sessions is on. With memory
+# patterns enabled (ORT's default), a session keeps the activation buffers of its first run
+# and then allocates one planned block for later runs, roughly doubling the activation
+# memory it holds.
+_LOW_MEMORY_SESSION_OPTIONS = {"enable_mem_pattern": False}
+
+# CUDAExecutionProvider options set while _low_memory_ort_sessions is on. The default arena
+# strategy (kNextPowerOfTwo) rounds every arena extension up to a power of two, which strands
+# a large part of the arena when it is extended to hold the model weights.
+_LOW_MEMORY_CUDA_PROVIDER_OPTIONS = {"arena_extend_strategy": "kSameAsRequested"}
+
+
+@contextlib.contextmanager
+def _low_memory_ort_sessions_enabled(flag: bool = True):
+    """
+    Build the ORT sessions of QuantizationSimModels created within this context to hold
+    less device memory (see ``_low_memory_ort_sessions``).
+    """
+    global _low_memory_ort_sessions  # pylint: disable=global-statement
+    orig_flag = _low_memory_ort_sessions
+    try:
+        _low_memory_ort_sessions = flag
+        yield
+    finally:
+        _low_memory_ort_sessions = orig_flag
+
+
+def _with_low_memory_cuda_options(providers: Sequence) -> list:
+    """
+    Copy of ``providers`` with _LOW_MEMORY_CUDA_PROVIDER_OPTIONS added to the
+    CUDAExecutionProvider entry. Options the caller already set are kept.
+    """
+    result = []
+    for provider in providers:
+        name, options = (
+            (provider, {}) if isinstance(provider, str) else (provider[0], provider[1])
+        )
+        if name == "CUDAExecutionProvider":
+            provider = (name, {**_LOW_MEMORY_CUDA_PROVIDER_OPTIONS, **options})
+        result.append(provider)
+    return result
 
 
 def _default_providers(model: onnx.ModelProto) -> List[str]:

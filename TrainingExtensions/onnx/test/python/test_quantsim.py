@@ -71,6 +71,8 @@ from aimet_onnx.quantsim import (
     _ENCODING_LOADERS,
     _ENCODING_SECTIONS,
     _validate_encodings,
+    _low_memory_ort_sessions_enabled,
+    _with_low_memory_cuda_options,
 )
 from aimet_onnx.common.defs import QTYPE_ALIASES
 import aimet_onnx
@@ -5081,6 +5083,111 @@ class TestSessionOptions:
                 path=tmp_dir,
                 session_options_kwargs={"intraop_num_threads_typo": 2},
             )
+
+
+class TestLowMemoryOrtSessions:
+    """Tests for the opt-in ``_low_memory_ort_sessions`` flag."""
+
+    def test_off_by_default(self, tmp_dir):
+        sim = QuantizationSimModel(build_dummy_model(), path=tmp_dir)
+
+        assert sim._ort_session_options.enable_mem_pattern is True
+        assert sim.providers == ["CPUExecutionProvider"]
+
+    def test_disables_memory_pattern(self, tmp_dir):
+        with _low_memory_ort_sessions_enabled():
+            sim = QuantizationSimModel(build_dummy_model(), path=tmp_dir)
+
+        assert sim._ort_session_options.enable_mem_pattern is False
+        assert sim.session.get_session_options().enable_mem_pattern is False
+
+    def test_flag_is_restored(self, tmp_dir):
+        with _low_memory_ort_sessions_enabled():
+            pass
+        sim = QuantizationSimModel(build_dummy_model(), path=tmp_dir)
+
+        assert sim._ort_session_options.enable_mem_pattern is True
+
+    def test_session_options_kwargs_take_precedence(self, tmp_dir):
+        with _low_memory_ort_sessions_enabled():
+            sim = QuantizationSimModel(
+                build_dummy_model(),
+                path=tmp_dir,
+                session_options_kwargs={"enable_mem_pattern": True},
+            )
+
+        assert sim._ort_session_options.enable_mem_pattern is True
+
+    def test_cpu_providers_unchanged(self, tmp_dir):
+        with _low_memory_ort_sessions_enabled():
+            sim = QuantizationSimModel(
+                build_dummy_model(), path=tmp_dir, providers=["CPUExecutionProvider"]
+            )
+
+        assert sim.providers == ["CPUExecutionProvider"]
+
+    @pytest.mark.parametrize(
+        "providers, expected",
+        [
+            (
+                ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                [
+                    (
+                        "CUDAExecutionProvider",
+                        {"arena_extend_strategy": "kSameAsRequested"},
+                    ),
+                    "CPUExecutionProvider",
+                ],
+            ),
+            (
+                [("CUDAExecutionProvider", {"device_id": 1}), "CPUExecutionProvider"],
+                [
+                    (
+                        "CUDAExecutionProvider",
+                        {"arena_extend_strategy": "kSameAsRequested", "device_id": 1},
+                    ),
+                    "CPUExecutionProvider",
+                ],
+            ),
+            (
+                [
+                    (
+                        "CUDAExecutionProvider",
+                        {"arena_extend_strategy": "kNextPowerOfTwo"},
+                    )
+                ],
+                [
+                    (
+                        "CUDAExecutionProvider",
+                        {"arena_extend_strategy": "kNextPowerOfTwo"},
+                    )
+                ],
+            ),
+        ],
+    )
+    def test_cuda_provider_options(self, providers, expected):
+        original = copy.deepcopy(providers)
+
+        assert _with_low_memory_cuda_options(providers) == expected
+        assert providers == original
+
+    @pytest.mark.cuda
+    def test_cuda_session(self, tmp_dir):
+        with _low_memory_ort_sessions_enabled():
+            sim = QuantizationSimModel(
+                build_dummy_model(),
+                path=tmp_dir,
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+
+        cuda_options = sim.session.get_provider_options()["CUDAExecutionProvider"]
+        assert cuda_options["arena_extend_strategy"] == "kSameAsRequested"
+        assert sim.session.get_session_options().enable_mem_pattern is False
+
+        # Sessions rebuilt later keep the same settings
+        sim._rebuild_session()
+        cuda_options = sim.session.get_provider_options()["CUDAExecutionProvider"]
+        assert cuda_options["arena_extend_strategy"] == "kSameAsRequested"
 
 
 class TestEncodingPropagation:

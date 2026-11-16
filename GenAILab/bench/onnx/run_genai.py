@@ -10,6 +10,7 @@ import gc
 import os
 from pathlib import Path
 
+import aimet_onnx.quantsim
 from aimet_onnx.quantsim import load_encodings_to_sim
 from aimet_onnx.llm_topology import analyze_llm_topology
 from aimet_onnx.llm_topology.topology import ACTIVE_NORM_MODEL_TYPES
@@ -39,6 +40,10 @@ from GenAILab.bench.onnx import quant_recipes  # noqa: F401 — triggers registr
 from GenAILab.bench.onnx import analysis_passes  # noqa: F401 — triggers registration
 from GenAILab.qai_hub_lm.backends.onnx.generator_utils import generator_factory
 from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import quantize_embedding_weights
+
+# Build every sim's ORT sessions to hold less GPU memory: LLM weights and activations
+# are large, and ORT's default arena and memory-pattern settings over-allocate them.
+aimet_onnx.quantsim._low_memory_ort_sessions = True
 
 
 @contextlib.contextmanager
