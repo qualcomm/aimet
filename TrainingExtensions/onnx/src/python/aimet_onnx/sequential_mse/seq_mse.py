@@ -1190,6 +1190,16 @@ def _compute_seq_chunk_size(
     # Unlike PyTorch SeqMSE (which processes one block at a time and uses factor 2)
     max_tokens = max(int(avail_mem * _GPU_ALLOC_MARGIN / (3 * bytes_per_token)), 1)
 
+    # cuDNN uses int32 indexing, so each output tensor must contain at most
+    # 2**31 - 1 elements.
+    elems_per_token = max(
+        int(np.prod(shape)) // shape[chunk_dim] for shape in all_out_shapes[0]
+    )
+    max_tokens = min(
+        max_tokens,
+        max(np.iinfo(np.int32).max // elems_per_token, 1),
+    )
+
     first_input = next(iter(sim_inputs.values()))[0]
     seq_len = first_input.shape[chunk_dim]
 

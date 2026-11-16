@@ -1573,6 +1573,27 @@ def test_rechunk_seq_inputs_multiple_batches():
         assert chunk.shape == (num_blocks, chunk_size, block_size)
 
 
+def test_compute_seq_chunk_size_caps_cudnn_output_elements(monkeypatch):
+    """Limit each output chunk to the maximum element count supported by cuDNN."""
+    seq_len = 3000
+    output_elements_per_token = 2**20
+
+    # Memory alone would allow the full sequence to run in one chunk.
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda _: (80 * 1024**3, 0))
+
+    chunk_size = _compute_seq_chunk_size(
+        num_blocks=1,
+        sim_inputs={"input": [np.empty((1, 1, 1, seq_len), dtype=np.float32)]},
+        all_out_shapes=[[(1, output_elements_per_token, 1, seq_len)]],
+        all_out_dtypes=[[np.dtype("float32")]],
+        torch_device=torch.device("cuda"),
+        chunk_dim=3,
+    )
+
+    expected = np.iinfo(np.int32).max // output_elements_per_token
+    assert chunk_size == expected
+
+
 @pytest.mark.cuda
 def test_lpbq_seq_mse_chunked_matches_full(monkeypatch):
     """Verify encodings full sequence vs chunk_size=1"""
