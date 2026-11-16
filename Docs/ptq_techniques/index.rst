@@ -1,3 +1,5 @@
+:icon: sliders-horizontal
+
 .. _featureguide-index:
 
 #####################################

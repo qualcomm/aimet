@@ -1,3 +1,5 @@
+:icon: book-marked
+
 .. _glossary:
 
 ########

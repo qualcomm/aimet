@@ -139,6 +139,8 @@ html_theme_options = {
     # per character and breaking the header layout.
     "social_links": [
         {"icon": "github", "url": "https://github.com/qualcomm/aimet"},
+        {"icon": "slack", "url": "https://qualcomm-ai-hub.slack.com/archives/C08JKBE0UHY"},
+        {"icon": "workbench", "url": "https://workbench.aihub.qualcomm.com/docs/hub/quantize_examples.html"},
     ],
 }
 

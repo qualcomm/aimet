@@ -1,3 +1,5 @@
+:icon: info
+
 .. _intro-to-aimet:
 
 #####################

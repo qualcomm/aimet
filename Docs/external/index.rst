@@ -1,3 +1,5 @@
+:icon: external-link
+
 .. _external-index:
 
 ##################

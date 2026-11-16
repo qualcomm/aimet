@@ -1,3 +1,5 @@
+:icon: layers
+
 .. _techniques-index:
 
 ##########

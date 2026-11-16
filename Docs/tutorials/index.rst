@@ -1,3 +1,5 @@
+:icon: book-open
+
 .. _examples-index:
 
 #########

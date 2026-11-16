@@ -1,3 +1,5 @@
+:icon: code
+
 .. _apiref-index:
 
 #########

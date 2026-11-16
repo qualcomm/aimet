@@ -1,5 +1,7 @@
 .. include:: abbreviation.txt
 
+:icon: scroll-text
+
 .. _rn-index:
 
 #############
