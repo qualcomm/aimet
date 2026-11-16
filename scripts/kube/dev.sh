@@ -142,6 +142,22 @@ echo "Sync ready."
 kubectl exec -n "$NAMESPACE" "$POD" -- bash -c \
   "echo 'cd $REMOTE_CWD 2>/dev/null' > /etc/profile.d/kube-dev-cwd.sh"
 
+# Show the Argo workflow name in the prompt instead of the long pod hostname
+# ("aihub-interactive-bq8n8-aihub-interactive-123" -> "aihub-interactive-bq8n8"), so it can be
+# pasted straight into argo. The hostname itself can't be changed, so rewrite \h/\H in PS1 before
+# every prompt (PROMPT_COMMAND, since ~/.bashrc sets PS1 after profile.d runs).
+SHORT_HOST=$(kubectl get pod "$POD" -n "$NAMESPACE" \
+  -o jsonpath='{.metadata.labels.workflows\.argoproj\.io/workflow}' 2>/dev/null || true)
+SHORT_HOST="${SHORT_HOST:-$POD}"
+kubectl exec -i -n "$NAMESPACE" "$POD" -- bash -c "cat > /etc/profile.d/kube-dev-prompt.sh" <<EOF
+# bash-only syntax below; skip when /etc/profile is sourced by sh (e.g. dash)
+[ -n "\$BASH_VERSION" ] || return 0
+_kube_dev_host='$SHORT_HOST'
+_kube_dev_prompt() { PS1="\${PS1//\\\\h/\$_kube_dev_host}"; PS1="\${PS1//\\\\H/\$_kube_dev_host}"; }
+[[ "\$PROMPT_COMMAND" == *_kube_dev_prompt* ]] ||
+  PROMPT_COMMAND="_kube_dev_prompt\${PROMPT_COMMAND:+;\$PROMPT_COMMAND}"
+EOF
+
 # Forward HF_TOKEN by writing it to profile.d so it survives user switching
 HF_TOKEN_VAL=""
 if [ -n "$HF_TOKEN" ]; then
