@@ -383,6 +383,11 @@ ops:
                 schema.signature.inputs, schema.signature.outputs
             )
         )
+
+        if (domain, op_type) == ("aten", "_assert_scalar"):
+            # aten::_assert_scaalar only has non-quantizable input/outputs
+            continue
+
         # To prevent trivial test passing
         assert any(
             arg_spec.qtype == expected_qtype
@@ -390,4 +395,53 @@ ops:
             for arg_spec in itertools.chain(
                 schema.signature.inputs, schema.signature.outputs
             )
+        ), op_type
+
+
+class _InputQuantizedConv(torch.nn.Module):
+    """Conv2d whose input is already quantized, but whose output is not."""
+
+    def __init__(self, out_scale: float):
+        super().__init__()
+        self.conv = torch.nn.Conv2d(3, 3, 3)
+        self.out_scale = out_scale
+
+    def forward(self, x):
+        out = self.conv(x)
+        out = torch.ops.quantized_decomposed.quantize_per_tensor(
+            out, self.out_scale, 0, 0, 255, torch.uint8
         )
+        out = torch.ops.quantized_decomposed.dequantize_per_tensor(
+            out, self.out_scale, 0, 0, 255, torch.uint8
+        )
+        return out
+
+
+def test_skip_already_quantized_input():
+    """
+    Given: Conv2d whose output is already quantized with a pre-existing encoding
+    When: compute missing encodings with target backend specified
+    Then: The pre-existing output encoding should be preserved without redundant QDQ,
+          while the unquantized input, weight and bias should still be quantized
+    """
+    expected_out_scale = 0.1
+    module = _InputQuantizedConv(expected_out_scale).eval()
+    example_inputs = (torch.randn(1, 3, 10, 10),)
+
+    ep = torch.export.export(module, example_inputs)
+    ep = AIMETExportedProgram.from_exported_program(ep)
+
+    with ep.compute_encodings(param_bw=8, activation_bw=16, target_backend="htp_v69"):
+        ep.module()(*example_inputs)
+
+    (conv,) = [n for n in ep.graph.nodes if n.target == torch.ops.aten.conv2d.default]
+
+    inp, weight, bias = conv.args
+    assert _is_torch_ao_dq_node(inp)
+    assert _is_torch_ao_dq_node(weight)
+    assert _is_torch_ao_dq_node(bias)
+
+    (output_q,) = conv.users
+    assert _is_torch_ao_q_node(output_q)
+    _, output_scale, *_ = output_q.args
+    assert output_scale == expected_out_scale

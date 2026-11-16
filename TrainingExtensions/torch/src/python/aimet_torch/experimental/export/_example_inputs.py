@@ -24,6 +24,11 @@ def _adaptive_avg_pool2d_example_inputs():
     return (torch.randn(1, 3, 8, 8), [4, 4]), {}
 
 
+@register_example_inputs(torch.ops.aten._assert_scalar.default)
+def _assert_scalar_example_inputs():
+    return (1.0, ""), {}
+
+
 @register_example_inputs(torch.ops.aten._log_softmax.default)
 def _log_softmax_example_inputs():
     return (torch.randn(2, 3), 1, False), {}

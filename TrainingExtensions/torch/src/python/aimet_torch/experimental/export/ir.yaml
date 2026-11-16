@@ -4,6 +4,8 @@
 #   is_core_aten: true
 # - name: aten::_adaptive_avg_pool3d
 #   is_core_aten: true
+- name: aten::_assert_scalar
+  is_core_aten: false
 # - name: aten::_cdist_forward
 #   is_core_aten: true
 # - name: aten::_embedding_bag

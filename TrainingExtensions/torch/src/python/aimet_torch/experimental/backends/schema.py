@@ -20,6 +20,8 @@ from aimet_torch.common.experimental.backends.schema import (  # pylint: disable
     EqualRange as _EqualRange,
 )
 from aimet_torch.experimental.export._utils import (
+    _is_torch_ao_q_node,
+    _is_torch_ao_dq_node,
     _is_torch_ao_qdq_node,
     _is_aimet_qdq_node,
     _get_aimet_qdq_module,
@@ -227,6 +229,28 @@ class OpSchema(_OpSchema):
                 continue
 
             for target_node in target_nodes:
+                if _is_torch_ao_dq_node(target_node):
+                    # Input is already quantized; skip
+                    #
+                    # ----> dq -----------> conv2d
+                    #  (`target_node`)     (`node`)
+                    #
+                    # NOTE: This is a temporary hack to avoid overwriting
+                    # existing encoding of a partially quantized node.
+                    # More robust solution is WIP
+                    continue
+
+                if all(_is_torch_ao_q_node(user) for user in target_node.users):
+                    # Output is already quantized; skip
+                    #
+                    # -------> conv2d ---------------------> q
+                    #  (`node` = `target_node`)     (`target_node.users`)
+                    #
+                    # NOTE: This is a temporary hack to avoid overwriting
+                    # existing encoding of a partially quantized node.
+                    # More robust solution is WIP
+                    continue
+
                 fake_input: FakeTensor = target_node.meta["val"]
 
                 if not fake_input.is_floating_point():
@@ -417,9 +441,6 @@ class BackendDescription:
                 continue
 
             if _is_torch_ao_qdq_node(node):
-                continue
-
-            if all(_is_torch_ao_qdq_node(user) for user in node.users):
                 continue
 
             if not isinstance(node.target, torch._ops.OpOverload):

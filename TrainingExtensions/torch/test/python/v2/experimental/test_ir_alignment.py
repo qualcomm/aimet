@@ -62,6 +62,7 @@ supergroups = {
 # Expected failures
 # TODO: Fix these failures and remove them from the xfail list
 xfail = {
+    torch.ops.aten._assert_scalar.default: "Trivial failure due to None output",
     torch.ops.aten._native_batch_norm_legit.default: "ONNX export error",
     torch.ops.aten._native_batch_norm_legit_no_training.default: "ONNX export error",
     torch.ops.aten._safe_softmax.default: "Onnxscript bug. See https://github.com/microsoft/onnxscript/issues/2993",
