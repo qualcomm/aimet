@@ -79,48 +79,58 @@ class TorchExportableModuleWithCache(torch.nn.Module):
         return lm_logits
 
 
-class RMSNormWithLinear(torch.nn.Module):
-    def __init__(self, bias):
-        super(RMSNormWithLinear, self).__init__()
-        self.rmsnorm = LlamaRMSNorm(10)
-        self.q = torch.nn.Linear(10, 10, bias=bias)
-        self.k = torch.nn.Linear(10, 10, bias=bias)
-        self.v = torch.nn.Linear(10, 10, bias=bias)
+class NormWithLinear(torch.nn.Module):
+    def __init__(self, norm_type, bias):
+        super(NormWithLinear, self).__init__()
+        self.norm = norm_type(10)
+        self.q = torch.nn.Linear(10, 12, bias=bias)
+        self.k = torch.nn.Linear(10, 6, bias=bias)
+        self.v = torch.nn.Linear(10, 6, bias=bias)
 
     def forward(self, x):
-        x = self.rmsnorm(x)
+        x = self.norm(x)
         q = self.q(x)
         k = self.k(x)
         v = self.v(x)
         return q, k, v
 
 
-@pytest.mark.parametrize("bias", [True, False])
-def test_fuse_rmsnorm_into_linear(bias):
-    """Test fuse_rmsnorm_into_linear"""
+@pytest.mark.parametrize(
+    "norm_type, bias",
+    [
+        (LlamaRMSNorm, True),
+        (LlamaRMSNorm, False),
+        (torch.nn.LayerNorm, True),
+    ],
+)
+def test_fuse_norm_into_linear(norm_type, bias):
+    """Test fuse_norm_layer_into_linears"""
     torch.manual_seed(0)
     dummy_input = torch.randn(10, 10)
-    model = RMSNormWithLinear(bias)
+    model = NormWithLinear(norm_type, bias)
     with torch.no_grad():
-        model.rmsnorm.weight.copy_(torch.randn(model.rmsnorm.weight.shape))
+        for param in model.norm.parameters():
+            param.copy_(torch.randn(param.shape))
 
     orig_q_out, orig_k_out, orig_v_out = model(dummy_input)
-    orig_rmsnorm_weight = model.rmsnorm.weight.clone()
+    orig_norm_weight = model.norm.weight.clone()
     orig_q_weight = model.q.weight.clone()
     orig_k_weight = model.k.weight.clone()
     orig_v_weight = model.v.weight.clone()
-    SpinQuant._fuse_norm_layer_into_linears(model.rmsnorm, [model.q, model.k, model.v])
+    SpinQuant._fuse_norm_layer_into_linears(model.norm, [model.q, model.k, model.v])
 
     new_q_out, new_k_out, new_v_out = model(dummy_input)
     assert torch.allclose(orig_q_out, new_q_out, atol=1e-6)
     assert torch.allclose(orig_k_out, new_k_out, atol=1e-6)
     assert torch.allclose(orig_v_out, new_v_out, atol=1e-6)
 
-    assert torch.equal(model.rmsnorm.weight, torch.ones(orig_rmsnorm_weight.shape))
-    assert not torch.equal(orig_rmsnorm_weight, model.rmsnorm.weight)
+    assert torch.equal(model.norm.weight, torch.ones(orig_norm_weight.shape))
+    assert not torch.equal(orig_norm_weight, model.norm.weight)
     assert not torch.equal(orig_q_weight, model.q.weight)
     assert not torch.equal(orig_k_weight, model.k.weight)
     assert not torch.equal(orig_v_weight, model.v.weight)
+    if getattr(model.norm, "bias", None) is not None:
+        assert torch.equal(model.norm.bias, torch.zeros_like(model.norm.bias))
 
 
 @pytest.mark.parametrize("tie_word_embeddings", [True, False])
