@@ -587,6 +587,28 @@ class DepthwiseTransposedConvModel(TransposedConvModel):
         self.conv2 = torch.nn.ConvTranspose2d(10, 20, 3, groups=10)
 
 
+class DepthwiseTransposedConvBetweenConvs(torch.nn.Module):
+    """
+    Conv -> ReLU -> depthwise ConvTranspose (upsample) -> ReLU -> Conv
+    """
+
+    def __init__(self):
+        super(DepthwiseTransposedConvBetweenConvs, self).__init__()
+        self.conv1 = torch.nn.Conv2d(3, 8, 3, padding=1)
+        self.relu1 = torch.nn.ReLU()
+        self.conv2 = torch.nn.ConvTranspose2d(8, 8, 4, stride=2, padding=1, groups=8)
+        self.relu2 = torch.nn.ReLU()
+        self.conv3 = torch.nn.Conv2d(8, 4, 1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.conv3(x)
+        return x
+
+
 class TransposedConvModelWithoutBN(torch.nn.Module):
     """
     Model with transposed conv2D
