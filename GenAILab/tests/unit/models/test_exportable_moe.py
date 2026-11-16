@@ -140,6 +140,20 @@ class TestUnfusing:
         assert "experts.0.up_proj" in linears
         assert "experts.0.down_proj" in linears
 
+    def test_each_expert_owns_its_activation(self):
+        """A shared act_fn makes non-strict export proxy every access through a new
+        subclass and trips torch 2.10's 'already tracked for mutation'."""
+        fused = _fused_experts()
+        adapted = _adapted(fused)
+        acts = [expert.act_fn for expert in adapted.experts]
+        assert len({id(a) for a in acts}) == E
+        assert all(type(a) is type(fused.act_fn) for a in acts)
+        assert all(a is not fused.act_fn for a in acts)
+        names = [n for n, _ in adapted.named_modules(remove_duplicate=False)]
+        assert len(names) == len(
+            set(id(m) for _, m in adapted.named_modules(remove_duplicate=False))
+        )
+
     def test_weights_are_copies_not_views(self):
         """In-place weight rewrites (SpinQuant/AdaScale) must not alias."""
         fused = _fused_experts()

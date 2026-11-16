@@ -16,6 +16,7 @@ from transformers import AutoConfig
 from huggingface_hub import HfApi
 from huggingface_hub.errors import RepositoryNotFoundError
 
+from GenAILab.qai_hub_lm.backends.onnx.export_shims import export_shims
 from GenAILab.qai_hub_lm.transforms.exportable_moe import (
     forced_expert_activation,
 )
@@ -323,11 +324,12 @@ def _dynamo_export(
     """
     matched_shapes = _match_dynamic_shapes_to_signature(model, dynamic_shapes)
     sample_input = _materialize_view_inputs(sample_input)
-    program = torch.export.export(
-        model, sample_input, dynamic_shapes=matched_shapes, strict=STRICT_EXPORT
-    )
+    with export_shims():
+        program = torch.export.export(
+            model, sample_input, dynamic_shapes=matched_shapes, strict=STRICT_EXPORT
+        )
 
-    with _unique_initializer_names():
+    with export_shims(), _unique_initializer_names():
         torch.onnx.export(
             program,
             (),  # args ignored for ExportedProgram

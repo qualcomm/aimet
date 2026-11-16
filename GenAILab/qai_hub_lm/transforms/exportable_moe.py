@@ -30,6 +30,7 @@ at the end of ``expert_subselection.py``.
 from __future__ import annotations
 
 import contextlib
+import copy
 import warnings
 from typing import Iterator
 
@@ -114,8 +115,15 @@ def _unfuse(fused: nn.Module) -> tuple[nn.ModuleList, int, int]:
 
     experts = nn.ModuleList()
     for e in range(num_experts):
+        # A copy per expert: one activation module reachable from every expert makes
+        # non-strict export proxy each access through a freshly created subclass, and
+        # on torch 2.10 trips "already tracked for mutation" inside torch.cond.
         expert = ExpertMLP(
-            hidden_dim, inter, act_fn, dtype=gate_up.dtype, device=gate_up.device
+            hidden_dim,
+            inter,
+            copy.deepcopy(act_fn),
+            dtype=gate_up.dtype,
+            device=gate_up.device,
         )
         with torch.no_grad():
             # Clone, not view: SpinQuant/AdaScale rewrite weights in place.
