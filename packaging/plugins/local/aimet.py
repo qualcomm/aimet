@@ -224,6 +224,11 @@ def _read_requirements_file(filename: str) -> list[str]:
     return deps
 
 
+def _select_requirements(deps: list[str], names: set[str]) -> list[str]:
+    """Return the requirement lines in deps for the given distribution names."""
+    return [d for d in deps if d.startswith(tuple(names))]
+
+
 def optional_dependencies() -> dict[str, list[str]]:
     # Read test dependencies from requirements file
     test_deps = _read_requirements_file("reqs_pip_test.txt")
@@ -254,6 +259,7 @@ def optional_dependencies() -> dict[str, list[str]]:
             "sphinx-rtd-theme",
             "sphinx-substitution-extensions",
             "sphinx-tabs",
+            *_select_requirements(test_deps, {"transformers", "peft"}),
         ],
     }
 
