@@ -32,6 +32,7 @@ from GenAILab.qai_hub_lm.models.utils.exportable import ONNXExportableModuleWith
 
 from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
     ONNX_OPSET_VERSION,
+    export_sample_sequence_length,
     get_onnx_model,
     load_model_components_from_disk,
     get_model_checkpoint_path,
@@ -259,7 +260,9 @@ class LLM_ONNX(LLM):
             context_length=context_length,
             sequence_length=sequence_length,
             sample_input=cls.get_sample_backbone_inputs(
-                exportable_model, context_length, max_seq_len
+                exportable_model,
+                context_length,
+                export_sample_sequence_length(sequence_length, context_length),
             ),
             input_names=cls.get_backbone_input_names(layer_cache_descs),
             output_names=cls.get_backbone_output_names(layer_cache_descs),

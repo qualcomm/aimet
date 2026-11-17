@@ -33,6 +33,7 @@ from GenAILab.qai_hub_lm.models.utils.layer_cache import (
 
 from GenAILab.qai_hub_lm.backends.onnx.export_utils import (
     ONNX_OPSET_VERSION,
+    export_sample_sequence_length,
     _dynamo_export,
     check_opset_equal_to,
     consolidate_external_data,
@@ -319,7 +320,7 @@ class VLM_ONNX:
             sample_input=cls.get_sample_backbone_inputs(
                 traceable_backbone,
                 context_length,
-                max_seq_len,
+                export_sample_sequence_length(sequence_length, context_length),
                 layer_cache_descriptors=layer_cache_descs,
                 image_size=image_size,
                 config=model.config,

@@ -197,6 +197,30 @@ def _unique_initializer_names():
         GraphInitializers.__setitem__ = original
 
 
+def export_sample_sequence_length(
+    sequence_length: int | list[int], context_length: int
+) -> int:
+    """Sequence length of the sample input a dynamic-length backbone is exported with.
+
+    The sample's KV cache holds ``context_length - sequence_length`` entries, and
+    ``torch.export`` specializes any ``Dim.AUTO`` whose sample size is 0 or 1. So a
+    sample as long as the context (as ``sequence_length=[4096, ...]`` with
+    ``context_length=4096`` gives) would pin the past length to 0, and the graph
+    could then only run without a KV cache: chunked prefill (e.g. MMLU prompts over
+    one chunk) and decode would fail with "invalid dimensions for input
+    past_key_0_in". The longest configured length is used unless it leaves fewer
+    than two past entries, in which case the sample is shortened to leave two. The
+    exported graph accepts every configured length either way, since the sequence
+    length is dynamic.
+    """
+    if not isinstance(sequence_length, list):
+        return sequence_length
+    longest = max(sequence_length)
+    if len(sequence_length) > 1 and context_length - longest < 2:
+        return context_length - 2
+    return longest
+
+
 def dynamic_axes_to_dynamic_shapes(
     input_names: Sequence[str],
     dynamic_axes: dict[str, dict[int, str]],
