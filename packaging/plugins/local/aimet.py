@@ -233,6 +233,7 @@ def optional_dependencies() -> dict[str, list[str]]:
             # duplicate build-system.requires for editable mode (non-isolated)
             "scikit-build-core[wheels]==0.11.1",
             "build",
+            "wheel",  # `wheel tags` re-tags the pure-Python aimet-torch wheel
             "auditwheel; sys_platform == 'linux'",  # Linux only (ELF-based)
             # auditwheel>=6.8.1 requires patchelf>=0.14.5, but ubuntu jammy only
             # ships 0.14.3, so take patchelf from pypi instead of apt.

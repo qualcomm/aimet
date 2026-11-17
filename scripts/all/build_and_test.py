@@ -880,9 +880,8 @@ class WheelRetagTask(Task):
                 try:
                     subprocess.run(retag_cmd, check=True, capture_output=False)
                 except subprocess.CalledProcessError as e:
-                    logger.warning(f"wheel tags failed: {e}")
-                except FileNotFoundError:
-                    logger.warning("wheel module not found, skipping re-tagging")
+                    # Fail here rather than trying to push mis-tagged wheel
+                    return TaskResult(TaskStatus.FAILED, f"wheel retag failed: {e}")
 
         # Re-tag Windows ARM64 wheels: scikit-build-core tags them
         # win_amd64 (the host arch under the MSVC ARM64 cross-compiler),
