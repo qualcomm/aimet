@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from aimet_onnx.quantsim import QuantizationSimModel, QuantScheme
+import onnx_ir
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 
 import numpy as np
@@ -31,7 +32,7 @@ def test_rmsnorm(elementwise_affine, mul_for_pow, mul_rsqrt_pattern):
         mul_for_pow=mul_for_pow,
         mul_rsqrt_pattern=mul_rsqrt_pattern,
     )
-    graph = ConnectedGraph(model)
+    graph = ConnectedGraph(onnx_ir.from_proto(model))
 
     input_data = {"x": np.random.rand(1, 3, dim, dim).astype(np.float32)}
     with patch_fuse_supergroups(False):
@@ -80,7 +81,7 @@ def test_rmsnorm_with_cast(elementwise_affine, mul_for_pow, mul_rsqrt_pattern):
         mul_for_pow=mul_for_pow,
         mul_rsqrt_pattern=mul_rsqrt_pattern,
     )
-    graph = ConnectedGraph(model)
+    graph = ConnectedGraph(onnx_ir.from_proto(model))
 
     input_data = {"x": np.random.rand(1, 3, dim, dim).astype(np.float16)}
     with patch_fuse_supergroups(False):

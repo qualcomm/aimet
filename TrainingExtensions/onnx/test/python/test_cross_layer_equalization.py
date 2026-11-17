@@ -6,6 +6,7 @@ import ml_dtypes
 import numpy as np
 import copy
 import onnx
+import onnx_ir
 import pytest
 import torch
 from onnxruntime import SessionOptions, GraphOptimizationLevel, InferenceSession
@@ -46,7 +47,7 @@ from .models import models_for_tests
 class TestCLS:
     def test_graph_search_utils_single_residual_model(self):
         model = models_for_tests.single_residual_model()
-        connected_graph = ConnectedGraph(model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         ordered_module_list = get_ordered_list_of_conv_modules(
             connected_graph.starting_ops
         )
@@ -62,7 +63,7 @@ class TestCLS:
 
     def test_long_sequential_model(self):
         model = models_for_tests.long_sequential_model()
-        connected_graph = ConnectedGraph(model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         ordered_module_list = get_ordered_list_of_conv_modules(
             connected_graph.starting_ops
         )
@@ -78,7 +79,7 @@ class TestCLS:
     def test_find_cls_sets_depthwise_model(self):
         model = models_for_tests.depthwise_conv_model()
 
-        connected_graph = ConnectedGraph(model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         ordered_module_list = get_ordered_list_of_conv_modules(
             connected_graph.starting_ops
         )
@@ -143,7 +144,7 @@ class TestCLS:
 
     def test_find_cls_sets_resnet_model(self):
         model = models_for_tests.single_residual_model()
-        connected_graph = ConnectedGraph(model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         ordered_module_list = get_ordered_list_of_conv_modules(
             connected_graph.starting_ops
         )
@@ -176,13 +177,13 @@ class TestCLS:
         session = _build_session(model)
         output_after_cls = session.run(None, {"input": test_data})
         assert np.allclose(output_after_cls, output_before_cls, rtol=1e-2, atol=1e-5)
-        conv_3 = cls_set_info[0].cls_pair_info_list[0].layer1.get_module()
-        conv_5 = cls_set_info[0].cls_pair_info_list[0].layer2.get_module()
+        conv_3 = cls_set_info[0].cls_pair_info_list[0].layer1
+        conv_5 = cls_set_info[0].cls_pair_info_list[0].layer2
         weight_3 = numpy_helper.to_array(
-            ParamUtils.get_param(model.model, conv_3, WEIGHT_INDEX)
+            ParamUtils.get_param_by_name(model.model, conv_3.inputs[WEIGHT_INDEX].name)
         )
         weight_5 = numpy_helper.to_array(
-            ParamUtils.get_param(model.model, conv_5, WEIGHT_INDEX)
+            ParamUtils.get_param_by_name(model.model, conv_5.inputs[WEIGHT_INDEX].name)
         )
         assert np.allclose(
             np.amax(np.abs(weight_3), axis=(1, 2, 3)),
@@ -200,13 +201,13 @@ class TestCLS:
         session = _build_session(model)
         output_after_cls = session.run(None, {"input": test_data})
         assert np.allclose(output_after_cls, output_before_cls, rtol=1e-2, atol=1e-5)
-        conv_3 = cls_set_info[0].cls_pair_info_list[0].layer1.get_module()
-        conv_5 = cls_set_info[0].cls_pair_info_list[0].layer2.get_module()
+        conv_3 = cls_set_info[0].cls_pair_info_list[0].layer1
+        conv_5 = cls_set_info[0].cls_pair_info_list[0].layer2
         weight_3 = numpy_helper.to_array(
-            ParamUtils.get_param(model.model, conv_3, WEIGHT_INDEX)
+            ParamUtils.get_param_by_name(model.model, conv_3.inputs[WEIGHT_INDEX].name)
         )
         weight_5 = numpy_helper.to_array(
-            ParamUtils.get_param(model.model, conv_5, WEIGHT_INDEX)
+            ParamUtils.get_param_by_name(model.model, conv_5.inputs[WEIGHT_INDEX].name)
         )
         assert np.allclose(
             np.amax(np.abs(weight_3), axis=(0, 2, 3)),

@@ -57,13 +57,13 @@ class ModelData:
             if op.type in AdaroundSupportedModules:
                 self.module_to_info[op.name].type = op.type
                 self.module_to_info[op.name].transposed_params = op.transposed_params
-                if hasattr(op.get_module(), "attribute"):
-                    self.module_to_info[op.name].attributes = op.get_module().attribute
             for param, param_type in op.parameters.values():
                 self.module_to_info[op.name].params[param_type] = param
         for node in self.quant_sim.model.nodes():
             if node.name in self.module_to_info:
                 module_info = self.module_to_info[node.name]
+                if module_info.type in AdaroundSupportedModules:
+                    module_info.attributes = node.attribute
                 param = {param.name for param in module_info.params.values()}
                 for input_name in node.input:
                     if input_name not in param:

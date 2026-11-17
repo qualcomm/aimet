@@ -3,9 +3,12 @@
 
 
 import itertools
+import math
+import numpy as np
 import onnx
+import onnx_ir
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import torch
 from aimet_onnx.common.connected_graph.connectedgraph_utils import (
     get_all_input_ops,
@@ -81,7 +84,7 @@ class TestConnectedGraph:
             for tensor in itertools.chain(node.input, node.output)
             if tensor
         }
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
         ops = cg.get_all_ops()
         assert ops.keys() == nodes
         products = cg.get_all_products()
@@ -102,14 +105,14 @@ class TestConnectedGraph:
                 Then: The corresponding Op should be the product's producer
                 """
                 if product.name in node.output:
-                    assert node == product.producer.get_module()
+                    assert node.name == product.producer.name
 
                 """
                 When: A tensor is the input of a node
                 Then: The corresponding Op should appear in the product's consumers
                 """
                 if product.name in node.input:
-                    assert node in [op.get_module() for op in product.consumers]
+                    assert node.name in [op.name for op in product.consumers]
 
             """
             When: A tensor is a model input
@@ -132,8 +135,9 @@ class TestConnectedGraph:
                     product.is_model_input or product.is_const or product.is_parm
                 )
 
+        nodes = {node.name: node for node in _all_nodes(model)}
         for op_name, op in ops.items():
-            node = op.get_module()
+            node = nodes[op_name]
             """
             When: A tensor is input idx of node
             Then: The tensor's product should be input idx of the corresponding op
@@ -150,7 +154,7 @@ class TestConnectedGraph:
 
     def test_single_residual_model(self):
         model = models_for_tests.single_residual_model()
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         operator_names = {
             node.name for node in model.nodes() if node.op_type not in CONSTANT_TYPE
         }
@@ -170,21 +174,49 @@ class TestConnectedGraph:
             if op.type == "Gemm":
                 assert op.transposed_params
 
+    def test_parameter_shape_with_external_data_initializer(self):
+        """
+        A Qodo review on PR #8263 flagged ``value.const_value.shape`` (``fill_op_product_graph``)
+        and the ``is_parm`` branch of ``Product.shape`` as crashing on external-data initializers,
+        on the theory that ``const_value`` is ``None`` until the data is loaded. It isn't:
+        ``onnx_ir`` represents an unloaded external-data initializer as an ``ExternalTensor``,
+        whose shape is read from the proto without touching the data file, and
+        ``Graph.register_initializer`` refuses to register a value with no ``const_value`` at all.
+        """
+        model = models_for_tests.build_dummy_model()
+        ir_model = onnx_ir.from_proto(model)
+        conv_w = ir_model.graph.initializers["conv_w"]
+        loaded = conv_w.const_value
+        conv_w.const_value = onnx_ir.ExternalTensor(
+            location="nonexistent.bin",
+            offset=0,
+            length=loaded.nbytes,
+            dtype=loaded.dtype,
+            shape=onnx_ir.Shape(loaded.shape),
+            name="conv_w",
+        )
+
+        conn_graph = ConnectedGraph(ir_model)
+        product = conn_graph.get_all_products()["conv_w"]
+        assert product.is_parm
+        assert product.shape == list(loaded.shape)
+        assert product.numel == math.prod(loaded.shape)
+
     def test_multi_inputs_model(self):
         model = models_for_tests.multi_input_model()
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         input_ops = get_all_input_ops(conn_graph)
         assert len(input_ops) == 2
 
     def test_concat_model(self):
         model = models_for_tests.concat_model()
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         ops = conn_graph.get_all_ops()
         assert len(ops["/Concat"].inputs) == 3
 
     def test_hierarchical_model(self):
         model = models_for_tests.hierarchical_model()
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         ordered_ops = conn_graph.ordered_ops
         name_to_index = {}
         for index, op in enumerate(ordered_ops):
@@ -211,7 +243,7 @@ class TestConnectedGraph:
             torch_model, torch.randn(input_shape)
         )
 
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model.model))
         for op in cg.ordered_ops:
             if op.type == "MatMul":
                 assert "fc2.weight" in op.parameters
@@ -222,7 +254,7 @@ class TestConnectedGraph:
     def test_constant_elementwise_inputs(self):
         """Test that constant inputs to elementwise ops are identified correctly"""
         model = models_for_tests.elementwise_op_model()
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model.model))
 
         assert len(get_all_ops_with_constant_inputs(cg)) == 2
         for product in cg.ordered_ops[0].inputs:
@@ -241,12 +273,12 @@ class TestConnectedGraph:
 
     def test_instance_norm_model(self):
         model = models_for_tests.instance_norm_model()
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model.model))
         assert cg.ordered_ops[-2].type == "InstanceNormalization"
 
     def test_layer_norm_model(self):
         model = models_for_tests.layernorm_model()
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
         layernorm_cg_op = cg.ordered_ops[-1]
         assert layernorm_cg_op.type == "LayerNormalization"
         assert ["layernorm.scale", "layernorm.bias"] == list(
@@ -257,59 +289,53 @@ class TestConnectedGraph:
         model = models_for_tests.layernorm_model()
         model.graph.node.pop(1)  # Remove constant node
         with pytest.raises(RuntimeError):
-            cg = ConnectedGraph(model)
+            cg = ConnectedGraph(onnx_ir.from_proto(model))
 
     def test_get_matmul_add_bias_idx(self):
         """Identify bias index for MatMul_1 -> MatMul_2 -> Add pattern"""
-        bias_param = MagicMock()
-        bias_param.dims = [64]
+        # Create Products
+        matmul1_output = MagicMock()
+        matmul2_output = MagicMock()
+        bias_input = MagicMock()
+        bias_input.name = "bias"
+        bias_input.value = onnx_ir.Value(
+            name="bias", const_value=onnx_ir.tensor(np.zeros(64, np.float32))
+        )
 
-        # Only patch within the scope of the test
-        # Use fully qualified path to `ParamUtils.get_param_by_name`
-        with patch(
-            "aimet_onnx.utils.ParamUtils.get_param_by_name",
-            return_value=bias_param,
-        ):
-            # Create Products
-            matmul1_output = MagicMock()
-            matmul2_output = MagicMock()
-            bias_input = MagicMock()
-            bias_input.name = "bias"
+        # Create Add op
+        add_op = MagicMock()
+        add_op.type = "Add"
+        add_op.inputs = [matmul2_output, bias_input]
 
-            # Create Add op
-            add_op = MagicMock()
-            add_op.type = "Add"
-            add_op.inputs = [matmul2_output, bias_input]
+        # Create MatMul_2 op
+        matmul2_op = MagicMock()
+        matmul2_op.type = "MatMul"
+        matmul2_op.inputs = [matmul1_output]
+        matmul2_op.outputs = [matmul2_output]
+        matmul2_output.producer = matmul2_op
+        matmul2_output.consumers = [add_op]
 
-            # Create MatMul_2 op
-            matmul2_op = MagicMock()
-            matmul2_op.type = "MatMul"
-            matmul2_op.inputs = [matmul1_output]
-            matmul2_op.outputs = [matmul2_output]
-            matmul2_output.producer = matmul2_op
-            matmul2_output.consumers = [add_op]
+        # Create MatMul_1 op
+        matmul1_op = MagicMock()
+        matmul1_op.type = "MatMul"
+        matmul1_op.outputs = [matmul1_output]
+        matmul1_output.producer = matmul1_op
+        matmul1_output.consumers = [matmul2_op]
 
-            # Create MatMul_1 op
-            matmul1_op = MagicMock()
-            matmul1_op.type = "MatMul"
-            matmul1_op.outputs = [matmul1_output]
-            matmul1_output.producer = matmul1_op
-            matmul1_output.consumers = [matmul2_op]
+        # Test MatMul_1 → MatMul_2 → Add
+        bias_idx_1 = _get_matmul_add_bias_idx(matmul1_op)
+        bias_idx_2 = _get_matmul_add_bias_idx(matmul2_op)
 
-            # Test MatMul_1 → MatMul_2 → Add
-            bias_idx_1 = _get_matmul_add_bias_idx(matmul1_op, MagicMock())
-            bias_idx_2 = _get_matmul_add_bias_idx(matmul2_op, MagicMock())
+        # MatMul_1 should not be associated with the Add
+        assert not bias_idx_1
 
-            # MatMul_1 should not be associated with the Add
-            assert not bias_idx_1
-
-            # MatMul_2 should be correctly associated with the Add
-            assert bias_idx_2 == 1  # bias is second input to Add
+        # MatMul_2 should be correctly associated with the Add
+        assert bias_idx_2 == 1  # bias is second input to Add
 
     def test_ops_and_products_match_the_nodes_and_tensors(self):
         """A model with no control flow"""
         model = models_for_tests.flat_matmul_relu_model()
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
 
         """
         When: A ConnectedGraph is constructed for it
@@ -326,7 +352,7 @@ class TestSubgraphOpsAreRepresented:
     def test_body_nodes_become_ops_held_by_the_op_running_them(self):
         """A model whose Scan body holds two nodes (Add, Identity)"""
         model = models_for_tests.scan_model()
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
         print(f"All ops: {cg.get_all_ops()}, Ordered ops: {cg.ordered_ops}")
 
         """
@@ -340,7 +366,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_body_is_held_by_its_own_op_at_every_depth(self):
         """A model with a Scan nested inside another Scan's body"""
-        cg = ConnectedGraph(models_for_tests.nested_scan_model())
+        cg = ConnectedGraph(onnx_ir.from_proto(models_for_tests.nested_scan_model()))
         ops = cg.get_all_ops()
 
         """
@@ -357,7 +383,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_connectivity_inside_a_body(self):
         """A model with compute either side of a Scan"""
-        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
+        cg = ConnectedGraph(onnx_ir.from_proto(models_for_tests.wrapped_scan_model()))
 
         add = cg.get_all_ops()["b_add"]
         identity = cg.get_all_ops()["b_y_id"]
@@ -378,7 +404,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_carry_stays_a_separate_product_from_the_one_outside_the_body(self):
         """A Scan whose carry-in is produced by a top-level op"""
-        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
+        cg = ConnectedGraph(onnx_ir.from_proto(models_for_tests.wrapped_scan_model()))
         products = cg.get_all_products()
         print(f"products: {products}")
 
@@ -403,7 +429,7 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_scanned_input_keeps_the_shape_the_body_sees(self):
         """A Scan with a scanned input, which it slices along its leading axis"""
-        cg = ConnectedGraph(models_for_tests.scan_model())
+        cg = ConnectedGraph(onnx_ir.from_proto(models_for_tests.scan_model()))
         products = cg.get_all_products()
 
         """
@@ -420,7 +446,9 @@ class TestSubgraphOpsAreRepresented:
 
     def test_a_body_input_is_not_a_model_input(self):
         """A Scan whose body declares a scanned input, fed by the Scan rather than the caller"""
-        cg = ConnectedGraph(models_for_tests.scan_model(num_carries=0))
+        cg = ConnectedGraph(
+            onnx_ir.from_proto(models_for_tests.scan_model(num_carries=0))
+        )
         products = cg.get_all_products()
 
         """
@@ -435,7 +463,9 @@ class TestSubgraphOpsAreRepresented:
     def test_a_capture_is_a_parameter_of_the_body_op_that_reads_it(self):
         """A weight defined outside a Scan body but consumed by a MatMul inside it"""
 
-        cg = ConnectedGraph(models_for_tests.scan_model(with_capture=True))
+        cg = ConnectedGraph(
+            onnx_ir.from_proto(models_for_tests.scan_model(with_capture=True))
+        )
 
         """
         When: A ConnectedGraph is constructed for it
@@ -459,7 +489,7 @@ class TestSubgraphOpsAreRepresented:
     def test_if_branches_are_left_out_by_default(self, make_model):
         """A model with If branches"""
         model = make_model()
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
 
         """
         When: A ConnectedGraph is constructed for it without include_if_branches
@@ -475,7 +505,7 @@ class TestSubgraphOpsAreRepresented:
     def test_each_if_branch_is_held_apart(self):
         """An If whose then branch holds a Relu and whose else branch holds a Neg"""
         model = models_for_tests.if_model()
-        cg = ConnectedGraph(model, include_if_branches=True)
+        cg = ConnectedGraph(onnx_ir.from_proto(model), include_if_branches=True)
 
         """
         When: A ConnectedGraph is constructed for it with include_if_branches
@@ -492,7 +522,8 @@ class TestSubgraphOpsAreRepresented:
     def test_a_branch_holding_no_op_is_still_a_branch(self):
         """An If whose else branch returns an initializer and holds no op"""
         cg = ConnectedGraph(
-            models_for_tests.chained_if_model(), include_if_branches=True
+            onnx_ir.from_proto(models_for_tests.chained_if_model()),
+            include_if_branches=True,
         )
 
         """
@@ -507,7 +538,8 @@ class TestSubgraphOpsAreRepresented:
     def test_an_if_inside_a_scan_body_is_held_one_level_down(self):
         """A Scan whose body holds an If"""
         cg = ConnectedGraph(
-            models_for_tests.if_in_scan_model(), include_if_branches=True
+            onnx_ir.from_proto(models_for_tests.if_in_scan_model()),
+            include_if_branches=True,
         )
         ops = cg.get_all_ops()
 
@@ -538,7 +570,7 @@ class TestOrderedOps:
         ),
     )
     def test_every_op_is_ordered(self, model):
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
 
         """
         When: A ConnectedGraph is constructed for it
@@ -558,7 +590,7 @@ class TestOrderedOps:
         ],
     )
     def test_every_if_branch_op_is_ordered_ahead_of_its_if(self, make_model):
-        cg = ConnectedGraph(make_model(), include_if_branches=True)
+        cg = ConnectedGraph(onnx_ir.from_proto(make_model()), include_if_branches=True)
         position = {op.name: index for index, op in enumerate(cg.ordered_ops)}
 
         """
@@ -577,7 +609,7 @@ class TestOrderedOps:
     def test_chained_ifs_are_ordered_by_what_their_branches_read(self, make_model):
         """Two Ifs that list only their condition as input, the second of whose branches read
         the first's output y0 by name"""
-        cg = ConnectedGraph(make_model(), include_if_branches=True)
+        cg = ConnectedGraph(onnx_ir.from_proto(make_model()), include_if_branches=True)
         order = [op.name for op in cg.ordered_ops]
 
         """
@@ -590,7 +622,7 @@ class TestOrderedOps:
 
     def test_a_body_is_placed_by_the_op_that_runs_it_not_by_any_edge(self):
         """A model with compute either side of a Scan"""
-        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
+        cg = ConnectedGraph(onnx_ir.from_proto(models_for_tests.wrapped_scan_model()))
         order = [op.name for op in cg.ordered_ops]
         body_op = cg.get_all_ops()["b_add"]
 
@@ -618,7 +650,9 @@ class TestOrderedOps:
 
     def test_a_capture_stays_tied_to_the_ops_reading_it(self):
         """A Scan whose body reads a top-level activation by name"""
-        cg = ConnectedGraph(models_for_tests.captured_activation_scan_model())
+        cg = ConnectedGraph(
+            onnx_ir.from_proto(models_for_tests.captured_activation_scan_model())
+        )
 
         """
         When: A ConnectedGraph is constructed for it
@@ -631,7 +665,9 @@ class TestOrderedOps:
 
     def test_a_capture_does_not_unseat_the_op_running_the_body(self):
         """A Scan reading model inputs, whose body captures an outer-scope weight"""
-        cg = ConnectedGraph(models_for_tests.scan_model(with_capture=True))
+        cg = ConnectedGraph(
+            onnx_ir.from_proto(models_for_tests.scan_model(with_capture=True))
+        )
 
         """
         When: A ConnectedGraph is constructed for it
@@ -657,15 +693,16 @@ class TestSubgraphOps:
         ),
     )
     def test_the_graph_holds_together_whatever_the_model(self, model):
-        cg = ConnectedGraph(model)
+        cg = ConnectedGraph(onnx_ir.from_proto(model))
         position = {op.name: index for index, op in enumerate(cg.ordered_ops)}
+        nodes = {node.name: node for node in _all_nodes(model)}
 
         """
         When: A ConnectedGraph is constructed for it
         Then: Every op holds one input product per entry in node.input.
         """
         for op in cg.ordered_ops:
-            node = op.get_module()
+            node = nodes[op.name]
             print(f"CG op inputs: {op.inputs}, node inputs: {node.input}")
             assert len(op.inputs) == len(node.input), op.name
 
@@ -692,7 +729,7 @@ class TestSubgraphOps:
 
     def test_a_scan_owns_its_body_ops_without_a_tensor_edge_to_them(self):
         """A model with compute either side of a Scan"""
-        cg = ConnectedGraph(models_for_tests.wrapped_scan_model())
+        cg = ConnectedGraph(onnx_ir.from_proto(models_for_tests.wrapped_scan_model()))
         scan = cg.get_all_ops()["the_scan"]
 
         """
@@ -726,6 +763,8 @@ class TestSubgraphOps:
         When: A ConnectedGraph is constructed for it
         Then: The body comes out in its own order. A capture is one shared product
         """
-        ordered = [op.name for op in ConnectedGraph(model).ordered_ops]
+        ordered = [
+            op.name for op in ConnectedGraph(onnx_ir.from_proto(model)).ordered_ops
+        ]
         print(f"ordered ops: {ordered}")
         assert ordered == ["pre", "pre2", "b_first", "b_second", "the_scan"]

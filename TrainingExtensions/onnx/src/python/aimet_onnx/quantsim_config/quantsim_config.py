@@ -43,7 +43,6 @@ from aimet_onnx.common.onnx._utils import (
     _iterate_graph_nodes_recursive,
 )
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, CONSTANT_TYPE
-from aimet_onnx.utils import get_product_name_from_quantized_name
 from aimet_onnx.qc_quantize_op import OpMode, QcQuantizeOp
 from aimet_onnx.graph_passes.pass_registry import apply_graph_passes, find_all_matches
 from aimet_onnx.graph_passes.fusions import fuse_supergroups
@@ -179,23 +178,22 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
         """
         op_to_quantizers = {}
         for _, op in self._conn_graph.get_all_ops().items():
-            node = op.get_module()
-            if node is None:
+            if op.get_module() is None:
                 continue
-            op_to_quantizers[node.name] = OpToQuantizers()
-            for input_product in node.input:
+            op_to_quantizers[op.name] = OpToQuantizers()
+            for input_product in op.inputs:
                 self._populate_input_quantizer(
-                    op_to_quantizers[node.name], input_product
+                    op_to_quantizers[op.name], input_product.name
                 )
-            for output_product in node.output:
+            for output_product in op.outputs:
                 self._populate_output_quantizer(
-                    op_to_quantizers[node.name], output_product
+                    op_to_quantizers[op.name], output_product.name
                 )
             for name, _ in op.parameters.items():
                 # Params inside control-flow bodies have no quantizer without subgraph quantization
                 if name not in self._quant_ops_dict:
                     continue
-                op_to_quantizers[node.name].parameter_quantizers.append(
+                op_to_quantizers[op.name].parameter_quantizers.append(
                     (name, self._quant_ops_dict[name])
                 )
 
@@ -207,12 +205,10 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
         """
         Populate input and param quantizer for an op
         """
-        product_name = get_product_name_from_quantized_name(input_product)
-        # In case where there is no quantizer product_name will turn out to be None
-        if not product_name:
-            return
-        if product_name in self._activation_names:
-            op_to_quantizers.input_quantizers.append(self._quant_ops_dict[product_name])
+        if input_product in self._activation_names:
+            op_to_quantizers.input_quantizers.append(
+                self._quant_ops_dict[input_product]
+            )
 
     def _populate_output_quantizer(
         self, op_to_quantizers: OpToQuantizers, output_product: str
@@ -677,7 +673,7 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                 (
                     self._op_to_supported_kernel[op.dotted_name],
                     per_channel_quantization_flag,
-                ) = config_generator.generate(op.get_module(), op.type)
+                ) = config_generator.generate(op.type)
                 if per_channel_quantization_flag:
                     for _, param_quantizer in self._op_to_quantizers[
                         op.dotted_name
@@ -720,13 +716,13 @@ class OpInstanceConfigGenerator:
         assert ConfigDictKeys.DEFAULTS in self.op_type_pcq
 
     @abstractmethod
-    def generate(self, op: NodeProto, op_type: str) -> dict:
+    def generate(self, op_type: str) -> dict:
         """generate the config for the given op"""
 
-    def _generate_pcq(self, op: NodeProto) -> bool:
+    def _generate_pcq(self, op_type: str) -> bool:
         """
         Helper function to generate the pcq field
-        :param op: op instance to generate the pcq value for
+        :param op_type: Type of the op to generate the pcq value for
         :return: pcq value for the op type
 
         Steps:
@@ -735,8 +731,8 @@ class OpInstanceConfigGenerator:
         """
         pcq = False
 
-        if op.op_type in self.op_type_pcq:
-            pcq = self.op_type_pcq[op.op_type]
+        if op_type in self.op_type_pcq:
+            pcq = self.op_type_pcq[op_type]
         elif self.op_type_pcq[ConfigDictKeys.DEFAULTS]:
             pcq = True
 
@@ -748,15 +744,14 @@ class DefaultOpInstanceConfigGenerator(OpInstanceConfigGenerator):
     Default implementation of OpInstanceConfigGenerator
     """
 
-    def generate(self, op: NodeProto, op_type: str) -> Tuple[dict, bool]:
+    def generate(self, op_type: str) -> Tuple[dict, bool]:
         """
-        :param op: op to generate the specialized config
         :param op_type: Type str retrieved from CG op
         :return: supported_kernels and per_channel_quantization fields
         """
         supported_kernels = self.op_type_supported_kernels.get(
             op_type, self.op_type_supported_kernels[ConfigDictKeys.DEFAULTS]
         )
-        pcq = self._generate_pcq(op)
+        pcq = self._generate_pcq(op_type)
 
         return supported_kernels, pcq

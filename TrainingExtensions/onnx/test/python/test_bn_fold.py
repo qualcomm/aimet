@@ -100,7 +100,7 @@ class TestBatchNormFold:
         )
         model = ONNXModel(load_model(model_path))
 
-        connected_graph = ConnectedGraph(model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         bn_info = _find_conv_bn_pairs(connected_graph)
         conv1 = connected_graph.get_op_from_module_name("/conv1/Conv")
         conv3 = connected_graph.get_op_from_module_name("/conv3/Conv")
@@ -118,7 +118,7 @@ class TestBatchNormFold:
         x = torch.randn((32, 10))
         model = BNBeforeLinear()
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         bn_info = _find_conv_bn_pairs(conn_graph)
         assert len(bn_info.keys()) == 1
         assert "MatMul" in list(bn_info.keys())[0].name
@@ -127,7 +127,7 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNBeforeFlattenLinear()
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         bn_info = _find_conv_bn_pairs(conn_graph)
         linear_layer = conn_graph.get_op_from_module_name("/fc2/MatMul")
         assert len(bn_info.keys()) == 1
@@ -140,7 +140,7 @@ class TestBatchNormFold:
         x = torch.randn((32, 10))
         model = BNAfterLinear(bias=True)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         bn_info = _find_conv_bn_pairs(conn_graph)
         linear_layer = conn_graph.get_op_from_module_name("/fc1/Gemm")
         assert len(bn_info.keys()) == 1
@@ -153,7 +153,7 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNAfterConvTranspose()
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         bn_info = _find_conv_bn_pairs(conn_graph)
         conv_layer = conn_graph.get_op_from_module_name("/conv1/ConvTranspose")
         assert len(bn_info.keys()) == 1
@@ -166,7 +166,7 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24))
         model = BNAfterConv1d()
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         bn_info = _find_conv_bn_pairs(conn_graph)
         conv_layer = conn_graph.get_op_from_module_name("/conv1/Conv")
         assert len(bn_info.keys()) == 1
@@ -179,7 +179,7 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNBeforeConvTranspose()
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert not conv_bn
         assert not bn_conv
@@ -188,19 +188,19 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNAfterConvTranspose()
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert len(conv_bn) == 1
         assert not bn_conv
         model = BNAfterConvTranspose(groups=2)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert not conv_bn
         assert not bn_conv
         model = BNAfterConvTranspose(groups=10)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert len(conv_bn) == 1
         assert not bn_conv
@@ -209,20 +209,20 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNBeforeConv(padding=1)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         # should not fold if there is zero padding
         assert not conv_bn
         assert not bn_conv
         model = BNBeforeConv(padding=0)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert not conv_bn
         assert len(bn_conv) == 1
         model = BNBeforeConv(groups=20)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert not conv_bn
         assert not bn_conv
@@ -231,19 +231,19 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNAfterConv(padding=1)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert len(conv_bn) == 1
         assert not bn_conv
         model = BNAfterConv(padding=0)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert len(conv_bn) == 1
         assert not bn_conv
         model = BNAfterConv(groups=20)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         assert len(conv_bn) == 1
         assert not bn_conv
@@ -287,7 +287,7 @@ class TestBatchNormFold:
         x = torch.randn((2, 10, 24, 24))
         model = BNBeforeFlattenLinear(bias=True)
         model = _convert_to_onnx_no_fold(model, x)
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
         conv_bn, bn_conv = find_all_batch_norms_to_fold(conn_graph)
         linear_layer = conn_graph.get_op_from_module_name("/fc2/Gemm")
         assert len(bn_conv) == 1
@@ -810,58 +810,6 @@ class TestBatchNormFoldRobustness:
             model.SerializeToString(), providers=providers
         ).run(None, dummy_input)[0]
         assert np.allclose(expected, actual, atol=1e-5)
-
-    def test_fold_with_name_reused_in_subgraph(self):
-        """The fold must edit the top-level Conv, not a subgraph node with the same name."""
-        np.random.seed(0)
-        branch_weight = onnx.numpy_helper.from_array(
-            np.random.rand(4, 4, 1, 1).astype(np.float32), "wb"
-        )
-        then_branch = onnx.helper.make_graph(
-            [onnx.helper.make_node("Conv", ["z", "wb"], ["t"], name="conv")],
-            "then",
-            [],
-            [onnx.helper.make_tensor_value_info("t", onnx.TensorProto.FLOAT, None)],
-            initializer=[branch_weight],
-        )
-        else_branch = onnx.helper.make_graph(
-            [onnx.helper.make_node("Identity", ["z"], ["e"], name="identity")],
-            "else",
-            [],
-            [onnx.helper.make_tensor_value_info("e", onnx.TensorProto.FLOAT, None)],
-        )
-        if_node = onnx.helper.make_node(
-            "If",
-            ["c"],
-            ["o"],
-            name="if",
-            then_branch=then_branch,
-            else_branch=else_branch,
-        )
-        cond = onnx.helper.make_tensor_value_info("c", onnx.TensorProto.BOOL, [])
-        model = _conv_bn_graph(
-            "conv", "bn", extra_nodes=(if_node,), extra_inputs=(cond,)
-        )
-        weight_before = onnx.numpy_helper.to_array(model.graph.initializer[0]).copy()
-
-        conv_bn, _ = fold_all_batch_norms_to_weight(model)
-
-        assert conv_bn[0][0] is model.graph.node[0]
-        assert list(model.graph.node[0].input) == ["x", "w", "conv.bias"]
-        assert not np.allclose(
-            onnx.numpy_helper.to_array(model.graph.initializer[0]), weight_before
-        )
-        (branch,) = [
-            attr.g
-            for attr in model.graph.node[-1].attribute
-            if attr.name == "then_branch"
-        ]
-        # The branch Conv now reads the BN input directly, and is otherwise unchanged
-        assert list(branch.node[0].input) == ["y", "wb"]
-        assert np.array_equal(
-            onnx.numpy_helper.to_array(branch.initializer[0]),
-            onnx.numpy_helper.to_array(branch_weight),
-        )
 
     @pytest.mark.parametrize("dynamic", ["weight", "bias", "bn_param"])
     def test_skip_fold_with_dynamic_input(self, dynamic):

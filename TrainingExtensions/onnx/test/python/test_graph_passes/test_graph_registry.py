@@ -7,6 +7,7 @@ from aimet_onnx.common.connected_graph.operation import Op
 from aimet_onnx.graph_passes.pass_registry import register_pass
 from aimet_onnx.graph_passes.graph_pass import SupergroupGraphPass
 from aimet_onnx.graph_passes.utils import get_const_input_names, get_output_names
+import onnx_ir
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.utils import ModelProto
 from aimet_onnx.quantsim import QuantizationSimModel, QuantScheme
@@ -72,7 +73,7 @@ def test_register_and_apply_graph_pass(tmp_dir):
             config_file=config_file,
         )
 
-    graph = ConnectedGraph(model)
+    graph = ConnectedGraph(onnx_ir.from_proto(model))
     disable_quantizers = set(
         get_const_input_names(graph.ordered_ops) + get_output_names(graph.ordered_ops)
     )

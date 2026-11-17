@@ -517,19 +517,19 @@ class TestSubgraphQuantizerInsertion:
         """
         When: QuantizationSimModel is created with subgraph quantization
         Then: 1) Every graph stays topologically sorted
-              2) The nodes referenced by the connected graph are still part of the model
+              2) The ops of the connected graph are still nodes of the model
         """
         # 1)
         check_sorted(sim.model.model.graph, ())
 
         # 2)
-        nodes = {
-            id(node)
+        names = {
+            node.name
             for graph in _iterate_graphs_recursive(sim.model.model.graph)
             for node in graph.node
         }
         for op in sim.connected_graph.get_all_ops().values():
-            assert id(op.get_module()) in nodes
+            assert op.name in names
 
     def test_sort_quantizer_nodes(self):
         """A sim of a Scan model with quantizers moved before all other nodes of each graph"""

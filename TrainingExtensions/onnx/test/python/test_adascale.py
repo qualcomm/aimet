@@ -1200,9 +1200,43 @@ class TestAdascaleQuantizer:
         AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=5)
 
         assert sim.model.model is not old_proto
-        assert sim.connected_graph.model is sim.model.model
         assert not np.array_equal(w1(sim.model.model), before)
         sim.session.run(None, inputs[0])
+
+    def test_connected_graph_follows_adascale_weights(self):
+        """
+        Given: A sim
+        When: AdaScale writes its optimized weights back into the sim
+        Then: The connected graph's parameters read the sim's weights, not detached copies
+        """
+        rng = np.random.default_rng(0)
+        inputs = [
+            {
+                "x": rng.standard_normal((4, 4)).astype(np.float32),
+                "route0": np.array([route0]),
+                "route1": np.array([route1]),
+            }
+            for route0, route1 in [(True, True), (True, False)]
+        ]
+        with _quantize_subgraphs_enabled():
+            sim = QuantizationSimModel(
+                models_for_tests.predicated_experts_model(),
+                default_param_bw=4,
+                providers=["CPUExecutionProvider"],
+            )
+        sim._compute_param_encodings(dummy_input=inputs[0])
+        AdaScale._apply_adascale(sim, inputs, [("x", "y1")], num_iterations=1)
+
+        initializers = {init.name: init for init in sim.model.model.graph.initializer}
+        params = [
+            product
+            for op in sim.connected_graph.get_all_ops().values()
+            for product, _ in op.parameters.values()
+            if product.name in initializers
+        ]
+        assert params
+        for product in params:
+            assert product.tensor.raw is initializers[product.name]
 
     def test_block_weight_read_by_both_branches_raises(self):
         """

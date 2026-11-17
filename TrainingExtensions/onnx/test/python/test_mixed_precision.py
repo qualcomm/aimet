@@ -292,8 +292,8 @@ class TestAMPv1:
                 if len(found_quantizer_groups) == 2:
                     avgpool_output_name = (
                         algo._sim.connected_graph.get_all_ops()["AveragePool_12"]
-                        .get_module()
-                        .output[0]
+                        .outputs[0]
+                        .name
                     )
                     avgpool_quantizer = algo._sim.qc_quantize_op_dict[
                         avgpool_output_name

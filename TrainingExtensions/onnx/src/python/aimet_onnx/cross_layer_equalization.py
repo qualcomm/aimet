@@ -12,6 +12,7 @@ Layer groups: Groups of layers that are immediately connected and can be decompo
 from typing import List, Optional, Tuple, Union, Dict
 import numpy as np
 import onnx
+import onnx_ir
 from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from packaging import version
 
@@ -114,7 +115,7 @@ class CrossLayerScaling(CLS):
         :return: CLS information for each CLS set
         """
         # Find layer groups
-        connected_graph = ConnectedGraph(self._model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(self._model))
         ordered_module_list = get_ordered_list_of_conv_modules(
             connected_graph.starting_ops
         )
@@ -211,11 +212,11 @@ class PythonClsImpl(ClsImpl):
             weight_2_np = np.expand_dims(weight_2_np, axis=-1)
 
         # Transpose weights from [I, O, H, W] to [O, I, H, W]
-        if conv_0.get_module().op_type == "ConvTranspose":
+        if conv_0.type == "ConvTranspose":
             weight_0_np = weight_0_np.transpose(1, 0, *range(2, weight_0_np.ndim))
-        if conv_1.get_module().op_type == "ConvTranspose":
+        if conv_1.type == "ConvTranspose":
             weight_1_np = weight_1_np.transpose(1, 0, *range(2, weight_1_np.ndim))
-        if conv_2.get_module().op_type == "ConvTranspose":
+        if conv_2.type == "ConvTranspose":
             weight_2_np = weight_2_np.transpose(1, 0, *range(2, weight_2_np.ndim))
 
         # compute scaling factors and folded parameters.
@@ -229,11 +230,11 @@ class PythonClsImpl(ClsImpl):
         )
 
         # Transpose weights from [O, I, H, W] back to [I, O, H, W]
-        if conv_0.get_module().op_type == "ConvTranspose":
+        if conv_0.type == "ConvTranspose":
             _weight_0_np = _weight_0_np.transpose(1, 0, *range(2, _weight_0_np.ndim))
-        if conv_1.get_module().op_type == "ConvTranspose":
+        if conv_1.type == "ConvTranspose":
             _weight_1_np = _weight_1_np.transpose(1, 0, *range(2, _weight_1_np.ndim))
-        if conv_2.get_module().op_type == "ConvTranspose":
+        if conv_2.type == "ConvTranspose":
             _weight_2_np = _weight_2_np.transpose(1, 0, *range(2, _weight_2_np.ndim))
 
         _weight_0_np = _weight_0_np.astype(_tensor_np_dtype(weight_0))
@@ -275,9 +276,9 @@ class PythonClsImpl(ClsImpl):
             weight_1_np = np.expand_dims(weight_1_np, axis=-1)
 
         # Transpose weights from [I, O, H, W] to [O, I, H, W]
-        if conv_0.get_module().op_type == "ConvTranspose":
+        if conv_0.type == "ConvTranspose":
             weight_0_np = weight_0_np.transpose(1, 0, *range(2, weight_0_np.ndim))
-        if conv_1.get_module().op_type == "ConvTranspose":
+        if conv_1.type == "ConvTranspose":
             weight_1_np = weight_1_np.transpose(1, 0, *range(2, weight_1_np.ndim))
 
         # compute scaling factors and folded parameters.
@@ -287,9 +288,9 @@ class PythonClsImpl(ClsImpl):
         )
 
         # Transpose weights from [O, I, H, W] back to [I, O, H, W]
-        if conv_0.get_module().op_type == "ConvTranspose":
+        if conv_0.type == "ConvTranspose":
             _weight_0_np = _weight_0_np.transpose(1, 0, *range(2, _weight_0_np.ndim))
-        if conv_1.get_module().op_type == "ConvTranspose":
+        if conv_1.type == "ConvTranspose":
             _weight_1_np = _weight_1_np.transpose(1, 0, *range(2, _weight_1_np.ndim))
 
         _weight_0_np = _weight_0_np.astype(_tensor_np_dtype(weight_0))
@@ -415,7 +416,7 @@ class PythonHbfImpl(HbfImpl):
             weight_curr_np = np.expand_dims(weight_curr_np, axis=-1)
 
         # Transpose weights from [I, O, H, W] to [O, I, H, W]
-        if curr.get_module().op_type == "ConvTranspose":
+        if curr.type == "ConvTranspose":
             weight_curr_np = weight_curr_np.transpose(
                 1, 0, *range(2, weight_curr_np.ndim)
             )

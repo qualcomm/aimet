@@ -176,13 +176,16 @@ class ConvBnPatternHandler:
 def get_op_dict_key(op: Op):
     """
     Returns the object to be used as a key in the conv/linear BN dict.
-    For torch and tensorflow models, returns op.get_module(). For onnx models, returns the original op.
+    For torch and tensorflow models, returns op.get_module(). For onnx models, returns the original op,
+    since ONNX callers look this dict up by op rather than by the underlying node.
 
     :param op: connected graph layer to be used as a dictionary key
     :return: object (op or op.get_module()) to be used as a key in the conv/linear BN dict
     """
     module = op.get_module()
-    # ONNX NodeProto objects are not hashable, return the original Op object instead
+    # onnx_ir.Node carries an op_type; no other framework's module/op object does
+    if hasattr(module, "op_type"):
+        return op
     try:
         hash(module)
     except TypeError:

@@ -38,7 +38,7 @@ class TestAdaroundOptimizer:
         quant_module = model_data.module_to_info["/conv1/Conv"]
 
         old_weights = torch.from_numpy(
-            numpy_helper.to_array(quant_module.params["weight"].tensor)
+            quant_module.params["weight"].tensor.numpy().copy()
         ).clone()
 
         data_loader = dataloader()
@@ -59,7 +59,7 @@ class TestAdaroundOptimizer:
             )
 
             new_weights = torch.from_numpy(
-                numpy_helper.to_array(quant_module.params["weight"].tensor)
+                quant_module.params["weight"].tensor.numpy().copy()
             )
             weight_name = quant_module.params["weight"].name
             for tensor in sim.model.model.graph.initializer:
@@ -78,9 +78,7 @@ class TestAdaroundOptimizer:
         param_to_tq_dict = create_param_to_tensor_quantizer_dict(sim)
 
         quant_module = model_data.module_to_info["/conv2/Conv"]
-        weights = torch.from_numpy(
-            numpy_helper.to_array(quant_module.params["weight"].tensor)
-        )
+        weights = torch.from_numpy(quant_module.params["weight"].tensor.numpy().copy())
         inp_data = torch.randn(1, 32, 32, 32)
         out_data = AdaroundOptimizer._compute_output_with_adarounded_weights(
             weights,
@@ -93,9 +91,7 @@ class TestAdaroundOptimizer:
         assert out_data.shape == torch.Size([1, 16, 18, 18])
 
         quant_module = model_data.module_to_info["/fc/Gemm"]
-        weights = torch.from_numpy(
-            numpy_helper.to_array(quant_module.params["weight"].tensor)
-        )
+        weights = torch.from_numpy(quant_module.params["weight"].tensor.numpy().copy())
         inp_data = torch.randn(1, 72)
         out_data = AdaroundOptimizer._compute_output_with_adarounded_weights(
             weights,
@@ -113,9 +109,7 @@ class TestAdaroundOptimizer:
         param_to_tq_dict = create_param_to_tensor_quantizer_dict(sim)
 
         quant_module = model_data.module_to_info["/conv1/ConvTranspose"]
-        weights = torch.from_numpy(
-            numpy_helper.to_array(quant_module.params["weight"].tensor)
-        )
+        weights = torch.from_numpy(quant_module.params["weight"].tensor.numpy().copy())
         inp_data = torch.randn(10, 10, 4, 4)
         out_data = AdaroundOptimizer._compute_output_with_adarounded_weights(
             weights,

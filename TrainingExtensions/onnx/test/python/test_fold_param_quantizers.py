@@ -423,7 +423,12 @@ class TestFoldParamQuantizers:
             and node.inputs[0].name in folded
             for node in producers
         )
-        assert sim.connected_graph.model is new_proto
+        assert sim.connected_graph.model is sim._ir_model
+        initializers = {init.name: init for init in new_proto.graph.initializer}
+        assert all(
+            value.const_value.raw is initializers[name]
+            for name, value in sim._ir_model.graph.initializers.items()
+        )
 
 
 def _bf16_sim(param_type, *, lpbq=False):

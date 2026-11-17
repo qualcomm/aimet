@@ -367,28 +367,15 @@ class TestQuantSim:
 
         """
         When: One is sorted with _sort_quantizer_nodes, the other with ONNXModel.topological_sort
-        Then: 1) _sort_quantizer_nodes keeps the NodeProtos held by the connected graph in the model
-              2) ONNXModel.topological_sort (ClearField + extend) replaces them with copies, so a
-                 quantizer inserted afterwards is not wired to the consumers in the model
+        Then: A quantizer inserted afterwards is wired to the consumers in the model, whichever
+              sort ran
         """
 
-        for s, expected in ((sim, True), (ort_sim, False)):
-            nodes = {id(node) for node in s.model.graph().node}
-            cg_nodes = [
-                op.get_module() for op in s.connected_graph.get_all_ops().values()
-            ]
-            assert all(id(node) in nodes for node in cg_nodes) == expected
-            assert any(id(node) in nodes for node in cg_nodes) == expected
-
         # Flatten output "6" has no quantizer
-        for s, expected in ((sim, "6_updated"), (ort_sim, "6")):
-            # _insert_quantizer -> _replace_input_of_all_nodes finds consumers through CG
-            # When s is sorted using in-place, the CG's fc node is the one in the model
-            # When s is sorted using topological_sort, CG holds the old fc node, and model's
-            # fc node still reads "6" and not "6_updated"
+        for s in (sim, ort_sim):
             s._insert_quantizer("6", is_param=False)
             (fc,) = [node for node in s.model.graph().node if node.name == "fc"]
-            assert fc.input[0] == expected
+            assert fc.input[0] == "6_updated"
 
     def test_create_quantsim_dynamic_batch_size(self, tmp_dir):
         """Test to insert qc quantize op to the graph"""
@@ -1143,8 +1130,8 @@ class TestQuantSim:
             for idx, t in enumerate(model.graph.output):
                 assert t.name == exported_model.graph.output[idx].name
 
-            model_cg = ConnectedGraph(model)
-            exported_cg = ConnectedGraph(exported_model)
+            model_cg = ConnectedGraph(onnx_ir.from_proto(model))
+            exported_cg = ConnectedGraph(onnx_ir.from_proto(exported_model))
             for name, op in model_cg.get_all_ops().items():
                 for idx, tensor in enumerate(op.inputs):
                     assert (
@@ -1583,7 +1570,7 @@ class TestQuantSim:
                     break
             else:
                 raise RuntimeError(f"Param {param_name} not found in model")
-            groups = get_node_attribute(op.get_module(), "group")
+            groups = op.groups
             qc_op = sim.qc_quantize_op_dict[param_name]
             if groups not in (None, 1):
                 assert not qc_op.quant_info.usePerChannelMode

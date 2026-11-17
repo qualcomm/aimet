@@ -88,7 +88,6 @@ from aimet_onnx.common.quantsim_config.quantsim_config import _config_file_alias
 from aimet_onnx.common.connected_graph.product import Product
 from aimet_onnx.common.onnx._utils import _convert_version_ir
 from aimet_onnx import utils
-from aimet_onnx.common.model_module import ONNXModelModule
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.meta.utils import (
     get_op_given_param_name,
@@ -590,8 +589,10 @@ class QuantizationSimModel:
         self.model = model
         self._quantize_subgraphs = _quantize_subgraphs
         self._raise_for_duplicate_subgraph_tensors()
+        # Shares the tensors of self.model, and reflects its graph before quantizers are inserted
+        self._ir_model = onnx_ir.from_proto(self.model.model)
         self.connected_graph = ConnectedGraph(
-            self.model, include_if_branches=self._quantize_subgraphs
+            self._ir_model, include_if_branches=self._quantize_subgraphs
         )
 
         if _has_unfolded_batchnorms(self.model.model, self.connected_graph):
@@ -844,6 +845,18 @@ class QuantizationSimModel:
                 "Rename them to be unique to quantize tensors inside control-flow bodies."
             )
 
+    def _nodes_by_name(self) -> Dict[str, onnx.NodeProto]:
+        """
+        Map the name of each node in the graphs the connected graph represents to that node
+        """
+        return {
+            node.name: node
+            for graph in _iterate_graphs_recursive(
+                self.model.graph(), include_if=self._quantize_subgraphs
+            )
+            for node in graph.node
+        }
+
     def _if_branch_of(self, tensor_name: str) -> Optional[Tuple[str, str]]:
         """
         Name of the If node and of its branch that define ``tensor_name``, at any depth
@@ -1066,16 +1079,20 @@ class QuantizationSimModel:
         self._insert_param_quantization_nodes()
         self._insert_activation_quantization_nodes()
 
-    def _replace_input_of_all_nodes(self, old_name, new_name):
+    def _replace_input_of_all_nodes(self, old_name, new_name, nodes=None):
         if old_name not in self.connected_graph.get_all_products():
             raise ValueError(
                 f"Tensor name {old_name} was not found in graph tensors "
                 f"{self.connected_graph.get_all_products().keys()}."
             )
 
+        if nodes is None:
+            nodes = self._nodes_by_name()
         product = self.connected_graph.get_all_products()[old_name]
         for consumer in product.consumers:
-            node = consumer.get_module()
+            node = nodes.get(consumer.name)
+            if node is None:
+                continue
             for idx, tensor in enumerate(node.input):
                 if tensor == old_name:
                     node.input[idx] = new_name
@@ -1085,9 +1102,13 @@ class QuantizationSimModel:
         Insert quantization node for each param tensor
         """
         body_of = self._get_body_of_tensors()
+        nodes = self._nodes_by_name()
         for name in self.param_names:
             self._insert_quantizer(
-                name, is_param=True, graph=body_of.get(name, self.model.graph())
+                name,
+                is_param=True,
+                graph=body_of.get(name, self.model.graph()),
+                nodes=nodes,
             )
 
     def _create_tensor_quantizer_params(self, param_name: str):
@@ -1144,9 +1165,13 @@ class QuantizationSimModel:
         Insert quantization node for each activation tensor
         """
         body_of = self._get_body_of_tensors()
+        nodes = self._nodes_by_name()
         for name in self.activation_names:
             self._insert_quantizer(
-                name, is_param=False, graph=body_of.get(name, self.model.graph())
+                name,
+                is_param=False,
+                graph=body_of.get(name, self.model.graph()),
+                nodes=nodes,
             )
 
     def _get_body_of_tensors(self) -> Dict[str, onnx.GraphProto]:
@@ -1163,7 +1188,11 @@ class QuantizationSimModel:
         return body_of
 
     def _insert_quantizer(
-        self, input_name: str, is_param: bool, graph: Optional[onnx.GraphProto] = None
+        self,
+        input_name: str,
+        is_param: bool,
+        graph: Optional[onnx.GraphProto] = None,
+        nodes: Optional[Dict[str, onnx.NodeProto]] = None,
     ):
         """
         Inserts a quantizer for tensor `input_name` in the graph and adds it to `self.qc_quantize_op_dict`
@@ -1173,6 +1202,7 @@ class QuantizationSimModel:
         :param input_name: Name of the tensor to quantize
         :param is_param: True if the tensor is a parameter, False if it is an activation
         :param graph: Graph which defines `input_name`. Searched for if not given.
+        :param nodes: Nodes of the model by name. Searched for if not given.
         """
         if input_name in self.qc_quantize_op_dict:
             raise RuntimeError(f"Quantizer already exists for tensor {input_name}")
@@ -1191,7 +1221,7 @@ class QuantizationSimModel:
             tensor_quantizer_params = None
 
         quant_info = libquant_info.QcQuantizeInfo()
-        self._replace_input_of_all_nodes(input_name, output_name)
+        self._replace_input_of_all_nodes(input_name, output_name, nodes)
         custom_node = helper.make_node(
             op_type="QcQuantizeOp",
             inputs=[input_name],
@@ -1422,7 +1452,7 @@ class QuantizationSimModel:
                     target_quantizer_for_first_input.set_precision(int16)
 
             elif op.type == "ConvTranspose":
-                groups = utils.get_node_attribute(op.get_module(), "group")
+                groups = op.groups
                 weight_qtzr = param_quantizers.get("weight", None)
                 # TODO: Fix handling of PCQ for grouped ConvTranspose
                 if groups not in (None, 1) and weight_qtzr:
@@ -2706,8 +2736,8 @@ class QuantizationSimModel:
 
         sources = []
         for attr_name in ("then_branch", "else_branch"):
-            branch = utils.get_node_attribute(op.get_module(), attr_name)
-            name = branch.output[output_index].name
+            branch = op.get_module().attributes[attr_name].as_graph()
+            name = branch.outputs[output_index].name
             # Branch outputs are renamed in the sim graph; the quantizer reads the original tensor
             value = self._value_map().get(name)
             producer = value.producer() if value is not None else None
@@ -2861,6 +2891,7 @@ class QuantizationSimModel:
 
         del seen
 
+        nodes = self._nodes_by_name()
         for op in self.connected_graph.ordered_ops:
             if op.type not in op_types_to_tie:
                 continue
@@ -2909,7 +2940,7 @@ class QuantizationSimModel:
                     != input_qtzr._encoding_min_max_fixed_vals
                 ):
                     path = self._get_path_to_effective_quantizer(
-                        op.get_module().input[0]
+                        nodes[op.name].input[0]
                     )
                     if path and any(
                         has_multiple_consumers[node.outputs[0].name] for node in path
@@ -3352,10 +3383,14 @@ class QuantizationSimModel:
 
     def _reset_model(self, model: ModelProto):
         """
-        Replace the sim's ModelProto with ``model`` and re-point every cached proto reference at it.
+        Replace the sim's ModelProto with ``model`` and re-point every cached reference
+        (the sim's name maps, the tensors of the connected graph) at it.
 
         Cached NodeProto/TensorProto references would otherwise keep the old model alive in memory
         and make lookups return stale nodes. The session is not rebuilt; see :meth:`_rebuild_session`.
+
+        The connected graph, and ``self._ir_model`` it represents, keep the graph from before
+        quantizers were inserted and only read the tensors of ``model``.
 
         :param model: New ModelProto of the sim
         """
@@ -3365,23 +3400,7 @@ class QuantizationSimModel:
             self._build_name_to_node_maps()
         )
 
-        self.connected_graph.model = self.model.model
-        nodes_by_name = {
-            node.name: node
-            for graph in self._graphs_to_quantize()
-            for node in graph.node
-        }
-        tensors_by_name = {
-            init.name: init
-            for graph in _iterate_graphs_recursive(self.model.model.graph)
-            for init in graph.initializer
-        }
-        for op in self.connected_graph.get_all_ops().values():
-            if op.name in nodes_by_name:
-                op.model_module = ONNXModelModule(nodes_by_name[op.name])
-            for product, _ in (op.parameters or {}).values():
-                if product.tensor is not None:
-                    product.tensor = tensors_by_name.get(product.tensor.name)
+        self.connected_graph._reset_model(onnx_ir.from_proto(model))  # pylint: disable=protected-access
 
     def fold_param_quantizers(self):
         """
@@ -4687,7 +4706,7 @@ def _unique_axis_by_shape(
     return matches[0] if len(matches) == 1 else None
 
 
-def _channel_axes_from_connected_graph(model: onnx.ModelProto) -> Dict[str, int]:
+def _channel_axes_from_connected_graph(model: onnx_ir.Model) -> Dict[str, int]:
     """
     Channel axis of every parameter, from :meth:`~QuantizationSimModel._get_quantization_axes`.
 
@@ -4857,7 +4876,7 @@ def _encodings_to_onnx_qdq(
             sorted(unresolved)[:8],
         )
         channel_axes = {
-            **_channel_axes_from_connected_graph(onnx_ir.to_proto(model)),
+            **_channel_axes_from_connected_graph(model),
             **shape_axes,
         }
 

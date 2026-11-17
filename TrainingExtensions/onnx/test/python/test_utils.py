@@ -7,6 +7,7 @@ import os
 import tempfile
 
 import onnx
+import onnx_ir
 import onnxruntime
 import torch
 from packaging import version
@@ -498,7 +499,7 @@ class TestDuplicateSharedInitializers:
         one node.
         """
         model = ONNXModel(self._make_shared_weight_model())
-        conn_graph = ConnectedGraph(model)
+        conn_graph = ConnectedGraph(onnx_ir.from_proto(model.model))
 
         # Confirm the model has shared params before duplication
         assert find_shared_param_names(conn_graph), (
@@ -508,7 +509,7 @@ class TestDuplicateSharedInitializers:
         duplicate_shared_initializers(model.model.graph)
 
         # Re-build connected graph on the modified model
-        conn_graph_after = ConnectedGraph(model)
+        conn_graph_after = ConnectedGraph(onnx_ir.from_proto(model.model))
         assert not find_shared_param_names(conn_graph_after), (
             "Expected no shared params after duplicate_shared_initializers"
         )
@@ -545,7 +546,7 @@ class TestDuplicateSharedInitializers:
         for orig, dup in zip(original_output, duplicated_output):
             np.testing.assert_array_equal(orig, dup)
 
-        conn_graph_after = ConnectedGraph(ONNXModel(duplicated))
+        conn_graph_after = ConnectedGraph(onnx_ir.from_proto(duplicated))
         assert not find_shared_param_names(conn_graph_after), (
             "Expected no shared params after duplicate_shared_initializers"
         )
@@ -604,7 +605,7 @@ class TestDuplicateSharedInitializers:
         for orig, dup in zip(original_output, duplicated_output):
             np.testing.assert_array_equal(orig, dup)
 
-        conn_graph_after = ConnectedGraph(ONNXModel(duplicated))
+        conn_graph_after = ConnectedGraph(onnx_ir.from_proto(duplicated))
         assert not find_shared_param_names(conn_graph_after)
 
     def test_duplicate_tensor_shared_by_three_nodes(self):

@@ -92,7 +92,7 @@ class TestAdaround:
             if op.type in ("Conv", "MatMul", "Gemm")
         ]
         weight_tensors = {
-            t.name: copy.deepcopy(onnx.numpy_helper.to_array(t.tensor))
+            t.name: t.tensor.numpy().copy()
             for op in adaroundable_ops
             for t, param_type in op.parameters.values()
             if param_type == "weight"
@@ -148,16 +148,12 @@ class TestAdaround:
         )
         model_data = ModelData(sim)
         orig_weight = torch.from_numpy(
-            numpy_helper.to_array(
-                model_data.module_to_info["conv"].params["weight"].tensor
-            )
+            model_data.module_to_info["conv"].params["weight"].tensor.numpy().copy()
         )
         apply_adaround(sim, [dummy_input for _ in range(2)], 5)
         model_data = ModelData(sim)
         updated_weight = torch.from_numpy(
-            numpy_helper.to_array(
-                model_data.module_to_info["conv"].params["weight"].tensor
-            )
+            model_data.module_to_info["conv"].params["weight"].tensor.numpy().copy()
         )
         assert not torch.equal(orig_weight, updated_weight)
         sim.compute_encodings([dummy_input])

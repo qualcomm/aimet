@@ -6,7 +6,7 @@
 from typing import List, Optional, Tuple
 import numpy as np
 from aimet_onnx.common.connected_graph.operation import Op, Product
-from aimet_onnx.utils import ModelProto, get_node_attribute
+from aimet_onnx.utils import ModelProto
 
 from aimet_onnx.graph_passes.utils import (
     _get_numpy_array,
@@ -128,7 +128,7 @@ def _is_rms_norm_scale_mul(
         # that follows it is a separate op
         if len(norm_start_op.inputs) > 1:
             return False
-        norm_axis = get_node_attribute(norm_start_op.get_module(), "axis")
+        norm_axis = norm_start_op.get_module().attributes.get_int("axis")
         norm_axis = norm_axis if norm_axis is not None else -1
     else:
         norm_axis = _get_rms_norm_axis(norm_ops[1], len(input_shape), model)
@@ -154,7 +154,7 @@ def _get_rms_norm_axis(
             return None
         reduce_axes = _get_numpy_array(model, reduce_mean_op.inputs[1].name)
     else:
-        reduce_axes = get_node_attribute(reduce_mean_op.get_module(), "axes")
+        reduce_axes = reduce_mean_op.get_module().attributes.get_ints("axes")
         if reduce_axes is None:
             # ReduceMean without axes reduces over all axes
             return 0

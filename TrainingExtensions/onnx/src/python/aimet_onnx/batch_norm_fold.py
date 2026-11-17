@@ -139,16 +139,6 @@ def _zip_nodes(
                     yield from _zip_nodes(proto_subgraph, ir_subgraph)
 
 
-def _ir_nodes_from_proto_id(
-    proto: ModelProto, model: onnx_ir.Model
-) -> Dict[int, onnx_ir.Node]:
-    """Map ``id()`` of each NodeProto in ``proto`` to the matching node in ``model``."""
-    return {
-        id(proto_node): ir_node
-        for proto_node, ir_node in _zip_nodes(proto.graph, model.graph)
-    }
-
-
 def _proto_nodes_from_ir_id(
     proto: ModelProto, model: onnx_ir.Model
 ) -> Dict[int, NodeProto]:
@@ -161,7 +151,9 @@ def _proto_nodes_from_ir_id(
 
 def find_all_batch_norms_to_fold(
     connected_graph: ConnectedGraph,
-) -> Tuple[List[Tuple[NodeProto, NodeProto]], List[Tuple[NodeProto, NodeProto]]]:
+) -> Tuple[
+    List[Tuple[onnx_ir.Node, onnx_ir.Node]], List[Tuple[onnx_ir.Node, onnx_ir.Node]]
+]:
     """
     Find all possible batch norm layers that can be folded. Returns a list of pairs such that (bn, layer)
     means bn will be forward-folded into layer and (layer, bn) means bn will be backward-folded into layer
@@ -170,8 +162,6 @@ def find_all_batch_norms_to_fold(
              where `bn` can be folded into to `layer`.
     """
     conv_linear_bn_activation_info_dict = _find_conv_bn_pairs(connected_graph)
-    model = onnx_ir.from_proto(connected_graph.model)
-    nodes = _ir_nodes_from_proto_id(connected_graph.model, model)
     # To mark BN's already picked for backward folding
     bn_picked_for_folding = set()
 
@@ -193,8 +183,8 @@ def find_all_batch_norms_to_fold(
                         [node.name, bn_info.output_bn.name],
                     )
                 elif _has_static_params(
-                    nodes[id(bn_info.output_bn.get_module())]
-                ) and is_valid_bn_fold(nodes[id(node.get_module())], True):
+                    bn_info.output_bn.get_module()
+                ) and is_valid_bn_fold(node.get_module(), True):
                     conv_bn_pairs.append(
                         (node.get_module(), bn_info.output_bn.get_module())
                     )
@@ -217,8 +207,8 @@ def find_all_batch_norms_to_fold(
                         [bn_info.input_bn.name, node.name],
                     )
                 elif _has_static_params(
-                    nodes[id(bn_info.input_bn.get_module())]
-                ) and is_valid_bn_fold(nodes[id(node.get_module())], False):
+                    bn_info.input_bn.get_module()
+                ) and is_valid_bn_fold(node.get_module(), False):
                     bn_conv_pairs.append(
                         (bn_info.input_bn.get_module(), node.get_module())
                     )
@@ -358,10 +348,18 @@ def fold_all_batch_norms_to_weight(model: ModelProto) -> Tuple[List, List]:
     """
     if isinstance(model, ONNXModel):
         model = model.model
-    connected_graph = ConnectedGraph(model)
+    connected_graph = ConnectedGraph(onnx_ir.from_proto(model))
     if not _has_batchnorm_ops(connected_graph):
         return [], []
-    return _fold_all_batch_norms_to_weight(connected_graph)
+    conv_bns, bn_convs = _fold_all_batch_norms_to_weight(connected_graph)
+
+    model.CopyFrom(onnx_ir.to_proto(connected_graph.model))
+    # CopyFrom replaces every NodeProto, so return the matching nodes of the new proto
+    proto_nodes = _proto_nodes_from_ir_id(model, connected_graph.model)
+    return (
+        [(proto_nodes[id(conv)], bn_layer) for conv, bn_layer in conv_bns],
+        [(proto_nodes[id(conv)], bn_layer) for conv, bn_layer in bn_convs],
+    )
 
 
 def _has_batchnorm_ops(connected_graph: ConnectedGraph) -> bool:
@@ -381,30 +379,18 @@ def _fold_all_batch_norms_to_weight(
     :return: A list of pairs of layers [(Conv/Linear, BN layer that got folded)]
     """
     conv_bn_pairs, bn_conv_pairs = find_all_batch_norms_to_fold(connected_graph)
-    proto = connected_graph.model
-    model = onnx_ir.from_proto(proto)
-    nodes = _ir_nodes_from_proto_id(proto, model)
     conv_bns = []
     bn_convs = []
     for conv, bn in conv_bn_pairs:
-        conv, bn = nodes[id(conv)], nodes[id(bn)]
         conv_bns.append((conv, _fold_to_weight(conv, bn, True)))
         _remove_batchnorm(bn)
 
     for bn, conv in bn_conv_pairs:
-        conv, bn = nodes[id(conv)], nodes[id(bn)]
         bn_convs.append((conv, _fold_to_weight(conv, bn, False)))
         _remove_batchnorm(bn)
 
-    _update_standalone_batchnorm_ops(model)
-
-    proto.CopyFrom(onnx_ir.to_proto(model))
-    # CopyFrom replaces every NodeProto, so return the matching nodes of the new proto
-    proto_nodes = _proto_nodes_from_ir_id(proto, model)
-    return (
-        [(proto_nodes[id(conv)], bn_layer) for conv, bn_layer in conv_bns],
-        [(proto_nodes[id(conv)], bn_layer) for conv, bn_layer in bn_convs],
-    )
+    _update_standalone_batchnorm_ops(connected_graph.model)
+    return conv_bns, bn_convs
 
 
 def _fold_to_weight(
@@ -677,7 +663,7 @@ def _has_unfolded_batchnorms(
         True if there are foldable BatchNormalization layers, False otherwise.
     """
     if connected_graph is None:
-        connected_graph = ConnectedGraph(model)
+        connected_graph = ConnectedGraph(onnx_ir.from_proto(model))
     if not _has_batchnorm_ops(connected_graph):
         return False
     conv_bn_pairs, bn_conv_pairs = find_all_batch_norms_to_fold(connected_graph)
@@ -685,7 +671,7 @@ def _has_unfolded_batchnorms(
         return True
 
     # Note: Remaining batchnorms should have running stats folded into beta/gamma parameters
-    return _has_batchnorms_with_fusable_running_stats(onnx_ir.from_proto(model))
+    return _has_batchnorms_with_fusable_running_stats(connected_graph.model)
 
 
 def _has_batchnorms_with_fusable_running_stats(model: onnx_ir.Model) -> bool:

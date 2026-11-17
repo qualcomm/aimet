@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 
+import onnx_ir
 from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.quantsim import QuantizationSimModel, QuantScheme
 
@@ -18,7 +19,7 @@ from .utils import assert_on_const_quantizers, assert_on_output_quantizers
 def test_layer_norm(elementwise_affine, bias):
     dim = 32
     model = layernorm_model(dim=dim, elementwise_affine=elementwise_affine, bias=bias)
-    graph = ConnectedGraph(model)
+    graph = ConnectedGraph(onnx_ir.from_proto(model))
 
     input_data = {"x": np.random.rand(1, 3, dim, dim).astype(np.float32)}
     with patch_fuse_supergroups(False):
@@ -51,7 +52,7 @@ def test_layer_norm(elementwise_affine, bias):
 def test_layer_norm_intermediate():
     dim = 32
     model = layernorm_model(dim=dim, include_add_ops=True)
-    graph = ConnectedGraph(model)
+    graph = ConnectedGraph(onnx_ir.from_proto(model))
 
     input_data = {"x": np.random.rand(1, 3, dim, dim).astype(np.float32)}
     with patch_fuse_supergroups(False):

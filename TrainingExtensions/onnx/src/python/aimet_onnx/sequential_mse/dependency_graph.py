@@ -9,7 +9,6 @@ from collections import defaultdict, deque
 from typing import Union, List, Optional, Iterable, Dict, Tuple
 from dataclasses import dataclass, field
 import numpy as np
-import onnx
 from onnxruntime.quantization.onnx_model import ONNXModel
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.meta.connectedgraph import ConnectedGraph, WEIGHT_INDEX
@@ -208,7 +207,7 @@ class DependencyGraph:
             for inward_node in dep_node.inward_nodes:
                 input_names.update(inward_node.op_input_names)
 
-        model_inputs = {tensor.name for tensor in self.conn_graph.model.graph.input}
+        model_inputs = {product.name for product in self.conn_graph.inputs()}
 
         for dep_node in dep_nodes:
             for name in dep_node.op_input_names:
@@ -301,7 +300,7 @@ class DependencyGraph:
 
         :param data_loader: DataLoader object
         """
-        model_inputs = [node.name for node in self.conn_graph.model.graph.input]
+        model_inputs = [product.name for product in self.conn_graph.inputs()]
         data = {model_input: [] for model_input in model_inputs}
 
         for batch_dict in inputs:
@@ -367,9 +366,7 @@ class DependencyGraph:
         """
         Fill the input op names dict with ops having at least one graph input
         """
-        graph_inputs = [
-            graph_inp.name for graph_inp in self.conn_graph.model.graph.input
-        ]
+        graph_inputs = [product.name for product in self.conn_graph.inputs()]
 
         op_names_with_model_input = [
             op.name
@@ -544,10 +541,9 @@ class DependencyGraph:
         """
         if cg_op.type not in SUPPORTED_MODULES:
             return False
-        if len(cg_op.inputs) < 1:
+        if len(cg_op.inputs) <= WEIGHT_INDEX:
             return False
-        tensor = cg_op.inputs[WEIGHT_INDEX].tensor
-        if isinstance(tensor, onnx.TensorProto):
+        if cg_op.inputs[WEIGHT_INDEX].tensor is not None:
             return True
 
         # Check for transposed MatMul weight pattern
@@ -558,8 +554,7 @@ class DependencyGraph:
                 and weight_producer
                 and weight_producer.type == "Transpose"
             ):
-                transpose_input = weight_producer.inputs[0].tensor
-                return isinstance(transpose_input, onnx.TensorProto)
+                return weight_producer.inputs[0].tensor is not None
 
         return False
 

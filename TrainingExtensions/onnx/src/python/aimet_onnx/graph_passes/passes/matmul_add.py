@@ -10,8 +10,7 @@ from aimet_onnx.graph_passes.pass_registry import register_pass
 from aimet_onnx.meta.operations import Op
 from aimet_onnx.meta.product import Product
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
-from onnx import ModelProto, TensorProto
-from onnx.external_data_helper import _get_all_tensors
+from onnx import ModelProto
 
 
 @register_pass("MatmulAdd")
@@ -32,7 +31,7 @@ class MatmulAdd(GraphPass):
         if op.type != "MatMul":
             return []
 
-        if _get_matmul_add_bias_idx(op, model) is None:
+        if _get_matmul_add_bias_idx(op) is None:
             return []
 
         matmul_op: Op = op
@@ -59,17 +58,11 @@ class MatmulAdd(GraphPass):
         bias_idx = 1 - bias_op.inputs.index(matmul_output)
         bias_product: Product = bias_op.inputs[bias_idx]
 
-        weight: TensorProto = next(
+        weight: Product = next(
             param
             for param, param_type in op.parameters.values()
             if param_type == "weight"
         )
-        bias_tensor: TensorProto = next(
-            tensor
-            for tensor in _get_all_tensors(model)
-            if tensor.name == bias_product.name
-        )
-        bias_product.set_as_param(bias_op, bias_tensor)
         bias_op.add_param(bias_product.name, bias_product, "bias")
 
         matmul_output_qtzr = op_quantizers[matmul_output.name]

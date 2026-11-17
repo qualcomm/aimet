@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 from functools import partial
 import ml_dtypes
 import onnx
+import onnx_ir
 import torch
 import torch.nn.functional as F
 import onnxruntime as ort
@@ -1730,7 +1731,9 @@ class TestDependencyGraph:
         model = models_for_tests.single_residual_model().model
         dl = [{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}]
         dep_graph = DependencyGraph(
-            ConnectedGraph(model), dl, nodes_to_exclude=["/conv1/Conv"]
+            ConnectedGraph(onnx_ir.from_proto(model)),
+            dl,
+            nodes_to_exclude=["/conv1/Conv"],
         )
         sorted_order = dep_graph.get_topologically_sorted_nodes()
 
@@ -2340,7 +2343,7 @@ class TestResidualAddBoundary:
 
     @staticmethod
     def _dependency_graph(model, inputs):
-        return DependencyGraph(ConnectedGraph(model), [inputs])
+        return DependencyGraph(ConnectedGraph(onnx_ir.from_proto(model)), [inputs])
 
     @pytest.mark.parametrize("num_blocks", [1, 3])
     def test_only_residual_adds_are_boundaries(self, num_blocks):
@@ -2599,7 +2602,9 @@ def _hf_dependency_graph(
     case, backend="torchscript", dtype=torch.float32, num_layers=2
 ):
     onnx_model, inputs = _export_tiny_decoder(case, backend, dtype, num_layers)
-    return DependencyGraph(ConnectedGraph(copy.deepcopy(onnx_model)), [inputs])
+    return DependencyGraph(
+        ConnectedGraph(onnx_ir.from_proto(copy.deepcopy(onnx_model))), [inputs]
+    )
 
 
 def _max_fan_in(dep_graph):

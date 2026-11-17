@@ -1,9 +1,10 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Union
 
 import onnx
+import onnx_ir
 
 
 _SEQUENTIAL_LIKE_CLASSES = frozenset(
@@ -27,7 +28,7 @@ def _parse_namespace(namespace: str):
     return pairs
 
 
-def _get_name_from_metadata(node: onnx.NodeProto) -> Optional[str]:
+def _get_name_from_metadata(node: Union[onnx.NodeProto, onnx_ir.Node]) -> Optional[str]:
     """Derive a torchscript-style node name from dynamo metadata_props.
 
     Parses the 'namespace' field which contains the module hierarchy with class
@@ -35,11 +36,13 @@ def _get_name_from_metadata(node: onnx.NodeProto) -> Optional[str]:
     convention where children are named '{parent_attr}.{index}' (e.g.,
     'features.0' instead of just '0'). This function reconstructs that pattern.
     """
-    namespace = None
-    for prop in node.metadata_props:
-        if prop.key == "namespace":
-            namespace = prop.value
-            break
+    if isinstance(node.metadata_props, dict):
+        namespace = node.metadata_props.get("namespace")
+    else:
+        namespace = next(
+            (prop.value for prop in node.metadata_props if prop.key == "namespace"),
+            None,
+        )
 
     if namespace is None:
         return None

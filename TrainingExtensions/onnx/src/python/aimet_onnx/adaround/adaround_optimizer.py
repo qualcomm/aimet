@@ -9,7 +9,6 @@ from functools import reduce
 import numpy as np
 import psutil
 import onnx
-from onnx import numpy_helper
 import torch
 from torch.nn import functional
 from torch.utils.data import Dataset
@@ -17,7 +16,6 @@ from packaging import version
 
 # Import AIMET specific modules
 from aimet_onnx.common.utils import AimetLogger
-from aimet_onnx.common.onnx._utils import to_array
 from aimet_onnx.adaround.activation_sampler import ActivationSampler
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.adaround.utils import (
@@ -84,7 +82,7 @@ class AdaroundOptimizer:
             module.params["weight"].name
         ]
         torch_device = get_torch_device(quant_model.session)
-        weights = _numpy_to_torch(to_array(module.params["weight"].tensor)).to(
+        weights = _numpy_to_torch(module.params["weight"].tensor.numpy()).to(
             torch_device
         )
         enable_grad(weights)
@@ -266,7 +264,7 @@ class AdaroundOptimizer:
                     )
             bias = None
             if "bias" in quant_module.params:
-                bias = _numpy_to_torch(to_array(quant_module.params["bias"].tensor)).to(
+                bias = _numpy_to_torch(quant_module.params["bias"].tensor.numpy()).to(
                     device
                 )
             out_data = functional.conv2d(
@@ -287,7 +285,7 @@ class AdaroundOptimizer:
             torch_padding = [-onnx_padding[i] for i in (1, 3, 0, 2)]
             bias = None
             if "bias" in quant_module.params:
-                bias = _numpy_to_torch(to_array(quant_module.params["bias"].tensor)).to(
+                bias = _numpy_to_torch(quant_module.params["bias"].tensor.numpy()).to(
                     device
                 )
             out_data = functional.conv_transpose2d(
@@ -305,7 +303,7 @@ class AdaroundOptimizer:
                 adarounded_weights = adarounded_weights.t()
             bias = None
             if "bias" in quant_module.params:
-                bias = _numpy_to_torch(to_array(quant_module.params["bias"].tensor)).to(
+                bias = _numpy_to_torch(quant_module.params["bias"].tensor.numpy()).to(
                     device
                 )
             out_data = functional.linear(inp_data, adarounded_weights, bias=bias)

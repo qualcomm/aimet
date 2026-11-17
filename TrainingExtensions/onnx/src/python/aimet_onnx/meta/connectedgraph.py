@@ -6,41 +6,35 @@ that is easy to navigate and stores information for the purpose of AIMET feature
 The representation graph consists of nodes that are either 'operation' or 'product';
 operations represent a node that generates a tensor, while products represent
 the tensors that are either input to the model (input, constant or parameter) or the
-result of an operation. Furthermore the graph representation is bi-directional."""
+result of an operation. Furthermore the graph representation is bi-directional.
+
+Operations and products are views of the ``onnx_ir`` nodes and values of the model, and read
+their attributes and links from them on every call."""
 
 import itertools
 from collections import deque
-from typing import Dict, List, Optional, Tuple, Union
-from onnxruntime.quantization.onnx_quantizer import ONNXModel
-import onnx
+from typing import Dict, List, Optional, Tuple
 import onnx_ir
-from packaging import version
 
 from aimet_onnx.common.connected_graph.connectedgraph import (
     ConnectedGraph as AimetCommonConnectedGraph,
     get_ordered_ops,
 )
-from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
+from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive_ir
 from aimet_onnx.common.utils import AimetLogger
-from aimet_onnx.common.model_module import ONNXModelModule
-from aimet_onnx.meta.operations import Op
+from aimet_onnx.meta.operations import (  # pylint: disable=unused-import
+    Op,
+    INPUT_INDEX,
+    WEIGHT_INDEX,
+    BIAS_INDEX,
+    RUNNING_MEAN_INDEX,
+    RUNNING_VAR_INDEX,
+)
 from aimet_onnx.meta.product import Product
-from aimet_onnx.utils import ParamUtils
-from aimet_onnx.ir_utils import get_constant_value, get_weight_value, _has_transposed_b
-
-# pylint: disable=no-name-in-module, ungrouped-imports
-if version.parse(onnx.__version__) >= version.parse("1.14.0"):
-    from onnx import ModelProto, NodeProto, TensorProto
-else:
-    from onnx.onnx_pb import ModelProto, NodeProto, TensorProto
+from aimet_onnx.ir_utils import static_tensor
 
 logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.ConnectedGraph)
 
-INPUT_INDEX = 0
-WEIGHT_INDEX = 1
-BIAS_INDEX = 2
-RUNNING_MEAN_INDEX = 3
-RUNNING_VAR_INDEX = 4
 OPS_WITH_PARAMS = [
     "Conv",
     "Gemm",
@@ -54,7 +48,7 @@ OPS_WITH_PARAMS = [
 CONSTANT_TYPE = ["Constant", "ConstantOfShape"]
 
 
-def _subgraphs_of(node: NodeProto) -> List[Tuple[str, onnx.GraphProto]]:
+def _subgraphs_of(node: onnx_ir.Node) -> List[Tuple[str, onnx_ir.Graph]]:
     """
     Return every graph ``node`` carries as an attribute, with the name of that attribute.
 
@@ -62,12 +56,12 @@ def _subgraphs_of(node: NodeProto) -> List[Tuple[str, onnx.GraphProto]]:
     :return: Its subgraphs, outermost attribute order preserved
     """
     subgraphs = []
-    for attr in node.attribute:
-        if attr.type == onnx.AttributeProto.GRAPH:
-            subgraphs.append((attr.name, attr.g))
-        elif attr.type == onnx.AttributeProto.GRAPHS:
+    for attr in node.attributes.values():
+        if attr.type == onnx_ir.AttributeType.GRAPH:
+            subgraphs.append((attr.name, attr.as_graph()))
+        elif attr.type == onnx_ir.AttributeType.GRAPHS:
             subgraphs.extend(
-                (f"{attr.name}[{i}]", graph) for i, graph in enumerate(attr.graphs)
+                (f"{attr.name}[{i}]", graph) for i, graph in enumerate(attr.as_graphs())
             )
     return subgraphs
 
@@ -78,11 +72,14 @@ class ConnectedGraph(AimetCommonConnectedGraph):
     Note that the graph has two kinds of nodes: operations and products.
 
     Operations represent the nodes in an onnx model, while products represent the tensors.
+    The connected graph holds one op per node and one product per value, so the links of ops and
+    products, read from the model, always return the same objects.
     """
 
-    def __init__(self, model: ModelProto, include_if_branches: bool = False):
+    def __init__(self, model: onnx_ir.Model, include_if_branches: bool = False):
         """
-        :param: model: ONNX model to create connected graph from
+        :param: model: ONNX model to create connected graph from. Ops and products refer to the
+            nodes and values of ``model``, so a caller that keeps ``model`` shares them
         :param: include_if_branches: Whether to also represent the ops inside If branches
 
             x -> Relu -> h
@@ -95,23 +92,74 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         """
         super().__init__()
         self.model = model
-        if isinstance(self.model, ONNXModel):
-            self.model = self.model.model
         self._include_if_branches = include_if_branches
+        self._op_index: Dict[onnx_ir.Node, int] = {}
         self.fill_op_product_graph()
         self.starting_ops = list(self._get_starting_ops())
         # List of ops in the order they are traversed using the forward function
         self.ordered_ops = self._get_ordered_ops()
         self._assert_no_conflicting_shared_parameters()
         self._warn_on_conflicting_shared_bias_initializers()
-        self._input_names = [input.name for input in self.model.graph.input]
-        self._output_names = [output.name for output in self.model.graph.output]
+
+    def _reset_model(self, model: onnx_ir.Model):
+        """
+        Point the static tensors of the connected graph's model at the same-named tensors of
+        ``model``.
+
+        Ops and products keep representing the graph they were built from, e.g. the sim's graph
+        before quantizers were inserted, but read the tensors of ``model``, e.g. once the sim
+        has folded its parameter quantizers. Once no tensor of the previous ``model`` is left,
+        the ModelProto it was read from can be released.
+
+        :param model: Model defining the tensors of the connected graph's model
+        """
+        _rebind_static_tensors(self.model.graph, model.graph)
+
+    def op_of(self, node: Optional[onnx_ir.Node]) -> Optional[Op]:
+        """
+        Op of ``node``, or None if the connected graph does not represent it, e.g. a Constant
+        """
+        return self._ops.get(node.name) if node is not None else None
+
+    def product_of(self, value: onnx_ir.Value) -> Product:
+        """
+        Product of ``value``. A value added to the model after construction gets one on first use.
+        """
+        product = self._products.get(value.name)
+        if product is None:
+            product = self._products[value.name] = Product(value, self)
+        return product
+
+    def consumers_of(self, value: onnx_ir.Value) -> List[Op]:
+        """
+        Ops reading ``value``, once per input it is passed to, in the order they were created
+        """
+        ops = [
+            self._ops[use.node.name]
+            for use in value.uses()
+            if use.node.name in self._ops
+        ]
+        return sorted(ops, key=lambda op: self._op_index[op.get_module()])
+
+    def subgraphs_of(self, node: onnx_ir.Node) -> Dict[str, List[Op]]:
+        """
+        Ops of each body of ``node`` the connected graph represents, keyed by the attribute
+        carrying it
+        """
+        if node.op_type != "Scan" and not (
+            self._include_if_branches and node.op_type == "If"
+        ):
+            return {}
+        return {
+            attr_name: [self._ops[n.name] for n in body if n.name in self._ops]
+            for attr_name, body in _subgraphs_of(node)
+        }
 
     def inputs(self) -> List[Product]:
-        return [self._products[input_name] for input_name in self._input_names]
+        return [self.product_of(value) for value in self.model.graph.inputs]
 
     def outputs(self) -> List[Product]:
-        return [self._products[output_name] for output_name in self._output_names]
+        return [self.product_of(value) for value in self.model.graph.outputs]
 
     def get_op_from_module_name(self, name: str) -> Op:
         """
@@ -202,34 +250,6 @@ class ConnectedGraph(AimetCommonConnectedGraph):
                 multi_consumer_bias,
             )
 
-    @staticmethod
-    def _create_ir_op(node: NodeProto) -> Op:
-        """
-        Creates connected graphs internal representation Op
-        :param node: ONNX proto node for which Op needs to be created
-        """
-        op = Op(
-            name=node.name,
-            dotted_name=node.name,
-            output_shape=None,
-            is_anonymous=False,
-            op_type=node.op_type,
-            domain=node.domain,
-        )
-        # Add corresponding node to op
-        op.model_module = ONNXModelModule(node)
-
-        if op.type in ["Conv", "ConvTranspose"]:
-            op.groups = get_op_attributes(node, "group")
-
-        if op.type == "MatMul":
-            op.transposed_params = False
-
-        if op.type == "Gemm":
-            op.transposed_params = bool(get_op_attributes(node, "transB"))
-
-        return op
-
     def _get_starting_ops(self):
         """
         Yield the ops the model starts at.
@@ -238,119 +258,45 @@ class ConnectedGraph(AimetCommonConnectedGraph):
             if not op.input_ops:
                 yield op
 
-    @staticmethod
-    def _create_product_for_inputs(input_value_info: onnx.ValueInfoProto):
-        """
-        Create products between input and op consuming the input
-        """
-        shape = [dim.dim_value for dim in input_value_info.type.tensor_type.shape.dim]
-        product = Product(input_value_info.name, shape)
-        product.is_const = False
-        product.is_model_input = True
-        return product
-
-    def _create_product_for_activations(
-        self, producer: onnx.NodeProto, tensor_name: str
-    ):
-        if producer.op_type == "Constant":
-            return self._create_constant_product(
-                tensor_name, producer.attribute[0].t.dims
-            )
-        return Product(tensor_name, None)
-
-    @staticmethod
-    def _create_constant_product(name, dims):
-        """
-        Create constant product
-
-        :param consumer: Consumer of the product
-        :param connecting_tensor_name: tensor that connects consumer and constant op
-        """
-        product = Product(name, dims)
-        product.is_const = True
-        return product
-
     def fill_op_product_graph(self):
         """
         - Creates a product for all tensors (model inputs, constants/initializers, node outputs) in the onnx graph
         - Creates an op for all nodes in the onnx graph
-        - Links products with their producer and consumer ops
         - Identifies which products should be considered parameters
+
+        Ops and products read their links from the nodes and values they represent.
         """
         graphs = list(
-            _iterate_graphs_recursive(
+            _iterate_graphs_recursive_ir(
                 self.model.graph, include_if=self._include_if_branches
             )
         )
 
         for graph in graphs:
-            # Add products for all tensors in initializer
-            for tensor in graph.initializer:
-                self._products[tensor.name] = self._create_constant_product(
-                    tensor.name, tensor.dims
-                )
+            values = [
+                *graph.initializers.values(),
+                *graph.inputs,
+                *(output for node in graph for output in node.outputs),
+            ]
+            for value in values:
+                self.product_of(value)
 
-            # Add products for all model inputs
-            for input_info in graph.input:
-                product = self._create_product_for_inputs(input_info)
-                # A body's declared inputs are fed by the control-flow op, not by the caller
-                # of the model.
-                product.is_model_input = graph is self.model.graph
-                self._products[input_info.name] = product
-
-            # Create products for all intermediate tensors
-            for node in graph.node:
-                for output in node.output:
-                    self._products[output] = self._create_product_for_activations(
-                        node, output
-                    )
-
-        # A graph's position - it is used to map ops within it.
-        graph_index_of = {id(graph): index for index, graph in enumerate(graphs)}
-        # The ops of each graph, in the order the graph declares them
-        ops_by_graph_index: Dict[int, List[Op]] = {}
-        # Map control-flow op -> attribute name and index of each of its subgraphs
-        subgraphs_to_order: List[Tuple[Op, str, int]] = []
-
-        # Create ops and link with products
-        for graph_index, graph in enumerate(graphs):
-            for node in graph.node:
+        for graph in graphs:
+            for node in graph:
                 if node.op_type == "Constant":
                     continue
 
-                op = self._create_ir_op(node)
-                self._ops[node.name] = op
-                ops_by_graph_index.setdefault(graph_index, []).append(op)
-                for inp in node.input:
-                    if not inp:
-                        continue  # Empty string indicates omitted optional input
-                    if inp not in self._products:
+                for inp in node.inputs:
+                    if inp is not None and inp.name not in self._products:
                         raise RuntimeError(
-                            f"Input tensor {inp} to node {node.name} was not found as a graph input, "
+                            f"Input tensor {inp.name} to node {node.name} was not found as a graph input, "
                             "initializer, or as the output of another node. Please verify that the input "
                             "model is properly defined."
                         )
-                    product = self._products[inp]
-                    op.add_input(product)
-                    product.add_consumer(op)
 
-                for output in node.output:
-                    product = self._products[output]
-                    op.outputs.append(product)
-                    product.producer = op
-
-                subgraphs_to_order.extend(
-                    (op, attr_name, graph_index_of[id(subgraph)])
-                    for attr_name, subgraph in _subgraphs_of(node)
-                    if id(subgraph) in graph_index_of
-                )
-
-        # Add subgraph ops for the op containing the body.
-        for op, attr_name, graph_index in subgraphs_to_order:
-            op.add_subgraph(attr_name, ops_by_graph_index.get(graph_index, []))
-
-        # TODO: Move this process outside of ConnectedGraph altogether
-        self._set_param_products()
+                op = Op(node, self)
+                self._op_index[node] = len(self._ops)
+                self._ops[node.name] = op
 
     def _top_level_ops(self) -> List[Op]:
         """
@@ -410,57 +356,12 @@ class ConnectedGraph(AimetCommonConnectedGraph):
         emit(self._ordered_top_level_ops())
         return ordered
 
-    def _set_param_products(self):
-        """Identify products which are parameters of select modules"""
 
-        def set_as_param(
-            param_name: str,
-            param_tensor: TensorProto,
-            my_op: Op,
-            product_type: Union[str, None],
-        ):
-            """Create product with given name, shape, and corresponding tensor.  Connect product to my_op."""
-            product_shape = param_tensor.dims
-            product = self._products[param_name]
-            product.shape = product_shape
-            product.is_parm = True
-            my_op.add_param(param_name, product, product_type)
-            product.tensor = param_tensor
-            product.is_const = False  # Backward compatibility
-
-        ir_model = onnx_ir.from_proto(self.model)
-        info_dict = find_all_node_info(ir_model)
-
-        tensor_dict = {}
-        for graph in _iterate_graphs_recursive(
-            self.model.graph, include_if=self._include_if_branches
-        ):
-            tensor_dict.update({init.name: init for init in graph.initializer})
-            for node in graph.node:
-                if node.op_type != "Constant":
-                    continue
-
-                for attribute in node.attribute:
-                    if attribute.name == "value":
-                        param = attribute.t
-                        tensor_dict[node.output[0]] = param
-
-        for node_name, op in self._ops.items():
-            info = info_dict[node_name]
-            for param_type, param_name in info.parameters.items():
-                param_tensor = tensor_dict.get(param_name)
-                if param_tensor is not None:
-                    set_as_param(param_name, param_tensor, op, param_type)
-
-            op.transposed_params = info.transposed_params
-
-
-def _get_matmul_add_bias_idx(cg_op: Op, model: ModelProto) -> Optional[int]:
+def _get_matmul_add_bias_idx(cg_op: Op) -> Optional[int]:
     """
     Identifies the bias input index in an Add node that directly follows a MatMul.
 
     :param cg_op: The MatMul op to analyse
-    :param model: The model containing the param metadata
     :return: The index of the bias input in the Add node, or None if not found
     """
     if cg_op.type != "MatMul":
@@ -487,113 +388,50 @@ def _get_matmul_add_bias_idx(cg_op: Op, model: ModelProto) -> Optional[int]:
         if len(inp1.consumers) > 1:
             return None
 
-        param = ParamUtils.get_param_by_name(model, inp2.name)
+        # The bias must be static itself, not read through an Identity: an Identity output is
+        # not quantized, so the pass would find no bias quantizer to configure
+        param = static_tensor(inp2.value)
         # TODO: Refine this check. Checks that param is static tensor with rank 1
-        if param and len(param.dims) == 1:
+        if param is not None and len(param.shape) == 1:
             return add_op.inputs.index(inp2)
 
     return None
 
 
-def get_op_attributes(node: NodeProto, attribute_name: str):
+def _rebind_static_tensors(graph: onnx_ir.Graph, source: onnx_ir.Graph):
     """
-    Gets attribute information for layer
+    Point the initializers and tensor attributes of ``graph``, and of the bodies it holds, at the
+    same-named ones of ``source``. Nodes are matched by their first output, which quantizer
+    insertion leaves in place.
 
-    :param node: ONNX node
-    :param attribute_name: The attribute we are searching for
+    Every tensor is rebound, not only parameters, since any tensor read from a ModelProto keeps
+    all of it alive.
     """
-    for attribute in node.attribute:
-        if attribute.name == attribute_name:
-            return attribute.i
-    return None
+    for name, value in graph.initializers.items():
+        if name in source.initializers:
+            value.const_value = source.initializers[name].const_value
 
-
-class NodeInfo:
-    """Captures extra metadata stored on CG Op"""
-
-    parameters = {}
-    transposed_params = False
-
-
-def find_all_node_info(model: onnx_ir.Model) -> dict[str, NodeInfo]:
-    """
-    Extracts all extra metadata for ops held by connectedgraph
-    """
-
-    def _find_parameters(node, param_type_to_index: dict[str, int]):
-        parameters = {}
-        for param_type, index in param_type_to_index.items():
-            if index >= len(node.inputs):
+    source_nodes = {node.outputs[0].name: node for node in source if node.outputs}
+    for node in graph:
+        source_node = source_nodes.get(node.outputs[0].name) if node.outputs else None
+        if source_node is None:
+            continue
+        for name, attr in list(node.attributes.items()):
+            source_attr = source_node.attributes.get(name)
+            if source_attr is None or source_attr.type != attr.type:
                 continue
-            tensor = get_constant_value(node.inputs[index])
-            if tensor:
-                parameters[param_type] = tensor.name
+            if attr.type == onnx_ir.AttributeType.GRAPH:
+                _rebind_static_tensors(attr.as_graph(), source_attr.as_graph())
+            elif attr.type == onnx_ir.AttributeType.GRAPHS:
+                for body, source_body in zip(attr.as_graphs(), source_attr.as_graphs()):
+                    _rebind_static_tensors(body, source_body)
+            elif attr.type in _TENSOR_ATTRIBUTE_TYPES:
+                node.attributes[name] = source_attr
 
-        return parameters
 
-    def find_weight_bias_params(node: onnx_ir.Node) -> dict[str, str]:
-        param_type_to_index = {
-            "weight": WEIGHT_INDEX,
-            "bias": BIAS_INDEX,
-        }
-        return _find_parameters(node, param_type_to_index)
-
-    def find_weight_params(node: onnx_ir.Node) -> dict[str, str]:
-        param_type_to_index = {"weight": WEIGHT_INDEX}
-        return _find_parameters(node, param_type_to_index)
-
-    def find_matmul_params(node: onnx_ir.Node) -> dict[str, str]:
-        parameters = {}
-        weight_tensor, _ = get_weight_value(node)
-        if weight_tensor:
-            parameters["weight"] = weight_tensor.name
-        return parameters
-
-    def find_recurrent_type_params(node: onnx_ir.Node) -> dict[str, str]:
-        param_type_to_index = {
-            "weight": 1,
-            "weight_r": 2,
-            "bias": 3,
-        }
-        return _find_parameters(node, param_type_to_index)
-
-    def find_batchnorm_params(node: onnx_ir.Node) -> dict[str, str]:
-        param_type_to_index = {
-            "weight": WEIGHT_INDEX,
-            "bias": BIAS_INDEX,
-            "running_mean": RUNNING_MEAN_INDEX,
-            "running_var": RUNNING_VAR_INDEX,
-        }
-        return _find_parameters(node, param_type_to_index)
-
-    switcher = {
-        "Conv": find_weight_bias_params,
-        "Gemm": find_weight_bias_params,
-        "ConvTranspose": find_weight_bias_params,
-        "RNN": find_recurrent_type_params,
-        "LSTM": find_recurrent_type_params,
-        "GRU": find_recurrent_type_params,
-        "BatchNormalization": find_batchnorm_params,
-        "InstanceNormalization": find_weight_bias_params,
-        "LayerNormalization": find_weight_bias_params,
-        "GroupNormalization": find_weight_bias_params,
-        "RMSNormalization": find_weight_params,
-        "MatMul": find_matmul_params,
-    }
-
-    info_dict = {}
-    for node in model.graph.all_nodes():
-        node_info = NodeInfo()
-        handler = switcher.get(node.op_type)
-        if handler:
-            node_info.parameters = handler(node)
-
-        if node.op_type == "Gemm":
-            node_info.transposed_params = _has_transposed_b(node)
-        elif node.op_type == "MatMul":
-            _, transposed = get_weight_value(node)
-            node_info.transposed_params = transposed
-
-        info_dict[node.name] = node_info
-
-    return info_dict
+_TENSOR_ATTRIBUTE_TYPES = (
+    onnx_ir.AttributeType.TENSOR,
+    onnx_ir.AttributeType.TENSORS,
+    onnx_ir.AttributeType.SPARSE_TENSOR,
+    onnx_ir.AttributeType.SPARSE_TENSORS,
+)
