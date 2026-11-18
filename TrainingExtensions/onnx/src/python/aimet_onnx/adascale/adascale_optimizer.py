@@ -46,6 +46,7 @@ from aimet_onnx.llm_topology.topology_types import (
 
 from aimet_onnx.adascale.quantizer import (
     _BatchedWeightQdq,
+    _reset_compiled_stacked_qdq,
     add_qlinear_layers,
     get_adascale_trainable_params,
 )
@@ -99,6 +100,12 @@ def _mse_loss_fn(
 # at a time, instead of re-running every earlier block per block.
 # TODO: default to True once PPL parity with the full-prefix sampler is shown.
 _BLOCKWISE_SAMPLING = False
+
+# Temporary flag: run the batched weight QDQ through torch.compile. About 4x faster on a
+# mixture-of-experts block's expert weights, but not bit-identical to the eager QDQ: a handful of
+# weights land one quantization step apart.
+# TODO: decide the default once validated on a full model.
+_COMPILE_WEIGHT_QDQ = False
 
 _DEBUG_NUM_PARTIAL_ITERATIONS = None
 _DEBUG_NUM_PARTIAL_ITERATIONS_START = None
@@ -635,6 +642,9 @@ class AdaScale:
         beta_gamma_lr: float = 1e-3,
         scales_lr: float = 5e-4,
     ):
+        if _COMPILE_WEIGHT_QDQ:
+            # Compile for this model's weight shapes, not those of models optimized earlier
+            _reset_compiled_stacked_qdq()
         with cls._disable_activation_quantizers(sim):
             device = get_torch_device(sim.session)
             graph_input_names = [inp.name for inp in sim.session.get_inputs()]
@@ -1049,7 +1059,7 @@ class AdaScale:
         pytorch_block.to(device)
         # Same-shaped layers (e.g. a mixture-of-experts block's expert projections) run their
         # weight QDQ as one stacked call per group, rather than one call per layer
-        batched_qdq = _BatchedWeightQdq(pytorch_block)
+        batched_qdq = _BatchedWeightQdq(pytorch_block, compiled=_COMPILE_WEIGHT_QDQ)
         _logger.debug(
             "Batching the weight QDQ of %d layers in %d groups",
             batched_qdq.num_batched,

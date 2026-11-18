@@ -11,6 +11,7 @@ import ml_dtypes
 import numpy as np
 import onnxruntime as ort
 import torch
+import torch._dynamo
 import onnx
 from onnx import numpy_helper, load_model
 import onnx_ir
@@ -633,10 +634,12 @@ class TestAdascaleQuantizer:
         assert _BatchedWeightQdq(block).num_batched == 0
 
     @staticmethod
-    def _grads(block, batched, routings, accumulate, dtype=torch.float32):
+    def _grads(
+        block, batched, routings, accumulate, dtype=torch.float32, compiled=False
+    ):
         """Gradients of the block's AdaScale params after the forwards in ``routings``,
         summed into one backward, or one backward each, accumulated."""
-        helper = _BatchedWeightQdq(block) if batched else None
+        helper = _BatchedWeightQdq(block, compiled=compiled) if batched else None
         bg, sc = get_adascale_trainable_params(block)
         params = bg + sc
         for p in params:
@@ -680,6 +683,29 @@ class TestAdascaleQuantizer:
             if ref is not None:
                 assert torch.equal(ref, got)
 
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("accumulate", [False, True])
+    def test_compiled_batched_weight_qdq_gives_unused_experts_no_grad(self, accumulate):
+        """
+        Given: Two forwards on CUDA that run different experts (0-1, then 1-2; expert 3 in
+               neither), with the batched weight QDQ compiled
+        When: They are backpropagated together, or one backward each
+        Then: Exactly the experts that ran get gradients, as without batching
+        """
+        if not torch.cuda.is_available():
+            pytest.skip("needs CUDA")
+        from aimet_onnx.adascale import quantizer as qz
+
+        qz._reset_compiled_stacked_qdq()
+        routings = [(True, True, False, False), (False, True, True, False)]
+        reference = self._grads(
+            self._expert_block().cuda(), False, routings, accumulate
+        )
+        compiled = self._grads(
+            self._expert_block().cuda(), True, routings, accumulate, compiled=True
+        )
+        assert [g is None for g in compiled] == [g is None for g in reference]
+
     def test_batched_weight_qdq_stores_weights_once(self):
         """
         Given: A block of four same-shaped experts
@@ -717,6 +743,161 @@ class TestAdascaleQuantizer:
         expert.weight = torch.nn.Parameter(expert.weight.detach().clone())
         with pytest.raises(RuntimeError, match="no longer views"):
             block(torch.randn(3, 16), (True,) * 4)
+
+    @pytest.mark.cuda
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_compiled_batched_weight_qdq_is_close(self, dtype):
+        """
+        Given: A block of same-shaped experts on CUDA with trained-looking AdaScale params
+        When: Its weight QDQ is batched, eager and compiled
+        Then: The QDQ'd weights differ by at most one quantization step, on a small fraction of
+              elements, and so do the gradients of the AdaScale params
+        """
+        if not torch.cuda.is_available():
+            pytest.skip("needs CUDA")
+        from aimet_onnx.adascale import quantizer as qz
+
+        qz._reset_compiled_stacked_qdq()
+        block = self._expert_block(num_experts=8, dtype=dtype).cuda()
+        params = sum(get_adascale_trainable_params(block), [])
+        torch.manual_seed(2)
+        with torch.no_grad():
+            for p in params:
+                p.add_(torch.randn_like(p) * 0.02)
+        layers = list(block.experts)
+        step = max(
+            float(l.param_quantizers["weight"].get_scale().max()) for l in layers
+        )
+        weights = torch.stack([layer.weight.detach() for layer in layers])
+        used = set(range(len(layers)))
+        results = []
+        for compiled in (False, True):
+            for p in params:
+                p.requires_grad_(True)
+                p.grad = None
+            out = _BatchedWeightQdq._qdq(layers, weights, used, compiled)
+            out.float().square().sum().backward()
+            results.append(
+                (
+                    out.detach().float(),
+                    [p.grad.detach().clone() for p in params if p.grad is not None],
+                )
+            )
+        (eager, eager_grads), (comp, comp_grads) = results
+        diff = (eager - comp).abs()
+        assert float(diff.max()) <= step * 1.01
+        assert int((diff > 0).sum()) <= max(1, eager.numel() // 1000)
+        for a, b in zip(eager_grads, comp_grads):
+            torch.testing.assert_close(b, a, rtol=0.1, atol=1e-6 * float(a.abs().max()))
+
+    @pytest.mark.cuda
+    def test_quantize_dequantize_compiles_into_one_graph(self):
+        """
+        Given: The stacked AdaScale weight QDQ of a group of experts on CUDA
+        When: Dynamo traces it with fullgraph
+        Then: It is one graph with no breaks: WeightQdq.quantize_dequantize's argument and
+              dtype checks don't split it
+        """
+        if not torch.cuda.is_available():
+            pytest.skip("needs CUDA")
+        from aimet_onnx.adascale import quantizer as qz
+
+        block = self._expert_block(num_experts=4).cuda()
+        layers = list(block.experts)
+        qdqs = [layer.param_quantizers["weight"] for layer in layers]
+        args = [torch.stack([layer.weight.detach() for layer in layers])]
+        for attr in ("s2", "s3", "gamma", "beta", "min", "max"):
+            args.append(torch.stack([getattr(qdq, attr).detach() for qdq in qdqs]))
+        args += [qdqs[0].qmin, qdqs[0].qmax, 0.0]
+        torch._dynamo.reset()
+        explanation = torch._dynamo.explain(qz._stacked_qdq)(*args)
+        assert explanation.graph_count == 1
+        assert explanation.graph_break_count == 0
+
+    @pytest.mark.cuda
+    def test_compiled_weight_qdq_keeps_compiling_past_the_recompile_limit(self):
+        """
+        Given: More distinct expert-weight shapes than dynamo's default recompile limit (8)
+        When: The batched QDQ runs compiled on each
+        Then: Every shape is compiled, rather than falling back to eager after the 8th
+        """
+        if not torch.cuda.is_available():
+            pytest.skip("needs CUDA")
+        from aimet_onnx.adascale import quantizer as qz
+
+        qz._reset_compiled_stacked_qdq()
+        torch._dynamo.reset()
+        try:
+            with patch.object(qz._logger, "warning") as warning:
+                for out_features in range(2, 14):
+                    layers = [
+                        QuantizedLinear(torch.nn.Linear(16, out_features, bias=False))
+                        for _ in range(2)
+                    ]
+                    for layer in layers:
+                        layer.cuda()
+                    weights = torch.stack([layer.weight.detach() for layer in layers])
+                    _BatchedWeightQdq._qdq(layers, weights, {0, 1}, compiled=True)
+            warning.assert_not_called()
+        finally:
+            qz._reset_compiled_stacked_qdq()
+
+    def test_each_adascale_run_compiles_afresh(self):
+        """
+        Given: The compiled weight QDQ already built by an earlier AdaScale run
+        When: AdaScale runs again with compiling on
+        Then: It starts from a fresh compiled function, so the earlier model's weight shapes
+              don't count towards the recompile limit
+        """
+        from aimet_onnx.adascale import adascale_optimizer as opt
+        from aimet_onnx.adascale import quantizer as qz
+
+        qz._COMPILED_STACKED_QDQ = earlier = object()
+        try:
+            with (
+                patch.object(opt, "_COMPILE_WEIGHT_QDQ", True),
+                patch.object(
+                    AdaScale,
+                    "_disable_activation_quantizers",
+                    side_effect=RuntimeError("stop"),
+                ),
+                pytest.raises(RuntimeError, match="stop"),
+            ):
+                AdaScale._apply_adascale(Mock(), [{}], [])
+            assert qz._COMPILED_STACKED_QDQ is not earlier
+        finally:
+            qz._reset_compiled_stacked_qdq()
+
+    def test_compiled_weight_qdq_falls_back_to_eager(self):
+        """
+        Given: torch.compile fails when the compiled weight QDQ is first called
+        When: The batched QDQ runs with compiling on
+        Then: It warns once and gives exactly the eager result, now and on later calls
+        """
+        from aimet_onnx.adascale import quantizer as qz
+
+        qz._reset_compiled_stacked_qdq()
+        block = self._expert_block()
+        layers = list(block.experts)
+        weights = torch.stack([layer.weight.detach() for layer in layers])
+        used = set(range(len(layers)))
+        expected = _BatchedWeightQdq._qdq(layers, weights, used).detach()
+
+        def broken(*_args, **_kwargs):
+            raise RuntimeError("no triton")
+
+        try:
+            with patch("torch.compile", return_value=broken):
+                first = _BatchedWeightQdq._qdq(
+                    layers, weights, used, compiled=True
+                ).detach()
+            second = _BatchedWeightQdq._qdq(
+                layers, weights, used, compiled=True
+            ).detach()
+        finally:
+            qz._reset_compiled_stacked_qdq()
+        assert torch.equal(first, expected)
+        assert torch.equal(second, expected)
 
     @pytest.mark.parallel
     def test_get_adascale_trainable_params_linear(self):

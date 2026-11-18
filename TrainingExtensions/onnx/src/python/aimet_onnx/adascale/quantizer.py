@@ -3,10 +3,12 @@
 
 # pylint: disable=import-error
 from typing import Optional, List, Tuple, Dict
+import functools
 import math
 
 import torch
 import torch.utils.checkpoint
+from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx.common.quantsim import _get_minimum_scale
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.adascale.utils import (
@@ -19,6 +21,36 @@ from aimet_onnx.adascale.utils import (
     reduce,
     get_symmetric_offset,
 )
+
+
+_logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.AdaScale)
+
+
+def _is_compiling() -> bool:
+    # torch.compiler.is_compiling is new in torch 2.7; nothing compiles before that here
+    is_compiling = getattr(getattr(torch, "compiler", None), "is_compiling", None)
+    return bool(is_compiling and is_compiling())
+
+
+def _assume_constant_result(fn):
+    # Read once at trace time and baked into the compiled graph, rather than traced: these
+    # checks read tensor values, which would otherwise split the graph at every branch on them
+    assume = getattr(getattr(torch, "compiler", None), "assume_constant_result", None)
+    return assume(fn) if assume is not None else fn
+
+
+_cached_numerically_stable = functools.lru_cache(None)(is_numerically_stable)
+
+
+@_assume_constant_result
+def _numerically_stable(dtype: torch.dtype, qmin: int, qmax: int) -> bool:
+    return bool(_cached_numerically_stable(dtype, qmin, qmax))
+
+
+@_assume_constant_result
+def _grid_representable(dtype: torch.dtype, qmin: int, qmax: int) -> bool:
+    # is_grid_representable is cached already
+    return bool(is_grid_representable(dtype, qmin, qmax))
 
 
 class RoundManual(torch.autograd.Function):  # pylint: disable=abstract-method
@@ -81,16 +113,19 @@ class WeightQdq(torch.nn.Module):
         :param block_size: Block sizes per dimension
         :param zero_point_shift: Shift tensor by an amount proportional to scale during quantize dequantize
         """
-        validate_arguments(tensor, scale, qmin, qmax, block_size)
+        # Skipped while compiling, which can't trace the errors it raises: a shape or dtype
+        # mismatch then fails in the compiled ops instead, with a less specific message
+        if not _is_compiling():
+            validate_arguments(tensor, scale, qmin, qmax, block_size)
 
         output_dtype = internal_dtype = tensor.dtype
 
-        if not is_numerically_stable(internal_dtype, qmin, qmax):
+        if not _numerically_stable(internal_dtype, qmin, qmax):
             internal_dtype = torch.float32
-            if not is_numerically_stable(internal_dtype, qmin, qmax):
+            if not _numerically_stable(internal_dtype, qmin, qmax):
                 internal_dtype = torch.float64
 
-        if not is_grid_representable(internal_dtype, qmin, qmax):
+        if not _grid_representable(internal_dtype, qmin, qmax):
             msg = f"{internal_dtype} is unable to represent quantized output of range [{qmin}, {qmax}]."
             raise RuntimeError(msg)
 
@@ -686,10 +721,13 @@ class _BatchedWeightQdq:
       are several times the size of the weights.
     """
 
-    def __init__(self, block: torch.nn.Module):
+    def __init__(self, block: torch.nn.Module, compiled: bool = False):
         """
         :param block: Block whose linear layers to batch
+        :param compiled: Run the stacked QDQ through ``torch.compile``. Faster, but not
+            bit-identical to the per-layer QDQ: see :func:`_compiled_stacked_qdq`.
         """
+        self._compiled = compiled
         groups: Dict[tuple, List[QuantizedLinear]] = {}
         for module in block.modules():
             if not isinstance(module, QuantizedLinear):
@@ -786,9 +824,13 @@ class _BatchedWeightQdq:
         # Fresh sets: a backward still to come for an earlier forward keeps that forward's
         self._used = [set() for _ in self.groups]
         for layers, weights, used in zip(self.groups, self._weights, self._used):
-            qdq = torch.utils.checkpoint.checkpoint(
-                self._qdq, layers, weights, used, use_reentrant=False
-            )
+            if self._compiled:
+                # The compiled kernel recomputes its intermediates in backward itself
+                qdq = self._qdq(layers, weights, used, compiled=True)
+            else:
+                qdq = torch.utils.checkpoint.checkpoint(
+                    self._qdq, layers, weights, used, use_reentrant=False
+                )
             # unbind rather than indexing: the backward of each index would write a
             # zero-filled gradient the size of the whole stack
             for layer, weight in zip(layers, qdq.unbind(0)):
@@ -805,34 +847,167 @@ class _BatchedWeightQdq:
 
     @staticmethod
     def _qdq(
-        layers: List["QuantizedLinear"], weights: torch.Tensor, used: set
+        layers: List["QuantizedLinear"],
+        weights: torch.Tensor,
+        used: set,
+        compiled: bool = False,
     ) -> torch.Tensor:
         qdqs = [layer.param_quantizers["weight"] for layer in layers]
         first = qdqs[0]
 
         def stack(attr):
+            # Stacked (and gated) outside the compiled function: the gate reads ``used`` when
+            # backward runs, which a compiled graph would read once, at trace time
             return _GatedStack.apply(used, *(getattr(qdq, attr) for qdq in qdqs))
 
         def stack_constant(attr):
             return torch.stack([getattr(qdq, attr) for qdq in qdqs])
 
-        orig_dtype = weights.dtype
-        weight = AdaScaleLinearWeightQdq._fold(  # pylint: disable=protected-access
-            weights, [stack("s2"), stack("s3")]
-        ).to(orig_dtype)
-        scale = AdaScaleLinearWeightQdq._compute_scale(  # pylint: disable=protected-access
+        if compiled:
+            return _compiled_stacked_qdq()(
+                weights,
+                stack("s2"),
+                stack("s3"),
+                stack("gamma"),
+                stack("beta"),
+                stack_constant("min"),
+                stack_constant("max"),
+                first.qmin,
+                first.qmax,
+                float(first.zero_point_shift),
+            )
+        # The two steps of _stacked_qdq, called one after the other here so that the stacked
+        # s2 and s3 (each the size of the weights, in float32) are freed once folded, rather
+        # than held through the quantize-dequantize
+        weight, scale = _fold_and_scale(
+            weights,
+            stack("s2"),
+            stack("s3"),
             stack("gamma"),
             stack("beta"),
             stack_constant("min"),
             stack_constant("max"),
             first._get_num_steps(),  # pylint: disable=protected-access
         )
-        offset = torch.zeros_like(scale, requires_grad=False)
-        return WeightQdq.quantize_dequantize(
-            weight.as_subclass(torch.Tensor),
-            scale,
-            offset,
-            first.qmin,
-            first.qmax,
-            zero_point_shift=first.zero_point_shift,
+        return _quantize_dequantize(
+            weight, scale, first.qmin, first.qmax, float(first.zero_point_shift)
         )
+
+
+def _fold_and_scale(
+    weights: torch.Tensor,
+    s2: torch.Tensor,
+    s3: torch.Tensor,
+    gamma: torch.Tensor,
+    beta: torch.Tensor,
+    min_tensor: torch.Tensor,
+    max_tensor: torch.Tensor,
+    num_steps: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Stacked weights with the learnt scales folded in, and the scale from the learnt
+    gamma/beta, as :meth:`AdaScaleLinearWeightQdq.forward` computes them for one layer."""
+    weight = AdaScaleLinearWeightQdq._fold(  # pylint: disable=protected-access
+        weights, [s2, s3]
+    ).to(weights.dtype)
+    scale = AdaScaleLinearWeightQdq._compute_scale(  # pylint: disable=protected-access
+        gamma, beta, min_tensor, max_tensor, num_steps
+    )
+    return weight, scale
+
+
+def _quantize_dequantize(
+    weight: torch.Tensor,
+    scale: torch.Tensor,
+    qmin: int,
+    qmax: int,
+    zero_point_shift: float,
+) -> torch.Tensor:
+    """:meth:`WeightQdq.quantize_dequantize` of folded stacked weights, symmetrically."""
+    offset = torch.zeros_like(scale, requires_grad=False)
+    if not _is_compiling():
+        # Strips a tensor subclass of the weight; a compiled graph only sees plain tensors
+        weight = weight.as_subclass(torch.Tensor)
+    return WeightQdq.quantize_dequantize(
+        weight, scale, offset, qmin, qmax, zero_point_shift=zero_point_shift
+    )
+
+
+def _stacked_qdq(
+    weights: torch.Tensor,
+    s2: torch.Tensor,
+    s3: torch.Tensor,
+    gamma: torch.Tensor,
+    beta: torch.Tensor,
+    min_tensor: torch.Tensor,
+    max_tensor: torch.Tensor,
+    qmin: int,
+    qmax: int,
+    zero_point_shift: float,
+) -> torch.Tensor:
+    """
+    AdaScale weight QDQ of a group's stacked weights and quantizer parameters, as one function
+    to compile: :func:`_fold_and_scale`, then :func:`_quantize_dequantize`. The eager batched
+    QDQ runs the same two functions.
+    """
+    weight, scale = _fold_and_scale(
+        weights, s2, s3, gamma, beta, min_tensor, max_tensor, qmax - qmin
+    )
+    return _quantize_dequantize(weight, scale, qmin, qmax, zero_point_shift)
+
+
+# Distinct weight-group shapes one compiled QDQ may specialize for before dynamo stops
+# recompiling. A mixture-of-experts model has a few (3 on Qwen3-30B-A3B); dynamo's default of 8
+# is per compiled function, across every model the process runs AdaScale on.
+_COMPILE_RECOMPILE_LIMIT = 64
+
+_COMPILED_STACKED_QDQ = None
+
+
+def _reset_compiled_stacked_qdq():
+    """Forget the compiled weight QDQ, so the next AdaScale run compiles afresh and the shapes
+    of models optimized earlier in the process don't count towards the recompile limit."""
+    global _COMPILED_STACKED_QDQ  # pylint: disable=global-statement
+    _COMPILED_STACKED_QDQ = None
+
+
+def _compiled_stacked_qdq():
+    """
+    :func:`_stacked_qdq` compiled with inductor, falling back to the eager function for good
+    if compiling fails (e.g. no Triton).
+
+    The fused kernel reads and writes the stacked weights once rather than once per op, so the
+    QDQ of a mixture-of-experts block's expert weights is about 4x faster. It is not
+    bit-identical to the eager ops: ``emulate_precision_casts`` keeps the intermediate bf16
+    roundings of the eager path, but fused multiply-adds still leave a few weights (65 of 606M
+    on a Qwen3-30B-A3B block) one quantization step apart.
+    """
+    global _COMPILED_STACKED_QDQ  # pylint: disable=global-statement
+    if _COMPILED_STACKED_QDQ is None:
+        import torch._dynamo.config as dynamo_config  # pylint: disable=import-outside-toplevel
+        import torch._inductor.config as inductor_config  # pylint: disable=import-outside-toplevel
+
+        compiled = torch.compile(_stacked_qdq, dynamic=False, fullgraph=True)
+        state = {"failed": False}
+
+        def run(*args):
+            if state["failed"]:
+                return _stacked_qdq(*args)
+            try:
+                with (
+                    inductor_config.patch(emulate_precision_casts=True),
+                    dynamo_config.patch(recompile_limit=_COMPILE_RECOMPILE_LIMIT),
+                ):
+                    return compiled(*args)
+            except Exception as exc:  # pylint: disable=broad-except
+                # e.g. no Triton, or more distinct weight shapes than dynamo recompiles for
+                _logger.warning(
+                    "Compiling the AdaScale weight QDQ failed (%s: %s); using eager QDQ "
+                    "from here on.",
+                    type(exc).__name__,
+                    str(exc).splitlines()[0] if str(exc) else "",
+                )
+                state["failed"] = True
+                return _stacked_qdq(*args)
+
+        _COMPILED_STACKED_QDQ = run
+    return _COMPILED_STACKED_QDQ
