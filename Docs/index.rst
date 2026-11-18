@@ -1,10 +1,17 @@
+:template: landing.html
+:description: AIMET quantizes trained ONNX and PyTorch models to reduce compute load and memory footprint on edge devices, with minimal accuracy loss.
+
 .. include:: abbreviation.txt
+
+.. title:: AIMET Documentation
+
+.. role:: aimet-accent
 
 .. _top-index:
 
-###################
-AIMET Documentation
-###################
+###########################################################
+Quantize trained models. :aimet-accent:`Keep the accuracy.`
+###########################################################
 
 .. toctree::
    :hidden:
@@ -20,68 +27,144 @@ AIMET Documentation
    External Resources <external/index>
    Glossary <glossary>
 
-The AI Model Efficiency Toolkit (AIMET) is a software toolkit for quantizing trained ML models. 
+.. The landing page layout (two-column hero, card grid) is styled in
+   _static/aimet-lumina.css under "Landing page"; the hero animation is
+   _static/aimet-landing.js.
 
-AIMET improves the runtime performance of deep learning models by reducing compute load and memory footprint.
+.. container:: aimet-hero
 
-Models quantized with AIMET facilitate its deployment on edge devices like mobile phones or laptops by reducing memory footprint 
+   .. container:: aimet-hero-text
 
-AIMET employs post-training and fine-tuning techniques to minimize accuracy loss during quantization and compression.
+      .. rst-class:: aimet-eyebrow
 
-AIMET supports models from the ONNX and PyTorch frameworks.
+      AI Model Efficiency Toolkit · v\ |version|
 
+      .. rst-class:: aimet-lead
 
-Overview
-========
+      AIMET reduces compute load and memory footprint so deep learning models run faster on
+      edge devices like phones and laptops. Post-training and fine-tuning techniques keep
+      accuracy loss to a minimum.
 
-Summary of what is AI Model Efficiency Toolkit (AIMET) and how you can use it, see the :doc:`Overview <../overview/index>`.
+      .. container:: aimet-ctas
 
-To quickly install and begin using AIMET, see the :doc:`Quick Start Guide <../overview/install/quick-start>`.
+         :doc:`Quick start <overview/install/quick-start>`
+         :doc:`What is AIMET? <overview/index>`
 
+      .. container:: aimet-frameworks
 
-Tutorials
-=========
+         Works with ``ONNX`` ``PyTorch``
 
-Check curated tutorials to get started with quantization workflows and other techniques with AIMET, see the :doc:`Tutorials <../tutorials/index>`.
+   .. raw:: html
 
+      <figure class="aimet-quant-viz" aria-label="Animation: 160 MobileNetV2 weights snapping from floating point onto a 16-level int4 quantization grid">
+        <div class="aimet-viz-top">
+          <span>layer <b>features.15.conv.0.0</b> · ch 301</span>
+          <span class="aimet-viz-state" data-aimet-viz="state">fp32</span>
+        </div>
+        <canvas></canvas>
+        <div class="aimet-viz-bottom">
+          <span>bitwidth <b data-aimet-viz="bw">32</b></span>
+          <span>levels <b data-aimet-viz="levels">&mdash;</b></span>
+          <span>scale <b data-aimet-viz="scale">&mdash;</b></span>
+          <span>offset <b data-aimet-viz="offset">&mdash;</b></span>
+        </div>
+      </figure>
 
-Example Notebooks
-=================
+.. container:: aimet-docs-head
 
-To view end-to-end examples of model quantization and compression, and to download the examples in Jupyter notebook format, see the :doc:`Example Notebooks <../tutorials/notebooks>` page.
+   .. rubric:: Documentation
 
+   Supports models from the ONNX and PyTorch frameworks.
 
-Techniques
-==========
+.. grid:: 1 2 3 3
+   :class-container: aimet-cards
 
-For a high-level explanation of how to use AIMET to optimize a model, see the :doc:`Quantization User Guide <../techniques/index>`.
+   .. grid-item-card:: Overview
+      :link: overview/index
+      :link-type: doc
 
+      .. rst-class:: aimet-tag
 
-Post Training Quantization Techniques
-=====================================
+      Start
 
-For instructions on applying individual AIMET PTQ techniques, see the :doc:`PTQ Techniques <../ptq_techniques/index>`.
+      What AIMET is and how you can use it.
 
+   .. grid-item-card:: Quick Start Guide
+      :link: overview/install/quick-start
+      :link-type: doc
 
-API Reference
-=============
+      .. rst-class:: aimet-tag
 
-For a detailed look at the AIMET API, see the :doc:`API Reference <../apiref/index>`.
+      Start
 
-Release Notes
-=============
+      Install AIMET and quantize your first model.
 
-For information about new features in this release, see the :doc:`Release Notes <release_notes>`.
+   .. grid-item-card:: Tutorials
+      :link: tutorials/index
+      :link-type: doc
 
-Glossary
-========
+      .. rst-class:: aimet-tag
 
-See the :doc:`glossary <../glossary>` for explanations of terms and acronyms used on this website.
+      Learn
 
-|
-|
-|
+      Curated walkthroughs of quantization workflows and other techniques.
 
-|project| is a product of |author|
+   .. grid-item-card:: Example Notebooks
+      :link: tutorials/notebooks
+      :link-type: doc
 
-|qnn| SDK is a product of Qualcomm Technologies, Inc. and/or its subsidiaries.
+      .. rst-class:: aimet-tag
+
+      Learn
+
+      End-to-end quantization and compression examples, downloadable as Jupyter notebooks.
+
+   .. grid-item-card:: Quantization User Guide
+      :link: techniques/index
+      :link-type: doc
+
+      .. rst-class:: aimet-tag
+
+      Apply
+
+      A high-level explanation of how to use AIMET to optimize a model.
+
+   .. grid-item-card:: PTQ Techniques
+      :link: ptq_techniques/index
+      :link-type: doc
+
+      .. rst-class:: aimet-tag
+
+      Apply
+
+      How to apply each post-training quantization technique.
+
+   .. grid-item-card:: API Reference
+      :link: apiref/index
+      :link-type: doc
+
+      .. rst-class:: aimet-tag
+
+      Reference
+
+      A detailed look at the AIMET API.
+
+   .. grid-item-card:: Release Notes
+      :link: release_notes
+      :link-type: doc
+
+      .. rst-class:: aimet-tag
+
+      Reference
+
+      New features and fixes in this release.
+
+   .. grid-item-card:: Glossary
+      :link: glossary
+      :link-type: doc
+
+      .. rst-class:: aimet-tag
+
+      Reference
+
+      Terms and acronyms used on this site.

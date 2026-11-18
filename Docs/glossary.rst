@@ -24,7 +24,7 @@ Glossary
       A technique used to minimize :term:`quantization` errors by carefully selecting how to round weights. AdaRound is especially powerful in retaining accuracy of models that undergo aggressive :term:`quantization`.
 
    AI Model Efficiency Toolkit
-      An open-source software library developed by the :term:`Qualcomm Innovation Center`, providing a suite of :term:`quantization` and :term:`compression` technologies that reduce the computational load and memory usage of deep learning models.
+      An open-source software library providing a suite of :term:`quantization` and :term:`compression` technologies that reduce the computational load and memory usage of deep learning models.
 
    AIMET
       :term:`AI Model Efficiency Toolkit`.
@@ -128,9 +128,6 @@ Glossary
    QDQ
       Quantize and dequantize operations.
 
-   Qualcomm Innovation Center
-      A division of Qualcomm, Inc. responsible for developing advanced technologies and open-source projects, including AIMET.
-
    Quantization
       A model :term:`compression` technique that reduces the bits used to represent each weight and :term:`activation` in a neural network, typically from floating-point 32-bit numbers to 8-bit integers.
 
@@ -142,9 +139,6 @@ Glossary
 
    QuantSim
       :term:`Quantization Simulation`.
-
-   QUIC
-      :term:`Qualcomm Innovation Center`.
 
    Target Hardware Accelerator
       Specialized hardware designed to accelerate AI :term:`inference` tasks. Examples include GPUs, TPUs, and custom ASICs, for example Qualcomm's Cloud AI 100 inference accelerator.

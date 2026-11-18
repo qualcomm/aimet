@@ -117,3 +117,383 @@
     --lumina-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
     --lumina-font-mono: "SFMono-Regular", Menlo, Consolas, Monaco, "Liberation Mono", "Lucida Console", monospace;
 }
+
+/*
+ * Landing page (index.rst, `:template: landing.html`)
+ *
+ * Layout: a two-column hero (headline, lead, CTAs on the left; an animated
+ * int4 quantization grid built from real MobileNetV2 weights on the right,
+ * driven by _static/aimet-landing.js) above a seamless 3x3 grid of
+ * sphinx-design cards. Everything is scoped under .lumina-landing-content,
+ * which only the landing template emits, and colors come from Lumina's theme
+ * tokens so the theme toggle drives light/dark.
+ *
+ * The section is a two-column CSS grid. The hero containers are
+ * `display: contents`, so the eyebrow, page title (which RST can't nest
+ * inside a container), lead, CTAs and framework line each take one row of
+ * the left column while the figure spans those rows on the right.
+ */
+#lumina-content.lumina-landing-content {
+    max-width: 76rem;
+    padding-top: 0;
+}
+
+.lumina-landing-content {
+    --aimet-viz-accent: var(--lumina-link);
+}
+
+.lumina-landing-content .body > section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 3.5rem;
+}
+
+.lumina-landing-content .body > section > * {
+    grid-column: 1 / -1;
+}
+
+.lumina-landing-content .body > section > span:first-child,
+.lumina-landing-content .toctree-wrapper {
+    display: none; /* the `top-index` anchor and the hidden toctree */
+}
+
+/* -- Hero -- */
+
+.lumina-landing-content .aimet-hero,
+.lumina-landing-content .aimet-hero-text {
+    display: contents;
+}
+
+.lumina-landing-content .aimet-eyebrow { grid-row: 1; }
+.lumina-landing-content .aimet-lead { grid-row: 3; }
+.lumina-landing-content .aimet-ctas { grid-row: 4; }
+.lumina-landing-content .aimet-frameworks { grid-row: 5; }
+
+.lumina-landing-content .body > section > h1 {
+    grid-row: 2;
+    margin: 1.375rem 0 0;
+    font-size: clamp(2.5rem, 1.4rem + 3.6vw, 4.125rem);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.02;
+}
+
+.lumina-landing-content .body > section > h1 .aimet-accent {
+    color: var(--lumina-link);
+}
+
+.lumina-landing-content .body > section > h1 > a.headerlink {
+    display: none;
+}
+
+.lumina-landing-content .aimet-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: max-content;
+    max-width: 100%;
+    margin: 0;
+    padding: 0.3125rem 0.75rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--lumina-accent) 9%, transparent);
+    color: var(--lumina-link);
+    font-family: var(--lumina-font-mono);
+    font-size: 0.8125rem;
+}
+
+.lumina-landing-content .aimet-eyebrow::before {
+    content: "";
+    flex: none;
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 50%;
+    background: var(--lumina-accent);
+}
+
+.lumina-landing-content .aimet-lead {
+    margin: 1.5rem 0 0;
+    max-width: 54ch;
+    font-size: 1.125rem;
+    line-height: 1.6;
+    color: var(--lumina-text-muted);
+}
+
+.lumina-landing-content .aimet-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+
+.lumina-landing-content .aimet-ctas p {
+    display: contents;
+}
+
+.lumina-landing-content .aimet-ctas a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding-inline: 1.125rem;
+    border: 1px solid var(--lumina-border);
+    border-radius: 0.5rem;
+    background: var(--lumina-bg);
+    color: var(--lumina-text);
+    font-weight: 600;
+    font-size: 0.9375rem;
+    text-decoration: none;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.lumina-landing-content .aimet-ctas a:hover {
+    border-color: var(--lumina-accent);
+}
+
+.lumina-landing-content .aimet-ctas a:first-child {
+    border-color: transparent;
+    background: var(--sd-color-primary);
+    color: var(--sd-color-primary-text);
+}
+
+.lumina-landing-content .aimet-ctas a:first-child:hover {
+    background: var(--sd-color-primary-highlight);
+}
+
+.lumina-landing-content .aimet-ctas a:first-child::after {
+    content: "\2192";
+    transition: transform 0.15s;
+}
+
+.lumina-landing-content .aimet-ctas a:first-child:hover::after {
+    transform: translateX(3px);
+}
+
+.lumina-landing-content .aimet-frameworks {
+    margin-top: 2.25rem;
+}
+
+.lumina-landing-content .aimet-frameworks p {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem 1rem;
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--lumina-text-muted);
+}
+
+.lumina-article .aimet-frameworks code:not(pre code) {
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--lumina-border);
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--lumina-text);
+    font-size: 0.8125rem;
+}
+
+/* The animated quantization grid */
+.lumina-landing-content .aimet-quant-viz {
+    margin: 0;
+    padding: 1.125rem 1.125rem 0.875rem;
+    min-width: 0;
+    border: 1px solid var(--lumina-border);
+    border-radius: 1rem;
+    background: var(--lumina-bg);
+    box-shadow: 0 30px 60px -40px color-mix(in srgb, var(--lumina-accent) 45%, transparent);
+    font-family: var(--lumina-font-mono);
+    font-size: 0.75rem;
+    color: var(--lumina-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.lumina-landing-content .aimet-quant-viz b {
+    font-weight: 500;
+    color: var(--lumina-text);
+}
+
+.lumina-landing-content .aimet-viz-top,
+.lumina-landing-content .aimet-viz-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.375rem 1rem;
+}
+
+.lumina-landing-content .aimet-viz-state {
+    color: var(--lumina-link);
+}
+
+.lumina-landing-content .aimet-quant-viz canvas {
+    display: block;
+    width: 100%;
+    height: 17.5rem;
+    margin-top: 0.5rem;
+}
+
+.lumina-landing-content .aimet-viz-bottom {
+    padding-top: 0.625rem;
+    border-top: 1px dashed var(--lumina-border);
+}
+
+/* -- Documentation grid -- */
+
+.lumina-landing-content .aimet-docs-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-top: 5rem;
+    margin-bottom: 1.5rem;
+}
+
+.lumina-landing-content .aimet-docs-head p {
+    margin: 0;
+    color: var(--lumina-text-muted);
+    font-size: 0.9375rem;
+}
+
+.lumina-landing-content .aimet-docs-head p.rubric {
+    color: var(--lumina-text);
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    text-transform: none;
+}
+
+/* One bordered block with hairline dividers, rather than nine floating
+ * cards: the row's background shows through 1px gaps between cells. */
+.lumina-landing-content .aimet-cards {
+    margin-bottom: 0 !important;
+}
+
+.lumina-landing-content .aimet-cards > .sd-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--lumina-border);
+    border-radius: 0.875rem;
+    background: var(--lumina-border);
+}
+
+@media (min-width: 576px) {
+    .lumina-landing-content .aimet-cards > .sd-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 992px) {
+    .lumina-landing-content .aimet-cards > .sd-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.lumina-landing-content .aimet-cards > .sd-row > .sd-col {
+    width: auto;
+    max-width: none;
+    padding: 0 !important;
+}
+
+.lumina-landing-content .aimet-cards .sd-card {
+    border: 0 !important;
+    border-radius: 0 !important;
+}
+
+.lumina-landing-content .aimet-cards .sd-card-hover:is(:hover, :focus-within) {
+    background: var(--lumina-bg-secondary) !important;
+}
+
+.lumina-landing-content .aimet-cards .sd-card:has(a:focus-visible) {
+    outline-offset: -2px;
+}
+
+.lumina-landing-content .aimet-cards .sd-card-body {
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 1.5rem 1.625rem;
+}
+
+.lumina-landing-content .aimet-cards .sd-card-title {
+    order: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem !important;
+    font-size: 1.1875rem;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em;
+}
+
+.lumina-landing-content .aimet-cards .sd-card-title::after {
+    content: "\2192";
+    color: var(--lumina-link);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.15s, transform 0.15s;
+}
+
+.lumina-landing-content .aimet-cards .sd-card:hover .sd-card-title::after {
+    opacity: 1;
+    transform: none;
+}
+
+.lumina-landing-content .aimet-cards .sd-card-text {
+    order: 3;
+    margin: 0;
+    font-size: 0.9375rem;
+}
+
+.lumina-landing-content .aimet-cards .sd-card-text.aimet-tag {
+    order: 1;
+    margin-bottom: 0.5rem;
+    font-family: var(--lumina-font-mono);
+    font-size: 0.71875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* -- Two-column hero on wide screens -- */
+
+@media (min-width: 992px) {
+    .lumina-landing-content .body > section {
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+        padding-top: 4.5rem;
+    }
+    .lumina-landing-content .body > section > h1,
+    .lumina-landing-content .aimet-hero-text > * {
+        grid-column: 1;
+    }
+    .lumina-landing-content .aimet-quant-viz {
+        grid-column: 2;
+        grid-row: 1 / 6;
+        align-self: center;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .lumina-landing-content .body > section {
+        padding-top: 3rem;
+    }
+    .lumina-landing-content .aimet-quant-viz {
+        grid-row: 6;
+        margin-top: 2.5rem;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .lumina-landing-content .aimet-quant-viz canvas {
+        height: 13.75rem;
+    }
+    .lumina-landing-content .aimet-docs-head {
+        margin-top: 3.5rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lumina-landing-content .aimet-cards .sd-card-title::after,
+    .lumina-landing-content .aimet-ctas a:first-child::after {
+        transition: none;
+    }
+}

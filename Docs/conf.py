@@ -23,8 +23,8 @@ sys.path.append(os.path.abspath('../../TrainingExtensions/onnx/src/python'))
 # -- Project information -----------------------------------------------------
 
 project = 'AI Model Efficiency Toolkit'
-copyright = '2020, Qualcomm Innovation Center, Inc.'
-author = 'Qualcomm Innovation Center, Inc.'
+copyright = 'Qualcomm Technologies, Inc. and/or its subsidiaries'
+author = 'Qualcomm Technologies, Inc. and/or its subsidiaries'
 
 # The short X.Y version
 version = ''
@@ -45,9 +45,17 @@ def _expand_api_disclosures(app, pagename, templatename, context, doctree):
         context['theme_api_expanded'] = 'true'
 
 
+def _add_landing_script(app, pagename, templatename, context, doctree):
+    # Hero animation for the landing page (index.rst) only; other pages
+    # shouldn't pay for loading it.
+    if pagename == app.config.root_doc:
+        app.add_js_file('aimet-landing.js', loading_method='defer')
+
+
 def setup(app):
     app.add_config_value('included_features', included_features, 'env')
     app.connect('html-page-context', _expand_api_disclosures)
+    app.connect('html-page-context', _add_landing_script)
 
 
 # -- General configuration ---------------------------------------------------
@@ -211,7 +219,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (root_doc, 'AIMET.tex', 'AI Model Efficiency Toolkit Documentation',
-     'Qualcomm Innovation Center, Inc.', 'manual')
+     author, 'manual')
 ]
 
 
