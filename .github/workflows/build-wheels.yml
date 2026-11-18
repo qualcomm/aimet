@@ -21,6 +21,7 @@ on:
 
 jobs:
   build-linux:
+    name: ${{ matrix.id }}
     if: inputs.build-linux-wheel == true
     strategy:
       fail-fast: false
@@ -84,6 +85,7 @@ jobs:
           retention-days: 30
 
   build-windows:
+    name: Windows ${{ matrix.arch }}
     runs-on: aimet-windows-amd64
     if: inputs.build-windows-wheel == true
     strategy:
@@ -134,6 +136,7 @@ jobs:
           retention-days: 30
 
   build-macos:
+    name: macOS
     runs-on: aimet-mac-arm64
     if: inputs.build-macos-wheel == true
     defaults:

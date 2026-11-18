@@ -49,7 +49,7 @@ on:
 
 jobs:
   pre-commit-check:
-    name: "Pre-commit check"
+    name: Lint
     if: github.repository_owner != 'qualcomm'
     uses: ./.github/workflows/pre-commit.yml
 
@@ -74,7 +74,7 @@ jobs:
 
   variants:
     # TODO: #6790 enable testing with python 3.11 and 3.13
-    name: Define supported AIMET variants
+    name: Variants
     runs-on: ubuntu-latest
     needs: set_vars
     outputs:
@@ -165,7 +165,7 @@ jobs:
           echo "value=$VALUE" >> $GITHUB_OUTPUT
 
   call-build-wheels:
-    name: Call build-wheels
+    name: Build
     needs: [ variants ]
     uses: ./.github/workflows/build-wheels.yml
     with:
@@ -181,7 +181,7 @@ jobs:
     secrets: inherit
 
   call-unit-acceptance-tests:
-    name: Run unit and acceptance tests
+    name: Test (${{ matrix.id }})
     needs: [ variants, call-build-wheels ]
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
     strategy:
@@ -221,12 +221,12 @@ jobs:
         if [ "$RUN_FAILED" = "true" ]; then
           MSG="*⚠️ $TITLE failed*"
           # List failed/cancelled jobs, trimming matrix args down to the variant id,
-          # e.g. "onnx-cpu / Windows (X64)". Cancelled usually means a runner never
+          # e.g. "onnx-cpu / Windows X64". Cancelled usually means a runner never
           # picked the job up, so keep it separate from real failures.
           JOBS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100&filter=latest" \
                    --paginate --jq '.jobs[]' | jq -rs '
             def short: sub("\\((?<id>[^,)]+)[^)]*\\)"; "(\(.id))")
-                     | sub("^Run unit and acceptance tests \\((?<id>[^)]*)\\) / Run AIMET unit and acceptance tests on "; "\(.id) / ");
+                     | sub("^Test \\((?<id>[^)]*)\\) / "; "\(.id) / ");
             (map(select(.conclusion == "failure")   | .name | short) | select(length > 0) | "Failed: " + join(", ")),
             (map(select(.conclusion == "cancelled") | .name | short) | select(length > 0) | "Cancelled: " + join(", "))')
           [ -n "$JOBS" ] && MSG="$MSG"$'\n'"$JOBS"
