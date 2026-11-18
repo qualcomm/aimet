@@ -390,15 +390,29 @@ def forced_expert_activation(
     execution: str | None = None,
     force_all: bool | None = None,
     phase: str = "calibration",
-) -> Iterator[list[PredicatedExperts]]:
+) -> Iterator[list]:
     """Put MoE experts into their calibration/export policy for the duration.
 
     A no-op for non-MoE models, so framework-agnostic callers need no knowledge
     of the model. Defaults come from each module's own configuration, selected by
     ``phase`` (``"calibration"`` or ``"export"``).
+
+    Calibration always forces every expert active: an expert routing never
+    reaches would otherwise get no data and a fabricated encoding, and on ONNX
+    AdaScale refuses to optimize its never-taken If branch. Export (and so eval)
+    follows ``selection``. An aimet-onnx sim is forced by patching the
+    ``force_all`` initializer in its graph (see :func:`_forced_onnx_sim`).
     """
     if phase not in ("calibration", "export"):
         raise ValueError("phase must be 'calibration' or 'export'")
+    if _is_onnx_sim(obj):
+        if phase == "export":
+            raise ValueError("An aimet-onnx sim is already exported")
+        want_force = True if force_all is None else bool(force_all)
+        with _forced_onnx_sim(obj, want_force) as patched:
+            yield patched
+        return
+
     modules = predicated_expert_modules(obj)
     saved = [(m, m.execution, m.force_all.clone()) for m in modules]
     try:
@@ -409,15 +423,155 @@ def forced_expert_activation(
                 else module.calibration_execution
             )
             module.execution = execution or default
-            want_force = (
-                module.selection == "all" if force_all is None else bool(force_all)
-            )
+            if force_all is not None:
+                want_force = bool(force_all)
+            else:
+                want_force = phase == "calibration" or module.selection == "all"
             module.force_all.fill_(1.0 if want_force else 0.0)
         yield modules
     finally:
         for module, execution_was, force_was in saved:
             module.execution = execution_was
             module.force_all.copy_(force_was)
+
+
+def _is_onnx_sim(obj) -> bool:
+    """True for an aimet-onnx ``QuantizationSimModel`` (duck-typed, no import)."""
+    return (
+        hasattr(obj, "_rebuild_session")
+        and hasattr(obj, "session")
+        and hasattr(getattr(obj, "model", None), "model")
+    )
+
+
+@contextlib.contextmanager
+def _forced_onnx_sim(sim, value: bool) -> Iterator[list]:
+    """Set the ``force_all`` initializer(s) in an aimet-onnx sim's graph to ``value``.
+
+    The sim builds its ORT session (and AdaScale/SeqMSE their sub-sessions) from
+    the in-memory graph, so patching ``sim.model.model`` and rebuilding the
+    session is enough; the model on disk is untouched. Restored, and the session
+    rebuilt again, on exit. A graph without ``force_all`` (non-MoE, or exported
+    before ``force_all`` existed) is left alone.
+
+    :yield: names of the patched initializers (empty when nothing changed).
+    """
+    model = sim.model.model
+    if not _force_all_initializers(model.graph):
+        yield []
+        return
+    _disable_force_all_quantizers(sim)
+    previous = _patch_force_all(model, value, where="the sim's graph")
+    if all(was == value for was in previous.values()):
+        yield list(previous)
+        return
+    try:
+        # Inside the try: if ORT rejects the patched graph, it is still restored
+        sim._rebuild_session()
+        yield list(previous)
+    finally:
+        _restore_force_all(model, previous)
+        sim._rebuild_session()
+
+
+def _disable_force_all_quantizers(sim) -> None:
+    """Turn off the sim's quantizers on ``force_all``, for good.
+
+    aimet-onnx quantizes it like any activation, and calibrating it while it is 0
+    gives a range of about ``[0, 0]``: forcing then clamps 1.0 to almost 0, every
+    expert still runs, but unrouted experts see their input scaled to almost 0 --
+    wrong statistics that the output (weighted by 0) never shows. A 0/1 switch has
+    nothing to quantize, and on target the whole predicate chain is deleted
+    (``exportable_moe_graph_passes.md``, P1).
+    """
+    for init in _force_all_initializers(sim.model.model.graph):
+        quantizer = sim.qc_quantize_op_dict.get(init.name)
+        if quantizer is not None:
+            quantizer.enabled = False
+
+
+def _force_all_initializers(graph) -> list:
+    """Every ``force_all`` initializer in ``graph``, subgraphs included."""
+    found = [init for init in graph.initializer if "force_all" in init.name]
+    for node in graph.node:
+        for attr in node.attribute:
+            if attr.g.ByteSize():
+                found += _force_all_initializers(attr.g)
+            for sub in attr.graphs:
+                found += _force_all_initializers(sub)
+    return found
+
+
+def _patch_force_all(model, value: bool, *, where: str) -> dict[str, bool]:
+    """Set every ``force_all`` initializer in ``model`` to ``value``, in place.
+
+    :return: each patched initializer's name and its previous value.
+    """
+    import onnx
+    from onnx import numpy_helper
+
+    # If ONNX merged force_all with another constant of the same value, patching
+    # it would rewrite that operator instead, skipping every expert silently.
+    illegal = sorted(_force_all_consumers(model.graph) - {"Max"})
+    if illegal:
+        raise RuntimeError(
+            f"'force_all' in {where} is consumed by {illegal}, not only by "
+            f"Max. ONNX initializer deduplication has merged it with another "
+            f"constant of the same value, so patching it would corrupt that "
+            f"operator (typically turning an expert predicate into 'w > 1', "
+            f"silently skipping every expert). Do not use this graph."
+        )
+
+    # Every initializer is checked before any is written, so a bad one leaves the
+    # graph untouched rather than partly patched.
+    inits = _force_all_initializers(model.graph)
+    for init in inits:
+        if list(init.dims) != [1]:
+            raise RuntimeError(
+                f"Initializer '{init.name}' has dims {list(init.dims)}, "
+                f"expected [1]. Refusing to patch an unexpected tensor."
+            )
+    previous = {}
+    for init in inits:
+        # The file patcher loads without external data; a [1] tensor is always
+        # inline in a real export, so a missing value only means "unknown".
+        has_data = init.data_location != onnx.TensorProto.EXTERNAL
+        previous[init.name] = (
+            bool(numpy_helper.to_array(init).reshape(-1)[0]) if has_data else None
+        )
+    for init in inits:
+        _set_force_all_value(init, value)
+    return previous
+
+
+def _set_force_all_value(init, value: bool) -> None:
+    """Write ``value`` into the ``[1]`` initializer ``init``, keeping its dtype.
+
+    The dtype is the model's: a bf16 export casts the ``force_all`` buffer along
+    with the weights, and its ``Max`` takes the other input in that dtype too, so
+    writing float32 makes ORT reject the graph ("Type parameter (T) of Optype
+    (Max) bound to different types").
+    """
+    import numpy as np
+    import onnx
+
+    np_dtype = onnx.helper.tensor_dtype_to_np_dtype(init.data_type)
+    # Inline raw data, dropping any external reference.
+    init.ClearField("external_data")
+    init.data_location = onnx.TensorProto.DEFAULT
+    for field in ("float_data", "int32_data", "int64_data", "double_data"):
+        init.ClearField(field)
+    init.raw_data = np.array([1.0 if value else 0.0], dtype=np_dtype).tobytes()
+
+
+def _restore_force_all(model, previous: dict[str, bool]) -> None:
+    """Undo :func:`_patch_force_all`, initializer by initializer."""
+    for init in _force_all_initializers(model.graph):
+        was = previous.get(init.name)
+        # None ("unknown") only comes from a file loaded without external data,
+        # and the file patcher never restores.
+        if was is not None:
+            _set_force_all_value(init, was)
 
 
 def set_onnx_force_all(model_path: str, value: bool) -> int:
@@ -429,52 +583,10 @@ def set_onnx_force_all(model_path: str, value: bool) -> int:
 
     :return: number of initializers updated.
     """
-    import numpy as np
     import onnx
 
     model = onnx.load(model_path, load_external_data=False)
-
-    # If ONNX merged force_all with another constant of the same value, patching
-    # it would rewrite that operator instead, skipping every expert silently.
-    illegal = sorted(_force_all_consumers(model.graph) - {"Max"})
-    if illegal:
-        raise RuntimeError(
-            f"'force_all' in {model_path} is consumed by {illegal}, not only by "
-            f"Max. ONNX initializer deduplication has merged it with another "
-            f"constant of the same value, so patching it would corrupt that "
-            f"operator (typically turning an expert predicate into 'w > 1', "
-            f"silently skipping every expert). Do not use this graph."
-        )
-
-    raw = np.array([1.0 if value else 0.0], dtype=np.float32).tobytes()
-    updated = 0
-
-    def _patch(graph):
-        nonlocal updated
-        for init in graph.initializer:
-            if "force_all" not in init.name:
-                continue
-            if list(init.dims) != [1]:
-                raise RuntimeError(
-                    f"Initializer '{init.name}' has dims {list(init.dims)}, "
-                    f"expected [1]. Refusing to patch an unexpected tensor."
-                )
-            # Inline raw data, dropping any external reference.
-            init.ClearField("external_data")
-            init.data_location = onnx.TensorProto.DEFAULT
-            for field in ("float_data", "int32_data", "int64_data", "double_data"):
-                init.ClearField(field)
-            init.data_type = onnx.TensorProto.FLOAT
-            init.raw_data = raw
-            updated += 1
-        for node in graph.node:
-            for attr in node.attribute:
-                if attr.g.ByteSize():
-                    _patch(attr.g)
-                for sub in attr.graphs:
-                    _patch(sub)
-
-    _patch(model.graph)
+    updated = len(_patch_force_all(model, value, where=model_path))
     if not updated:
         raise RuntimeError(
             f"No 'force_all' initializer found in {model_path}. It was likely "
@@ -487,17 +599,36 @@ def set_onnx_force_all(model_path: str, value: bool) -> int:
 
 
 def _force_all_consumers(graph) -> set[str]:
-    """Op types that read a ``force_all`` initializer, subgraphs included."""
+    """Op types that read a ``force_all`` initializer, subgraphs included.
+
+    An aimet ``QcQuantizeOp`` on ``force_all`` (an aimet-onnx sim inserts one) is
+    looked through: what matters is what reads the value, and the quantizer
+    passes a 0/1 constant through unchanged.
+    """
+    names = {init.name for init in _force_all_initializers(graph)}
     consumers: set[str] = set()
+    while names:
+        found, names = _readers(graph, names), set()
+        for node in found:
+            if node.op_type == "QcQuantizeOp":
+                names.update(node.output)
+            else:
+                consumers.add(node.op_type)
+    return consumers
+
+
+def _readers(graph, names: set[str]) -> list:
+    """Nodes in ``graph`` (subgraphs included) that read any tensor in ``names``."""
+    found = []
     for node in graph.node:
-        if any("force_all" in name for name in node.input):
-            consumers.add(node.op_type)
+        if any(name in names for name in node.input):
+            found.append(node)
         for attr in node.attribute:
             if attr.g.ByteSize():
-                consumers |= _force_all_consumers(attr.g)
+                found += _readers(attr.g, names)
             for sub in attr.graphs:
-                consumers |= _force_all_consumers(sub)
-    return consumers
+                found += _readers(sub, names)
+    return found
 
 
 def unquantized_subgraph_ops(graph, op_types=("MatMul", "Gemm", "Conv")) -> int:

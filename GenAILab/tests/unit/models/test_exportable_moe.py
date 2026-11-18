@@ -377,7 +377,8 @@ class TestForcedExpertActivation:
         with forced_expert_activation(model) as touched:
             assert len(touched) == 1
             assert adapted.execution == "dense"  # calibration_execution default
-            assert float(adapted.force_all) == 0.0  # selection == "routed"
+            assert float(adapted.force_all) == 1.0  # calibration always forces
+        assert float(adapted.force_all) == 0.0
         assert adapted.execution == "sparse"
 
     def test_honours_explicit_overrides(self):
@@ -401,6 +402,21 @@ class TestForcedExpertActivation:
         adapted = _adapted(_fused_experts(), selection="all")
         with forced_expert_activation(nn.Sequential(adapted)):
             assert float(adapted.force_all) == 1.0
+
+    def test_calibration_forces_and_export_routes_by_default(self):
+        """Without forcing, an expert routing never reaches gets no calibration
+        data, and an ONNX AdaScale run fails on its never-taken If branch."""
+        adapted = _adapted(_fused_experts())
+        assert adapted.selection == "routed"
+        assert ExportableMoEAdaptation.selection == "routed"
+        assert float(adapted.force_all) == 0.0
+
+        model = nn.Sequential(adapted)
+        with forced_expert_activation(model):
+            assert float(adapted.force_all) == 1.0
+        assert float(adapted.force_all) == 0.0
+        with forced_expert_activation(model, phase="export"):
+            assert float(adapted.force_all) == 0.0
 
     def test_no_op_on_non_moe_objects(self):
         with forced_expert_activation(nn.Linear(2, 2)) as touched:
@@ -585,6 +601,196 @@ class TestOnnxForceAllPatching:
         onnx.save(onnx.helper.make_model(graph), path)
         with pytest.raises(RuntimeError, match="expected \\[1\\]"):
             set_onnx_force_all(path, True)
+
+
+class TestForcedOnnxSim:
+    """forced_expert_activation on an aimet-onnx sim: patches its in-memory graph."""
+
+    class FakeSim:
+        """The three attributes the ONNX path reads; counts session rebuilds."""
+
+        def __init__(self, model):
+            self.model = type("ONNXModel", (), {"model": model})()
+            self.session = object()
+            self.rebuilds = 0
+            self.qc_quantize_op_dict = {}
+
+        def _rebuild_session(self):
+            self.rebuilds += 1
+
+    @staticmethod
+    def _sim(op_type="Max", value=0.0):
+        onnx = pytest.importorskip("onnx")
+        import numpy as np
+        from onnx import numpy_helper
+
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node(op_type, ["other", "force_all"], ["y"])],
+            "g",
+            [],
+            [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [1])],
+            initializer=[
+                numpy_helper.from_array(np.array([value], np.float32), "force_all"),
+                numpy_helper.from_array(np.array([1.0], np.float32), "other"),
+            ],
+        )
+        return TestForcedOnnxSim.FakeSim(onnx.helper.make_model(graph))
+
+    @staticmethod
+    def _value(sim):
+        from onnx import numpy_helper
+
+        init = next(
+            i for i in sim.model.model.graph.initializer if i.name == "force_all"
+        )
+        return float(numpy_helper.to_array(init)[0])
+
+    def test_forces_and_restores(self):
+        sim = self._sim()
+        with forced_expert_activation(sim) as patched:
+            assert patched == ["force_all"]
+            assert self._value(sim) == 1.0
+            assert sim.rebuilds == 1
+        assert self._value(sim) == 0.0
+        assert sim.rebuilds == 2
+
+    def test_disables_the_force_all_quantizer(self):
+        """Calibrated at 0, it would clamp the forced 1.0 to almost 0."""
+        sim = self._sim()
+        quantizer = type("Q", (), {"enabled": True})()
+        sim.qc_quantize_op_dict["force_all"] = quantizer
+        with forced_expert_activation(sim):
+            assert quantizer.enabled is False
+        assert quantizer.enabled is False
+
+    def test_restores_on_exception(self):
+        sim = self._sim()
+        with pytest.raises(ValueError):
+            with forced_expert_activation(sim):
+                raise ValueError("boom")
+        assert self._value(sim) == 0.0
+        assert sim.rebuilds == 2
+
+    def test_graph_exported_forced_is_left_forced(self):
+        """A pre-change export baked force_all = 1; no rebuild, nothing to undo."""
+        sim = self._sim(value=1.0)
+        with forced_expert_activation(sim):
+            assert self._value(sim) == 1.0
+        assert self._value(sim) == 1.0
+        assert sim.rebuilds == 0
+
+    def test_restores_when_the_session_rejects_the_patched_graph(self):
+        """
+        Given: A sim whose session rebuild fails on the patched graph
+        When: Experts are forced
+        Then: The error propagates, and the graph is restored and its session rebuilt
+        """
+        sim = self._sim()
+        rebuild = sim._rebuild_session
+
+        def reject_once():
+            rebuild()
+            if sim.rebuilds == 1:
+                raise RuntimeError("ORT rejected the graph")
+
+        sim._rebuild_session = reject_once
+        with pytest.raises(RuntimeError, match="ORT rejected"):
+            with forced_expert_activation(sim):
+                pass
+        assert self._value(sim) == 0.0
+        assert sim.rebuilds == 2
+
+    def test_unexpected_initializer_leaves_the_graph_untouched(self):
+        """
+        Given: A sim with two force_all initializers, the second of an unexpected shape
+        When: Experts are forced
+        Then: It raises without writing either initializer
+        """
+        import numpy as np
+        from onnx import numpy_helper
+
+        sim = self._sim()
+        graph = sim.model.model.graph
+        graph.initializer.append(
+            numpy_helper.from_array(np.zeros(2, np.float32), "layer1.force_all")
+        )
+        with pytest.raises(RuntimeError, match="expected \\[1\\]"):
+            with forced_expert_activation(sim):
+                pass
+        assert self._value(sim) == 0.0
+        assert sim.rebuilds == 0
+
+    def test_no_op_without_force_all(self):
+        onnx = pytest.importorskip("onnx")
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Identity", ["x"], ["y"])],
+            "g",
+            [onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [1])],
+            [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [1])],
+        )
+        sim = self.FakeSim(onnx.helper.make_model(graph))
+        with forced_expert_activation(sim) as patched:
+            assert patched == []
+        assert sim.rebuilds == 0
+
+    def test_refuses_a_deduplicated_force_all(self):
+        sim = self._sim(op_type="Greater")
+        with pytest.raises(RuntimeError, match="not only by"):
+            with forced_expert_activation(sim):
+                pass
+        assert self._value(sim) == 0.0
+
+    def test_looks_through_the_sims_force_all_quantizer(self):
+        """aimet-onnx puts a QcQuantizeOp on force_all; only its readers count."""
+        onnx = pytest.importorskip("onnx")
+        sim = self._sim()
+        graph = sim.model.model.graph
+        graph.node[0].input[1] = "force_all_updated"
+        graph.node.insert(
+            0,
+            onnx.helper.make_node("QcQuantizeOp", ["force_all"], ["force_all_updated"]),
+        )
+        with forced_expert_activation(sim):
+            assert self._value(sim) == 1.0
+
+        graph.node[1].op_type = "Greater"
+        with pytest.raises(RuntimeError, match="not only by"):
+            with forced_expert_activation(sim):
+                pass
+
+    @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
+    def test_keeps_the_initializers_dtype(self, dtype):
+        """A bf16 export has a bf16 force_all; writing float32 broke its Max."""
+        onnx = pytest.importorskip("onnx")
+        import numpy as np
+        from onnx import numpy_helper
+
+        elem = getattr(onnx.TensorProto, dtype.upper())
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(elem)
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Max", ["x", "force_all"], ["y"])],
+            "g",
+            [onnx.helper.make_tensor_value_info("x", elem, [1])],
+            [onnx.helper.make_tensor_value_info("y", elem, [1])],
+            initializer=[numpy_helper.from_array(np.zeros(1, np_dtype), "force_all")],
+        )
+        model = onnx.helper.make_model(
+            graph, opset_imports=[onnx.helper.make_opsetid("", 20)]
+        )
+        sim = self.FakeSim(model)
+        init = sim.model.model.graph.initializer[0]
+        with forced_expert_activation(sim):
+            assert init.data_type == elem
+            assert float(numpy_helper.to_array(init)[0]) == 1.0
+            # What ORT checked: both Max inputs share one type.
+            onnx.shape_inference.infer_shapes(model, strict_mode=True)
+        assert init.data_type == elem
+        assert float(numpy_helper.to_array(init)[0]) == 0.0
+
+    def test_export_phase_rejected(self):
+        with pytest.raises(ValueError, match="already exported"):
+            with forced_expert_activation(self._sim(), phase="export"):
+                pass
 
 
 class TestOnnxExport:
