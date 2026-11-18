@@ -27,3 +27,29 @@ jobs:
     needs: dco
     uses: ./.github/workflows/pipeline.yml
     secrets: inherit
+
+  # Single required status check for branch protection. Required checks that are skipped count
+  # as passing, and pipeline jobs are skipped when the jobs they need fail (e.g. "Run unit tests"
+  # when a wheel build fails), so this job always runs and fails unless the pipeline succeeded.
+  # DCO stays a separately required check so its failure is named in the PR merge box.
+  ci-gate:
+    name: CI gate
+    if: always() && github.repository_owner != 'qualcomm'
+    needs: [dco, pipeline]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless the CI pipeline succeeded
+        env:
+          DCO_RESULT: ${{ needs.dco.result }}
+          PIPELINE_RESULT: ${{ needs.pipeline.result }}
+        run: |
+          echo "dco: $DCO_RESULT, pipeline: $PIPELINE_RESULT"
+          if [ "$PIPELINE_RESULT" = success ]; then
+            exit 0
+          fi
+          if [ "$DCO_RESULT" != success ]; then
+            echo "::error::CI pipeline did not run because the DCO check failed ($DCO_RESULT)"
+          else
+            echo "::error::CI pipeline did not succeed ($PIPELINE_RESULT)"
+          fi
+          exit 1
