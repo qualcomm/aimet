@@ -6,6 +6,7 @@
 import hashlib
 import json
 import shutil
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,11 @@ import onnx
 import torch
 from transformers import AutoConfig, PretrainedConfig
 
+from GenAILab.bench.utils.cache_utils import (
+    atomic_write_json,
+    discard_entry,
+    staged_entry,
+)
 from GenAILab.qai_hub_lm.schema.components import (
     MODALITY_COMPONENTS,
     require_component,
@@ -76,9 +82,16 @@ class DiskBackedModelCache:
 
     Each component gets a ``{name}/`` subdir; a missing one reads back as
     ``None``, so entries written before a component existed still load.
+
+    Several processes may share one cache directory. An entry is written to a
+    private directory and renamed into place, so it is either absent or whole,
+    and lookups go by the entry directory, not by ``index.json`` (which is only
+    a manifest for inspection and may briefly trail the directories). If two
+    processes export the same key, the first to finish wins.
     """
 
     _INDEX_FILE = "index.json"
+    _ENTRY_FILE = "entry.json"
     _INDEX_VERSION = 1
 
     def __init__(self, cache_dir: str | Path):
@@ -92,22 +105,20 @@ class DiskBackedModelCache:
 
     def get(self, key: str) -> ModelCacheEntry | None:
         """Return a cached :class:`ModelCacheEntry` if it exists on disk, else ``None``."""
-        if key not in self._index["entries"]:
-            return None
-
-        entry_meta = self._index["entries"][key]
         entry_dir = self._cache_dir / key
-
         backbone_path = entry_dir / "backbone" / "model.onnx"
         if not backbone_path.exists():
-            # Stale index entry -- files were deleted externally
-            print(
-                f"  [cache] Model cache stale entry for key {key} "
-                f"(backbone not found on disk) — removing"
-            )
-            del self._index["entries"][key]
-            self._save_index()
+            # Never cached, or another process sharing this cache has it listed
+            # in the index but the files were deleted externally.
+            if key in self._load_index()["entries"]:
+                print(
+                    f"  [cache] Model cache stale entry for key {key} "
+                    f"(backbone not found on disk) — removing"
+                )
+                self._update_index(key, None)
             return None
+
+        entry_meta = self._read_entry_meta(key, entry_dir)
 
         # Staleness check: compare hub config hash at cache time vs now.
         # We can't do this for small models, since the live config would be different.
@@ -121,9 +132,8 @@ class DiskBackedModelCache:
                     print(
                         f"  [cache] Model cache config changed for {model_id} — invalidating"
                     )
-                    shutil.rmtree(entry_dir, ignore_errors=True)
-                    del self._index["entries"][key]
-                    self._save_index()
+                    discard_entry(entry_dir)
+                    self._update_index(key, None)
                     return None
             except Exception:
                 # If we can't check staleness (e.g. offline), trust the cache
@@ -183,10 +193,37 @@ class DiskBackedModelCache:
         )
 
     def put(self, key: str, entry: ModelCacheEntry, metadata: Optional[dict] = None):
-        """Write a :class:`ModelCacheEntry` to disk and update the index."""
-        entry_dir = self._cache_dir / key
-        entry_dir.mkdir(parents=True, exist_ok=True)
+        """Write a :class:`ModelCacheEntry` to disk and update the index.
 
+        If another process published *key* first, its entry is kept.
+        """
+        # Compute hub config hash for staleness checks.
+        # entry.config may have been mutated at runtime (attn_implementation,
+        # torch_dtype, etc.), so we fetch the pristine hub config separately.
+        hub_config_hash = None
+        model_id = (metadata or {}).get("model_id")
+        if model_id is not None:
+            try:
+                hub_config_hash = _hub_config_hash(model_id)
+            except Exception:
+                pass
+
+        index_entry = {
+            "metadata": metadata or {},
+            "created": datetime.now().isoformat(),
+        }
+        if hub_config_hash is not None:
+            index_entry["hub_config_hash"] = hub_config_hash
+
+        with staged_entry(self._cache_dir / key, _entry_is_complete) as staging:
+            self._write_entry(staging, entry)
+            # The entry's own manifest, so a lookup never needs the shared index.
+            atomic_write_json(staging / self._ENTRY_FILE, index_entry, default=str)
+
+        self._update_index(key, index_entry)
+
+    @staticmethod
+    def _write_entry(entry_dir: Path, entry: ModelCacheEntry):
         # Save backbone ONNX model with external data
         backbone_dir = entry_dir / "backbone"
         backbone_dir.mkdir(parents=True, exist_ok=True)
@@ -234,27 +271,6 @@ class DiskBackedModelCache:
         if entry.config is not None:
             entry.config.save_pretrained(str(entry_dir))
 
-        # Compute hub config hash for staleness checks.
-        # entry.config may have been mutated at runtime (attn_implementation,
-        # torch_dtype, etc.), so we fetch the pristine hub config separately.
-        hub_config_hash = None
-        model_id = (metadata or {}).get("model_id")
-        if model_id is not None:
-            try:
-                hub_config_hash = _hub_config_hash(model_id)
-            except Exception:
-                pass
-
-        index_entry = {
-            "metadata": metadata or {},
-            "created": datetime.now().isoformat(),
-        }
-        if hub_config_hash is not None:
-            index_entry["hub_config_hash"] = hub_config_hash
-
-        self._index["entries"][key] = index_entry
-        self._save_index()
-
     def get_or_export(
         self,
         key: str,
@@ -267,8 +283,13 @@ class DiskBackedModelCache:
             _log_model_cache_hit(key, metadata)
             return result
         _log_model_cache_miss(key, metadata)
+        start = time.perf_counter()
         result = compute_fn()
+        exported = time.perf_counter()
         self.put(key, result, metadata=metadata)
+        _log_model_export_time(
+            metadata, exported - start, time.perf_counter() - exported
+        )
         return self.get(key)
 
     def clear(self):
@@ -294,18 +315,46 @@ class DiskBackedModelCache:
                 with open(index_path, "r") as f:
                     return json.load(f)
             except (json.JSONDecodeError, ValueError):
+                # Not unlinked: another process may have just replaced it with a
+                # good one. The next update overwrites it.
                 print(f"  [cache] Model cache index corrupted — resetting")
-                index_path.unlink()
         return self._empty_index()
 
+    def _read_entry_meta(self, key: str, entry_dir: Path) -> dict:
+        """The index record for an entry: its own manifest, else the shared index."""
+        try:
+            with open(entry_dir / self._ENTRY_FILE) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return self._load_index()["entries"].get(key, {})
+
+    def _update_index(self, key: str, index_entry: dict | None):
+        """Set the index entry for *key*, or remove it when *index_entry* is ``None``.
+
+        The index is re-read from disk first, so entries other processes sharing
+        this cache added since it was loaded are kept, not overwritten. Two
+        processes updating it at the same moment can still lose one update; that
+        only costs an inspection entry, as lookups go by entry directory.
+        """
+        self._index = self._load_index()
+        if index_entry is None:
+            self._index["entries"].pop(key, None)
+        else:
+            self._index["entries"][key] = index_entry
+        self._save_index()
+
     def _save_index(self):
-        index_path = self._cache_dir / self._INDEX_FILE
-        with open(index_path, "w") as f:
-            json.dump(self._index, f, indent=2)
+        # Written aside and renamed into place, so a concurrent reader never sees
+        # a half-written index (which _load_index would reset as corrupted).
+        atomic_write_json(self._cache_dir / self._INDEX_FILE, self._index, indent=2)
 
     @classmethod
     def _empty_index(cls) -> dict:
         return {"version": cls._INDEX_VERSION, "entries": {}}
+
+
+def _entry_is_complete(entry_dir: Path) -> bool:
+    return (entry_dir / "backbone" / "model.onnx").exists()
 
 
 _CACHE_BANNER = "\n" + "=" * 70 + "\n"
@@ -333,6 +382,21 @@ def _log_model_cache_miss(key: str, metadata: dict | None):
     label = _model_label(metadata)
     detail = f" for {label}" if label else ""
     print(f"  [cache] Model cache miss{detail} — exporting from scratch")
+
+
+def _format_duration(seconds: float) -> str:
+    minutes, secs = divmod(round(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m{secs:02d}s" if hours else f"{minutes}m{secs:02d}s"
+
+
+def _log_model_export_time(metadata: dict | None, export_s: float, save_s: float):
+    label = _model_label(metadata)
+    detail = f" for {label}" if label else ""
+    print(
+        f"  [cache] Exported{detail} in {_format_duration(export_s)} wall clock "
+        f"(+ {_format_duration(save_s)} writing to the model cache)"
+    )
 
 
 def _strip_private_keys(obj):

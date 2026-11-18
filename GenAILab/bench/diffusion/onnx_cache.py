@@ -15,6 +15,8 @@ components is kept under a key of everything that changes the graphs::
 
 An entry is written to a temporary directory and renamed into place once every
 component has exported, so an interrupted export never leaves a partial entry.
+If another process shares the cache and finished the same key first, its entry
+is kept and this one is dropped.
 """
 
 from __future__ import annotations
@@ -23,12 +25,12 @@ import hashlib
 import json
 import os
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Callable
 
 import torch
 
+from GenAILab.bench.utils.cache_utils import staged_entry
 from GenAILab.qai_hub_lm.diffusion.base import COMPONENTS
 from GenAILab.qai_hub_lm.diffusion.onnx import MODEL_FILE, ONNX_OPSET
 
@@ -97,23 +99,22 @@ class DiffusionONNXCache:
 
         self._dir.mkdir(parents=True, exist_ok=True)
         entry = self._dir / self.key_hash(key)
-        staging = Path(tempfile.mkdtemp(prefix=f".{entry.name}-", dir=self._dir))
-        try:
+        with staged_entry(entry, self._has_every_component) as staging:
             export(staging)
+            if not self._has_every_component(staging):
+                raise RuntimeError(
+                    f"Export did not write every component to {staging}; expected "
+                    f"<component>/{MODEL_FILE} for each of {COMPONENTS}."
+                )
             (staging / _KEY_FILE).write_text(json.dumps(key, indent=2, default=str))
-            shutil.rmtree(entry, ignore_errors=True)  # A partial earlier entry.
-            staging.rename(entry)
-        except BaseException:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
 
         paths = self.paths(key)
-        if paths is None:
-            raise RuntimeError(
-                f"Export did not write every component to {entry}; expected "
-                f"<component>/{MODEL_FILE} for each of {COMPONENTS}."
-            )
+        assert paths is not None, f"Cache entry {entry} vanished after export"
         return paths
+
+    @staticmethod
+    def _has_every_component(entry: Path) -> bool:
+        return all((entry / name / MODEL_FILE).exists() for name in COMPONENTS)
 
     def clear(self):
         shutil.rmtree(self._dir, ignore_errors=True)

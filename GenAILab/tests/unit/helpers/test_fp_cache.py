@@ -99,3 +99,46 @@ class TestDiskBackedFPCache:
         # Second get should serve from memory (same object)
         result = cache.get(key)
         assert result is cache._memory["hash1/mmlu"]
+
+
+class TestSharedFPCache:
+    """Several processes sharing one cache directory."""
+
+    def test_concurrent_writers_keep_each_others_entries(self, tmp_path):
+        cache_dir = tmp_path / "fp_cache"
+        first = DiskBackedFPCache(cache_dir)
+        second = DiskBackedFPCache(cache_dir)
+        first.put(("h", "a"), {"x": torch.tensor(1.0)})
+        second.put(("h", "b"), {"x": torch.tensor(2.0)})
+
+        index = DiskBackedFPCache(cache_dir)._index["entries"]
+        assert set(index) == {"h/a", "h/b"}
+
+    def test_get_sees_entry_put_by_another_instance(self, tmp_path):
+        cache_dir = tmp_path / "fp_cache"
+        reader = DiskBackedFPCache(cache_dir)
+        DiskBackedFPCache(cache_dir).put(("h", "a"), {"x": torch.tensor(1.0)})
+        assert reader.get(("h", "a")) is not None
+
+    def test_lookup_does_not_depend_on_the_index(self, tmp_path):
+        cache_dir = tmp_path / "fp_cache"
+        DiskBackedFPCache(cache_dir).put(("h", "a"), {"x": torch.tensor(1.0)})
+        (cache_dir / "index.json").write_text("{ not json")
+        assert DiskBackedFPCache(cache_dir).get(("h", "a")) is not None
+        # The damaged file is left for the next update to overwrite, not deleted
+        # out from under a process that has just replaced it.
+        assert (cache_dir / "index.json").exists()
+
+    def test_stale_entry_is_dropped_from_the_shared_index(self, tmp_path):
+        cache_dir = tmp_path / "fp_cache"
+        DiskBackedFPCache(cache_dir).put(("h", "a"), {"x": torch.tensor(1.0)})
+        (cache_dir / "h" / "a.pt").unlink()
+        fresh = DiskBackedFPCache(cache_dir)
+        assert fresh.get(("h", "a")) is None
+        assert "h/a" not in DiskBackedFPCache(cache_dir)._index["entries"]
+
+    def test_put_leaves_no_temp_files(self, tmp_path):
+        cache_dir = tmp_path / "fp_cache"
+        DiskBackedFPCache(cache_dir).put(("h", "a"), {"x": torch.tensor(1.0)})
+        names = sorted(p.name for p in (cache_dir / "h").iterdir())
+        assert names == ["a.pt"]

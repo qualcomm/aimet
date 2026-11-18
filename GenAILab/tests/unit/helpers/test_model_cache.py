@@ -3,9 +3,24 @@
 
 """Tests for DiskBackedModelCache."""
 
-import pytest
+import json
 
-from GenAILab.bench.model_cache import DiskBackedModelCache
+import onnx
+import pytest
+from onnx import TensorProto, helper
+from transformers import LlamaConfig
+
+from GenAILab.bench.model_cache import DiskBackedModelCache, ModelCacheEntry
+
+
+def _tiny_entry():
+    graph = helper.make_graph(
+        [helper.make_node("Relu", ["x"], ["y"])],
+        "g",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])],
+    )
+    return ModelCacheEntry(backbone=helper.make_model(graph), config=LlamaConfig())
 
 
 class TestBuildKey:
@@ -52,3 +67,61 @@ class TestDiskBackedModelCache:
 
         cache2 = DiskBackedModelCache(cache_dir)
         assert "test_key" in cache2._index["entries"]
+
+    def test_concurrent_writers_keep_each_others_entries(self, tmp_path):
+        # Two runs share one cache: both load the (empty) index up front, then
+        # each finishes its own export. The later put must not drop the earlier.
+        cache_dir = tmp_path / "model_cache"
+        first = DiskBackedModelCache(cache_dir)
+        second = DiskBackedModelCache(cache_dir)
+        first.put("key_a", _tiny_entry())
+        second.put("key_b", _tiny_entry())
+
+        reader = DiskBackedModelCache(cache_dir)
+        assert reader.get("key_a") is not None
+        assert reader.get("key_b") is not None
+
+    def test_get_sees_entry_put_by_another_instance(self, tmp_path):
+        cache_dir = tmp_path / "model_cache"
+        reader = DiskBackedModelCache(cache_dir)
+        DiskBackedModelCache(cache_dir).put("key_a", _tiny_entry())
+        assert reader.get("key_a") is not None
+
+    def test_lookup_does_not_depend_on_the_index(self, tmp_path):
+        # Another process published the entry but its index update was lost.
+        cache_dir = tmp_path / "model_cache"
+        DiskBackedModelCache(cache_dir).put("key_a", _tiny_entry(), metadata={"k": 1})
+        (cache_dir / "index.json").unlink()
+        assert DiskBackedModelCache(cache_dir).get("key_a") is not None
+
+    def test_first_published_entry_wins(self, tmp_path):
+        cache = DiskBackedModelCache(tmp_path / "model_cache")
+
+        def export_while_another_process_finishes_first():
+            DiskBackedModelCache(tmp_path / "model_cache").put(
+                "key_a", _tiny_entry(), metadata={"writer": "other"}
+            )
+            return _tiny_entry()
+
+        cache.get_or_export(
+            "key_a", export_while_another_process_finishes_first, {"writer": "us"}
+        )
+        meta = json.loads(
+            (tmp_path / "model_cache" / "key_a" / "entry.json").read_text()
+        )
+        assert meta["metadata"] == {"writer": "other"}
+
+    def test_failed_export_leaves_no_entry_or_temp_directory(
+        self, tmp_path, monkeypatch
+    ):
+        cache_dir = tmp_path / "model_cache"
+        cache = DiskBackedModelCache(cache_dir)
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr(onnx, "save_model", fail)
+        with pytest.raises(RuntimeError, match="disk full"):
+            cache.put("key_a", _tiny_entry())
+        assert cache.get("key_a") is None
+        assert [p.name for p in cache_dir.iterdir()] == []

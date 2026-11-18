@@ -43,6 +43,7 @@ from GenAILab.bench.profiler import (
     RecipeStepStats,
     convert_gpu_meter_to_dict,
 )
+from GenAILab.bench.utils.cache_utils import staged_entry
 
 if TYPE_CHECKING:
     from GenAILab.bench.yaml_config_parser import ResolvedStep
@@ -129,8 +130,19 @@ def _adaptation_identity(adaptations: list) -> list:
     return sorted(canonical, key=lambda pair: pair[0])
 
 
+def _entry_is_complete(entry_dir: Path) -> bool:
+    return (entry_dir / "metadata.json").exists() and (entry_dir / "state").is_dir()
+
+
 class RecipeCache:
-    """Content-addressed cache for per-component recipe chain checkpoints."""
+    """Content-addressed cache for per-component recipe chain checkpoints.
+
+    Several processes may share one cache directory. An entry is written to a
+    private directory and renamed into place, so ``metadata.json`` existing
+    means the whole entry (steps and state) is there, even if a writer was
+    killed mid-save. If two processes save the same chain hash, the first to
+    finish wins; they are equivalent, being content-addressed.
+    """
 
     def __init__(self, cache_dir: str | Path):
         self.cache_dir = Path(cache_dir)
@@ -320,11 +332,9 @@ class RecipeCache:
             )
         return result
 
-    def _save_steps(self, chain_hash: str, step_stats: list[RecipeStepStats]):
+    @staticmethod
+    def _save_steps(entry_dir: Path, step_stats: list[RecipeStepStats]):
         """Save step stats (profiler data) to steps.json."""
-        entry_dir = self.cache_dir / chain_hash
-        entry_dir.mkdir(parents=True, exist_ok=True)
-
         steps_data = []
         for step in step_stats:
             steps_data.append(
@@ -341,8 +351,9 @@ class RecipeCache:
         with open(entry_dir / "steps.json", "w") as f:
             json.dump(steps_data, f, indent=2)
 
+    @staticmethod
     def _save_metadata(
-        self,
+        entry_dir: Path,
         chain_hash: str,
         parent_hash: str,
         component: str,
@@ -351,9 +362,6 @@ class RecipeCache:
         step_count: int,
     ):
         """Save metadata.json for a cache entry."""
-        entry_dir = self.cache_dir / chain_hash
-        entry_dir.mkdir(parents=True, exist_ok=True)
-
         metadata = {
             "chain_hash": chain_hash,
             "parent_hash": parent_hash,
@@ -377,19 +385,25 @@ class RecipeCache:
         model_id: str = "",
     ) -> None:
         """Save a cache entry with framework-specific serialization."""
-        entry_dir = self.cache_dir / chain_hash
-        state_dir = entry_dir / "state"
-        state_dir.mkdir(parents=True, exist_ok=True)
+        with staged_entry(self.cache_dir / chain_hash, _entry_is_complete) as staging:
+            state_dir = staging / "state"
+            state_dir.mkdir()
 
-        self._save_steps(chain_hash, step_stats)
-        self._save_metadata(
-            chain_hash, parent_hash, component, self.env_hash, model_id, len(step_stats)
-        )
+            if framework == "torch":
+                self._save_torch(state_dir, sim_component)
+            elif framework == "onnx":
+                self._save_onnx(state_dir, sim_component)
 
-        if framework == "torch":
-            self._save_torch(state_dir, sim_component)
-        elif framework == "onnx":
-            self._save_onnx(state_dir, sim_component)
+            self._save_steps(staging, step_stats)
+            self._save_metadata(
+                staging,
+                chain_hash,
+                parent_hash,
+                component,
+                self.env_hash,
+                model_id,
+                len(step_stats),
+            )
 
         log_cache_save(component, step_stats[-1], chain_hash)
 

@@ -209,6 +209,26 @@ class TestONNXCache:
         assert cache.paths(self._key()) is None
         assert list(tmp_path.iterdir()) == []
 
+    def test_first_finished_export_is_kept(self, tmp_path):
+        cache = DiffusionONNXCache(tmp_path)
+
+        def write(directory, content):
+            for name in COMPONENTS:
+                (directory / name).mkdir()
+                (directory / name / diffusion_onnx.MODEL_FILE).write_bytes(content)
+
+        def export_while_another_process_finishes_first(directory):
+            cache.get_or_export(self._key(), lambda other: write(other, b"other"))
+            write(directory, b"ours")
+
+        paths = cache.get_or_export(
+            self._key(), export_while_another_process_finishes_first
+        )
+        assert paths["unet"].read_bytes() == b"other"
+        assert [p.name for p in tmp_path.iterdir()] == [
+            DiffusionONNXCache.key_hash(self._key())
+        ]
+
     def test_incomplete_export_is_an_error(self, tmp_path):
         cache = DiffusionONNXCache(tmp_path)
         with pytest.raises(RuntimeError, match="did not write every component"):

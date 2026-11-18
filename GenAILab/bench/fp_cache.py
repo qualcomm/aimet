@@ -4,12 +4,16 @@
 """Disk-backed cache for FP model results that persists across runs."""
 
 import json
+import os
 import shutil
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 import torch
+
+from GenAILab.bench.utils.cache_utils import atomic_write_json
 
 
 class DiskBackedFPCache:
@@ -20,7 +24,11 @@ class DiskBackedFPCache:
     then served from memory for subsequent accesses within the same session.
 
     The cache stores an ``index.json`` manifest alongside the tensor files so
-    that cached entries can be inspected without loading tensor data.
+    that cached entries can be inspected without loading tensor data. The files
+    themselves are the source of truth, so a lookup never depends on the index.
+
+    Several processes may share one cache directory: each tensor file is written
+    aside and renamed into place, and the index is re-read before every update.
     """
 
     _INDEX_FILE = "index.json"
@@ -44,17 +52,17 @@ class DiskBackedFPCache:
         if path_key in self._memory:
             return self._memory[path_key]
 
-        # Layer 2: on disk but not yet loaded
-        if path_key in self._index["entries"]:
-            file_path = self._cache_dir / self._index["entries"][path_key]["file"]
-            if file_path.exists():
-                data = torch.load(file_path, map_location="cpu", weights_only=True)
-                self._memory[path_key] = data
-                return data
+        # Layer 2: on disk but not yet loaded. The file is the source of truth:
+        # another process may have written it without our index knowing.
+        file_path = self._cache_dir / f"{path_key}.pt"
+        if file_path.exists():
+            data = torch.load(file_path, map_location="cpu", weights_only=True)
+            self._memory[path_key] = data
+            return data
 
-            # Stale index entry -- file was deleted externally
-            del self._index["entries"][path_key]
-            self._save_index()
+        # Stale index entry -- file was deleted externally
+        if path_key in self._load_index()["entries"]:
+            self._update_index(path_key, None)
 
         return None
 
@@ -64,19 +72,27 @@ class DiskBackedFPCache:
         file_path = self._cache_dir / f"{path_key}.pt"
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Atomic write: temp file then rename
-        tmp_path = file_path.with_suffix(".pt.tmp")
-        torch.save(data, tmp_path)
-        tmp_path.rename(file_path)
+        # Atomic write: a temp file of our own, then rename. Two processes
+        # computing the same entry must not share a temp file.
+        tmp_path = file_path.with_name(
+            f".{file_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
+        )
+        try:
+            torch.save(data, tmp_path)
+            os.replace(tmp_path, file_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
         self._memory[path_key] = data
-        self._index["entries"][path_key] = {
-            "metadata": metadata,
-            "created": datetime.now().isoformat(),
-            "size_bytes": file_path.stat().st_size,
-            "file": f"{path_key}.pt",
-        }
-        self._save_index()
+        self._update_index(
+            path_key,
+            {
+                "metadata": metadata,
+                "created": datetime.now().isoformat(),
+                "size_bytes": file_path.stat().st_size,
+                "file": f"{path_key}.pt",
+            },
+        )
 
     def get_or_compute(
         self,
@@ -118,14 +134,30 @@ class DiskBackedFPCache:
                 with open(index_path, "r") as f:
                     return json.load(f)
             except (json.JSONDecodeError, ValueError):
+                # Not unlinked: another process may have just replaced it with a
+                # good one. The next update overwrites it.
                 print(f"  [cache] FP cache index corrupted — resetting")
-                index_path.unlink()
         return self._empty_index()
 
+    def _update_index(self, path_key: str, index_entry: dict | None):
+        """Set the index entry for *path_key*, or remove it when ``None``.
+
+        The index is re-read from disk first, so entries other processes sharing
+        this cache added since it was loaded are kept. Two processes updating it
+        at the same moment can still lose one update, which only costs an
+        inspection entry: lookups go by file.
+        """
+        self._index = self._load_index()
+        if index_entry is None:
+            self._index["entries"].pop(path_key, None)
+        else:
+            self._index["entries"][path_key] = index_entry
+        self._save_index()
+
     def _save_index(self):
-        index_path = self._cache_dir / self._INDEX_FILE
-        with open(index_path, "w") as f:
-            json.dump(self._index, f, indent=2, default=str)
+        atomic_write_json(
+            self._cache_dir / self._INDEX_FILE, self._index, indent=2, default=str
+        )
 
     @classmethod
     def _empty_index(cls) -> dict:
