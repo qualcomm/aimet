@@ -319,7 +319,7 @@ class WheelBuildTask(Task):
         # Create constraints file (same approach as CI Dockerfile)
         constraints = [f"torch=={self.ver_torch or '2.10.*'}"]
         if self.enable_onnx:
-            constraints.append(f"onnxruntime=={self.ver_onnxruntime or '1.23.*'}")
+            constraints.append(f"onnxruntime=={self.ver_onnxruntime or '1.19.*'}")
         constraints_file.write_text("\n".join(constraints) + "\n")
         logger.info(f"Created constraints file: {constraints_file}")
 
@@ -407,10 +407,7 @@ class WheelBuildTask(Task):
         # don't carry these, so install them explicitly before `python -m build`.
         if self.enable_onnx:
             build_time_deps = ["onnx", "build", "pybind11"]
-            if self.ver_onnxruntime:
-                build_time_deps.append(f"onnxruntime=={self.ver_onnxruntime}")
-            else:
-                build_time_deps.append("onnxruntime")
+            build_time_deps.append(f"onnxruntime=={self.ver_onnxruntime or '1.19.*'}")
             install_cmd = ["uv", "pip", "install", *build_time_deps]
             logger.info(f"Running: {' '.join(install_cmd)}")
             try:

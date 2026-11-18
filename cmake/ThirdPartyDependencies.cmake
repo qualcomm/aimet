@@ -107,54 +107,12 @@ endif ()
 ######################
 
 if (ENABLE_ONNX)
-  # Download and install onnxruntime headers
-  execute_process(
-    COMMAND ${Python3_EXECUTABLE} "-c" "import onnxruntime; print(onnxruntime.__version__)"
-      OUTPUT_VARIABLE ONNXRUNTIME_VERSION
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      RESULT_VARIABLE _onnxrt_version_result
-  )
-
-  if (NOT _onnxrt_version_result EQUAL 0 OR NOT ONNXRUNTIME_VERSION)
-    message(FATAL_ERROR "Failed to detect onnxruntime version. Please install onnxruntime: pip install onnxruntime")
+  # The onnxruntime C/C++ headers are vendored in third_party/onnxruntime/include
+  # (see set_onnxruntime_variables() in cmake/PrepareONNX.cmake) since the
+  # pip-installed onnxruntime package does not ship them and they are no longer
+  # fetched from GitHub releases at build time.
+  if (NOT EXISTS "${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include/onnxruntime_cxx_api.h")
+    message(FATAL_ERROR "onnxruntime headers not found at ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include")
   endif()
-  message(STATUS "Detected ONNX Runtime version: ${ONNXRUNTIME_VERSION}")
-
-  if ("${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"     STREQUAL "Linux-x86_64")
-    set(PLATFORM_TAG "linux-x64")
-    set(EXTENSION "tgz")
-  elseif ("${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "Linux-aarch64")
-    set(PLATFORM_TAG "linux-aarch64")
-    set(EXTENSION "tgz")
-  elseif ("${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "Windows-x86_64" OR "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "Windows-AMD64")
-    set(PLATFORM_TAG "win-x64")
-    set(EXTENSION "zip")
-  elseif ("${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "Darwin-arm64")
-    set(PLATFORM_TAG "osx-arm64")
-    set(EXTENSION "tgz")
-  else()
-    message(
-      FATAL_ERROR
-      "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR} is not supported."
-    )
-  endif()
-
-  if (ENABLE_CUDA)
-    set(PLATFORM_TAG "${PLATFORM_TAG}-gpu")
-  endif()
-
-  message(NOTICE "ONNX Runtime: Fetching from external URL")
-  set(
-    ONNXRUNTIME_URL
-    "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-${PLATFORM_TAG}-${ONNXRUNTIME_VERSION}.${EXTENSION}"
-  )
-  FetchContent_Declare(
-    onnxruntime_headers
-    URL ${ONNXRUNTIME_URL}
-    EXCLUDE_FROM_ALL
-  )
-  FetchContent_MakeAvailable(onnxruntime_headers)
-
-  set(CMAKE_INCLUDE_PATH "${CMAKE_INCLUDE_PATH};${onnxruntime_headers_SOURCE_DIR}/include" PARENT_SCOPE)
 endif()
 

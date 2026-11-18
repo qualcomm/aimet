@@ -15,31 +15,18 @@ function(set_onnx_version)
 endfunction()
 
 function(set_onnxruntime_variables)
+    # AIMET's ONNX custom ops are loaded by the onnxruntime runtime as a plugin;
+    # they are compiled against the onnxruntime C/C++ headers but are not linked
+    # against libonnxruntime itself. The headers are vendored under
+    # third_party/onnxruntime/include since the pip-installed onnxruntime package
+    # does not ship them.
     find_path(ONNXRUNTIME_INCLUDE_DIR_ "onnxruntime_cxx_api.h"
-            PATHS ${onnxruntime_headers_SOURCE_DIR}/include
-            REQUIRED
-            NO_CMAKE_FIND_ROOT_PATH)
-
-    # Determine library name based on platform
-    if (APPLE)
-        set(ONNXRUNTIME_LIB_NAMES libonnxruntime.dylib)
-    elseif (WIN32)
-        set(ONNXRUNTIME_LIB_NAMES onnxruntime.lib)
-    else()
-        set(ONNXRUNTIME_LIB_NAMES libonnxruntime.so)
-    endif()
-
-    find_library(ONNXRUNTIME_LIBRARIES_
-            NAMES ${ONNXRUNTIME_LIB_NAMES}
-            PATHS ${onnxruntime_headers_SOURCE_DIR}/lib
+            PATHS ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include
             REQUIRED
             NO_CMAKE_FIND_ROOT_PATH)
 
     message(STATUS "** ONNXRUNTIME_INCLUDE_DIR = ${ONNXRUNTIME_INCLUDE_DIR_}")
     set(ONNXRUNTIME_INCLUDE_DIR ${ONNXRUNTIME_INCLUDE_DIR_} PARENT_SCOPE)
-
-    message(STATUS "** ONNXRUNTIME_LIBRARIES = ${ONNXRUNTIME_LIBRARIES_}")
-    set(ONNXRUNTIME_LIBRARIES ${ONNXRUNTIME_LIBRARIES_} PARENT_SCOPE)
 endfunction()
 
 macro(update_onnx_cuda_arch_list)

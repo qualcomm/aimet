@@ -10,7 +10,7 @@ networkx
 numpy
 onnx
 onnx_ir>=0.1.16
-onnxruntime>=1.19
+onnxruntime>=1.19.2
 onnxscript>=0.4.0
 osqp
 pandas
