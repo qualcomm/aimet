@@ -678,6 +678,10 @@ class QuantSimConfigurator(AimetCommonQuantSimConfigurator):
                     for _, param_quantizer in self._op_to_quantizers[
                         op.dotted_name
                     ].parameter_quantizers:
+                        params = param_quantizer.tensor_quantizer_params
+                        if params is not None and params.channel_axis is None:
+                            # No channel axis, e.g. a scalar Gemm C; keep it per-tensor
+                            continue
                         param_quantizer.enable_per_channel_quantization()
 
 

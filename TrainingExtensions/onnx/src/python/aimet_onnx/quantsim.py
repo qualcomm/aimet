@@ -1126,16 +1126,33 @@ class QuantizationSimModel:
             self.connected_graph, param_name
         )
         tensor_quantizer_params = TensorQuantizerParams(param_shape)
-
-        if len(param_shape) == 1:
-            tensor_quantizer_params.channel_axis = 0
-            tensor_quantizer_params.block_axis = None
-        else:
-            channel_axis, block_axis = self._get_quantization_axes(op)
-            tensor_quantizer_params.channel_axis = channel_axis
-            tensor_quantizer_params.block_axis = block_axis
+        channel_axis, block_axis = self._get_param_quantization_axes(
+            op, param_name, param_shape
+        )
+        tensor_quantizer_params.channel_axis = channel_axis
+        tensor_quantizer_params.block_axis = block_axis
 
         return tensor_quantizer_params
+
+    @classmethod
+    def _get_param_quantization_axes(
+        cls, op: Op, param_name: str, param_shape
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """
+        Gets quantization axes (channel axis, block axis) of parameter ``param_name`` of ``op``
+        """
+        if len(param_shape) == 1:
+            return 0, None
+
+        if op.type == "Gemm" and any(
+            param.name == param_name and param_type == "bias"
+            for param, param_type in op.parameters.values()
+        ):
+            # Gemm's C can be any tensor that broadcasts to the [M, N] output, e.g. [1, N] or
+            # [M, N]. Its output-channel axis is always the last one, regardless of transB
+            return (len(param_shape) - 1 if param_shape else None), None
+
+        return cls._get_quantization_axes(op)
 
     @staticmethod
     def _get_quantization_axes(op: Op) -> Tuple[Optional[int], Optional[int]]:
@@ -1915,6 +1932,18 @@ class QuantizationSimModel:
             bias_float = (
                 to_array(bias_proto) if bias_proto else np.zeros_like(weight_scale)
             )
+            # A bias may be any tensor that broadcasts to the output, e.g. Gemm C or a
+            # MatMul + Add addend of shape [M, N] or [1]. Overflow only depends on the largest
+            # |bias| per output channel, so reduce it to that
+            num_channels = np.size(weight_scale)
+            is_broadcast_bias = bias_float.ndim != 1 or (
+                bias_float.size == 1 and num_channels > 1
+            )
+            bias_per_channel = (
+                _absmax_per_channel(bias_float, num_channels)
+                if is_broadcast_bias
+                else bias_float
+            )
 
             encodings = weight_qtzr.get_encodings()
             if encodings is None:
@@ -1923,7 +1952,7 @@ class QuantizationSimModel:
             # Prevent bias overflow (1)
             # Use slightly discounted num_steps to account for floating point precision error
             adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
-                bias_float, input_scale, weight_scale, num_steps=2**31 - 2**15
+                bias_per_channel, input_scale, weight_scale, num_steps=2**31 - 2**15
             )
 
             if (
@@ -1945,9 +1974,14 @@ class QuantizationSimModel:
                 accumulator_bias = np.round(bias_float / bias_scale) + np.round(
                     output_offset * output_scale / bias_scale
                 )
+                accumulator_bias = accumulator_bias * bias_scale
+                if is_broadcast_bias:
+                    accumulator_bias = _absmax_per_channel(
+                        accumulator_bias, num_channels
+                    )
                 # Use slightly discounted num_steps to account for floating point precision error
                 adjusted_weight_scale = _adjust_weight_scale_against_bias_overflow(
-                    accumulator_bias * bias_scale,
+                    accumulator_bias,
                     input_scale,
                     adjusted_weight_scale,
                     num_steps=2**31 - 2**15,
@@ -2066,6 +2100,11 @@ class QuantizationSimModel:
         bias_qtzr = self.qc_quantize_op_dict[bias.name]
         if not bias_qtzr.quant_info.usePerChannelMode:
             bias_scale = bias_scale.max()
+        elif bias_scale.ndim > 1:
+            # Multi-dim bias (e.g. Gemm C of shape [M, N]): one scale per channel
+            channel_axis = bias_qtzr.quant_info.channelAxis
+            other_axes = tuple(i for i in range(bias_scale.ndim) if i != channel_axis)
+            bias_scale = bias_scale.max(axis=other_axes)
 
         return bias_scale
 
@@ -2259,7 +2298,9 @@ class QuantizationSimModel:
                     # Since input_scale isn't available, exclude bias from quantization.
                     continue
 
-                if encoding_type == EncodingType.PER_TENSOR.name:
+                is_shared_bias = self._is_channel_shared_bias(op, weight, bias)
+
+                if encoding_type == EncodingType.PER_TENSOR.name or is_shared_bias:
                     bias_qtzr.enable_per_channel_quantization(False)
                 elif encoding_type in [
                     EncodingType.PER_CHANNEL.name,
@@ -2272,8 +2313,12 @@ class QuantizationSimModel:
                         f"Unknown encoding type {encoding_type}, cannot concretize bias quantizers."
                     )
 
-                if weight_qtzr is None:
-                    # Edge case: Op has no weight quantizer. Fall back to statistical bias scale
+                if weight_qtzr is None or (
+                    is_shared_bias and encoding_type != EncodingType.PER_TENSOR.name
+                ):
+                    # Edge case: Op has no weight quantizer, or each bias value is shared by
+                    # output channels with different weight scales (e.g. Gemm C of shape [M, 1]).
+                    # No analytic bias scale exists; fall back to statistical bias scale
                     get_bias_scale = self._get_statistical_bias_scale
                     is_analytic = False
                 else:
@@ -2322,6 +2367,22 @@ class QuantizationSimModel:
         except:  # pylint disable=bare-except
             cleanup()
             raise
+
+    @staticmethod
+    def _is_channel_shared_bias(op: Op, weight: Product | None, bias: Product) -> bool:
+        """
+        True if the bias of a Gemm (C) or MatMul (+Add) broadcasts along the output-channel
+        axis, e.g. shape [], [1] or [M, 1], so each bias value is shared by all output channels.
+        Such a bias has no per-channel analytic scale.
+        """
+        if op.type not in ("Gemm", "MatMul") or weight is None or not weight.shape:
+            return False
+        bias_shape = tuple(bias.shape or ())
+        if op.type == "Gemm":
+            num_out_channels = weight.shape[0 if op.transposed_params else 1]
+        else:
+            num_out_channels = weight.shape[-2 if op.transposed_params else -1]
+        return len(bias_shape) == 0 or (bias_shape[-1] == 1 and num_out_channels != 1)
 
     def _get_weight_and_bias(self, op: Op) -> tuple[Product | None, Product | None]:
         weight = None
@@ -4706,6 +4767,24 @@ def _unique_axis_by_shape(
     return matches[0] if len(matches) == 1 else None
 
 
+def _absmax_per_channel(bias: np.ndarray, num_channels: int) -> np.ndarray:
+    """
+    Reduce a bias that broadcasts to a linear op's [..., N] output (e.g. a Gemm C of shape
+    [M, N], [M, 1], [1] or []) to the largest magnitude per output channel.
+
+    :param bias: Bias values
+    :param num_channels: Number of quantization channels: N for per-channel, 1 for per-tensor
+    :return: Max ``|bias|`` per channel, of shape [N], or a scalar if ``num_channels`` is 1
+    """
+    bias = np.abs(np.asarray(bias, dtype=np.float64))
+    if num_channels == 1:
+        return bias.max(initial=0.0)
+    bias = np.broadcast_to(
+        bias, (*bias.shape[:-1], num_channels) if bias.ndim else (num_channels,)
+    )
+    return bias.reshape(-1, num_channels).max(axis=0)
+
+
 def _channel_axes_from_connected_graph(model: onnx_ir.Model) -> Dict[str, int]:
     """
     Channel axis of every parameter, from :meth:`~QuantizationSimModel._get_quantization_axes`.
@@ -4725,13 +4804,12 @@ def _channel_axes_from_connected_graph(model: onnx_ir.Model) -> Dict[str, int]:
         ) from e
 
     for op in connected_graph.get_all_ops().values():
-        channel_axis, _ = QuantizationSimModel._get_quantization_axes(op)  # pylint: disable=protected-access
-
-        if channel_axis is None:
-            continue
-
         for product, _unused in (op.parameters or {}).values():
-            axes[product.name] = channel_axis
+            channel_axis, _ = QuantizationSimModel._get_param_quantization_axes(  # pylint: disable=protected-access
+                op, product.name, product.shape or ()
+            )
+            if channel_axis is not None:
+                axes[product.name] = channel_axis
 
     return axes
 

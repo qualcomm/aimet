@@ -6919,6 +6919,188 @@ def test_htp_overflow_protection(tmp_path, module_factory):
     assert np.all(weight_scale[0:2] == 1.0)
 
 
+def _gemm_model(weight: np.ndarray, bias: np.ndarray, trans_b: bool, M: int):
+    N = weight.shape[0] if trans_b else weight.shape[1]
+    K = weight.shape[1] if trans_b else weight.shape[0]
+    graph = onnx.helper.make_graph(
+        [
+            onnx.helper.make_node(
+                "Gemm", ["x", "W", "C"], ["y"], name="gemm", transB=int(trans_b)
+            )
+        ],
+        "gemm",
+        [onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [M, K])],
+        [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [M, N])],
+        initializer=[
+            onnx.numpy_helper.from_array(weight, "W"),
+            onnx.numpy_helper.from_array(bias, "C"),
+        ],
+    )
+    model = onnx.helper.make_model(
+        graph, opset_imports=[onnx.helper.make_opsetid("", 17)]
+    )
+    model.ir_version = 8
+    onnx.checker.check_model(model, full_check=True)
+    return model
+
+
+@pytest.mark.parametrize("trans_b", [False, True])
+@pytest.mark.parametrize("per_channel", [True, False])
+@pytest.mark.parametrize(
+    "bias_shape, per_channel_bias",
+    [
+        ((4,), True),
+        ((1, 4), True),
+        ((6, 4), True),  # e.g. OWLv2 box head: per-patch [num_patches, 4] C
+        ((6, 1), False),  # broadcasts along the channel axis
+        ((1,), False),
+        ((), False),
+    ],
+)
+def test_gemm_with_broadcast_bias(
+    tmp_path, bias_shape, per_channel_bias, per_channel, trans_b
+):
+    """
+    Given: Gemm whose C has any shape that broadcasts to the [M, N] output
+    When: compute_encodings and export with int32 bias
+    Then: 1. C is quantized as the Gemm's bias param, with a channel axis on its last dim
+          2. Bias follows the weight's granularity: per-channel scales equal to
+             input_scale * weight_scale if C has a channel dim, otherwise one scale
+          3. Quantsim output stays close to the float output
+    """
+    M, K, N = 6, 8, 4
+    rng = np.random.default_rng(0)
+    weight = rng.standard_normal((N, K) if trans_b else (K, N)).astype(np.float32)
+    bias = rng.standard_normal(bias_shape).astype(np.float32)
+    model = _gemm_model(weight, bias, trans_b, M)
+
+    sim = QuantizationSimModel(
+        model, param_type=aimet_onnx.int8, activation_type=aimet_onnx.int16
+    )
+    gemm = sim.connected_graph.get_op_from_module_name("gemm")
+    _, bias_product = sim._get_weight_and_bias(gemm)
+    assert bias_product is not None and bias_product.name == "C"
+    assert "C" in sim.param_names
+
+    bias_qtzr = sim.qc_quantize_op_dict["C"]
+    if bias_shape:
+        assert bias_qtzr.tensor_quantizer_params.channel_axis == len(bias_shape) - 1
+
+    if not per_channel:
+        sim.qc_quantize_op_dict["W"].enable_per_channel_quantization(False)
+
+    x = rng.standard_normal((M, K)).astype(np.float32)
+    sim.compute_encodings([{"x": x}])
+    sim.export(tmp_path, "model", export_int32_bias=True)
+
+    with open(tmp_path / "model.encodings") as f:
+        encodings = json.load(f)
+    encodings = {
+        enc["name"]: enc
+        for enc in itertools.chain(
+            encodings["activation_encodings"], encodings["param_encodings"]
+        )
+    }
+    bias_enc, weight_enc, input_enc = encodings["C"], encodings["W"], encodings["x"]
+    assert bias_enc["bw"] == 32
+    assert len(weight_enc["scale"]) == (N if per_channel else 1)
+
+    if per_channel and per_channel_bias:
+        assert bias_enc["enc_type"] == "PER_CHANNEL"
+        assert np.allclose(
+            bias_enc["scale"],
+            np.array(input_enc["scale"]) * np.array(weight_enc["scale"]),
+        )
+    else:
+        assert len(bias_enc["scale"]) == 1
+
+    out = sim.session.run(None, {"x": x})[0]
+    expected = x @ (weight.T if trans_b else weight) + bias
+    assert np.allclose(out, expected, atol=0.1)
+
+
+@pytest.mark.parametrize("fuse_supergroups", [True, False])
+@pytest.mark.parametrize("bias_shape", [(4,), (1,)])
+def test_matmul_add_with_broadcast_bias(tmp_path, bias_shape, fuse_supergroups):
+    """
+    Given: MatMul -> Add whose static rank-1 addend broadcasts to the [M, N] output
+    When: compute_encodings and export with int32 bias
+    Then: The addend is quantized as an int32 bias, and quantsim output stays close to float
+    """
+    M, K, N = 6, 8, 4
+    rng = np.random.default_rng(0)
+    weight = rng.standard_normal((K, N)).astype(np.float32)
+    bias = rng.standard_normal(bias_shape).astype(np.float32)
+    graph = onnx.helper.make_graph(
+        [
+            onnx.helper.make_node("MatMul", ["x", "W"], ["xw"], name="matmul"),
+            onnx.helper.make_node("Add", ["xw", "B"], ["y"], name="add"),
+        ],
+        "matmul_add",
+        [onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [M, K])],
+        [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [M, N])],
+        initializer=[
+            onnx.numpy_helper.from_array(weight, "W"),
+            onnx.numpy_helper.from_array(bias, "B"),
+        ],
+    )
+    model = onnx.helper.make_model(
+        graph, opset_imports=[onnx.helper.make_opsetid("", 17)]
+    )
+    model.ir_version = 8
+
+    with patch_fuse_supergroups(fuse_supergroups):
+        sim = QuantizationSimModel(
+            model, param_type=aimet_onnx.int8, activation_type=aimet_onnx.int16
+        )
+    x = rng.standard_normal((M, K)).astype(np.float32)
+    sim.compute_encodings([{"x": x}])
+    sim.export(tmp_path, "model", export_int32_bias=True)
+
+    with open(tmp_path / "model.encodings") as f:
+        encodings = json.load(f)
+    # The unfused MatMul + Add exports its bias among activation encodings
+    (bias_enc,) = [
+        enc
+        for enc in itertools.chain(
+            encodings["activation_encodings"], encodings["param_encodings"]
+        )
+        if enc["name"] == "B"
+    ]
+    assert bias_enc["bw"] == 32
+    assert len(bias_enc["scale"]) == (N if bias_shape == (N,) else 1)
+
+    out = sim.session.run(None, {"x": x})[0]
+    assert np.allclose(out, x @ weight + bias, atol=0.1)
+
+
+@pytest.mark.parametrize("bias_shape", [(4,), (6, 4)])
+def test_gemm_broadcast_bias_overflow(bias_shape):
+    """
+    Given: Gemm whose C is large enough to overflow int32 at the calibrated weight scale
+    When: compute_encodings
+    Then: Weight scale is raised per channel so that max |C| along each channel fits int32
+    """
+    M, K, N = 6, 8, 4
+    rng = np.random.default_rng(0)
+    weight = rng.uniform(-1e-3, 1e-3, (K, N)).astype(np.float32)
+    bias = rng.uniform(-1, 1, bias_shape).astype(np.float32)
+    bias[..., 0] *= 1e6  # Only channel 0 should need its weight scale raised
+    model = _gemm_model(weight, bias, False, M)
+
+    sim = QuantizationSimModel(
+        model, param_type=aimet_onnx.int8, activation_type=aimet_onnx.int16
+    )
+    x = rng.uniform(-1e-3, 1e-3, (M, K)).astype(np.float32)
+    sim.compute_encodings([{"x": x}])
+
+    input_scale = sim.qc_quantize_op_dict["x"]._get_scale()
+    weight_scale = sim.qc_quantize_op_dict["W"]._get_scale()
+    max_abs_bias = np.abs(bias).reshape(-1, N).max(axis=0)
+    assert np.all(max_abs_bias / (input_scale * weight_scale) < 2**31)
+    assert weight_scale[0] > weight_scale[1:].max()
+
+
 @pytest.mark.parametrize("fuse_supergroups", [True, False])
 @pytest.mark.parametrize(
     "model_factory,             input_shape,     block_size, lpbq, enable_mp",
