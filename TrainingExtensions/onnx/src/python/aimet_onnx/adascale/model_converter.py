@@ -4,6 +4,7 @@
 import contextlib
 from typing import Callable, ContextManager, Tuple, List, Dict, Collection
 
+import numpy as np
 import torch
 import onnx
 import onnx_ir
@@ -343,6 +344,41 @@ def copy_pt_weights_to_onnx(
     return updated
 
 
+def _per_channel_delta_offset(
+    min_vals: np.ndarray, max_vals: np.ndarray, bitwidth: int
+) -> Tuple[List[float], List[float]]:
+    """
+    Delta and offset of each channel, exactly as ``calculate_delta_offset`` gives for that
+    channel's scalar min and max, as Python floats.
+
+    A weight quantizer's channel almost always has min < 0 and a range well above the 1e-5
+    gating epsilon, where the scalar path is delta = max / floor(num_steps / 2) in float64 and
+    a fixed offset; those channels are computed at once. The rest (non-negative min, or a
+    range near the epsilon, where the result depends on numpy's scalar promotion) still go
+    through ``calculate_delta_offset`` one at a time.
+    """
+    min_vals = np.asarray(min_vals, dtype=np.float32)
+    max_vals = np.asarray(max_vals, dtype=np.float32)
+    num_positive_steps = np.floor((2**bitwidth - 1) / 2)
+    # Margin keeps the epsilon gating, whatever precision numpy does it in, from applying
+    common = (min_vals < 0) & (
+        max_vals.astype(np.float64) > min_vals.astype(np.float64) + 2e-5
+    )
+    deltas = np.where(common, max_vals.astype(np.float64) / num_positive_steps, 0.0)
+    deltas = deltas.tolist()
+    offsets = [float(-num_positive_steps - 1)] * len(deltas)
+    for i in np.flatnonzero(~common).tolist():
+        delta, offset = calculate_delta_offset(
+            min_val=min_vals[i],
+            max_val=max_vals[i],
+            bitwidth=bitwidth,
+            use_symmetric_encodings=True,
+            use_strict_symmetric=False,
+        )
+        deltas[i], offsets[i] = np.asarray(delta).item(), np.asarray(offset).item()
+    return deltas, offsets
+
+
 def copy_pt_encodings_to_sim(
     pt_block: torch.fx.GraphModule,
     quantizer_dict: Dict[str, QcQuantizeOp],
@@ -374,19 +410,16 @@ def copy_pt_encodings_to_sim(
                 )
 
             expected_bw = module.param_quantizers["weight"].bitwidth
-            for i, encoding in enumerate(enc):
-                delta, offset = calculate_delta_offset(
-                    min_val=new_min[i],
-                    max_val=new_max[i],
-                    bitwidth=expected_bw,
-                    use_symmetric_encodings=True,
-                    use_strict_symmetric=False,
-                )
-                # TODO: #6393 calculate_delta_offset to return float
-                encoding.delta = delta.item()
-                encoding.offset = offset.item()
-                encoding.min = new_min[i].item()
-                encoding.max = new_max[i].item()
+            new_min = new_min.reshape(-1)
+            new_max = new_max.reshape(-1)
+            deltas, offsets = _per_channel_delta_offset(new_min, new_max, expected_bw)
+            for encoding, delta, offset, min_val, max_val in zip(
+                enc, deltas, offsets, new_min.tolist(), new_max.tolist()
+            ):
+                encoding.delta = delta
+                encoding.offset = offset
+                encoding.min = min_val
+                encoding.max = max_val
                 # Catches bitwidth-override regressions before they silently corrupt delta/offset.
                 assert encoding.bw == expected_bw, (
                     f"Encoding bitwidth mismatch for {onnx_param_name}: "

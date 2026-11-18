@@ -1320,21 +1320,37 @@ class TestAdascaleQuantizer:
                 AdaScale._apply_adascale(sim, inputs, [("x", "y")], num_iterations=1)
         optimize_mock.assert_not_called()
 
-    def test_block_routing_checked_before_training(self):
+    def test_block_routing_checked_after_one_pass(self):
         """
         Given: An MoE block where no sample is routed to expert 1
-        When: AdaScale optimizes the block
-        Then: It raises before the first iteration, not after all of them
+        When: AdaScale optimizes the block for many iterations
+        Then: It raises once every sample has run, not after all iterations, and copies back
+              nothing
         """
-        loss_fn = Mock(side_effect=AssertionError("trained"))
+        from aimet_onnx.adascale import adascale_optimizer as opt
+
+        real_loss_fn = opt._mse_loss_fn
+        calls = []
+
+        def loss_fn(fp_out, qt_out, data_idx=None):
+            calls.append(data_idx)
+            return real_loss_fn(fp_out, qt_out)
+
         with (
             patch("aimet_onnx.adascale.adascale_optimizer._mse_loss_fn", loss_fn),
+            patch(
+                "aimet_onnx.adascale.adascale_optimizer.copy_pt_weights_to_onnx"
+            ) as copy,
             pytest.raises(RuntimeError, match=r"If branches of \['w1'\]"),
         ):
             self._adascale_experts(
-                models_for_tests.predicated_experts_model(), (True, False)
+                models_for_tests.predicated_experts_model(),
+                (True, False),
+                num_iterations=50,
             )
-        loss_fn.assert_not_called()
+        # Two samples: the check runs after the second iteration
+        assert len(calls) == 2
+        copy.assert_not_called()
 
     def test_block_expert_routed_by_a_sample_the_loop_skips(self):
         """
@@ -2716,3 +2732,158 @@ class TestAdaScaleProgressLog:
             r.getMessage().startswith("Done: optimized 0 of 1 blocks")
             for r in caplog.records
         )
+
+
+def test_per_channel_delta_offset_matches_scalar_path():
+    """
+    Given: Per-channel min/max covering ordinary symmetric ranges, non-negative ranges, zero and
+           near-zero ranges
+    When: Delta and offset are computed for all channels at once
+    Then: Every channel matches calculate_delta_offset on its own scalars exactly, as Python
+          numbers
+    """
+    from aimet_onnx.adascale.model_converter import _per_channel_delta_offset
+
+    rng = np.random.default_rng(0)
+    n = 4000
+    mins = rng.standard_normal(n).astype(np.float32) * 0.05
+    maxs = np.abs(rng.standard_normal(n).astype(np.float32)) * 0.05
+    mins[:100] = np.abs(mins[:100])
+    mins[100:200] = 0.0
+    maxs[100:150] = 0.0
+    mins[200:300] = maxs[200:300] = 0.0
+    mins[300:400], maxs[300:400] = -1e-9, 1e-9
+    mins[400:500] = -maxs[400:500]
+    for bitwidth in (4, 8):
+        deltas, offsets = _per_channel_delta_offset(mins, maxs, bitwidth)
+        for i in range(n):
+            delta, offset = calculate_delta_offset(
+                min_val=mins[i],
+                max_val=maxs[i],
+                bitwidth=bitwidth,
+                use_symmetric_encodings=True,
+                use_strict_symmetric=False,
+            )
+            assert type(deltas[i]) is float
+            assert deltas[i] == np.asarray(delta).item()
+            assert offsets[i] == np.asarray(offset).item()
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("on_device", [True, False])
+def test_block_level_api_samples_on_device(on_device):
+    """
+    Given: A block optimized with its samples kept on the GPU, and with per-iteration copies
+    When: AdaScale optimizes it
+    Then: The weights and encodings it produces are identical
+    """
+    if not torch.cuda.is_available():
+        pytest.skip("needs CUDA")
+    from aimet_onnx.adascale import adascale_optimizer as opt
+
+    results = []
+    for flag in (on_device, not on_device):
+        with patch.object(opt, "_fits_on_device", return_value=flag):
+            torch.manual_seed(0)
+            model = ModelWithConsecutiveLinearBlocks().eval()
+            input_shape = (1, 3, 32, 64)
+            torch.random.manual_seed(1)
+            dummy_input = [torch.rand(input_shape), torch.rand(input_shape)]
+            with tempfile.TemporaryDirectory() as tempdir:
+                torch.onnx.export(
+                    model,
+                    dummy_input[0],
+                    tempdir + "/model.onnx",
+                    input_names=["input"],
+                    output_names=["output"],
+                    dynamo=False,
+                )
+                sim = QuantizationSimModel(
+                    load_model(tempdir + "/model.onnx"),
+                    [dummy_input],
+                    config_file="htp_v73",
+                    providers=["CUDAExecutionProvider"],
+                )
+            sim._compute_param_encodings(overwrite=False)
+            sim_model = onnx_ir.from_proto(sim.model.model)
+            onnx_ir.passes.common.TopologicalSortPass().call(sim_model)
+            AdaScale.optimize_adascale_block(
+                sim_model,
+                sim.qc_quantize_op_dict,
+                [[t.numpy()] for t in dummy_input],
+                [[(t * 0.3).numpy()] for t in dummy_input],
+                block_input_output_names=(["input"], ["/blocks.0/layer2/Add_output_0"]),
+                num_iterations=5,
+                device=torch.device("cuda"),
+            )
+            weights = {
+                i.name: numpy_helper.to_array(onnx_ir.to_proto(i.const_value)).copy()
+                for i in sim_model.graph.initializers.values()
+            }
+            encodings = {
+                n: [e.delta for e in q.get_encodings()]
+                for n, q in sim.qc_quantize_op_dict.items()
+                if q.get_encodings()
+            }
+            results.append((weights, encodings))
+    (w0, e0), (w1, e1) = results
+    assert w0.keys() == w1.keys()
+    for name in w0:
+        np.testing.assert_array_equal(w0[name], w1[name])
+    assert e0 == e1
+
+
+def test_layer_with_non_finite_adascale_params_is_left_unchanged(caplog):
+    """
+    Given: A block of two linear layers where the first one's AdaScale params are NaN by the
+           end of training (as a NaN gradient from the block's backward makes them)
+    When: AdaScale copies the block's results back to the sim
+    Then: That layer keeps the sim's weight and encodings and a warning names it, while the
+          other layer is updated
+    """
+    from aimet_onnx.adascale import adascale_optimizer as opt
+
+    model = models_for_tests.simple_mlp_model(torch.float32)
+    # The float model's Gemms read the weight initializers directly (the sim's read their QDQ)
+    gemms = [node for node in model.graph.node if node.op_type == "Gemm"]
+    first, second = (node.input[1] for node in gemms)
+    sim = QuantizationSimModel(model, param_type="int4", activation_type="int16")
+    sim._compute_param_encodings(overwrite=False)
+    inputs = [
+        {"input": np.random.default_rng(0).standard_normal((4, 16)).astype(np.float32)}
+    ]
+
+    def weight(name):
+        init = next(i for i in sim.model.model.graph.initializer if i.name == name)
+        return numpy_helper.to_array(init).copy()
+
+    def deltas(name):
+        return [e.delta for e in sim.qc_quantize_op_dict[name].get_encodings()]
+
+    before = {name: (weight(name), deltas(name)) for name in (first, second)}
+
+    real_drop = opt._drop_non_finite_layers
+
+    def poison_first_then_drop(pytorch_block, param_map, label):
+        modules = dict(pytorch_block.named_modules())
+        (pt_name,) = [n for n, onnx_name in param_map.items() if onnx_name == first]
+        with torch.no_grad():
+            modules[pt_name].param_quantizers["weight"].gamma.fill_(float("nan"))
+        return real_drop(pytorch_block, param_map, label)
+
+    with (
+        patch.object(opt, "_drop_non_finite_layers", poison_first_then_drop),
+        caplog.at_level(logging.WARNING, logger="AdaScale"),
+    ):
+        AdaScale._apply_adascale(
+            sim, inputs, [(gemms[0].input[0], gemms[-1].output[0])], num_iterations=3
+        )
+
+    warnings = [
+        r.getMessage() for r in caplog.records if "not finite" in r.getMessage()
+    ]
+    assert len(warnings) == 1 and first in warnings[0] and second not in warnings[0]
+    np.testing.assert_array_equal(weight(first), before[first][0])
+    assert deltas(first) == before[first][1]
+    assert not np.array_equal(weight(second), before[second][0])
+    assert np.isfinite(weight(second)).all() and all(np.isfinite(deltas(second)))

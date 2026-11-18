@@ -456,6 +456,77 @@ def _check_every_branch_runs(
             )
 
 
+def _drop_non_finite_layers(
+    pytorch_block: torch.nn.Module, param_map: Dict[str, str], label: str
+) -> Dict[str, str]:
+    """
+    ``param_map`` without the layers whose AdaScale params aren't all finite, warning about
+    them. Their folded weight and encodings would be NaN or inf, so they keep the sim's own.
+    """
+    modules = dict(pytorch_block.named_modules())
+    non_finite = []
+    for name in param_map:
+        module = modules.get(name)
+        quantizers = getattr(module, "param_quantizers", None)
+        qdq = quantizers["weight"] if quantizers is not None else None
+        if not hasattr(qdq, "get_adascale_trainable_parameters"):
+            continue
+        beta_gamma, scales = qdq.get_adascale_trainable_parameters()
+        if not all(torch.isfinite(p).all() for p in beta_gamma + scales):
+            non_finite.append(name)
+    if non_finite:
+        _logger.warning(
+            "%s: AdaScale params of %d layer(s) are not finite, so their weights and encodings "
+            "are left unchanged: %s",
+            label,
+            len(non_finite),
+            ", ".join(param_map[name] for name in non_finite),
+        )
+    return {name: onnx for name, onnx in param_map.items() if name not in non_finite}
+
+
+def _sample_nbytes(samples: List[List[torch.Tensor]]) -> int:
+    return sum(
+        t.numel() * t.element_size()
+        for sample in samples
+        for t in (sample if isinstance(sample, (list, tuple)) else [sample])
+        if isinstance(t, torch.Tensor)
+    )
+
+
+def _fits_on_device(device: torch.device, *sample_lists) -> bool:
+    """
+    Whether the samples, and the float targets of as many samples, fit in free device memory
+    with a quarter of it left for training.
+    """
+    if device.type != "cuda":
+        return False
+    free, _ = torch.cuda.mem_get_info(device)
+    # Targets are about the size of one input per sample
+    needed = sum(_sample_nbytes(samples) for samples in sample_lists)
+    needed += _sample_nbytes([s[:1] for s in sample_lists[0]])
+    return needed < 0.75 * free
+
+
+def _to_device(samples, device: torch.device):
+    """``samples`` with every tensor on ``device``. Tensors shared across samples (e.g. one
+    attention mask object) are moved once and stay shared."""
+    moved = {}
+
+    def move(t):
+        if not isinstance(t, torch.Tensor):
+            return t
+        key = id(t)
+        if key not in moved:
+            moved[key] = t.to(device)
+        return moved[key]
+
+    return [
+        [move(t) for t in sample] if isinstance(sample, (list, tuple)) else move(sample)
+        for sample in samples
+    ]
+
+
 class AdaScale:
     """
     AdaScale is PTQ technique which performs Knowledge Distillation on blocks of modules by using the FP32 output as its
@@ -880,6 +951,15 @@ class AdaScale:
         _report.times["convert"] = time.perf_counter() - phase_start
         phase_start = time.perf_counter()
 
+        # Keep the block's input samples and float targets on the device for the whole block
+        # rather than copying each one there every iteration, when they fit (about
+        # 2 * num_samples * sample size). Otherwise they stay on the host.
+        samples_on_device = _fits_on_device(device, torch_fp_input, torch_quant_input)
+        if samples_on_device:
+            torch_fp_input = _to_device(torch_fp_input, device)
+            torch_quant_input = _to_device(torch_quant_input, device)
+        out_device = device if samples_on_device else torch.device("cpu")
+
         fp_out = []
         with torch.no_grad(), _autocast_ctx():
             for input_tensor in torch_fp_input:
@@ -889,7 +969,7 @@ class AdaScale:
                 out = pytorch_block(*input_tensor).detach()
 
                 out.requires_grad_(False)
-                fp_out.append(change_tensor_device_placement(out, torch.device("cpu")))
+                fp_out.append(change_tensor_device_placement(out, out_device))
         per_module_quantizers = {
             name: quantizer_dict[onnx_name]
             for name, onnx_name in pt_weights_to_onnx_initializers.items()
@@ -978,34 +1058,32 @@ class AdaScale:
 
         # A layer in an If branch that no sample runs gets no gradient. The quantized block
         # inputs can route differently than the unquantized ones checked upfront, and the
-        # block can be optimized on its own.
+        # block can be optimized on its own. Which layers ran is recorded during the first pass
+        # over the samples, and checked once it completes, before anything is copied back.
         ran = set()
         modules = dict(pytorch_block.named_modules())
         hooks = [
             modules[name].register_forward_hook(lambda *_, name=name: ran.add(name))
             for name in optimized
         ]
-        try:
-            with torch.no_grad(), _autocast_ctx():
-                for input_tensor in (
-                    torch_fp_input if _QT_SAMPLING_PROB == 0.0 else torch_quant_input
-                ):
-                    if isinstance(input_tensor, torch.Tensor):
-                        input_tensor = [input_tensor]
-                    pytorch_block(*(inp_t.to(device=device) for inp_t in input_tensor))
-        finally:
+        num_samples = len(
+            torch_fp_input if _QT_SAMPLING_PROB == 0.0 else torch_quant_input
+        )
+
+        def _check_every_layer_ran():
             for hook in hooks:
                 hook.remove()
-        not_run = [
-            pt_weights_to_onnx_initializers[name]
-            for name in optimized
-            if name not in ran
-        ]
-        if not_run:
-            raise RuntimeError(
-                f"No input sample runs the If branches of {not_run}, so AdaScale can't "
-                f"optimize them. {_BRANCH_WITHOUT_SAMPLES_HINT}"
-            )
+            hooks.clear()
+            not_run = [
+                pt_weights_to_onnx_initializers[name]
+                for name in optimized
+                if name not in ran
+            ]
+            if not_run:
+                raise RuntimeError(
+                    f"No input sample runs the If branches of {not_run}, so AdaScale can't "
+                    f"optimize them. {_BRANCH_WITHOUT_SAMPLES_HINT}"
+                )
 
         bar = progress_bar(range(num_iterations), desc=_progress_desc)
         try:
@@ -1075,10 +1153,27 @@ class AdaScale:
                         fp_input,
                         quant_input,
                     )
+                    if hooks and iteration + 1 >= num_samples:
+                        _check_every_layer_ran()
                     if should_stop:
                         break
+            if hooks:
+                # Training stopped before a pass over every sample: run the ones it skipped
+                with torch.no_grad(), _autocast_ctx():
+                    samples = (
+                        torch_fp_input
+                        if _QT_SAMPLING_PROB == 0.0
+                        else torch_quant_input
+                    )
+                    for input_tensor in samples[_report.num_iterations_run :]:
+                        if isinstance(input_tensor, torch.Tensor):
+                            input_tensor = [input_tensor]
+                        pytorch_block(*(t.to(device=device) for t in input_tensor))
+                _check_every_layer_ran()
         finally:
             bar.close()
+            for hook in hooks:
+                hook.remove()
             batched_qdq.remove()
         if initial_losses:
             _report.initial_loss = _mean(initial_losses)
@@ -1087,13 +1182,16 @@ class AdaScale:
         _report.times["train"] = time.perf_counter() - phase_start
         phase_start = time.perf_counter()
 
+        # A layer whose AdaScale params went non-finite (e.g. a NaN gradient from the block's
+        # backward) is left as it was: its weight and encodings aren't copied back
+        copy_back = _drop_non_finite_layers(
+            pytorch_block, pt_weights_to_onnx_initializers, _progress_desc
+        )
         updated = copy_pt_weights_to_onnx(
-            pytorch_block, sim_model, pt_weights_to_onnx_initializers, quantizer_dict
+            pytorch_block, sim_model, copy_back, quantizer_dict
         )
         _report.num_weights_updated = len(updated)
-        copy_pt_encodings_to_sim(
-            pytorch_block, quantizer_dict, pt_weights_to_onnx_initializers
-        )
+        copy_pt_encodings_to_sim(pytorch_block, quantizer_dict, copy_back)
         _report.times["copy-back"] = time.perf_counter() - phase_start
 
         del (
