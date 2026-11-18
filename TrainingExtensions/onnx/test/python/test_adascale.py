@@ -30,6 +30,7 @@ from aimet_onnx.adascale.adascale_optimizer import (
 )
 
 from aimet_onnx.adascale.quantizer import (
+    _BatchedWeightQdq,
     add_qlinear_layers,
     QuantizedLinear,
     AdaScaleLinearWeightQdq,
@@ -505,6 +506,217 @@ class TestAdascaleQuantizer:
 
         modified_out = new_qdq(weight_after_adascale_fold)
         assert torch.allclose(modified_out, adascale_out)
+
+    @staticmethod
+    def _expert_block(num_experts=4, dtype=torch.float32):
+        """A block of same-shaped experts, each run only if routed, plus a differently shaped
+        layer that has nothing to group with."""
+
+        class Experts(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.experts = torch.nn.ModuleList(
+                    torch.nn.Linear(16, 8, bias=False) for _ in range(num_experts)
+                )
+                self.out = torch.nn.Linear(8, 4, bias=False)
+
+            def forward(self, x, routed):
+                y = torch.zeros(x.shape[0], 8, dtype=x.dtype, device=x.device)
+                for expert, run in zip(self.experts, routed):
+                    if run:
+                        y = y + expert(x)
+                return self.out(y)
+
+        torch.manual_seed(0)
+        block = Experts().to(dtype)
+        return add_qlinear_layers(block, _make_quantizer_map(block))
+
+    def _train(self, block, batched, routings, dtype=torch.float32):
+        """Train the block's AdaScale params for a few steps; return outputs and grads."""
+        helper = _BatchedWeightQdq(block) if batched else None
+        bg, sc = get_adascale_trainable_params(block)
+        params = bg + sc
+        for p in params:
+            p.requires_grad_(True)
+        optimizer = torch.optim.Adam(params, lr=1e-2)
+        torch.manual_seed(1)
+        xs = [torch.randn(5, 16, dtype=dtype) for _ in routings]
+        outputs, grads = [], []
+        for x, routed in zip(xs, routings):
+            out = block(x, routed)
+            out.float().pow(2).sum().backward()
+            outputs.append(out.detach().clone())
+            grads.append(
+                [None if p.grad is None else p.grad.detach().clone() for p in params]
+            )
+            optimizer.step()
+            optimizer.zero_grad()
+        if helper is not None:
+            helper.remove()
+        return outputs, grads, [p.detach().clone() for p in params]
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_batched_weight_qdq_matches_per_layer(self, dtype):
+        """
+        Given: A block of four same-shaped experts behind data-dependent branches, plus one
+               other layer
+        When: Its AdaScale params are trained with the weight QDQ batched, and without
+        Then: The outputs, the gradients (None for experts a step didn't run) and the trained
+              params are bit-identical, and only the experts are batched
+        """
+        routings = [
+            (True, True, True, True),
+            (True, False, True, False),
+            (False, False, False, True),
+        ]
+        reference = self._train(self._expert_block(dtype=dtype), False, routings, dtype)
+        block = self._expert_block(dtype=dtype)
+        helper = _BatchedWeightQdq(block)
+        assert helper.num_batched == 4
+        helper.remove()
+        batched = self._train(block, True, routings, dtype)
+
+        for ref, got in zip(reference[0], batched[0]):
+            assert torch.equal(ref, got)
+        for ref_step, got_step in zip(reference[1], batched[1]):
+            for ref, got in zip(ref_step, got_step):
+                assert (ref is None) == (got is None)
+                if ref is not None:
+                    assert torch.equal(ref, got)
+        for ref, got in zip(reference[2], batched[2]):
+            assert torch.equal(ref, got)
+
+    def test_batched_weight_qdq_skips_frozen_and_unique_layers(self):
+        """
+        Given: A block with experts whose quantizers are frozen (plain WeightQdq)
+        When: The weight QDQ is batched
+        Then: Nothing is batched, and removing it leaves the block computing as before
+        """
+        block = self._expert_block()
+        for expert in block.experts:
+            qdq = expert.param_quantizers["weight"]
+            expert.param_quantizers["weight"] = WeightQdq(
+                expert.weight, qdq.shape, qdq.bitwidth
+            )
+        helper = _BatchedWeightQdq(block)
+        assert helper.num_batched == 0
+        x = torch.randn(3, 16)
+        expected = block(x, (True,) * 4)
+        helper.remove()
+        assert torch.equal(block(x, (True,) * 4), expected)
+
+    def test_batched_weight_qdq_is_not_reused_across_forwards(self):
+        """
+        Given: A batched block whose expert 0 did not run in a forward
+        When: Its weights change and it runs in the next forward
+        Then: It uses the new weights, not the QDQ'd weight handed to it for the earlier forward
+        """
+        block = self._expert_block()
+        helper = _BatchedWeightQdq(block)
+        x = torch.randn(3, 16)
+        block(x, (False, True, True, True))
+        with torch.no_grad():
+            block.experts[0].weight.mul_(2.0)
+        got = block(x, (True, False, False, False))
+        helper.remove()
+        assert torch.equal(got, block(x, (True, False, False, False)))
+
+    def test_batched_weight_qdq_skips_blockwise_layers(self):
+        """
+        Given: A block whose experts have block-wise AdaScale quantizers
+        When: The weight QDQ is batched
+        Then: Nothing is batched
+        """
+        block = self._expert_block()
+        for expert in block.experts:
+            expert.param_quantizers["weight"].block_size = [1, 8]
+        assert _BatchedWeightQdq(block).num_batched == 0
+
+    @staticmethod
+    def _grads(block, batched, routings, accumulate, dtype=torch.float32):
+        """Gradients of the block's AdaScale params after the forwards in ``routings``,
+        summed into one backward, or one backward each, accumulated."""
+        helper = _BatchedWeightQdq(block) if batched else None
+        bg, sc = get_adascale_trainable_params(block)
+        params = bg + sc
+        for p in params:
+            p.requires_grad_(True)
+        torch.manual_seed(1)
+        device = next(block.parameters()).device
+        xs = [torch.randn(5, 16, dtype=dtype).to(device) for _ in routings]
+        losses = [
+            block(x, routed).float().pow(2).sum() for x, routed in zip(xs, routings)
+        ]
+        if accumulate:
+            # one backward per forward, but each forward must stay alive until its backward
+            for loss in losses:
+                loss.backward()
+        else:
+            sum(losses).backward()
+        if helper is not None:
+            helper.remove()
+        return [None if p.grad is None else p.grad.clone() for p in params]
+
+    @pytest.mark.parametrize("accumulate", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_batched_weight_qdq_grads_with_several_forwards(self, accumulate, dtype):
+        """
+        Given: Two forwards that run different experts (0-1, then 1-2; expert 3 in neither)
+        When: Their losses are backpropagated together, or one backward each with the
+              gradients accumulated, with the weight QDQ batched and without
+        Then: The gradients are bit-identical: an expert that only the first forward ran keeps
+              its gradient, and the one neither ran gets none
+        """
+        routings = [(True, True, False, False), (False, True, True, False)]
+        reference = self._grads(
+            self._expert_block(dtype=dtype), False, routings, accumulate, dtype
+        )
+        batched = self._grads(
+            self._expert_block(dtype=dtype), True, routings, accumulate, dtype
+        )
+        assert sum(g is None for g in reference) == 4  # expert 3's s2, s3, beta, gamma
+        for ref, got in zip(reference, batched):
+            assert (ref is None) == (got is None)
+            if ref is not None:
+                assert torch.equal(ref, got)
+
+    def test_batched_weight_qdq_stores_weights_once(self):
+        """
+        Given: A block of four same-shaped experts
+        When: Its weight QDQ is batched, and batching is removed
+        Then: The experts' weights become views of one stacked tensor with their values
+              unchanged, and stay so after removal (copy-back reads them from there)
+        """
+        block = self._expert_block()
+        before = [expert.weight.detach().clone() for expert in block.experts]
+        helper = _BatchedWeightQdq(block)
+        (stacked,) = helper._weights
+        for i, (expert, weight) in enumerate(zip(block.experts, before)):
+            assert expert.weight.data_ptr() == stacked[i].data_ptr()
+            assert torch.equal(expert.weight, weight)
+        helper.remove()
+        assert block.experts[0].weight.data_ptr() == stacked[0].data_ptr()
+        # Batching the block again keeps the weights where they are
+        again = _BatchedWeightQdq(block)
+        assert again._weights[0] is stacked
+        # but not while another batching of it is active
+        with pytest.raises(RuntimeError, match="already batched"):
+            _BatchedWeightQdq(block)
+        again.remove()
+
+    def test_batched_weight_qdq_rejects_a_moved_block(self):
+        """
+        Given: A batched block whose experts' weights were replaced (as moving it to another
+               device does)
+        When: It runs
+        Then: It raises rather than quantizing the stale stacked weights
+        """
+        block = self._expert_block()
+        _BatchedWeightQdq(block)
+        expert = block.experts[0]
+        expert.weight = torch.nn.Parameter(expert.weight.detach().clone())
+        with pytest.raises(RuntimeError, match="no longer views"):
+            block(torch.randn(3, 16), (True,) * 4)
 
     @pytest.mark.parallel
     def test_get_adascale_trainable_params_linear(self):

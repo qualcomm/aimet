@@ -6,6 +6,7 @@ from typing import Optional, List, Tuple, Dict
 import math
 
 import torch
+import torch.utils.checkpoint
 from aimet_onnx.common.quantsim import _get_minimum_scale
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.adascale.utils import (
@@ -291,12 +292,19 @@ class AdaScaleLinearWeightQdq(WeightQdq):
         return [self.beta, self.gamma], self._get_learnable_scales()
 
     def get_scale(self, dtype=None) -> Optional[torch.Tensor]:
+        return self._compute_scale(
+            self.gamma, self.beta, self.min, self.max, self._get_num_steps(), dtype
+        )
+
+    @staticmethod
+    def _compute_scale(gamma, beta, min_tensor, max_tensor, num_steps, dtype=None):
+        """Scale from the learnt ``gamma``/``beta`` and the initial range. Elementwise, so it
+        also takes these parameters of several quantizers stacked along a new leading dim."""
         dtype = dtype or torch.float32
-        scale = (
-            torch.exp(self.gamma) * self.max.to(dtype)
-            - torch.exp(self.beta) * self.min.to(dtype)
-        ) / self._get_num_steps()
-        return scale
+        return (
+            torch.exp(gamma) * max_tensor.to(dtype)
+            - torch.exp(beta) * min_tensor.to(dtype)
+        ) / num_steps
 
     def get_offset(self, dtype=None) -> Optional[torch.Tensor]:
         dtype = dtype or torch.float32
@@ -307,7 +315,11 @@ class AdaScaleLinearWeightQdq(WeightQdq):
         Return the folded weight of the layer. This method along with get_qdq can be used to convert AdaScale
         QDQ object into regular QDQ object
         """
-        for scale in self._get_learnable_scales():
+        return self._fold(weight, self._get_learnable_scales())
+
+    @staticmethod
+    def _fold(weight: torch.Tensor, scales: List[torch.Tensor]) -> torch.Tensor:
+        for scale in scales:
             weight = weight / torch.exp(scale)
         return weight
 
@@ -323,8 +335,7 @@ class AdaScaleLinearWeightQdq(WeightQdq):
         # (fp16/bf16 in low-precision graphs). Cast back so downstream
         # Linear/Conv sees a matching-dtype weight.
         orig_dtype = input_tensor.dtype
-        for scale in self._get_learnable_scales():
-            input_tensor = input_tensor / torch.exp(scale)
+        input_tensor = self._fold(input_tensor, self._get_learnable_scales())
         return super().forward(input_tensor.to(orig_dtype))
 
     def _get_learnable_scales(self) -> list[torch.Tensor]:
@@ -462,10 +473,19 @@ class QuantizedLinear(torch.nn.Linear):
             zero_point_shift=zero_point_shift,
             enc_shape=enc_shape,
         )
+        # QDQ'd weight precomputed by _BatchedWeightQdq for the next call, used once
+        self._batched_weight: Optional[torch.Tensor] = None
+        # Stacked tensor of its group's weights that this layer's weight views, once batched
+        self._stacked_weights: Optional[torch.Tensor] = None
+        # The _BatchedWeightQdq batching this layer, if any
+        self._batched_by = None
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # pylint: disable=redefined-builtin
-        qdq = self.param_quantizers["weight"]
-        w = qdq(self.weight) if qdq is not None else self.weight
+        if self._batched_weight is not None:
+            w, self._batched_weight = self._batched_weight, None
+        else:
+            qdq = self.param_quantizers["weight"]
+            w = qdq(self.weight) if qdq is not None else self.weight
         return torch.nn.functional.linear(input, w, self.bias)
 
 
@@ -614,3 +634,205 @@ def get_adascale_trainable_params(
             all_beta_gamma_parameters.extend(beta_gamma_params)
             all_scale_parameters.extend(scale_parameters)
     return all_beta_gamma_parameters, all_scale_parameters
+
+
+class _GatedStack(torch.autograd.Function):  # pylint: disable=abstract-method
+    """
+    ``torch.stack`` of one parameter of every layer in a group, whose backward gives a gradient
+    only to the layers in ``used``: the layers whose QDQ'd weight the forward that stacked them
+    used. ``used`` is filled in after that forward has run, before its backward.
+
+    A layer the forward didn't use (an expert in an If branch it didn't take) would otherwise
+    get a zero gradient through the stack, which Adam steps on. Without batching it gets no
+    gradient at all, and that is what this gives it, however many forwards share a backward and
+    however many backwards accumulate before a step.
+    """
+
+    @staticmethod
+    def forward(ctx, used, *tensors):  # pylint: disable=arguments-differ
+        ctx.used = used
+        return torch.stack(tensors)
+
+    @staticmethod
+    def backward(ctx, grad_output):  # pylint: disable=arguments-differ
+        return (
+            None,
+            *(
+                grad if i in ctx.used else None
+                for i, grad in enumerate(grad_output.unbind(0))
+            ),
+        )
+
+
+class _BatchedWeightQdq:
+    """
+    Computes the AdaScale weight QDQ of a block's linear layers in one stacked call per group
+    of layers with the same weight shape, dtype and quantization, rather than one call per
+    layer. A mixture-of-experts block has hundreds of such layers (one per expert projection),
+    and its training step is otherwise dominated by launching their small QDQ kernels.
+
+    Before each forward of the block, every grouped layer is handed its slice of the group's
+    QDQ'd weights, which it uses for its next call instead of running its own quantizer. The
+    ops are the same, elementwise, as :meth:`AdaScaleLinearWeightQdq.forward`, so outputs and
+    gradients are unchanged. Layers with a frozen (non-AdaScale) quantizer, block-wise
+    encodings or no other layer to group with keep running their own quantizer.
+
+    Memory, compared with each layer running its own QDQ:
+
+    - A group's weights are stored once, as one stacked tensor: each layer's weight becomes a
+      view of its slice, so stacking them for the QDQ copies nothing. The layers keep their own
+      AdaScale parameters, so the optimizer and copying the results back are unaffected.
+    - The stacked QDQ is recomputed in backward rather than saving its intermediates, which
+      are several times the size of the weights.
+    """
+
+    def __init__(self, block: torch.nn.Module):
+        """
+        :param block: Block whose linear layers to batch
+        """
+        groups: Dict[tuple, List[QuantizedLinear]] = {}
+        for module in block.modules():
+            if not isinstance(module, QuantizedLinear):
+                continue
+            qdq = module.param_quantizers["weight"]
+            if (
+                not isinstance(qdq, AdaScaleLinearWeightQdq)
+                or qdq.block_size is not None
+            ):
+                continue
+            key = (
+                tuple(module.weight.shape),
+                module.weight.dtype,
+                module.weight.device,
+                qdq.bitwidth,
+                qdq.shape,
+                qdq.zero_point_shift,
+            )
+            groups.setdefault(key, []).append(module)
+        self.groups = [layers for layers in groups.values() if len(layers) > 1]
+        for layers in self.groups:
+            for layer in layers:
+                if layer._batched_by is not None:  # pylint: disable=protected-access
+                    raise RuntimeError(
+                        "The block is already batched: remove() the earlier "
+                        "_BatchedWeightQdq first. Two at once would each think the other's "
+                        "layers didn't run, and give them the wrong gradients."
+                    )
+                layer._batched_by = self  # pylint: disable=protected-access
+        self._weights = [self._store_once(layers) for layers in self.groups]
+        # Per group, the indices of the layers whose QDQ'd weight the current forward used
+        self._used: List[set] = [set() for _ in self.groups]
+        self._handles = []
+        if self.groups:
+            self._handles = [
+                block.register_forward_pre_hook(self._precompute),
+                block.register_forward_hook(self._release),
+            ]
+
+    @staticmethod
+    def _store_once(layers: List["QuantizedLinear"]) -> torch.Tensor:
+        """Move the group's weights into one stacked tensor; each layer's weight becomes a
+        view of its slice, so it is copied back and loaded as before. Weights already stored
+        that way (the block was batched before) are kept where they are."""
+        first = layers[0].weight
+        stored = getattr(layers[0], "_stacked_weights", None)
+        if (
+            stored is not None
+            and stored.shape == (len(layers), *first.shape)
+            and all(
+                getattr(layer, "_stacked_weights", None) is stored
+                and layer.weight.data_ptr() == weight.data_ptr()
+                for layer, weight in zip(layers, stored.unbind(0))
+            )
+        ):
+            return stored
+        weights = torch.empty(
+            (len(layers), *first.shape), dtype=first.dtype, device=first.device
+        )
+        for layer, weight in zip(layers, weights.unbind(0)):
+            weight.copy_(layer.weight.detach())
+            layer.weight = torch.nn.Parameter(
+                weight, requires_grad=layer.weight.requires_grad
+            )
+            layer._stacked_weights = weights  # pylint: disable=protected-access
+        return weights
+
+    @property
+    def num_batched(self) -> int:
+        """Number of layers whose QDQ is batched."""
+        return sum(len(layers) for layers in self.groups)
+
+    def remove(self):
+        """Stop batching: remove the hooks and drop any precomputed weights. The layers keep
+        their weights, as views of the stacked tensor."""
+        for handle in self._handles:
+            handle.remove()
+        self._handles = []
+        self._release()
+        for layers in self.groups:
+            for layer in layers:
+                if layer._batched_by is self:  # pylint: disable=protected-access
+                    layer._batched_by = None  # pylint: disable=protected-access
+
+    def _precompute(self, *_):
+        for layers, weights in zip(self.groups, self._weights):
+            for layer, weight in zip(layers, weights.unbind(0)):
+                if layer.weight.data_ptr() != weight.data_ptr():
+                    raise RuntimeError(
+                        "A batched layer's weight no longer views its group's stacked weights "
+                        "(was the block moved to another device?), so the batched QDQ would "
+                        "use stale weights. Batch the block after moving it."
+                    )
+        # Fresh sets: a backward still to come for an earlier forward keeps that forward's
+        self._used = [set() for _ in self.groups]
+        for layers, weights, used in zip(self.groups, self._weights, self._used):
+            qdq = torch.utils.checkpoint.checkpoint(
+                self._qdq, layers, weights, used, use_reentrant=False
+            )
+            # unbind rather than indexing: the backward of each index would write a
+            # zero-filled gradient the size of the whole stack
+            for layer, weight in zip(layers, qdq.unbind(0)):
+                layer._batched_weight = weight  # pylint: disable=protected-access
+
+    def _release(self, *_):
+        # A layer whose weight is still there didn't run, e.g. in an If branch the forward
+        # didn't take
+        for layers, used in zip(self.groups, self._used):
+            for i, layer in enumerate(layers):
+                if layer._batched_weight is None:  # pylint: disable=protected-access
+                    used.add(i)
+                layer._batched_weight = None  # pylint: disable=protected-access
+
+    @staticmethod
+    def _qdq(
+        layers: List["QuantizedLinear"], weights: torch.Tensor, used: set
+    ) -> torch.Tensor:
+        qdqs = [layer.param_quantizers["weight"] for layer in layers]
+        first = qdqs[0]
+
+        def stack(attr):
+            return _GatedStack.apply(used, *(getattr(qdq, attr) for qdq in qdqs))
+
+        def stack_constant(attr):
+            return torch.stack([getattr(qdq, attr) for qdq in qdqs])
+
+        orig_dtype = weights.dtype
+        weight = AdaScaleLinearWeightQdq._fold(  # pylint: disable=protected-access
+            weights, [stack("s2"), stack("s3")]
+        ).to(orig_dtype)
+        scale = AdaScaleLinearWeightQdq._compute_scale(  # pylint: disable=protected-access
+            stack("gamma"),
+            stack("beta"),
+            stack_constant("min"),
+            stack_constant("max"),
+            first._get_num_steps(),  # pylint: disable=protected-access
+        )
+        offset = torch.zeros_like(scale, requires_grad=False)
+        return WeightQdq.quantize_dequantize(
+            weight.as_subclass(torch.Tensor),
+            scale,
+            offset,
+            first.qmin,
+            first.qmax,
+            zero_point_shift=first.zero_point_shift,
+        )

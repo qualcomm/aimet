@@ -45,6 +45,7 @@ from aimet_onnx.llm_topology.topology_types import (
 )
 
 from aimet_onnx.adascale.quantizer import (
+    _BatchedWeightQdq,
     add_qlinear_layers,
     get_adascale_trainable_params,
 )
@@ -966,6 +967,14 @@ class AdaScale:
             return torch.stack(list(losses)).float().mean().item()
 
         pytorch_block.to(device)
+        # Same-shaped layers (e.g. a mixture-of-experts block's expert projections) run their
+        # weight QDQ as one stacked call per group, rather than one call per layer
+        batched_qdq = _BatchedWeightQdq(pytorch_block)
+        _logger.debug(
+            "Batching the weight QDQ of %d layers in %d groups",
+            batched_qdq.num_batched,
+            len(batched_qdq.groups),
+        )
 
         # A layer in an If branch that no sample runs gets no gradient. The quantized block
         # inputs can route differently than the unquantized ones checked upfront, and the
@@ -1070,6 +1079,7 @@ class AdaScale:
                         break
         finally:
             bar.close()
+            batched_qdq.remove()
         if initial_losses:
             _report.initial_loss = _mean(initial_losses)
             _report.final_loss = _mean(recent_losses)
