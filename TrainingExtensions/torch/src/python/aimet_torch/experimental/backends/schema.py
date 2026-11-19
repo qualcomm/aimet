@@ -26,6 +26,10 @@ from aimet_torch.experimental.export._utils import (
     _is_aimet_qdq_node,
     _get_aimet_qdq_module,
 )
+from aimet_torch.experimental.export.passes import (
+    cleanup_duplicate_aimet_qdq_nodes,
+    resolve_aimet_qdq_constraints,
+)
 from aimet_torch.quantization.affine import QuantizeDequantize
 
 
@@ -461,10 +465,8 @@ class BackendDescription:
         for node, schema in matched_schemas.items():
             schema.configure_node(node)
 
-        # Recompile the graph
-        graph_module.graph.eliminate_dead_code()
-        graph_module.recompile()
-        graph_module.delete_all_unused_submodules()
+        resolve_aimet_qdq_constraints(graph_module)
+        cleanup_duplicate_aimet_qdq_nodes(graph_module)
 
     def _throw_not_found_error(
         self,

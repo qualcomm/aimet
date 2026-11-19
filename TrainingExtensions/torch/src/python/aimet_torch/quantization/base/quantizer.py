@@ -108,13 +108,26 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
         if param is not None:
             self._initial_parameters[name] = (weakref.ref(param), param._version)
 
-    def is_initialized(self) -> bool:
+    def is_initialized(self, name: str | None = None) -> bool:
         """
         Returns true if the quantization parameters are initialized.
+
+        Args:
+            name (str, optional): Name of the parameter to check. If None, check all parameters.
         """
+
+        if name is None:
+            named_parameters = list(self.named_parameters())
+        else:
+            named_parameters = [
+                (param_name, param)
+                for param_name, param in self.named_parameters()
+                if param_name == name
+            ]
+
         return all(
             self._is_initialized(param_name, param)
-            for param_name, param in self.named_parameters()
+            for param_name, param in named_parameters
         )
 
     def _is_initialized(
