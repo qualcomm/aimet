@@ -78,7 +78,7 @@ class TestParseDiffusionDocument:
 
     @pytest.mark.parametrize(
         "section",
-        ["precision", "recipe", "dataset", "export", "eval_in_onnx", "analysis"],
+        ["dataset", "export", "eval_in_onnx", "analysis"],
     )
     def test_rejects_unsupported_sections(self, sd_checkpoint, section):
         with pytest.raises(ValueError, match=f"'{section}' is not supported"):

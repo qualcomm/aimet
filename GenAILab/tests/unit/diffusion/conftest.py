@@ -35,9 +35,5 @@ def fake_parti(monkeypatch):
     from GenAILab.bench.diffusion import metrics as diffusion_metrics
 
     monkeypatch.setattr(
-        diffusion_metrics,
-        "load_parti_prompts",
-        lambda num_prompts=64, sample_seed=0: diffusion_metrics.stratified_sample(
-            FAKE_PARTI, num_prompts, sample_seed
-        ),
+        diffusion_metrics, "load_parti_rows", lambda: [dict(r) for r in FAKE_PARTI]
     )

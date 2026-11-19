@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import gc
+import inspect
 import random
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +46,29 @@ class ImageGenerationMetric(EvaluationMetric):
     ):
         raise NotImplementedError
 
+    @classmethod
+    def evaluation_prompts(cls, **metric_kwargs) -> list[dict]:
+        """The prompts ``evaluate(**metric_kwargs)`` generates images for.
+
+        Read from ``evaluate``'s own ``num_prompts``/``sample_seed`` defaults, so
+        calibration can hold out exactly the prompts a metric scores.
+        """
+        params = inspect.signature(cls.evaluate).parameters
+        return load_parti_prompts(
+            metric_kwargs.get("num_prompts", params["num_prompts"].default),
+            metric_kwargs.get("sample_seed", params["sample_seed"].default),
+        )
+
+
+def load_parti_rows() -> list[dict]:
+    """Every PartiPrompts row, as dicts with ``prompt`` and ``category``."""
+    from datasets import load_dataset
+
+    rows = load_dataset(
+        PARTI_PROMPTS_REPO, split="train", revision=PARTI_PROMPTS_REVISION
+    )
+    return [{"prompt": r["Prompt"], "category": r["Category"]} for r in rows]
+
 
 def load_parti_prompts(
     num_prompts: int = DEFAULT_NUM_PROMPTS, sample_seed: int = 0
@@ -57,16 +82,24 @@ def load_parti_prompts(
 
     Returns dicts with ``prompt`` and ``category``, ordered by category then draw.
     """
-    from datasets import load_dataset
+    return stratified_sample(load_parti_rows(), num_prompts, sample_seed)
 
-    rows = load_dataset(
-        PARTI_PROMPTS_REPO, split="train", revision=PARTI_PROMPTS_REVISION
-    )
-    return stratified_sample(
-        [{"prompt": r["Prompt"], "category": r["Category"]} for r in rows],
-        num_prompts,
-        sample_seed,
-    )
+
+def held_out_parti_prompts(
+    num_prompts: int, sample_seed: int, exclude: Iterable[str]
+) -> list[dict]:
+    """A stratified PartiPrompts subset that shares no prompt text with ``exclude``.
+
+    For calibration data that never overlaps the prompts a metric scores.
+    """
+    excluded = set(exclude)
+    rows = [r for r in load_parti_rows() if r["prompt"] not in excluded]
+    if num_prompts > len(rows):
+        raise ValueError(
+            f"Asked for {num_prompts} held-out prompts, but only {len(rows)} "
+            f"PartiPrompts are not used for evaluation."
+        )
+    return stratified_sample(rows, num_prompts, sample_seed)
 
 
 def stratified_sample(

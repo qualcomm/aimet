@@ -1,7 +1,11 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Runs one text-to-image diffusion experiment document (FP, torch or ONNX).
+"""Runs one text-to-image diffusion experiment document.
+
+FP inference runs with torch or ONNX Runtime. A document with a ``precision``
+section quantizes those components with an aimet_onnx QuantSim (ONNX only) and
+calibrates them before the metrics run; the other components stay in float.
 
 The command-line entry points are ``GenAILab/bench/torch/run_diffusion.py`` and
 ``GenAILab/bench/onnx/run_diffusion.py``.
@@ -25,6 +29,7 @@ from GenAILab.bench.profiler import (
     ComponentRecipeStats,
     GPUMeter,
     MetricResult,
+    RecipeStepStats,
     ScoredResult,
     write_stats_to_disk,
 )
@@ -33,6 +38,15 @@ from GenAILab.bench.diffusion.onnx_cache import DiffusionONNXCache, export_key
 from GenAILab.qai_hub_lm.diffusion import onnx as diffusion_onnx
 from GenAILab.qai_hub_lm.diffusion.base import COMPONENTS, DiffusionComponents
 from GenAILab.qai_hub_lm.diffusion.generator import DiffusionGenerator, GenerationConfig
+
+# AIMET is needed only to quantize, so the FP paths run without it.
+try:
+    from GenAILab.bench.diffusion import quantize as diffusion_quantize
+except ImportError as _exc:  # pragma: no cover - depends on the environment
+    _QUANTIZE_IMPORT_ERROR = _exc
+    diffusion_quantize = None
+else:
+    _QUANTIZE_IMPORT_ERROR = None
 
 
 FRAMEWORKS = ("torch", "onnx")
@@ -64,9 +78,10 @@ def run_experiment(
 ):
     """Run one text-to-image experiment document and record its results.
 
-    FP inference only: there are no recipes. With ``framework="onnx"`` the
-    components are exported (or taken from ``onnx_cache``) and run as ONNX
-    Runtime sessions behind the same generator.
+    With ``framework="onnx"`` the components are exported (or taken from
+    ``onnx_cache``) and run as ONNX Runtime sessions behind the same generator.
+    Components named in the document's ``precision`` section are then replaced
+    by QuantSims and calibrated (see :mod:`~GenAILab.bench.diffusion.quantize`).
     """
     if framework not in FRAMEWORKS:
         raise ValueError(f"Unknown framework {framework!r}; expected {FRAMEWORKS}.")
@@ -78,8 +93,19 @@ def run_experiment(
     print(config)
     model_config = config.model
     dtype = getattr(torch, model_config.dtype)
+    # Fail before loading a multi-gigabyte pipeline.
+    if config.is_quantized:
+        if diffusion_quantize is None:
+            raise ImportError(
+                "Quantized diffusion experiments need aimet_onnx."
+            ) from _QUANTIZE_IMPORT_ERROR
+        if framework != "onnx":
+            raise ValueError(
+                "Quantized diffusion experiments run with aimet_onnx only; use "
+                "GenAILab.bench.onnx.run_diffusion."
+            )
+        diffusion_quantize.check_dtype(dtype)
     if framework == "onnx":
-        # Fail before loading a multi-gigabyte pipeline.
         diffusion_onnx.check_dtype(dtype)
     eval_ctx = DiffusionEvaluationContext(fp_cache, model_config, framework)
 
@@ -104,8 +130,9 @@ def run_experiment(
     generator = DiffusionGenerator(components, generation_config)
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    component_steps = {name: [] for name in COMPONENTS}
     if framework == "onnx":
-        components = _onnx_components(
+        components, paths = _onnx_components(
             model_cls,
             components,
             model_config,
@@ -114,7 +141,13 @@ def run_experiment(
             device,
             revision=_checkpoint_revision(model_config.model_id),
         )
+        if config.is_quantized:
+            components = diffusion_quantize.quantize_components(
+                config, components, paths, device
+            )
         generator = DiffusionGenerator(components, generation_config)
+        if config.is_quantized:
+            component_steps.update(_calibrate(config, generator, device))
 
     run_group = config.run_group or uuid.uuid4().hex[:16]
     results_folder = Path(results_dir)
@@ -145,12 +178,49 @@ def run_experiment(
         model_type=model_config.model_type,
         model_id=model_config.model_id,
         model_modifiers=report_modifiers,
-        # FP inference: every component runs unquantized, with no recipe steps.
-        components={name: ComponentRecipeStats(steps=[]) for name in COMPONENTS},
+        # A float component has no recipe steps.
+        components={
+            name: ComponentRecipeStats(steps=steps)
+            for name, steps in component_steps.items()
+        },
         accuracy_results=evaluation_results,
+        precision=config.precision_dict() or None,
         run_group=run_group,
     )
     return evaluation_results
+
+
+def _calibrate(
+    config: DiffusionConfig, generator: DiffusionGenerator, device: torch.device
+) -> dict[str, list[RecipeStepStats]]:
+    """Calibrate every quantized component on prompts no metric scores.
+
+    Returns each quantized component's recipe steps, for the results.
+    """
+    calibration = config.calibration
+    evaluated = {
+        p["prompt"]
+        for metric in config.metrics
+        for p in metric.metric_cls.evaluation_prompts(**metric.metric_kwargs)
+    }
+    prompts = diffusion_metrics.held_out_parti_prompts(
+        calibration.num_prompts, calibration.sample_seed, exclude=evaluated
+    )
+    quantized = list(config.precision)
+    with generator.on_device(device):
+        with GPUMeter(
+            capture_intermediate_data=config.profiler.capture_intermediate_data,
+            **config.profiler.gpu_meter_kwargs,
+        ) as profiler:
+            diffusion_quantize.calibrate(generator, quantized, prompts)
+    step = RecipeStepStats(
+        recipe_name="Calibration",
+        recipe_kwargs=calibration.to_dict(),
+        dataset_name="PartiPrompts",
+        dataset_kwargs={"held_out": True},
+        profiler=profiler,
+    )
+    return {name: [step] for name in quantized}
 
 
 def _onnx_components(
@@ -163,7 +233,10 @@ def _onnx_components(
     *,
     revision: str | None,
 ) -> DiffusionComponents:
-    """``components`` with each torch module replaced by its ONNX Runtime session."""
+    """``components`` with each torch module replaced by its ONNX Runtime session.
+
+    Also returns the path of each component's exported graph.
+    """
     key = export_key(
         model_config.model_id,
         revision,
@@ -191,7 +264,7 @@ def _onnx_components(
         setattr(components, name, None)
     gc.collect()
     torch.cuda.empty_cache()
-    return onnx_components
+    return onnx_components, paths
 
 
 def _checkpoint_revision(model_id: str) -> str | None:

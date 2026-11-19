@@ -128,11 +128,11 @@ def _print_group(model_type, model_id, group_entries):
         if is_multi_component:
             recipe_parts = []
             for comp_name, comp_stats in components.items():
-                recipe_parts.append(f"{comp_name}: {comp_stats.get('recipe', '—')}")
+                recipe_parts.append(f"{comp_name}: {_recipe_label(comp_stats)}")
             recipe_label = "\n".join(recipe_parts)
         else:
             comp = next(iter(components.values()), {})
-            recipe_label = comp.get("recipe", "—")
+            recipe_label = _recipe_label(comp)
 
         rows.append(
             {
@@ -209,26 +209,58 @@ def _print_group(model_type, model_id, group_entries):
         print(f"   {fn}")
 
 
+def _recipe_steps(comp_stats):
+    """The recipe steps of one component's stats, as ``(name, kwargs, dataset, dataset_kwargs)``.
+
+    Reads the ``steps`` chain that ``profiler`` writes, falling back to the flat
+    ``recipe``/``recipe_kwargs``/``dataset`` fields of older results.
+    """
+    if "steps" in comp_stats:
+        return [
+            (
+                step.get("recipe_name", "?"),
+                step.get("recipe_kwargs") or {},
+                step.get("dataset_name", ""),
+                step.get("dataset_kwargs") or {},
+            )
+            for step in comp_stats["steps"]
+        ]
+    if "recipe" in comp_stats:
+        return [
+            (
+                comp_stats["recipe"],
+                comp_stats.get("recipe_kwargs") or {},
+                comp_stats.get("dataset", ""),
+                comp_stats.get("dataset_kwargs") or {},
+            )
+        ]
+    return []
+
+
+def _recipe_label(comp_stats):
+    """``A+B`` for a component's recipe chain; ``—`` when it has none (float)."""
+    steps = _recipe_steps(comp_stats)
+    return "+".join(name for name, *_ in steps) if steps else "—"
+
+
 def _build_footnote(doc_label, components, precision=None, analysis=None):
     """Build a footnote string describing recipe kwargs, precision, and any active analysis pass."""
     parts = []
     for comp_name, comp_stats in components.items():
-        recipe = comp_stats.get("recipe", "?")
-        kwargs = comp_stats.get("recipe_kwargs", {})
-        dataset = comp_stats.get("dataset", "")
-        dataset_kwargs = comp_stats.get("dataset_kwargs", {})
-
-        param_strs = [f"{k}={v}" for k, v in kwargs.items()]
-        if dataset:
-            ds_parts = [dataset] + [f"{k}={v}" for k, v in dataset_kwargs.items()]
-            param_strs.append(f"dataset={','.join(ds_parts)}")
-
-        param_str = ", ".join(param_strs) if param_strs else "defaults"
+        step_strs = []
+        for recipe, kwargs, dataset, dataset_kwargs in _recipe_steps(comp_stats):
+            param_strs = [f"{k}={v}" for k, v in kwargs.items()]
+            if dataset:
+                ds_parts = [dataset] + [f"{k}={v}" for k, v in dataset_kwargs.items()]
+                param_strs.append(f"dataset={','.join(ds_parts)}")
+            param_str = ", ".join(param_strs) if param_strs else "defaults"
+            step_strs.append(f"{recipe}({param_str})")
+        recipe_str = " + ".join(step_strs) if step_strs else "none"
 
         if len(components) > 1:
-            parts.append(f"{comp_name}: {recipe}({param_str})")
+            parts.append(f"{comp_name}: {recipe_str}")
         else:
-            parts.append(f"{recipe}({param_str})")
+            parts.append(recipe_str)
 
     line = f"{doc_label}. {', '.join(parts)}"
 
@@ -242,6 +274,18 @@ def _build_footnote(doc_label, components, precision=None, analysis=None):
         line += f"\n      Analysis: {analysis['name']}({kwargs_str}) -> {analysis['report']}"
 
     return line
+
+
+#: ``precision`` keys formatted by name for LLM results.
+_LLM_PRECISION_KEYS = {
+    "blocks",
+    "activations",
+    "kv_cache",
+    "embedding",
+    "lm_head",
+    "visual",
+    "audio",
+}
 
 
 def _format_precision(precision):
@@ -279,6 +323,20 @@ def _format_precision(precision):
         vw = visual.get("weight", {}).get("qtype", "?")
         va = visual.get("activations", "?")
         parts.append(f"visual=W{vw}A{va}")
+
+    # Per-component precision of models without an LLM backbone (diffusion:
+    # ``{"unet": {"weight": {...}, "activations": ...}}``).
+    for name, block in precision.items():
+        if name in _LLM_PRECISION_KEYS or not isinstance(block, dict):
+            continue
+        weight = block.get("weight")
+        if not isinstance(weight, dict) or "activations" not in block:
+            continue
+        weight_str = weight.get("qtype", "?")
+        granularity = weight.get("granularity", "")
+        if granularity and granularity != "PCQ":
+            weight_str += f"/{granularity}"
+        parts.append(f"{name}=W:{weight_str} A:{block['activations']}")
 
     return ", ".join(parts)
 

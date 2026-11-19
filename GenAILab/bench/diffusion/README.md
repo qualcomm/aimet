@@ -1,7 +1,9 @@
 # Text-to-image diffusion (Stable Diffusion)
 
-FP inference of Stable Diffusion 1.x with torch or ONNX Runtime, scored with
-CLIPScore. This runs separately from the LLM harness (`python -m GenAILab`) for now:
+Inference of Stable Diffusion 1.x with torch or ONNX Runtime, scored with
+CLIPScore. Components can be quantized with an aimet_onnx QuantSim (see
+[Quantization](#quantization)). This runs separately from the LLM harness
+(`python -m GenAILab`) for now:
 
 ```bash
 # torch
@@ -45,6 +47,43 @@ results on CUDA at SD1.5's head size. Opset 18 cannot express bfloat16 Conv, so
 the ONNX runner supports `float32` and `float16` only and rejects `bfloat16`
 before loading the model.
 
+## Quantization
+
+A `precision` section quantizes the components it names with an aimet_onnx
+QuantSim, built on the component's exported graph; the others keep running as
+float ONNX Runtime sessions. Only the `unet` can be quantized so far.
+
+```yaml
+model:
+  model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+precision:
+  unet:
+    weight: {qtype: int8, granularity: PCQ}
+    activations: int16
+recipe:
+  name: Calibration
+  num_prompts: 32
+metrics:
+  - name: CLIPScore
+```
+
+See [`configs/diffusion_unet_w8a16.yaml`](configs/diffusion_unet_w8a16.yaml).
+
+- **Precision.** `weight` is `int4`, `int8` or `int16`, per channel (`PCQ`); a bare
+  qtype or bit width is accepted too. `activations` is `int8` or `int16`. The
+  QuantSim uses the `htp_v73` config.
+- **Calibration** is the only recipe. It generates from `num_prompts` (default 32)
+  PartiPrompts drawn, stratified, with `sample_seed` (default 0) from those no
+  metric of the document scores, so the UNet's quantizers observe its inputs at
+  every timestep, with and without guidance. At 10 steps, 32 prompts are 640
+  UNet calls. Only latents are generated; the VAE decoder does not run.
+- **ONNX and float32 only.** A quantized document must use the ONNX entry point
+  and `dtype: float32`. On an fp16 graph, aimet_onnx raises Conv/Gemm weight
+  scales until each int32 bias scale is a normal fp16 number, which ruins the
+  SD1.5 UNet (its noise prediction no longer correlates with the float one).
+- Results record the precision under `precision` and the calibration under the
+  UNet's recipe steps.
+
 ## Layout
 
 - [`qai_hub_lm/diffusion/`](../../qai_hub_lm/diffusion/) — model layer, no AIMET dependency:
@@ -55,6 +94,7 @@ before loading the model.
 - [`metrics.py`](metrics.py) — `CLIPScore` and `ImageDump`.
 - [`experiment.py`](experiment.py) — runs one config document, with torch or ONNX.
 - [`onnx_cache.py`](onnx_cache.py) — the cache of exported ONNX graphs.
+- [`quantize.py`](quantize.py) — component QuantSims and their calibration.
 - [`runner.py`](runner.py) — the loop over a config's documents, shared by the entry points.
 - [`../torch/run_diffusion.py`](../torch/run_diffusion.py), [`../onnx/run_diffusion.py`](../onnx/run_diffusion.py) — the command-line entry points.
 
@@ -77,9 +117,9 @@ metrics:
   - name: ImageDump
 ```
 
-Top-level keys: `model` and `metrics` (required); `profiler` and `run_group`.
-`precision`, `recipe`, `dataset`, `export`, `eval_in_onnx` and `analysis` are
-rejected: only FP inference is supported so far.
+Top-level keys: `model` and `metrics` (required); `precision` and `recipe`
+(together; see [Quantization](#quantization)), `profiler` and `run_group`.
+`dataset`, `export`, `eval_in_onnx` and `analysis` are rejected.
 
 | `model` key           | Required | Type  | Default | Notes |
 | --------------------- | -------- | ----- | ------- | ----- |

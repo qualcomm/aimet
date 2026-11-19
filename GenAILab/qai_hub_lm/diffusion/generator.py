@@ -171,8 +171,11 @@ class DiffusionGenerator:
     # ------------------------------------------------------------------
 
     @torch.inference_mode()
-    def generate(self, prompt: str, seed: int) -> np.ndarray:
-        """Generate one ``(H, W, 3)`` uint8 image for ``prompt``."""
+    def generate_latents(self, prompt: str, seed: int) -> torch.Tensor:
+        """Denoised latents for ``prompt``: every stage of :meth:`generate` but the decode.
+
+        Enough to calibrate the UNet, whose inputs it visits at every timestep.
+        """
         cond_embeds = self.encode_prompt(prompt)
         uncond_embeds = (
             self.encode_prompt(self.config.negative_prompt)
@@ -181,8 +184,12 @@ class DiffusionGenerator:
         )
         generator = torch.Generator("cpu").manual_seed(seed)
         latents = self.initial_latents(generator)
-        latents = self.denoise(latents, cond_embeds, uncond_embeds, generator)
-        return self.decode(latents)
+        return self.denoise(latents, cond_embeds, uncond_embeds, generator)
+
+    @torch.inference_mode()
+    def generate(self, prompt: str, seed: int) -> np.ndarray:
+        """Generate one ``(H, W, 3)`` uint8 image for ``prompt``."""
+        return self.decode(self.generate_latents(prompt, seed))
 
     def generate_all(self, prompts: list[str], seeds: list[int]) -> list[np.ndarray]:
         if len(prompts) != len(seeds):

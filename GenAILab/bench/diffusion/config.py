@@ -4,8 +4,9 @@
 """Config parsing for text-to-image diffusion experiments.
 
 A diffusion document has a ``model`` section, ``metrics``, and optionally
-``profiler`` and ``run_group``. Quantization (``precision``/``recipe``), export
-and analysis are not supported for diffusion yet and are rejected by name, so a
+``precision`` with a ``recipe``, ``profiler`` and ``run_group``. ``precision``
+names the components to quantize; the others stay in floating point. Export and
+analysis are not supported for diffusion yet and are rejected by name, so a
 config written for a later phase fails loudly instead of running FP silently.
 """
 
@@ -15,24 +16,29 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from GenAILab.bench.precision import Granularity, WeightPrecision, resolve_qtype
 from GenAILab.bench.yaml_config_parser import (
     ProfilerConfig,
     ResolvedMetric,
     YAMLConfigParser,
 )
 from GenAILab.qai_hub_lm.diffusion.base import (
+    COMPONENTS,
+    UNET,
     DiffusionModel,
     get_diffusion_model_class,
 )
 
 _UNSUPPORTED_SECTIONS = (
-    "precision",
-    "recipe",
     "dataset",
     "export",
     "eval_in_onnx",
     "analysis",
 )
+#: Components a ``precision`` section may quantize so far.
+QUANTIZABLE_COMPONENTS = (UNET,)
+_WEIGHT_QTYPES = ("int4", "int8", "int16")
+_ACTIVATION_QTYPES = ("int8", "int16")
 _DTYPES = ("float32", "float16", "bfloat16")
 
 #: Sampling defaults. 10 steps keeps a regression run short; resolution
@@ -88,6 +94,36 @@ class DiffusionModelConfig:
 
 
 @dataclass(frozen=True)
+class ComponentPrecision:
+    """Quantization of one component: integer weights and activations."""
+
+    weight: WeightPrecision
+    activations: Any  # aimet qtype
+
+    def to_dict(self) -> dict:
+        return {"weight": self.weight.to_dict(), "activations": repr(self.activations)}
+
+
+#: Calibration defaults: 32 prompts give 640 UNet calls at 10 steps with guidance.
+DEFAULT_CALIBRATION_PROMPTS = 32
+
+
+@dataclass(frozen=True)
+class CalibrationConfig:
+    """The ``Calibration`` recipe: generate from held-out PartiPrompts.
+
+    The prompts are drawn from the PartiPrompts that no metric of the document
+    scores, so calibration never sees the evaluation set.
+    """
+
+    num_prompts: int = DEFAULT_CALIBRATION_PROMPTS
+    sample_seed: int = 0
+
+    def to_dict(self) -> dict:
+        return {"num_prompts": self.num_prompts, "sample_seed": self.sample_seed}
+
+
+@dataclass(frozen=True)
 class DiffusionConfig:
     """The fully parsed diffusion document."""
 
@@ -95,6 +131,19 @@ class DiffusionConfig:
     metrics: tuple[ResolvedMetric, ...]
     profiler: ProfilerConfig = field(default_factory=ProfilerConfig)
     run_group: str | None = None
+    #: Component name -> precision, for the quantized components only. Empty
+    #: for an FP run.
+    precision: dict[str, ComponentPrecision] = field(default_factory=dict)
+    #: Set exactly when ``precision`` is.
+    calibration: CalibrationConfig | None = None
+
+    @property
+    def is_quantized(self) -> bool:
+        return bool(self.precision)
+
+    def precision_dict(self) -> dict:
+        """``precision`` as recorded in the results."""
+        return {name: p.to_dict() for name, p in self.precision.items()}
 
 
 def parse_diffusion_document(doc: dict) -> DiffusionConfig:
@@ -103,10 +152,22 @@ def parse_diffusion_document(doc: dict) -> DiffusionConfig:
         if section in doc:
             raise ValueError(
                 f"'{section}' is not supported for text-to-image diffusion "
-                f"experiments yet; only FP inference is."
+                f"experiments yet."
             )
 
     model = _parse_model(doc.pop("model", None))
+    precision = _parse_precision(doc.pop("precision", None))
+    calibration = _parse_recipe(doc.pop("recipe", None))
+    if precision and calibration is None:
+        raise ValueError(
+            "A diffusion 'precision' section needs a 'recipe' to compute its "
+            "encodings: add `recipe: {name: Calibration}`."
+        )
+    if calibration is not None and not precision:
+        raise ValueError(
+            "A diffusion 'recipe' needs a 'precision' section naming the "
+            f"components to quantize ({list(QUANTIZABLE_COMPONENTS)})."
+        )
 
     metrics_raw = doc.pop("metrics", None)
     if not metrics_raw:
@@ -135,8 +196,129 @@ def parse_diffusion_document(doc: dict) -> DiffusionConfig:
     if doc:
         raise ValueError(f"Unrecognized sections in config: {list(doc)}")
     return DiffusionConfig(
-        model=model, metrics=tuple(metrics), profiler=profiler, run_group=run_group
+        model=model,
+        metrics=tuple(metrics),
+        profiler=profiler,
+        run_group=run_group,
+        precision=precision,
+        calibration=calibration,
     )
+
+
+def _parse_precision(section) -> dict[str, ComponentPrecision]:
+    """``precision: {<component>: {weight: ..., activations: ...}}``."""
+    if section is None:
+        return {}
+    if not isinstance(section, dict) or not section:
+        raise ValueError(
+            "A diffusion 'precision' section maps component names to their "
+            f"precision, e.g. `precision: {{unet: {{weight: int8, activations: int16}}}}`; "
+            f"got {section!r}."
+        )
+    precision = {}
+    for name, block in section.items():
+        if name not in COMPONENTS:
+            raise ValueError(
+                f"Unknown diffusion component {name!r} in 'precision'. "
+                f"Known: {list(COMPONENTS)}."
+            )
+        if name not in QUANTIZABLE_COMPONENTS:
+            raise ValueError(
+                f"Quantizing the {name} is not supported yet; only "
+                f"{list(QUANTIZABLE_COMPONENTS)} can be quantized. Omit it from "
+                f"'precision' to keep it in floating point."
+            )
+        precision[name] = _parse_component_precision(name, block)
+    return precision
+
+
+def _parse_component_precision(name: str, block) -> ComponentPrecision:
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"'precision.{name}' must map 'weight' and 'activations', got {block!r}."
+        )
+    block = dict(block)
+    weight = block.pop("weight", None)
+    activations = block.pop("activations", None)
+    if block:
+        raise ValueError(
+            f"Unrecognized keys in 'precision.{name}': {sorted(block)}. "
+            f"Expected 'weight' and 'activations'."
+        )
+    if weight is None or activations is None:
+        raise ValueError(f"'precision.{name}' needs both 'weight' and 'activations'.")
+
+    if not isinstance(weight, dict):
+        weight = {"qtype": weight}
+    weight = dict(weight)
+    qtype_name = weight.get("qtype")
+    if isinstance(qtype_name, int) and not isinstance(qtype_name, bool):
+        qtype_name = f"int{qtype_name}"
+    if qtype_name not in _WEIGHT_QTYPES:
+        raise ValueError(
+            f"'precision.{name}.weight' qtype must be one of {_WEIGHT_QTYPES}, "
+            f"got {weight.get('qtype')!r}."
+        )
+    weight["qtype"] = qtype_name
+    granularity = weight.get("granularity", Granularity.PCQ.value)
+    if granularity != Granularity.PCQ.value:
+        raise ValueError(
+            f"'precision.{name}.weight' supports granularity PCQ only so far, "
+            f"got {granularity!r}."
+        )
+    unknown = set(weight) - {"qtype", "granularity"}
+    if unknown:
+        raise ValueError(
+            f"Unrecognized keys in 'precision.{name}.weight': {sorted(unknown)}."
+        )
+
+    if isinstance(activations, int) and not isinstance(activations, bool):
+        activations = f"int{activations}"
+    if activations not in _ACTIVATION_QTYPES:
+        raise ValueError(
+            f"'precision.{name}.activations' must be one of {_ACTIVATION_QTYPES}, "
+            f"got {activations!r}."
+        )
+    return ComponentPrecision(
+        weight=WeightPrecision.from_dict(weight),
+        activations=resolve_qtype(activations),
+    )
+
+
+def _parse_recipe(section) -> CalibrationConfig | None:
+    """``recipe: {name: Calibration, num_prompts: 32, sample_seed: 0}``.
+
+    A one-step list is accepted too, as the LLM configs write it.
+    """
+    if section is None:
+        return None
+    if isinstance(section, list):
+        if len(section) != 1:
+            raise ValueError(
+                "Diffusion recipes support a single 'Calibration' step so far, "
+                f"got {len(section)} steps."
+            )
+        (section,) = section
+    if not isinstance(section, dict) or section.get("name") != "Calibration":
+        name = section.get("name") if isinstance(section, dict) else section
+        raise ValueError(
+            f"Diffusion recipes support 'Calibration' only so far, got {name!r}."
+        )
+    kwargs = {k: v for k, v in section.items() if k != "name"}
+    unknown = set(kwargs) - {"num_prompts", "sample_seed"}
+    if unknown:
+        raise ValueError(
+            f"Unrecognized keys in the diffusion Calibration recipe: {sorted(unknown)}. "
+            f"Expected 'num_prompts' and 'sample_seed'."
+        )
+    for key, value in kwargs.items():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"'recipe.{key}' must be an integer, got {value!r}.")
+    if kwargs.get("num_prompts", DEFAULT_CALIBRATION_PROMPTS) <= 0:
+        raise ValueError(
+            f"'recipe.num_prompts' must be positive, got {kwargs['num_prompts']}."
+        )
+    return CalibrationConfig(**kwargs)
 
 
 def _parse_model(model: dict | None) -> DiffusionModelConfig:
