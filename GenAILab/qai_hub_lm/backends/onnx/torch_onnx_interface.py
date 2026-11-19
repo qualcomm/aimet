@@ -9,6 +9,8 @@ import torch
 import onnxruntime
 from typing import Iterable, Any, Collection
 
+from GenAILab.qai_hub_lm.backends.onnx.ort_allocator import use_torch_cuda_allocator
+
 # Element types are tracked as ONNX TensorProto codes rather than numpy dtypes:
 # numpy has no bfloat16, but IOBinding accepts the ONNX code directly, so bf16
 # tensors can be bound on CUDA without ever passing through numpy.

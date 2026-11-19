@@ -5,10 +5,10 @@ pytest-xdist
 nvidia-ml-py
 qwen_vl_utils
 onnxruntime-gpu
+ninja
 einops
 timm
 click
 pydantic
-# Text-to-image diffusion models (Stable Diffusion).
 diffusers
 soundfile

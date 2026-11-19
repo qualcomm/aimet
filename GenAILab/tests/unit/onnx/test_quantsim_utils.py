@@ -83,26 +83,142 @@ class TestDisableFloatQuantizers:
         assert quantizer.enabled is True
 
 
+_TORCH_ALLOCATOR_HOOKS = {
+    "gpu_external_alloc": "1",
+    "gpu_external_free": "2",
+    "gpu_external_empty_cache": "3",
+}
+
+
+@pytest.fixture
+def ort_allocator(monkeypatch):
+    """ort_allocator with CUDA device 0 current"""
+    from GenAILab.qai_hub_lm.backends.onnx import ort_allocator
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 0)
+    return ort_allocator
+
+
+def _fail_to_build():
+    raise RuntimeError("Ninja is required to load C++ extensions")
+
+
 class TestGetOrtProviders:
+    @pytest.fixture(autouse=True)
+    def _choose_allocator_afresh(self):
+        # The allocator is chosen once per process; each test sets its own env var
+        from GenAILab.qai_hub_lm.backends.onnx.ort_allocator import (
+            use_torch_cuda_allocator,
+        )
+
+        use_torch_cuda_allocator.cache_clear()
+        yield
+        use_torch_cuda_allocator.cache_clear()
+
     def test_cpu_device(self):
         from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
 
         providers = get_ort_providers(torch.device("cpu"))
         assert providers == ["CPUExecutionProvider"]
 
-    def test_cuda_device_with_index(self):
+    def test_cuda_device_with_index(self, monkeypatch):
         from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
 
+        monkeypatch.setenv("GENAILAB_ORT_CUDA_ALLOCATOR", "ort")
         providers = get_ort_providers(torch.device("cuda", 0))
         assert len(providers) == 2
         assert providers[0] == ("CUDAExecutionProvider", {"device_id": 0})
         assert providers[1] == "CPUExecutionProvider"
 
-    def test_cuda_device_without_index(self):
+    def test_cuda_device_without_index(self, monkeypatch):
         from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
 
+        monkeypatch.setenv("GENAILAB_ORT_CUDA_ALLOCATOR", "ort")
         providers = get_ort_providers(torch.device("cuda"))
         assert providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    @pytest.mark.parametrize("value", [None, "torch"])
+    def test_torch_allocator_by_default_or_env_var(
+        self, ort_allocator, monkeypatch, value
+    ):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
+
+        if value is None:
+            monkeypatch.delenv("GENAILAB_ORT_CUDA_ALLOCATOR", raising=False)
+        else:
+            monkeypatch.setenv("GENAILAB_ORT_CUDA_ALLOCATOR", value)
+        monkeypatch.setattr(
+            ort_allocator, "_torch_allocator_addresses", lambda: _TORCH_ALLOCATOR_HOOKS
+        )
+
+        providers = get_ort_providers(torch.device("cuda", 0))
+        assert providers == [
+            (
+                "CUDAExecutionProvider",
+                {
+                    "device_id": 0,
+                    "use_ep_level_unified_stream": "1",
+                    **_TORCH_ALLOCATOR_HOOKS,
+                },
+            ),
+            "CPUExecutionProvider",
+        ]
+        # The CPU EP never sees the torch allocator.
+        assert get_ort_providers(torch.device("cpu")) == ["CPUExecutionProvider"]
+
+    def test_default_falls_back_to_ort_arena_if_hooks_cannot_build(
+        self, ort_allocator, monkeypatch
+    ):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
+
+        monkeypatch.delenv("GENAILAB_ORT_CUDA_ALLOCATOR", raising=False)
+        monkeypatch.setattr(ort_allocator, "_torch_allocator_addresses", _fail_to_build)
+
+        providers = get_ort_providers(torch.device("cuda", 0))
+        assert providers == [
+            ("CUDAExecutionProvider", {"device_id": 0}),
+            "CPUExecutionProvider",
+        ]
+        assert not ort_allocator.use_torch_cuda_allocator()
+
+    def test_default_falls_back_to_ort_arena_without_cuda(
+        self, ort_allocator, monkeypatch
+    ):
+        monkeypatch.delenv("GENAILAB_ORT_CUDA_ALLOCATOR", raising=False)
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        monkeypatch.setattr(ort_allocator, "_torch_allocator_addresses", _fail_to_build)
+
+        assert not ort_allocator.use_torch_cuda_allocator()
+
+    def test_torch_env_var_raises_if_hooks_cannot_build(
+        self, ort_allocator, monkeypatch
+    ):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
+
+        monkeypatch.setenv("GENAILAB_ORT_CUDA_ALLOCATOR", "torch")
+        monkeypatch.setattr(ort_allocator, "_torch_allocator_addresses", _fail_to_build)
+
+        with pytest.raises(RuntimeError, match="Ninja"):
+            get_ort_providers(torch.device("cuda", 0))
+
+    def test_torch_allocator_rejects_non_current_device(
+        self, ort_allocator, monkeypatch
+    ):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
+
+        monkeypatch.setenv("GENAILAB_ORT_CUDA_ALLOCATOR", "torch")
+        monkeypatch.setattr(ort_allocator, "_torch_allocator_addresses", lambda: {})
+
+        with pytest.raises(ValueError, match="current CUDA device"):
+            get_ort_providers(torch.device("cuda", 1))
+
+    def test_allocator_env_var_rejects_unknown_value(self, monkeypatch):
+        from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import get_ort_providers
+
+        monkeypatch.setenv("GENAILAB_ORT_CUDA_ALLOCATOR", "bfc")
+        with pytest.raises(ValueError, match="GENAILAB_ORT_CUDA_ALLOCATOR"):
+            get_ort_providers(torch.device("cuda", 0))
 
 
 class TestQuantizeEmbeddingWeights:

@@ -14,6 +14,10 @@ from GenAILab.bench.precision import (
     float16,
     float32,
 )
+from GenAILab.qai_hub_lm.backends.onnx.ort_allocator import (
+    torch_allocator_cuda_options,
+    use_torch_cuda_allocator,
+)
 
 
 def weight_precision_to_qspec(precision: WeightPrecision) -> QSpec:
@@ -65,6 +69,10 @@ def quantize_embedding_weights(embedding: torch.nn.Module, n_bits: int):
 def get_ort_providers(
     device: torch.device,
 ) -> list[str | tuple[str, dict[str, int]]]:
+    if device.type == "cuda" and use_torch_cuda_allocator():
+        options = {} if device.index is None else {"device_id": device.index}
+        options.update(torch_allocator_cuda_options(device.index))
+        return [("CUDAExecutionProvider", options), "CPUExecutionProvider"]
     if device.type == "cuda":
         return (
             [
