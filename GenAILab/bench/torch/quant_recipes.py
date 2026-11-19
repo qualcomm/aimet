@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from aimet_torch import QuantizationSimModel
+import aimet_torch.adascale.adascale_optimizer as adascale_optimizer
 from aimet_torch.adascale.adascale_optimizer import apply_adascale
 from aimet_torch.v2.seq_mse import apply_seq_mse
 from aimet_torch.v2.nn import compute_encodings
@@ -268,12 +269,17 @@ class AdaScale(QuantizationTechnique):
         dataloader: Dataset,
         num_batches: int = 20,
         num_iterations: int = 1500,
+        early_stopping: bool | None = None,
         **kwargs,
     ):
         # Step 1: Collect calibration inputs in FP mode.
         inputs = _prefill_inputs(
             generator, dataloader, num_batches, torch.device("cpu")
         )
+
+        # @todo patch this using the same approach as ONNX, fine for now
+        if early_stopping:
+            adascale_optimizer._EARLY_STOPPING = early_stopping
 
         # Step 2: Optimize quantization parameters using AdaScale.
         apply_adascale(

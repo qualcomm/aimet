@@ -111,6 +111,7 @@ class AdaScaleSpec(_TechniqueSpecBase):
     phase = Phase.on_sim
     num_batches: int | None = None
     num_iterations: int | None = None
+    early_stopping: bool | None = None
 
 
 # The discriminated union IS the technique vocabulary. Adding a technique = add a

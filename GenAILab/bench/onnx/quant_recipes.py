@@ -4,6 +4,8 @@
 """Quantization recipes for GenAI models using AIMET-ONNX"""
 
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
+
 from tqdm import tqdm
 import itertools
 
@@ -14,6 +16,7 @@ from torch.utils.data import DataLoader
 
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.sequential_mse.seq_mse import SeqMseParams, SequentialMse
+import aimet_onnx.adascale.adascale_optimizer as adascale_optimizer
 from aimet_onnx.adascale.adascale_optimizer import (
     apply_adascale,
     adascale_model_config_dict,
@@ -33,6 +36,7 @@ from GenAILab.qai_hub_lm.schema import (
 from GenAILab.qai_hub_lm.models.generator import Generator
 from GenAILab.qai_hub_lm.models.utils.layer_cache import resolve_model_type
 from GenAILab.qai_hub_lm.backends.onnx.torch_onnx_interface import kwargs_to_dict
+from GenAILab.qai_hub_lm.backends.onnx.quantsim_utils import AttributePatch
 
 
 class PreQuantizationTechnique(ABC):
@@ -330,6 +334,7 @@ class AdaScale(QuantizationTechnique):
         dataloader: DataLoader,
         num_batches: int = 32,
         num_iterations: int = 64,
+        early_stopping: bool | None = None,
         topology=None,
         **kwargs,
     ):
@@ -349,14 +354,21 @@ class AdaScale(QuantizationTechnique):
         # new tensors and rewires consumers, never renames existing ones), so the
         # same object stays valid here; apply_adascale re-validates every boundary
         # name against the live graph before optimizing.
-        apply_adascale(
-            quantsim,
-            inputs,
-            # A composite model around a listed decoder (Qwen3-ASR around
-            # qwen3) resolves to that decoder's entry.
-            adascale_model_config_dict[
-                resolve_model_type(generator.config, adascale_model_config_dict)
-            ],
-            num_iterations,
-            topology=topology,
-        )
+        with (
+            AttributePatch(adascale_optimizer, "_BLOCKWISE_SAMPLING", True),
+            AttributePatch(adascale_optimizer, "_COMPILE_WEIGHT_QDQ", True),
+            AttributePatch(adascale_optimizer, "_EARLY_STOPPING", early_stopping)
+            if early_stopping
+            else nullcontext(),
+        ):
+            apply_adascale(
+                quantsim,
+                inputs,
+                # A composite model around a listed decoder (Qwen3-ASR around
+                # qwen3) resolves to that decoder's entry.
+                adascale_model_config_dict[
+                    resolve_model_type(generator.config, adascale_model_config_dict)
+                ],
+                num_iterations,
+                topology=topology,
+            )

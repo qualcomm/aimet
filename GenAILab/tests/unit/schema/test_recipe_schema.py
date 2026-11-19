@@ -470,7 +470,11 @@ class TestStepKwargs:
 
     def test_known_kwargs(self):
         assert spec_kwargs(CalibrationSpec) == {"num_iterations"}
-        assert spec_kwargs(AdaScaleSpec) == {"num_batches", "num_iterations"}
+        assert spec_kwargs(AdaScaleSpec) == {
+            "num_batches",
+            "num_iterations",
+            "early_stopping",
+        }
         assert spec_kwargs(ClipSpec) == {"value"}
         assert spec_kwargs(SkipSpec) == set()
         # name/dataset are never counted as kwargs
@@ -487,7 +491,13 @@ class TestContractMismatch:
 
     def test_exact_match_passes(self):
         def apply(
-            quantsim, generator, dataloader, num_batches=32, num_iterations=64, **kwargs
+            quantsim,
+            generator,
+            dataloader,
+            num_batches=32,
+            num_iterations=64,
+            early_stopping=None,
+            **kwargs,
         ): ...
 
         missing, extra = contract_mismatch(AdaScaleSpec, apply, ignore_params=_FIXTURES)
@@ -495,7 +505,14 @@ class TestContractMismatch:
 
     def test_missing_kwarg_flagged(self):
         # num_batches only reachable via **kwargs -> not implemented
-        def apply(quantsim, generator, dataloader, num_iterations=64, **kwargs): ...
+        def apply(
+            quantsim,
+            generator,
+            dataloader,
+            num_iterations=64,
+            early_stopping=None,
+            **kwargs,
+        ): ...
 
         missing, extra = contract_mismatch(AdaScaleSpec, apply, ignore_params=_FIXTURES)
         assert missing == {"num_batches"} and extra == set()
