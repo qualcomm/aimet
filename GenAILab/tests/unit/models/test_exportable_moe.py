@@ -1160,6 +1160,59 @@ class TestDevicePlacement:
         assert _max_err(cuda_out.cpu(), cpu_out) < 1e-5
 
 
+class TestReducedPrecision:
+    """Regression: the adaptation replaces modules inside an already-cast
+    model, so nothing calls .to() on the new module afterwards. A float32
+    force_all buffer in a bf16 model made the gate cast it, and export folded
+    that cast into an anonymous initializer: no ``force_all`` survived, so
+    ``set_onnx_force_all`` and the calibration-time force had nothing to patch.
+    """
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_buffer_follows_expert_dtype(self, dtype):
+        adapted = PredicatedExperts(_fused_experts().to(dtype), execution="dense")
+        assert adapted.force_all.dtype == dtype
+
+    def test_bf16_export_keeps_a_patchable_force_all(self, tmp_path):
+        onnx = pytest.importorskip("onnx")
+        from onnx import numpy_helper
+
+        from GenAILab.qai_hub_lm.transforms.exportable_moe import (
+            _force_all_consumers,
+            _force_all_initializers,
+        )
+
+        mod = PredicatedExperts(
+            _fused_experts().to(torch.bfloat16),
+            execution="predicated",
+            selection="routed",
+        ).eval()
+        hs = torch.randn(6, HIDDEN, dtype=torch.bfloat16)
+        index, weights = _routing(6)
+        path = str(tmp_path / "experts.onnx")
+        with torch.no_grad():
+            torch.onnx.export(
+                mod,
+                (hs, index, weights.to(torch.bfloat16)),
+                path,
+                opset_version=22,
+                dynamo=True,
+            )
+
+        model = onnx.load(path)
+        inits = _force_all_initializers(model.graph)
+        assert inits, "force_all initializer was folded away"
+        assert {i.data_type for i in inits} == {onnx.TensorProto.BFLOAT16}
+        assert _force_all_consumers(model.graph) == {"Max"}
+
+        assert set_onnx_force_all(path, True) >= 1
+        patched = _force_all_initializers(onnx.load(path).graph)
+        assert {i.data_type for i in patched} == {onnx.TensorProto.BFLOAT16}
+        assert all(
+            numpy_helper.to_array(i).astype("float32").item() == 1.0 for i in patched
+        )
+
+
 class TestExportPolicy:
     """Export uses the predicated realizer by default.
 

@@ -174,14 +174,17 @@ class PredicatedExperts(nn.Module):
         # Shape [1], not 0-d: ONNX initializer deduplication merges a 0-d
         # float32 0.0 with any comparison's 0.0 constant, silently rewiring the
         # predicate.
-        # On the experts' device: this replaces a module inside an
-        # already-placed model, so nothing calls .to() on it afterwards.
+        # On the experts' device and in their dtype: this replaces a module
+        # inside an already-placed model, so nothing calls .to() on it
+        # afterwards, and a cast in the gate would be constant-folded into an
+        # anonymous initializer, leaving no ``force_all`` to patch.
+        gate_weight = self.experts[0].gate_proj.weight
         self.register_buffer(
             "force_all",
             torch.tensor(
                 [1.0 if selection == "all" else 0.0],
-                dtype=torch.float32,
-                device=self.experts[0].gate_proj.weight.device,
+                dtype=gate_weight.dtype,
+                device=gate_weight.device,
             ),
             persistent=False,
         )
