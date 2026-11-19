@@ -49,9 +49,10 @@ before loading the model.
 
 ## Quantization
 
-A `precision` section quantizes the components it names with an aimet_onnx
-QuantSim, built on the component's exported graph; the others keep running as
-float ONNX Runtime sessions. Only the `unet` can be quantized so far.
+A `precision` section quantizes the components it names (`text_encoder`, `unet`,
+`vae_decoder`, in any combination) with an aimet_onnx QuantSim, built on the
+component's exported graph; the others keep running as float ONNX Runtime
+sessions.
 
 ```yaml
 model:
@@ -67,22 +68,34 @@ metrics:
   - name: CLIPScore
 ```
 
-See [`configs/diffusion_unet_w8a16.yaml`](configs/diffusion_unet_w8a16.yaml).
+See [`configs/diffusion_unet_w8a16.yaml`](configs/diffusion_unet_w8a16.yaml) and,
+for every component, [`configs/diffusion_w8a16.yaml`](configs/diffusion_w8a16.yaml).
 
 - **Precision.** `weight` is `int4`, `int8` or `int16`, per channel (`PCQ`); a bare
   qtype or bit width is accepted too. `activations` is `int8` or `int16`. The
-  QuantSim uses the `htp_v73` config.
-- **Calibration** is the only recipe. It generates from `num_prompts` (default 32)
-  PartiPrompts drawn, stratified, with `sample_seed` (default 0) from those no
-  metric of the document scores, so the UNet's quantizers observe its inputs at
-  every timestep, with and without guidance. At 10 steps, 32 prompts are 640
-  UNet calls. Only latents are generated; the VAE decoder does not run.
+  QuantSims use the `htp_v73` config. Additive attention masks (the text
+  encoder's causal mask) and the masked scores are left unquantized: a quantizer
+  that must cover the mask's -3.4e38 has no resolution left for the scores.
+- **Calibration** is the only recipe. Each quantized component is calibrated
+  separately, in pipeline order, with every other component in float, so its
+  encodings never depend on another component's quantization error. All of them
+  use the same `num_prompts` (default 32) PartiPrompts, drawn, stratified, with
+  `sample_seed` (default 0) from those no metric of the document scores. Each
+  pass runs the pipeline only as far as its component:
+
+  | Component | Calibrated on | Calls for 32 prompts, 10 steps |
+  |---|---|---|
+  | `text_encoder` | the prompts, and the negative prompt | 64 |
+  | `unet` | every denoising step, with and without guidance | 640 |
+  | `vae_decoder` | the float-denoised latents | 32 |
+
+  The quantized components then run together for the metrics.
 - **ONNX and float32 only.** A quantized document must use the ONNX entry point
   and `dtype: float32`. On an fp16 graph, aimet_onnx raises Conv/Gemm weight
   scales until each int32 bias scale is a normal fp16 number, which ruins the
   SD1.5 UNet (its noise prediction no longer correlates with the float one).
-- Results record the precision under `precision` and the calibration under the
-  UNet's recipe steps.
+- Results record the precision under `precision` and each component's
+  calibration under its recipe steps.
 
 ## Layout
 

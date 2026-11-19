@@ -1,0 +1,33 @@
+# Stable Diffusion 1.5 with every component at W8A16 (aimet_onnx QuantSims).
+# Each component is calibrated on 32 PartiPrompts that no metric below scores,
+# separately, with the other components in float. ONNX only, fp32 base dtype only:
+#   python -m GenAILab.bench.onnx.run_diffusion --config <this file>
+# See GenAILab/bench/diffusion/README.md for the config schema.
+model:
+  model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+  num_inference_steps: 10
+  guidance_scale: 7.5
+precision:
+  text_encoder:
+    weight:
+      qtype: int8
+      granularity: PCQ
+    activations: int16
+  unet:
+    weight:
+      qtype: int8
+      granularity: PCQ
+    activations: int16
+  vae_decoder:
+    weight:
+      qtype: int8
+      granularity: PCQ
+    activations: int16
+recipe:
+  name: Calibration
+  num_prompts: 32
+metrics:
+  - name: CLIPScore
+    num_prompts: 64
+  - name: ImageDump
+    num_prompts: 8

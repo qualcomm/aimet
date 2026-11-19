@@ -24,7 +24,6 @@ from GenAILab.bench.yaml_config_parser import (
 )
 from GenAILab.qai_hub_lm.diffusion.base import (
     COMPONENTS,
-    UNET,
     DiffusionModel,
     get_diffusion_model_class,
 )
@@ -35,8 +34,8 @@ _UNSUPPORTED_SECTIONS = (
     "eval_in_onnx",
     "analysis",
 )
-#: Components a ``precision`` section may quantize so far.
-QUANTIZABLE_COMPONENTS = (UNET,)
+#: Components a ``precision`` section may quantize.
+QUANTIZABLE_COMPONENTS = COMPONENTS
 _WEIGHT_QTYPES = ("int4", "int8", "int16")
 _ACTIVATION_QTYPES = ("int8", "int16")
 _DTYPES = ("float32", "float16", "bfloat16")
@@ -113,7 +112,9 @@ class CalibrationConfig:
     """The ``Calibration`` recipe: generate from held-out PartiPrompts.
 
     The prompts are drawn from the PartiPrompts that no metric of the document
-    scores, so calibration never sees the evaluation set.
+    scores, so calibration never sees the evaluation set. Every quantized
+    component is calibrated on the same prompts, separately, with the other
+    components in float.
     """
 
     num_prompts: int = DEFAULT_CALIBRATION_PROMPTS

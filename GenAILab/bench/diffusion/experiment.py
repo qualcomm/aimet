@@ -81,7 +81,8 @@ def run_experiment(
     With ``framework="onnx"`` the components are exported (or taken from
     ``onnx_cache``) and run as ONNX Runtime sessions behind the same generator.
     Components named in the document's ``precision`` section are then replaced
-    by QuantSims and calibrated (see :mod:`~GenAILab.bench.diffusion.quantize`).
+    by QuantSims, each calibrated with the others in float (see
+    :mod:`~GenAILab.bench.diffusion.quantize`).
     """
     if framework not in FRAMEWORKS:
         raise ValueError(f"Unknown framework {framework!r}; expected {FRAMEWORKS}.")
@@ -141,13 +142,13 @@ def run_experiment(
             device,
             revision=_checkpoint_revision(model_config.model_id),
         )
-        if config.is_quantized:
-            components = diffusion_quantize.quantize_components(
-                config, components, paths, device
-            )
         generator = DiffusionGenerator(components, generation_config)
         if config.is_quantized:
-            component_steps.update(_calibrate(config, generator, device))
+            try:
+                component_steps.update(_quantize(config, generator, paths, device))
+            except BaseException:
+                _release_sessions(generator.components)
+                raise
 
     run_group = config.run_group or uuid.uuid4().hex[:16]
     results_folder = Path(results_dir)
@@ -156,13 +157,16 @@ def run_experiment(
         results_folder / "images" / f"{Path(model_config.model_id).name}_{run_group}"
     )
 
-    with generator.on_device(device):
-        evaluation_results = run_metrics(
-            config,
-            generator,
-            eval_ctx,
-            extra_kwargs={"output_dir": image_dir},
-        )
+    try:
+        with generator.on_device(device):
+            evaluation_results = run_metrics(
+                config,
+                generator,
+                eval_ctx,
+                extra_kwargs={"output_dir": image_dir},
+            )
+    finally:
+        _release_sessions(generator.components)
 
     report_modifiers = model_config.report_modifiers()
     report_modifiers.setdefault("height", generator.config.height)
@@ -190,12 +194,16 @@ def run_experiment(
     return evaluation_results
 
 
-def _calibrate(
-    config: DiffusionConfig, generator: DiffusionGenerator, device: torch.device
+def _quantize(
+    config: DiffusionConfig,
+    generator: DiffusionGenerator,
+    paths: dict[str, Path],
+    device: torch.device,
 ) -> dict[str, list[RecipeStepStats]]:
-    """Calibrate every quantized component on prompts no metric scores.
+    """Quantize and calibrate every component in ``config.precision``.
 
-    Returns each quantized component's recipe steps, for the results.
+    Each is calibrated on prompts no metric scores, with the other components
+    in float. Returns each quantized component's recipe steps, for the results.
     """
     calibration = config.calibration
     evaluated = {
@@ -206,21 +214,44 @@ def _calibrate(
     prompts = diffusion_metrics.held_out_parti_prompts(
         calibration.num_prompts, calibration.sample_seed, exclude=evaluated
     )
-    quantized = list(config.precision)
-    with generator.on_device(device):
-        with GPUMeter(
+    profiles = diffusion_quantize.quantize_and_calibrate(
+        config,
+        generator,
+        paths,
+        prompts,
+        device,
+        meter=lambda: GPUMeter(
             capture_intermediate_data=config.profiler.capture_intermediate_data,
             **config.profiler.gpu_meter_kwargs,
-        ) as profiler:
-            diffusion_quantize.calibrate(generator, quantized, prompts)
-    step = RecipeStepStats(
-        recipe_name="Calibration",
-        recipe_kwargs=calibration.to_dict(),
-        dataset_name="PartiPrompts",
-        dataset_kwargs={"held_out": True},
-        profiler=profiler,
+        ),
     )
-    return {name: [step] for name in quantized}
+    return {
+        name: [
+            RecipeStepStats(
+                recipe_name="Calibration",
+                recipe_kwargs=calibration.to_dict(),
+                dataset_name="PartiPrompts",
+                dataset_kwargs={"held_out": True},
+                profiler=profile,
+            )
+        ]
+        for name, profile in profiles.items()
+    }
+
+
+def _release_sessions(components: DiffusionComponents) -> None:
+    """Return the GPU memory of every ONNX session and QuantSim in ``components``.
+
+    The shared ONNX Runtime arena outlives its sessions, so without this a
+    failed experiment would leave the next one in the same process short of
+    GPU memory.
+    """
+    for _, component in components.items():
+        if hasattr(component, "release"):
+            component.release()
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def _onnx_components(

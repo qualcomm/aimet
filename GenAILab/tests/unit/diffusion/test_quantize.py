@@ -18,6 +18,8 @@ from GenAILab.bench.diffusion.experiment import run_experiment
 from GenAILab.bench.diffusion.metrics import CLIPScore, ImageDump
 from GenAILab.bench.fp_cache import DiskBackedFPCache
 
+from GenAILab.qai_hub_lm.diffusion.base import COMPONENTS
+
 from .conftest import FAKE_PARTI, TINY_SD
 
 W8A16 = {
@@ -70,6 +72,14 @@ class TestPrecisionConfig:
         assert config.precision["unet"].weight.qtype.bits == 8
         assert config.calibration.to_dict() == {"num_prompts": 3, "sample_seed": 5}
 
+    def test_every_component(self, sd_checkpoint):
+        precision = {name: W8A16["unet"] for name in COMPONENTS}
+        config = parse_diffusion_document(
+            _doc(sd_checkpoint, precision=precision, recipe={"name": "Calibration"})
+        )
+        assert set(config.precision) == set(COMPONENTS)
+        assert set(config.precision_dict()) == set(COMPONENTS)
+
     def test_fp_document_is_not_quantized(self, sd_checkpoint):
         config = parse_diffusion_document(_doc(sd_checkpoint))
         assert not config.is_quantized and config.calibration is None
@@ -78,10 +88,6 @@ class TestPrecisionConfig:
     @pytest.mark.parametrize(
         "sections, match",
         [
-            (
-                {"precision": {"vae_decoder": W8A16["unet"]}},
-                "vae_decoder is not supported",
-            ),
             (
                 {"precision": {"vae": W8A16["unet"]}},
                 "Unknown diffusion component 'vae'",
@@ -221,8 +227,9 @@ class TestQuantizedExperiment:
                 framework="torch",
             )
 
-    def test_end_to_end_unet_w8a16(self, fake_parti, tmp_path, monkeypatch):
-        """Quantize only the UNet, calibrate on held-out prompts, and score."""
+    @pytest.mark.parametrize("quantized", [("unet",), COMPONENTS], ids=["unet", "all"])
+    def test_end_to_end_w8a16(self, quantized, fake_parti, tmp_path, monkeypatch):
+        """Quantize components, calibrate each with the others in float, and score."""
         pytest.importorskip("aimet_onnx")
         from GenAILab.bench.diffusion import quantize as diffusion_quantize
         from GenAILab.bench.diffusion.onnx_cache import DiffusionONNXCache
@@ -233,26 +240,29 @@ class TestQuantizedExperiment:
             diffusion_metrics,
             "clip_scores",
             lambda images, texts, *a, **k: (
-                scored.append((images, texts)) or [1.0] * len(texts)
+                scored.append((images, texts, _kinds(generators[0])))
+                or [1.0] * len(texts)
             ),
         )
-        calibrated = []
+        calibrated = {}
+        generators = []
         original_calibrate = diffusion_quantize.calibrate
 
-        def calibrate(generator, quantized, prompts):
-            calibrated.append([p["prompt"] for p in prompts])
-            # Only the UNet is a sim; the text encoder and VAE stay float sessions.
-            components = generator.components
-            assert isinstance(components.unet, diffusion_quantize.SimComponent)
-            assert isinstance(components.text_encoder, diffusion_onnx.ORTComponent)
-            assert isinstance(components.vae_decoder, diffusion_onnx.ORTComponent)
-            original_calibrate(generator, quantized, prompts)
+        def calibrate(generator, name, prompts):
+            generators[:] = [generator]
+            calibrated[name] = ([p["prompt"] for p in prompts], _kinds(generator))
+            original_calibrate(generator, name, prompts)
+
+        def _kinds(generator):
+            return {
+                n: type(generator.components.component(n)).__name__ for n in COMPONENTS
+            }
 
         monkeypatch.setattr(diffusion_quantize, "calibrate", calibrate)
 
         doc = {
             "model": {"model_id": TINY_SD, "num_inference_steps": 2},
-            "precision": W8A16,
+            "precision": {name: W8A16["unet"] for name in quantized},
             "recipe": {"name": "Calibration", "num_prompts": 2},
             "metrics": [{"name": "CLIPScore", "num_prompts": 3}],
             "run_group": "rg",
@@ -265,28 +275,41 @@ class TestQuantizedExperiment:
             onnx_cache=DiffusionONNXCache(tmp_path / "onnx"),
         )
 
-        (calibration_prompts,) = calibrated
-        assert len(calibration_prompts) == 2
-        ((images, texts),) = scored
-        assert not set(calibration_prompts) & set(texts)
+        # Each component is calibrated in pipeline order, as the only sim.
+        assert list(calibrated) == [n for n in COMPONENTS if n in quantized]
+        for name, (prompts, kinds) in calibrated.items():
+            assert len(prompts) == 2
+            assert kinds == {
+                n: "SimComponent" if n == name else diffusion_onnx.ORTComponent.__name__
+                for n in COMPONENTS
+            }
+        # Every component calibrates on the same held-out prompts.
+        assert len({tuple(p) for p, _ in calibrated.values()}) == 1
+
+        ((images, texts, kinds),) = scored
+        assert not set(calibrated[quantized[0]][0]) & set(texts)
         assert all(np.asarray(i).dtype == np.uint8 for i in images)
+        # Evaluation runs with every quantized component's sim at once.
+        assert kinds == {
+            n: "SimComponent" if n in quantized else "ORTComponent" for n in COMPONENTS
+        }
 
         (entry,) = json.loads((tmp_path / "out" / "profiling_data.json").read_text())[
             "StableDiffusionPipeline"
         ]
-        assert entry["precision"] == {
-            "unet": {
-                "weight": {"qtype": "int8", "granularity": "PCQ"},
-                "activations": "int16",
-            }
+        assert set(entry["precision"]) == set(quantized)
+        assert entry["precision"]["unet"] == {
+            "weight": {"qtype": "int8", "granularity": "PCQ"},
+            "activations": "int16",
         }
-        components = entry["components"]
-        assert components["unet"]["recipe_name"] == "Calibration"
-        (step,) = components["unet"]["steps"]
-        assert step["recipe_kwargs"] == {"num_prompts": 2, "sample_seed": 0}
-        assert step["dataset_name"] == "PartiPrompts"
-        assert components["text_encoder"]["steps"] == []
-        assert components["vae_decoder"]["steps"] == []
+        for name, stats in entry["components"].items():
+            if name not in quantized:
+                assert stats["steps"] == []
+                continue
+            (step,) = stats["steps"]
+            assert step["recipe_name"] == "Calibration"
+            assert step["recipe_kwargs"] == {"num_prompts": 2, "sample_seed": 0}
+            assert step["dataset_name"] == "PartiPrompts"
 
 
 class TestCalibrate:
@@ -321,7 +344,7 @@ class TestCalibrate:
             ),
         )
 
-        diffusion_quantize.calibrate(generator, ["unet"], [{"prompt": "a cat"}])
+        diffusion_quantize.calibrate(generator, "unet", [{"prompt": "a cat"}])
 
         enabled = [q for q in sim.qc_quantize_op_dict.values() if q.enabled]
         assert enabled and all(q.is_initialized() for q in enabled)
@@ -352,3 +375,108 @@ class TestCalibrate:
         components.unet.release()
         assert sim.session is None
         torch.testing.assert_close(components.unet(*sample), quantized)
+
+
+@pytest.mark.parametrize("name", ["text_encoder", "vae_decoder"])
+def test_calibration_runs_only_as_far_as_the_component(name, tiny_pipeline, tmp_path):
+    """The text encoder calibrates on prompts alone; the VAE on denoised latents."""
+    pytest.importorskip("aimet_onnx")
+    from GenAILab.bench.diffusion import quantize as diffusion_quantize
+    from GenAILab.bench.diffusion.config import ComponentPrecision
+    from GenAILab.bench.precision import WeightPrecision, resolve_qtype
+    from GenAILab.qai_hub_lm.diffusion import (
+        DiffusionGenerator,
+        GenerationConfig,
+        StableDiffusion,
+    )
+    from GenAILab.qai_hub_lm.diffusion import onnx as diffusion_onnx
+
+    components = StableDiffusion.build_components(tiny_pipeline)
+    paths = diffusion_onnx.export_components(
+        StableDiffusion, components, 64, 64, tmp_path
+    )
+    components = diffusion_onnx.load_components(components, paths)
+    calls = {n: 0 for n in COMPONENTS}
+    for n in COMPONENTS:
+        if n == name:
+            continue
+        component = components.component(n)
+        original = component.forward
+
+        def counted(*inputs, _n=n, _original=original):
+            calls[_n] += 1
+            return _original(*inputs)
+
+        component.forward = counted
+    precision = ComponentPrecision(
+        weight=WeightPrecision(qtype=resolve_qtype("int8")),
+        activations=resolve_qtype("int16"),
+    )
+    sim = diffusion_quantize.build_quantsim(paths[name], precision, "cpu")
+    setattr(components, name, diffusion_quantize.SimComponent(sim, "cpu"))
+    generator = DiffusionGenerator(
+        components,
+        GenerationConfig(
+            height=64, width=64, num_inference_steps=2, guidance_scale=7.5
+        ),
+    )
+
+    diffusion_quantize.calibrate(generator, name, [{"prompt": "a cat"}])
+
+    enabled = [q for q in sim.qc_quantize_op_dict.values() if q.enabled]
+    assert enabled and all(q.is_initialized() for q in enabled)
+    if name == "text_encoder":
+        assert calls == {"text_encoder": 0, "unet": 0, "vae_decoder": 0}
+    else:
+        # 2 steps x (cond + uncond) UNet calls, one text-encoder call per prompt.
+        assert calls == {"text_encoder": 2, "unet": 4, "vae_decoder": 0}
+
+
+class TestMaskQuantizers:
+    def test_causal_mask_and_masked_scores_are_not_quantized(self, tmp_path):
+        pytest.importorskip("aimet_onnx")
+        import onnx
+        from onnx import TensorProto, helper, numpy_helper
+
+        from GenAILab.bench.diffusion import quantize as diffusion_quantize
+        from GenAILab.bench.diffusion.config import ComponentPrecision
+        from GenAILab.bench.precision import WeightPrecision, resolve_qtype
+
+        # scores = x @ W; softmax(scores + causal_mask), as CLIP's attention.
+        mask = np.triu(np.full((4, 4), np.finfo(np.float32).min, np.float32), 1)
+        weight = np.random.default_rng(0).standard_normal((4, 4)).astype(np.float32)
+        graph = helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x", "w"], ["scores"]),
+                helper.make_node("Add", ["scores", "mask"], ["masked"]),
+                helper.make_node("Softmax", ["masked"], ["y"], axis=-1),
+            ],
+            "attn",
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 4, 4])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, 4, 4])],
+            [
+                numpy_helper.from_array(weight, "w"),
+                numpy_helper.from_array(mask, "mask"),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+        path = tmp_path / "model.onnx"
+        onnx.save(model, path)
+        precision = ComponentPrecision(
+            weight=WeightPrecision(qtype=resolve_qtype("int8")),
+            activations=resolve_qtype("int16"),
+        )
+
+        sim = diffusion_quantize.build_quantsim(path, precision, "cpu")
+
+        quantizers = sim.qc_quantize_op_dict
+        assert not quantizers["mask"].enabled
+        assert not quantizers["masked"].enabled
+        assert quantizers["scores"].enabled  # Unmasked scores stay quantized.
+        assert quantizers["y"].enabled
+        x = np.random.default_rng(1).standard_normal((1, 4, 4)).astype(np.float32)
+        sim.compute_encodings([{"x": x}])
+        (out,) = sim.session.run(None, {"x": x})
+        # Masked positions get no attention, as in float.
+        assert np.all(np.triu(out[0], 1) == 0)
+        np.testing.assert_allclose(out.sum(-1), 1, atol=1e-3)
