@@ -746,7 +746,7 @@ html[data-theme="dark"] { --lumina-adm-tip: #2dd4bf; }
 .lumina-landing-content .aimet-cards .sd-col:has(a.sd-stretched-link[href^="apiref/"]) { --aimet-tag: var(--aimet-blue-text); }
 
 
-/* -- Diagram tokens (inline SVGs such as images/aimet_workflow.svg) -- */
+/* -- Diagram tokens (inline SVGs such as images/aimet_how_it_works.svg) -- */
 
 html:root,
 html[data-theme="light"],
@@ -761,4 +761,30 @@ html[data-theme="dark"] {
     --aimet-dia-1: var(--aimet-blue-text);   /* primary step */
     --aimet-dia-2: var(--aimet-teal);        /* improve / iterate */
     --aimet-dia-3: var(--aimet-violet);      /* output / export */
+}
+
+/* "How AIMET works" diagram (images/aimet_how_it_works.svg). Light keeps the original artwork colors. */
+html:root,
+html[data-theme="light"] {
+    --aimet-hw-blue: #3555df;
+    --aimet-hw-teal: #4ca3b6;
+    --aimet-hw-slate: #4c5a76;
+    --aimet-hw-gray: #aebad0;
+    --aimet-hw-edge: #c3cbda;
+    --aimet-hw-box: #3555df;
+    --aimet-hw-text: var(--lumina-text);
+    --aimet-hw-screen: #7b95f0;
+    --aimet-hw-ring: #c9d3f6;
+}
+
+html[data-theme="dark"] {
+    --aimet-hw-blue: #7089ff;
+    --aimet-hw-teal: #5cc0d3;
+    --aimet-hw-slate: #a3b0cc;
+    --aimet-hw-gray: #5b6884;
+    --aimet-hw-edge: #3a4256;
+    --aimet-hw-box: #4a66ec;
+    --aimet-hw-text: var(--lumina-text-muted);
+    --aimet-hw-screen: #3555df;
+    --aimet-hw-ring: #55639a;
 }

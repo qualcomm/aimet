@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="aimet-hw" viewBox="0 0 715 177" role="img" aria-labelledby="aimet-hw-title aimet-hw-desc" data-lumina-zoom="">
+  <title id="aimet-hw-title">How AIMET works</title>
+  <desc id="aimet-hw-desc">A trained PyTorch or ONNX model goes through the AI Model Efficiency Toolkit and comes out
+    as a smaller quantized model, which is deployed to devices such as cars, phones and IoT devices.</desc>
+  <!--
+    Inlined into the page (`.. raw:: html` with `:file:`) rather than referenced with `.. image::`, so the colors read the
+    aimet-hw color tokens in _static/aimet-lumina.css and follow the light/dark toggle. The fallback values are the
+    light palette, used when the file is opened on its own. Every selector is scoped to .aimet-hw because an inline
+    SVG's <style> applies to the whole page.
+  -->
+  <style>
+    .aimet-hw { width: 100%; height: auto; display: block; margin-block: 1.75rem;
+      font-family: var(--lumina-font-sans, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif); }
+    .aimet-hw .hw-edges line { stroke: var(--aimet-hw-edge, #c3cbda); stroke-width: 0.8; }
+    .aimet-hw .hw-n1 { fill: var(--aimet-hw-blue, #3555df); }
+    .aimet-hw .hw-n2 { fill: var(--aimet-hw-teal, #4ca3b6); }
+    .aimet-hw .hw-n3 { fill: var(--aimet-hw-slate, #4c5a76); }
+    .aimet-hw .hw-n4 { fill: var(--aimet-hw-gray, #aebad0); }
+    .aimet-hw .hw-arrow { stroke: var(--aimet-hw-blue, #3555df); stroke-width: 1.2; fill: none; }
+    .aimet-hw .hw-arrow-head { fill: var(--aimet-hw-blue, #3555df); }
+    .aimet-hw .hw-title { fill: var(--aimet-hw-blue, #3555df); font-weight: 700; font-size: 14px; }
+    .aimet-hw .hw-sub { fill: var(--aimet-hw-text, #2b3140); font-size: 8px; }
+    .aimet-hw .hw-box { fill: var(--aimet-hw-box, #3555df); }
+    .aimet-hw .hw-box-text { fill: #ffffff; font-size: 12.5px; font-weight: 500; }
+    .aimet-hw .hw-on-blue { fill: #ffffff; }
+    .aimet-hw .hw-on-blue-stroke { stroke: #ffffff; fill: none; }
+  </style>
+  <defs>
+    <marker id="hw-head" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto">
+      <path class="hw-arrow-head" d="M0,0.5 L6,3 L0,5.5 z"/>
+    </marker>
+  </defs>
+
+<!-- Trained -->
+<text class="hw-title" x="30" y="33">Trained</text>
+<text class="hw-sub" x="30" y="47">AI model</text>
+<g class="hw-edges"><line x1="37" y1="83" x2="80" y2="72.5"/><line x1="37" y1="83" x2="80" y2="94.5"/><line x1="37" y1="83" x2="80" y2="116.5"/><line x1="37" y1="83" x2="80" y2="138"/><line x1="37" y1="105" x2="80" y2="72.5"/><line x1="37" y1="105" x2="80" y2="94.5"/><line x1="37" y1="105" x2="80" y2="116.5"/><line x1="37" y1="105" x2="80" y2="138"/><line x1="37" y1="127.5" x2="80" y2="72.5"/><line x1="37" y1="127.5" x2="80" y2="94.5"/><line x1="37" y1="127.5" x2="80" y2="116.5"/><line x1="37" y1="127.5" x2="80" y2="138"/><line x1="80" y1="72.5" x2="121.5" y2="72.5"/><line x1="80" y1="72.5" x2="121.5" y2="94.5"/><line x1="80" y1="72.5" x2="121.5" y2="116.5"/><line x1="80" y1="72.5" x2="121.5" y2="138"/><line x1="80" y1="94.5" x2="121.5" y2="72.5"/><line x1="80" y1="94.5" x2="121.5" y2="94.5"/><line x1="80" y1="94.5" x2="121.5" y2="116.5"/><line x1="80" y1="94.5" x2="121.5" y2="138"/><line x1="80" y1="116.5" x2="121.5" y2="72.5"/><line x1="80" y1="116.5" x2="121.5" y2="94.5"/><line x1="80" y1="116.5" x2="121.5" y2="116.5"/><line x1="80" y1="116.5" x2="121.5" y2="138"/><line x1="80" y1="138" x2="121.5" y2="72.5"/><line x1="80" y1="138" x2="121.5" y2="94.5"/><line x1="80" y1="138" x2="121.5" y2="116.5"/><line x1="80" y1="138" x2="121.5" y2="138"/><line x1="121.5" y1="72.5" x2="164" y2="94.5"/><line x1="121.5" y1="72.5" x2="164" y2="116.5"/><line x1="121.5" y1="94.5" x2="164" y2="94.5"/><line x1="121.5" y1="94.5" x2="164" y2="116.5"/><line x1="121.5" y1="116.5" x2="164" y2="94.5"/><line x1="121.5" y1="116.5" x2="164" y2="116.5"/><line x1="121.5" y1="138" x2="164" y2="94.5"/><line x1="121.5" y1="138" x2="164" y2="116.5"/></g>
+<circle class="hw-n1" cx="37" cy="83" r="8.2"/><circle class="hw-n1" cx="37" cy="105" r="8.2"/><circle class="hw-n1" cx="37" cy="127.5" r="8.2"/><circle class="hw-n2" cx="80" cy="72.5" r="8.2"/><circle class="hw-n2" cx="80" cy="94.5" r="8.2"/><circle class="hw-n2" cx="80" cy="116.5" r="8.2"/><circle class="hw-n2" cx="80" cy="138" r="8.2"/><circle class="hw-n3" cx="121.5" cy="72.5" r="8.2"/><circle class="hw-n3" cx="121.5" cy="94.5" r="8.2"/><circle class="hw-n3" cx="121.5" cy="116.5" r="8.2"/><circle class="hw-n3" cx="121.5" cy="138" r="8.2"/><circle class="hw-n4" cx="164" cy="94.5" r="8.2"/><circle class="hw-n4" cx="164" cy="116.5" r="8.2"/>
+<text class="hw-sub" x="86" y="163" text-anchor="middle">PyTorch or ONNX</text>
+
+<line class="hw-arrow" x1="197" y1="103.5" x2="230" y2="103.5" marker-end="url(#hw-head)"/>
+
+<!-- AIMET box -->
+<rect class="hw-box" x="248" y="72" width="161" height="63" rx="8"/>
+<text class="hw-box-text" x="328.5" y="99" text-anchor="middle">AI Model Efficiency</text>
+<text class="hw-box-text" x="328.5" y="116" text-anchor="middle">Toolkit</text>
+
+<line class="hw-arrow" x1="439" y1="103.5" x2="477" y2="103.5" marker-end="url(#hw-head)"/>
+
+<!-- Quantized -->
+<text class="hw-title" x="494" y="33">Quantized</text>
+<text class="hw-sub" x="494" y="47">AI model</text>
+<g class="hw-edges"><line x1="499" y1="93" x2="526" y2="99.5"/><line x1="499" y1="93" x2="526" y2="114"/><line x1="499" y1="107" x2="526" y2="99.5"/><line x1="499" y1="107" x2="526" y2="114"/><line x1="499" y1="121.5" x2="526" y2="99.5"/><line x1="499" y1="121.5" x2="526" y2="114"/><line x1="526" y1="99.5" x2="553" y2="86"/><line x1="526" y1="99.5" x2="553" y2="100"/><line x1="526" y1="99.5" x2="553" y2="128"/><line x1="526" y1="114" x2="553" y2="86"/><line x1="526" y1="114" x2="553" y2="100"/><line x1="526" y1="114" x2="553" y2="128"/><line x1="553" y1="86" x2="580" y2="100"/><line x1="553" y1="86" x2="580" y2="114"/><line x1="553" y1="100" x2="580" y2="100"/><line x1="553" y1="100" x2="580" y2="114"/><line x1="553" y1="128" x2="580" y2="100"/><line x1="553" y1="128" x2="580" y2="114"/></g>
+<circle class="hw-n1" cx="499" cy="93" r="5.3"/><circle class="hw-n1" cx="499" cy="107" r="5.3"/><circle class="hw-n1" cx="499" cy="121.5" r="5.3"/><circle class="hw-n2" cx="526" cy="99.5" r="5.3"/><circle class="hw-n2" cx="526" cy="114" r="5.3"/><circle class="hw-n3" cx="553" cy="86" r="5.3"/><circle class="hw-n3" cx="553" cy="100" r="5.3"/><circle class="hw-n3" cx="553" cy="128" r="5.3"/><circle class="hw-n4" cx="580" cy="100" r="5.3"/><circle class="hw-n4" cx="580" cy="114" r="5.3"/>
+
+<!-- Fan-out arrows -->
+<line class="hw-arrow" x1="597" y1="105" x2="636" y2="105" marker-end="url(#hw-head)"/>
+<path class="hw-arrow" d="M618,69 V145"/>
+<line class="hw-arrow" x1="617.4" y1="69" x2="636" y2="69" marker-end="url(#hw-head)"/>
+<line class="hw-arrow" x1="617.4" y1="145" x2="636" y2="145" marker-end="url(#hw-head)"/>
+
+<!-- Deployed -->
+<text class="hw-title" x="617" y="33">Deployed</text>
+<text class="hw-sub" x="617" y="47">AI model</text>
+
+<!-- Car -->
+<path class="hw-n1" d="M642.5,71.5 C642.5,68.8 644,67.2 647,66.8 L651.5,64.6 C654,63.4 658,63.2 661,64.2 L665.5,66.4 C668.5,67 670.5,68.4 670.5,70.8 L670.5,72.6 L642.5,72.6 Z"/>
+<circle class="hw-n1" cx="647.5" cy="72.6" r="2.6"/><circle class="hw-n1" cx="665.5" cy="72.6" r="2.6"/>
+<circle class="hw-on-blue" cx="647.5" cy="72.6" r="1.1"/><circle class="hw-on-blue" cx="665.5" cy="72.6" r="1.1"/>
+
+<!-- Phone -->
+<g fill="none" stroke="var(--aimet-hw-ring, #c9d3f6)" stroke-width="0.8" stroke-opacity="0.7">
+  <path d="M656.5,93.2 a3,3 0 0 1 3,3"/><path d="M656.5,91 a5.2,5.2 0 0 1 5.2,5.2"/>
+</g>
+<rect x="645" y="96.5" width="12" height="22" rx="1.4" fill="var(--aimet-hw-blue, #3555df)"/>
+<rect x="646.2" y="98" width="9.6" height="18.2" rx="0.6" fill="var(--aimet-hw-screen, #7b95f0)"/>
+<rect x="649.5" y="117" width="3" height="0.6" rx="0.3" class="hw-on-blue"/>
+
+<!-- IoT cluster -->
+<circle cx="658" cy="145" r="10.5" fill="none" stroke="var(--aimet-hw-ring, #c9d3f6)" stroke-width="0.8" stroke-opacity="0.7"/>
+<circle class="hw-n1" cx="648.5" cy="139.5" r="5.6"/>
+<circle class="hw-n1" cx="667.5" cy="140" r="5.6"/>
+<circle class="hw-n1" cx="657.5" cy="152.5" r="5.6"/>
+<path class="hw-on-blue" d="M646.5,138.4 h1.2 l2,-1.7 v5.6 l-2,-1.7 h-1.2 z"/>
+<rect class="hw-on-blue-stroke" x="665.3" y="138.3" width="4.4" height="3.4" rx="0.6" stroke-width="0.7"/>
+<circle class="hw-on-blue" cx="667.5" cy="140" r="0.9"/>
+<g class="hw-on-blue"><rect x="655.2" y="152.6" width="1.1" height="2" /><rect x="657" y="151.2" width="1.1" height="3.4"/><rect x="658.8" y="150.2" width="1.1" height="4.4"/></g>
+</svg>

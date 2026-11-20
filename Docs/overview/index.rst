@@ -12,6 +12,9 @@ AIMET (AI Model Efficiency Toolkit) is an open-source Python library that **quan
 PyTorch and ONNX models** so they run faster and use less memory and power on edge devices such as
 phones, laptops, and cars, while keeping accuracy as close as possible to the original model.
 
+.. raw:: html
+   :file: ../images/aimet_how_it_works.svg
+
 You give AIMET a trained floating-point model and a small amount of representative data. AIMET
 gives you back a quantized model, ready to compile and run on target hardware.
 
