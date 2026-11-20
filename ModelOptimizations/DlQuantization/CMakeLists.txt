@@ -101,6 +101,4 @@ if (SKBUILD)
 else (SKBUILD)
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DlQuantization
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/${AIMET_PLATFORM_DIR}/include)
-
-    whl_add_whl_prep_common_target(DlQuantization)
 endif (SKBUILD)

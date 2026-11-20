@@ -12,14 +12,14 @@ authors = [
     { name = "Qualcomm Innovation Center, Inc." },
     { name = "Qualcomm Innovation Center, Inc.", email = "aimet.os@quicinc.com" },
 ]
-name = "aimet"
+name = "aimet-torch"  # Placeholder; the real name (aimet-torch / aimet-onnx) comes from packaging/plugins/local/aimet.py
 requires-python = ">=3.10"
 dynamic = ["name", "dependencies", "version", "optional-dependencies", "description"]
 license = {text = "BSD-3-Clause"}
 readme = "README.md"
 
 [project.urls]
-Homepage = "https://github.com/quic/aimet"
+Homepage = "https://github.com/qualcomm/aimet"
 Documentation = "https://qualcomm.github.io/aimet-pages/releases/latest/index.html"
 
 [tool.scikit-build]

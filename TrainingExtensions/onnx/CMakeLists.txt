@@ -154,58 +154,6 @@ install(TARGETS quant_info
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/_aimet_common
         )
 
-# ----
-
-if (WIN32)
-    add_custom_target(whl_prep_cp_onnx
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_ONNX_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OnnxCppOps> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:quant_info> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        DEPENDS OnnxCppOps quant_info
-    )
-    add_custom_target(whl_prep_ln_onnx
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_ONNX_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OnnxCppOps> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:quant_info> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        DEPENDS OnnxCppOps quant_info
-    )
-elseif (APPLE)
-    # MacOS: Use install_name_tool to set RPATH
-    add_custom_target(whl_prep_cp_onnx
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_ONNX_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OnnxCppOps> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND install_name_tool -add_rpath '@loader_path' ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:quant_info> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        COMMAND install_name_tool -add_rpath '@loader_path' ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        DEPENDS OnnxCppOps quant_info
-    )
-    add_custom_target(whl_prep_ln_onnx
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_ONNX_DIR}
-        COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:OnnxCppOps> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:quant_info> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        DEPENDS OnnxCppOps quant_info
-    )
-else()
-    # Linux: Use patchelf to set RPATH
-    add_custom_target(whl_prep_cp_onnx
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_ONNX_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OnnxCppOps> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${PATCHELF_EXE} --set-rpath '$$ORIGIN' ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:quant_info> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        COMMAND ${PATCHELF_EXE} --set-rpath '$$ORIGIN' ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        DEPENDS OnnxCppOps quant_info
-    )
-    add_custom_target(whl_prep_ln_onnx
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WHL_PREP_AIMET_ONNX_DIR}
-        COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:OnnxCppOps> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:OnnxCppOps>
-        COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:quant_info> ${WHL_PREP_AIMET_ONNX_DIR}/$<TARGET_FILE_NAME:quant_info>
-        DEPENDS OnnxCppOps quant_info
-    )
-endif()
-
-add_dependencies(whl_prep_cp whl_prep_cp_onnx)
-add_dependencies(whl_prep_ln whl_prep_ln_onnx)
-
 endif (SKBUILD)
 
 # Set Python extension suffix

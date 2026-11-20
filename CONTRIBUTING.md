@@ -35,7 +35,7 @@ Contributors should develop on [their own fork](https://help.github.com/en/githu
 ## Setup
 Go to https://github.com/qualcomm/aimet and fork the repo using [these instructions](https://help.github.com/en/github/getting-started-with-github/fork-a-repo).
 
-Follow the [Requirements](packaging/docker_install.md#requirements) and [Setup](packaging/docker_install.md#setup-the-environment) sections in [docker_install.md](packaging/docker_install.md). Then return to this page.
+To develop inside Docker, follow the [Requirements](packaging/docker_install.md#requirements) and [Setup](packaging/docker_install.md#setup-the-environment) sections in [docker_install.md](packaging/docker_install.md). To develop directly on your machine, see [Building from source](Docs/overview/install/build_from_source.rst). Then return to this page.
 
 ## Get code
 [Sync your fork](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/syncing-a-fork) with the latest from the upstream repository.
@@ -44,13 +44,6 @@ Get the aimet code as follows:
 ```
 git clone https://github.com/YOUR_USERNAME/aimet.git
 cd aimet
-```
-Clone the google test repo as follows:
-```
-mkdir -p ./ThirdParty/googletest
-pushd ./ThirdParty/googletest
-git clone https://github.com/google/googletest.git -b release-1.12.1 googletest-release-1.12.1
-popd
 ```
 *IMPORTANT:* Setup your pre-commit and commit-msg hook using the following way:
 ```
@@ -70,26 +63,16 @@ git checkout -b branch_short_feature_description
 Now you may begin development. Once your development is complete, please ensure that the code builds successfully and that all tests pass using the instructions in the next sections.
 
 ### Build
-Follow these steps to build the code
+Build the code using `scripts/all/build_and_test.py` (wheels are written to `wheelhouse/`):
 ```
 cd aimet
-mkdir build
-cd build/
-cmake ..
-make -j4
-```
-
-Verify that build artifacts got created here:
-```
-ls ./artifacts/
+python3 scripts/all/build_and_test.py --task build --package aimet_torch   # or aimet_onnx; add --gpu for CUDA
 ```
 
 ### Test
-Run unit tests
+Build (if needed) and run the unit tests:
 ```
-make test
-# OR
-ctest -V
+python3 scripts/all/build_and_test.py --task test --package aimet_torch   # or aimet_onnx; add --gpu for CUDA
 ```
 
 ### Commit

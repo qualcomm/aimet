@@ -20,6 +20,4 @@ else (SKBUILD)
             add_subdirectory(test)
         endif()
     endif()
-
-    whl_add_whl_action_target(torch)
 endif (SKBUILD)

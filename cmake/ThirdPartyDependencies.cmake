@@ -4,66 +4,6 @@
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 include(FetchContent)
 
-##########
-# Patchelf
-##########
-
-# michof: TODO: Do we need Patchelf at all? Can't we do the RPATH fiddling with CMake built-in tools,
-# such as setting CMAKE_INSTALL_RPATH per-target?
-
-# Patchelf is only needed on Linux (not Windows or MacOS)
-if (NOT WIN32 AND NOT APPLE)
-    find_program(PATCHELF_EXE patchelf
-                 PATHS ${CMAKE_BINARY_DIR}/_deps/patchelf-src/bin)
-
-    if (PATCHELF_EXE)
-        # michof: TODO: Consider removing this path.
-        message(STATUS "Patchelf: Found in '${PATCHELF_EXE}'")
-    elseif (EXISTS $ENV{DEPENDENCY_DATA_PATH}/patchelf.tar.gz)
-        # michof: TODO: Needs testing. Move to using FetchContent_Declare as below.
-        message(STATUS "Patchelf: Setting up from internal cache")
-        file(ARCHIVE_EXTRACT INPUT $ENV{DEPENDENCY_DATA_PATH}/patchelf.tar.gz
-        DESTINATION ${CMAKE_BINARY_DIR}/_deps/patchelf-src/)
-        set(PATCHELF_EXE ${CMAKE_BINARY_DIR}/_deps/patchelf-src/bin/patchelf)
-    else()
-        # FIXME Better to include patchefl into docker image, although seems it is not trivial
-
-        if (DEFINED ENV{PATCHELF_INTERNAL_URL})
-            message(STATUS "Patchelf: Using Internal URL: $ENV{PATCHELF_INTERNAL_URL}")
-            FetchContent_Declare(patchelf
-            URL "$ENV{PATCHELF_INTERNAL_URL}/patchelf-0.15.0-x86_64.tar.gz"
-            )
-        else()
-            message(NOTICE "Patchelf: Fetching from external URL")
-            FetchContent_Declare(patchelf
-                URL "https://github.com/NixOS/patchelf/releases/download/0.15.0/patchelf-0.15.0-x86_64.tar.gz"
-            )
-        endif()
-
-        FetchContent_MakeAvailable(patchelf)
-        set(PATCHELF_EXE ${patchelf_SOURCE_DIR}/bin/patchelf)
-    endif()
-
-    message(STATUS "** PATCHELF_EXE = ${PATCHELF_EXE}")
-endif()
-
-######################
-# install_name_tool
-######################
-
-# install_name_tool is only needed on macOS
-if (APPLE)
-    find_program(INSTALL_NAME_TOOL_EXE install_name_tool)
-
-    if (INSTALL_NAME_TOOL_EXE)
-        message(STATUS "install_name_tool: Found in '${INSTALL_NAME_TOOL_EXE}'")
-    else()
-        message(FATAL_ERROR "install_name_tool not found. Please install Xcode command line tools using: xcode-select --install")
-    endif()
-
-    message(STATUS "** INSTALL_NAME_TOOL_EXE = ${INSTALL_NAME_TOOL_EXE}")
-endif()
-
 ############
 # GoogleTest
 ############
