@@ -49,7 +49,7 @@ from GenAILab.qai_hub_lm.schema import (
 # LibriSpeechSpec is imported from the schema submodule rather than the schema
 # package root: the package ``__init__`` re-export list is owned elsewhere and
 # this keeps the audio work self-contained. Both paths are the same class.
-from GenAILab.qai_hub_lm.schema.dataset import LibriSpeechSpec
+from GenAILab.qai_hub_lm.schema.dataset import FleursSpec, LibriSpeechSpec
 
 
 class Dataset(ABC):
@@ -1443,8 +1443,31 @@ def _decode_audio_bytes(raw_bytes, path):
     return samples.data, int(samples.sample_rate)
 
 
-class LazyLibriSpeechDataset(torch.utils.data.Dataset):
-    """Lazy LibriSpeech dataset for ASR calibration and WER/CER evaluation.
+def check_asr_language(model, language: str | None) -> None:
+    """Reject a forced ``language`` the model cannot transcribe, before loading.
+
+    ``model.SUPPORTED_LANGUAGES`` is the model's ``{code: name}`` vocabulary;
+    the processor validates against the same table, but only once the first
+    item is built. ``language`` may be a code or a name, case-insensitively.
+    Skipped without a model, a declared vocabulary or a language.
+    """
+    supported = getattr(model, "SUPPORTED_LANGUAGES", None)
+    if supported is None or language is None:
+        return
+    # Inlined rather than transformers.audio_utils.resolve_language, which
+    # older pinned transformers releases (e.g. 5.7.0) do not ship.
+    wanted = language.lower()
+    if not any(
+        wanted in (code.lower(), name.lower()) for code, name in supported.items()
+    ):
+        raise ValueError(
+            f"{language} is not supported by {type(model).__name__}. "
+            f"Supported: {', '.join(sorted(supported.values()))}"
+        )
+
+
+class LazyASRDataset(torch.utils.data.Dataset):
+    """Lazy ASR dataset (LibriSpeech, FLEURS) for calibration and WER/CER evaluation.
 
     Each item is one utterance through the processor, giving the fused
     ``input_ids`` / ``attention_mask`` / ``input_features`` / ``input_features_mask``.
@@ -1458,8 +1481,9 @@ class LazyLibriSpeechDataset(torch.utils.data.Dataset):
     n_window``. The feature extractor pads it; this class asserts the invariant
     so a mismatch fails here rather than inside the encoder.
 
-    ``include_reference`` attaches the reference transcript. Evaluation needs it;
-    calibration wants pure tensors, so it defaults off.
+    ``include_reference`` attaches the reference transcript, read from
+    ``reference_column`` (LibriSpeech ``text``, FLEURS ``raw_transcription``).
+    Evaluation needs it; calibration wants pure tensors, so it defaults off.
     """
 
     #: Mel-frame padding multiple = ``2 * n_window``.
@@ -1476,6 +1500,7 @@ class LazyLibriSpeechDataset(torch.utils.data.Dataset):
         audio_frames: int | None = None,
         model=None,
         include_reference: bool = False,
+        reference_column: str = "text",
         sampling_rate: int = AUDIO_SAMPLING_RATE,
     ):
         self.raw_dataset = raw_dataset
@@ -1484,6 +1509,7 @@ class LazyLibriSpeechDataset(torch.utils.data.Dataset):
         self.context_length = context_length
         self.language = language
         self.include_reference = include_reference
+        self.reference_column = reference_column
         self.sampling_rate = sampling_rate
         if n_window is None:
             feature_extractor = getattr(processor, "feature_extractor", None)
@@ -1616,14 +1642,14 @@ class LazyLibriSpeechDataset(torch.utils.data.Dataset):
         ):
             self._warned_over_context = True
             warnings.warn(
-                f"LibriSpeech sample produced {num_tokens} tokens, exceeding the "
+                f"ASR sample produced {num_tokens} tokens, exceeding the "
                 f"context length {self.context_length}. Audio prompts are not "
                 f"truncated (that would break audio-token alignment); use a "
                 f"larger context length or shorter utterances."
             )
 
         if self.include_reference:
-            item["reference"] = sample["text"]
+            item["reference"] = sample[self.reference_column]
 
         return item
 
@@ -1652,7 +1678,7 @@ class LibriSpeech(MultimodalDataset):
     EVAL_SPLIT = "test.clean"
 
     @staticmethod
-    def load_dataset(split: str = "test.clean", num_samples: int | None = None):
+    def load_dataset(split: str = EVAL_SPLIT, num_samples: int | None = None):
         # data_files scopes the download to this split's parquet shard(s) only --
         # passing `config=` instead makes `datasets` download_and_prepare() every
         # split of the 'all' config (~62 GB) on first use, regardless of `split`.
@@ -1690,7 +1716,7 @@ class LibriSpeech(MultimodalDataset):
         cls,
         processor,
         context_length,
-        split: str = "test.clean",
+        split: str = EVAL_SPLIT,
         num_samples: int | None = None,
         language: str | None = "English",
         n_window: int | None = None,
@@ -1700,8 +1726,9 @@ class LibriSpeech(MultimodalDataset):
     ):
         # include_reference defaults to False so calibration items are pure
         # tensors; the WER/CER metric asks for the reference explicitly.
+        check_asr_language(model, language)
         raw_dataset = cls.load_dataset(split, num_samples)
-        return LazyLibriSpeechDataset(
+        return LazyASRDataset(
             raw_dataset,
             processor,
             context_length,
@@ -1710,6 +1737,230 @@ class LibriSpeech(MultimodalDataset):
             audio_frames=audio_frames,
             model=model,
             include_reference=include_reference,
+        )
+
+
+#: FLEURS language name -> FLEURS config, vendored from
+#: ``google/fleurs@d7c758a6dceecd54a98cac43404d3d576e721f07:fleurs.py:26-31``
+#: (``_FLEURS_LONG_TO_LANG``; 102 names, one-to-one onto the 102 configs).
+FLEURS_LANGUAGE_CONFIGS = {
+    "Afrikaans": "af_za",
+    "Amharic": "am_et",
+    "Arabic": "ar_eg",
+    "Armenian": "hy_am",
+    "Assamese": "as_in",
+    "Asturian": "ast_es",
+    "Azerbaijani": "az_az",
+    "Belarusian": "be_by",
+    "Bengali": "bn_in",
+    "Bosnian": "bs_ba",
+    "Bulgarian": "bg_bg",
+    "Burmese": "my_mm",
+    "Cantonese Chinese": "yue_hant_hk",
+    "Catalan": "ca_es",
+    "Cebuano": "ceb_ph",
+    "Croatian": "hr_hr",
+    "Czech": "cs_cz",
+    "Danish": "da_dk",
+    "Dutch": "nl_nl",
+    "English": "en_us",
+    "Estonian": "et_ee",
+    "Filipino": "fil_ph",
+    "Finnish": "fi_fi",
+    "French": "fr_fr",
+    "Fula": "ff_sn",
+    "Galician": "gl_es",
+    "Ganda": "lg_ug",
+    "Georgian": "ka_ge",
+    "German": "de_de",
+    "Greek": "el_gr",
+    "Gujarati": "gu_in",
+    "Hausa": "ha_ng",
+    "Hebrew": "he_il",
+    "Hindi": "hi_in",
+    "Hungarian": "hu_hu",
+    "Icelandic": "is_is",
+    "Igbo": "ig_ng",
+    "Indonesian": "id_id",
+    "Irish": "ga_ie",
+    "Italian": "it_it",
+    "Japanese": "ja_jp",
+    "Javanese": "jv_id",
+    "Kabuverdianu": "kea_cv",
+    "Kamba": "kam_ke",
+    "Kannada": "kn_in",
+    "Kazakh": "kk_kz",
+    "Khmer": "km_kh",
+    "Korean": "ko_kr",
+    "Kyrgyz": "ky_kg",
+    "Lao": "lo_la",
+    "Latvian": "lv_lv",
+    "Lingala": "ln_cd",
+    "Lithuanian": "lt_lt",
+    "Luo": "luo_ke",
+    "Luxembourgish": "lb_lu",
+    "Macedonian": "mk_mk",
+    "Malay": "ms_my",
+    "Malayalam": "ml_in",
+    "Maltese": "mt_mt",
+    "Mandarin Chinese": "cmn_hans_cn",
+    "Maori": "mi_nz",
+    "Marathi": "mr_in",
+    "Mongolian": "mn_mn",
+    "Nepali": "ne_np",
+    "Northern-Sotho": "nso_za",
+    "Norwegian": "nb_no",
+    "Nyanja": "ny_mw",
+    "Occitan": "oc_fr",
+    "Oriya": "or_in",
+    "Oromo": "om_et",
+    "Pashto": "ps_af",
+    "Persian": "fa_ir",
+    "Polish": "pl_pl",
+    "Portuguese": "pt_br",
+    "Punjabi": "pa_in",
+    "Romanian": "ro_ro",
+    "Russian": "ru_ru",
+    "Serbian": "sr_rs",
+    "Shona": "sn_zw",
+    "Sindhi": "sd_in",
+    "Slovak": "sk_sk",
+    "Slovenian": "sl_si",
+    "Somali": "so_so",
+    "Sorani-Kurdish": "ckb_iq",
+    "Spanish": "es_419",
+    "Swahili": "sw_ke",
+    "Swedish": "sv_se",
+    "Tajik": "tg_tj",
+    "Tamil": "ta_in",
+    "Telugu": "te_in",
+    "Thai": "th_th",
+    "Turkish": "tr_tr",
+    "Ukrainian": "uk_ua",
+    "Umbundu": "umb_ao",
+    "Urdu": "ur_pk",
+    "Uzbek": "uz_uz",
+    "Vietnamese": "vi_vn",
+    "Welsh": "cy_gb",
+    "Wolof": "wo_sn",
+    "Xhosa": "xh_za",
+    "Yoruba": "yo_ng",
+    "Zulu": "zu_za",
+}
+
+_FLEURS_CONFIGS_BY_CASEFOLD = {
+    name.casefold(): (name, config) for name, config in FLEURS_LANGUAGE_CONFIGS.items()
+}
+
+
+def fleurs_config_for(language: str) -> tuple[str, str]:
+    """Resolve a language name (case-insensitive) to ``(canonical_name, config)``.
+
+    Raises ``ValueError`` with a did-you-mean hint for an unknown name.
+    """
+    match = _FLEURS_CONFIGS_BY_CASEFOLD.get(language.casefold())
+    if match is not None:
+        return match
+    import difflib
+
+    hint = difflib.get_close_matches(language, FLEURS_LANGUAGE_CONFIGS, n=1)
+    suggestion = f"; did you mean '{hint[0]}'?" if hint else ""
+    raise ValueError(f"Unknown language '{language}'{suggestion}")
+
+
+def fleurs_language_code(config: str) -> str:
+    """Language code of a FLEURS ``config`` (``ko_kr`` -> ``ko``).
+
+    Configs are ``<language>_<script/region>``. The prefix is already the ISO
+    639-1 code where one exists, except Mandarin's ISO 639-3 ``cmn``, whose
+    639-1 code is ``zh``. The code -- not a name -- is what the model is given:
+    its processor owns the code -> prompt-name mapping.
+    """
+    code = config.split("_", 1)[0]
+    return "zh" if code == "cmn" else code
+
+
+@YAMLConfigParser.register_dataset(FleursSpec)
+class FLEURS(MultimodalDataset):
+    """FLEURS multilingual ASR corpus (CC BY 4.0), read Wikipedia sentences.
+
+    Addressed by FLEURS language name (``language: Korean``, ``Mandarin
+    Chinese``), one language per instance; the model is given its language
+    code. Pinned to the parquet-conversion revision, where each language's
+    split is a single parquet shard, so even a few samples download the whole
+    split (0.4-1.1 GB per language for ``test``). Sentences repeat across
+    speakers, so head-selected rows can share a reference.
+
+    YAML usage::
+
+        dataset:
+          name: FLEURS
+          language: Korean
+          split: test
+          num_samples: 64
+    """
+
+    REPO_ID = "google/fleurs"
+    #: Pinned so a repo-side reconversion cannot silently change scores.
+    REVISION = "70bb2e84b976b7e960aa89f1c648e09c59f894dd"
+    EVAL_SPLIT = "test"
+    REFERENCE_COLUMN = "raw_transcription"
+
+    @staticmethod
+    def load_dataset(
+        split: str = EVAL_SPLIT,
+        num_samples: int | None = None,
+        language: str = "English",
+    ):
+        _, config = fleurs_config_for(language)
+        return FLEURS._load_config(split, num_samples, config)
+
+    @staticmethod
+    def _load_config(split: str, num_samples: int | None, config: str):
+        """``load_dataset`` for an already-resolved FLEURS ``config``."""
+        # Glob the split's shards rather than name the single one each has at
+        # REVISION; a glob that matches nothing fails here rather than loading empty.
+        # At REVISION the pattern resolves to exactly one file per language and split.
+        raw_dataset = load_dataset(
+            FLEURS.REPO_ID,
+            data_files={split: f"parquet-data/{config}/{split}-*.parquet"},
+            split=split,
+            revision=FLEURS.REVISION,
+        )
+        # decode=False: decode_audio_column decodes (float32 WAV via soundfile).
+        raw_dataset = raw_dataset.cast_column("audio", Audio(decode=False))
+        if num_samples is not None:
+            raw_dataset = raw_dataset.select(range(min(num_samples, len(raw_dataset))))
+        return raw_dataset
+
+    @classmethod
+    def load_encoded_dataset(
+        cls,
+        processor,
+        context_length,
+        split: str = EVAL_SPLIT,
+        num_samples: int | None = None,
+        language: str = "English",
+        n_window: int | None = None,
+        audio_frames: int | None = None,
+        model=None,
+        include_reference: bool = False,
+    ):
+        _, config = fleurs_config_for(language)
+        code = fleurs_language_code(config)
+        # Before _load_config: an unsupported language must not cost a download.
+        check_asr_language(model, code)
+        raw_dataset = cls._load_config(split, num_samples, config)
+        return LazyASRDataset(
+            raw_dataset,
+            processor,
+            context_length,
+            language=code,
+            n_window=n_window,
+            audio_frames=audio_frames,
+            model=model,
+            include_reference=include_reference,
+            reference_column=cls.REFERENCE_COLUMN,
         )
 
 

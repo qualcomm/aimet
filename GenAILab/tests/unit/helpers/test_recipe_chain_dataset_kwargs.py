@@ -94,3 +94,12 @@ def test_audio_dataset_gets_no_image_size():
     assert "image_size" not in stored
     # The live model goes to the loader only, never into the JSON-reported kwargs.
     assert "model" not in stored
+
+
+def test_audio_dataset_gets_the_model_without_audio_frames():
+    # Torch backend: no static shape, but the loader still needs the model to
+    # check the forced language before downloading.
+    generator = MagicMock()
+    call, stored = _run(_AudioDataset, generator)
+    assert call == {"audio_frames": None, "model": generator}
+    assert "model" not in stored

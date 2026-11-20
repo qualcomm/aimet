@@ -1214,3 +1214,103 @@ class TestReportModifiers:
         cfg = self._model_config(extra_kwargs=extra)
         cfg.report_modifiers()
         assert extra == {"num_hidden_layers": 2}
+
+
+class TestMetricLabels:
+    """Results are keyed by label, so every top-level entry needs a distinct one."""
+
+    @pytest.fixture(autouse=True)
+    def _register_metrics(self):
+        @YAMLConfigParser.register_metric
+        class WER:
+            pass
+
+        @YAMLConfigParser.register_metric
+        class CER:
+            pass
+
+    @staticmethod
+    def _labels(entries):
+        return [m.label for m in YAMLConfigParser._resolve_labelled_metrics(entries)]
+
+    def test_a_unique_name_is_its_own_label(self):
+        assert self._labels([{"name": "WER"}, {"name": "CER", "split": "x"}]) == [
+            "WER",
+            "CER",
+        ]
+
+    def test_the_default_label_does_not_depend_on_other_entries(self):
+        # Same entry, same row name, whatever else the list holds.
+        entry = {"name": "WER", "dataset": "FLEURS", "language": "Korean"}
+        assert self._labels([entry]) == ["WER"]
+        assert self._labels([{"name": "CER"}, entry]) == ["CER", "WER"]
+
+    def test_an_explicit_label_wins_and_is_not_a_kwarg(self):
+        [metric] = YAMLConfigParser._resolve_labelled_metrics(
+            [{"name": "WER", "language": "Korean", "label": "FLEURS_WER[Korean]"}]
+        )
+        assert metric.label == "FLEURS_WER[Korean]"
+        assert metric.metric_kwargs == {"language": "Korean"}
+
+    def test_labelled_entries_do_not_force_auto_labels_on_the_rest(self):
+        labels = self._labels(
+            [
+                {"name": "WER", "label": "WER_Korean", "language": "Korean"},
+                {"name": "WER"},
+            ]
+        )
+        assert labels == ["WER_Korean", "WER"]
+
+    @pytest.mark.parametrize(
+        "entries",
+        [
+            [{"name": "WER", "split": "x"}, {"name": "WER", "split": "x"}],
+            [{"name": "WER"}, {"name": "WER", "dataset": "FLEURS", "language": "Ko"}],
+            [{"name": "WER", "label": "A"}, {"name": "CER", "label": "A"}],
+            [{"name": "WER"}, {"name": "CER", "label": "WER"}],
+        ],
+    )
+    def test_a_label_left_ambiguous_is_rejected(self, entries):
+        with pytest.raises(ValueError, match="distinct 'label'"):
+            YAMLConfigParser._resolve_labelled_metrics(entries)
+
+    @pytest.mark.parametrize("bad", ["", 3])
+    def test_a_label_must_be_a_non_empty_string(self, bad):
+        with pytest.raises(ValueError, match="non-empty string"):
+            YAMLConfigParser._resolve_labelled_metrics([{"name": "WER", "label": bad}])
+
+    def test_an_analysis_pass_selects_metrics_by_label(self):
+        _register_fake_truncation_pass()
+        metrics = YAMLConfigParser._resolve_labelled_metrics(
+            [
+                {"name": "WER", "language": "Korean", "label": "WER_Korean"},
+                {"name": "WER", "language": "Japanese", "label": "WER_Japanese"},
+            ]
+        )
+        analysis = YAMLConfigParser._resolve_analysis(
+            {
+                "name": "TruncationSimulation",
+                "truncation_bits": 8,
+                "metrics": ["WER_Japanese"],
+            },
+            metrics,
+        )
+        assert analysis.metrics == (metrics[1],)
+
+    def test_a_bare_name_shared_by_several_labels_is_rejected(self):
+        _register_fake_truncation_pass()
+        metrics = YAMLConfigParser._resolve_labelled_metrics(
+            [
+                {"name": "WER", "language": "Korean", "label": "WER_Korean"},
+                {"name": "WER", "language": "Japanese", "label": "WER_Japanese"},
+            ]
+        )
+        with pytest.raises(RuntimeError, match="WER_Korean"):
+            YAMLConfigParser._resolve_analysis(
+                {
+                    "name": "TruncationSimulation",
+                    "truncation_bits": 8,
+                    "metrics": ["WER"],
+                },
+                metrics,
+            )

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PositiveInt
 
 
 class _DatasetSpecBase(BaseModel, extra="forbid"):
@@ -100,8 +100,24 @@ class LibriSpeechSpec(_DatasetSpecBase):
 
     name: Literal["LibriSpeech"]
     split: str | None = None
-    num_samples: int | None = None
+    num_samples: PositiveInt | None = None
     language: str | None = None
+    include_reference: bool | None = None
+
+
+class FleursSpec(_DatasetSpecBase):
+    """FLEURS multilingual ASR audio dataset (one language per spec).
+
+    ``language`` is required: a FLEURS language name (``English``, ``Korean``,
+    ``Mandarin Chinese``) -- not a config code or a model's own spelling.
+    ``split`` is ``train`` / ``validation`` / ``test``. ``num_samples`` takes
+    from the head of the split. ``include_reference`` as for LibriSpeech.
+    """
+
+    name: Literal["FLEURS"]
+    split: str | None = None
+    num_samples: PositiveInt | None = None
+    language: str
     include_reference: bool | None = None
 
 
@@ -137,6 +153,7 @@ DatasetSpec = Annotated[
         Where2PlaceSpec,
         HypersimSpec,
         LibriSpeechSpec,
+        FleursSpec,
         GeneratedDatasetSpec,
         InterleavedSpec,
     ],
@@ -144,6 +161,12 @@ DatasetSpec = Annotated[
 ]
 
 InterleavedSpec.model_rebuild()  # resolve the DatasetSpec forward ref
+
+# The datasets an ASR error-rate metric (WER / CER) can score on.
+ASRDatasetSpec = Annotated[
+    Union[LibriSpeechSpec, FleursSpec],
+    Field(discriminator="name"),
+]
 
 
 # Derived vocabulary helpers (the spec union is the single source of truth).

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -80,11 +81,19 @@ class ResolvedRecipe:
 
 @dataclass(frozen=True)
 class ResolvedMetric:
-    """A single metric with its resolved class and kwargs."""
+    """A single metric with its resolved class and kwargs.
+
+    ``label`` names the metric's result row; it defaults to ``name``.
+    """
 
     name: str
     metric_cls: type
     metric_kwargs: dict[str, Any] = field(default_factory=dict)
+    label: str | None = None
+
+    def __post_init__(self):
+        if self.label is None:
+            object.__setattr__(self, "label", self.name)
 
 
 @dataclass(frozen=True)
@@ -432,11 +441,40 @@ class YAMLConfigParser:
             raise LookupError(
                 f"Specified metric name ({metric_name}) not found."
             ) from exc
+        label = metric.get("label")
+        if label is not None and (not isinstance(label, str) or not label):
+            raise ValueError(
+                f"Metric '{metric_name}' label must be a non-empty string, "
+                f"got {label!r}."
+            )
         return ResolvedMetric(
             name=metric_name,
             metric_cls=metric_cls,
-            metric_kwargs={k: v for k, v in metric.items() if k != "name"},
+            metric_kwargs={
+                k: v for k, v in metric.items() if k not in ("name", "label")
+            },
+            label=label,
         )
+
+    @classmethod
+    def _resolve_labelled_metrics(
+        cls, metrics_list: list[dict]
+    ) -> list[ResolvedMetric]:
+        """Resolve the top-level metric entries, giving each a distinct label.
+
+        Results are keyed by label, which defaults to the metric name. Two
+        entries with one label, explicit or default, are rejected rather than one
+        silently overwriting the other.
+        """
+        labelled = [cls._resolve_metric(metric) for metric in metrics_list]
+        counts = Counter(metric.label for metric in labelled)
+        duplicates = sorted(label for label, n in counts.items() if n > 1)
+        if duplicates:
+            raise ValueError(
+                f"Metric label(s) {duplicates} name more than one metric entry; "
+                f"give each entry a distinct 'label'."
+            )
+        return labelled
 
     @classmethod
     def get_analysis(cls, name: str) -> type:
@@ -461,7 +499,7 @@ class YAMLConfigParser:
           - A pass with ``uses_metrics = False`` takes no ``metrics`` list and
             needs none anywhere in the config.
           - Otherwise ``metrics``, when given, is a non-empty list of names.
-          - With top-level metrics, every name must be one of them, and the
+          - With top-level metrics, every name must be one of their labels, and the
             subset reuses those ``ResolvedMetric`` objects, so it inherits their
             kwargs instead of restating them. Omitted means all of them.
           - Without top-level metrics there is no baseline run on the plain
@@ -500,7 +538,7 @@ class YAMLConfigParser:
                     f"be a non-empty list of metric names, got {pass_metrics!r}."
                 )
             if top_level_metrics:
-                by_name = {m.name: m for m in top_level_metrics}
+                by_name = {m.label: m for m in top_level_metrics}
                 unknown = set(pass_metrics) - by_name.keys()
                 if unknown:
                     raise RuntimeError(
@@ -983,7 +1021,7 @@ class YAMLConfigParser:
         metrics_list = doc.pop("metrics", [])
         if not isinstance(metrics_list, list):
             metrics_list = [metrics_list]
-        resolved_metrics = [cls._resolve_metric(metric) for metric in metrics_list]
+        resolved_metrics = cls._resolve_labelled_metrics(metrics_list)
 
         resolved_analysis = None
         if "analysis" in doc:

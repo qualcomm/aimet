@@ -69,7 +69,7 @@ class TestMMMUScoringContractV2:
         assert len(set(ids)) == 4
 
 
-class TestASRErrorRateScoringContractV1:
+class TestASRErrorRateScoringContractV2:
     """Golden fingerprint for the WER/CER scoring contract.
 
     If one of these fails you changed ASR scoring semantics (normalization,
@@ -77,17 +77,21 @@ class TestASRErrorRateScoringContractV1:
     ``_ASRErrorRateBase`` and update the expectations here.
     """
 
-    def test_scoring_version_is_one(self):
-        assert WER.SCORING_VERSION == 1
-        assert CER.SCORING_VERSION == 1
+    def test_scoring_version_is_two(self):
+        assert WER.SCORING_VERSION == 2
+        assert CER.SCORING_VERSION == 2
 
     def test_normalization_fingerprint(self):
-        # lowercase, punctuation dropped, apostrophe kept, hyphen split,
+        # casefolded, punctuation dropped, apostrophe kept, hyphen split,
         # whitespace collapsed.
         assert (
             normalize_transcript("  It’s WELL-known, isn't it?  ")
             == "it's well known isn't it"
         )
+
+    def test_casefold_fingerprint(self):
+        # v2: casefold, not lower() -- sharp s and final sigma fold.
+        assert normalize_transcript("Straße ΛΌΓΟΣ") == "strasse λόγοσ"
 
     def test_units_fingerprint(self):
         assert (WER.UNIT, CER.UNIT) == ("word", "char")

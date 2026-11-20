@@ -288,7 +288,7 @@ def run_analysis(
             has_baseline=bool(config.metrics),
             pass_name=analysis.name,
             pass_kwargs=analysis.kwargs,
-            metric_names=[m.name for m in analysis.metrics],
+            metric_names=[m.label for m in analysis.metrics],
             output=output,
             # Artifact paths are relative to output_dir, which holds the report too.
             artifact_links=list(output.artifacts),
@@ -297,6 +297,6 @@ def run_analysis(
 
     return AnalysisResult(
         name=analysis.name,
-        kwargs={**analysis.kwargs, "metrics": [m.name for m in analysis.metrics]},
+        kwargs={**analysis.kwargs, "metrics": [m.label for m in analysis.metrics]},
         report=str(report_path.relative_to(results_dir)),
     )

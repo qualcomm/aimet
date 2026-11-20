@@ -15,6 +15,7 @@ from GenAILab.bench.metrics import (
     _JSDivergenceCompute,
     _FlipsCompute,
 )
+from GenAILab.bench.profiler import ScoredResult
 from GenAILab.bench.yaml_config_parser import ResolvedMetric
 
 
@@ -157,3 +158,50 @@ class TestRunMetricsExtraKwargs:
             self._run(self.DeclaresOutputDir, {"output_dir": "user/dir"})
             == "analysis/trunc_bits8"
         )
+
+
+class TestRunMetricsResultShapes:
+    """``run_metrics`` turns each entry's ``evaluate`` return into one row."""
+
+    class Bare(TextEvaluationMetric):
+        @classmethod
+        def evaluate(cls, model, tokenizer, context_length, *, eval_ctx, **kwargs):
+            return 1.5
+
+    class Scored(TextEvaluationMetric):
+        SCORING_VERSION = 7
+
+        @classmethod
+        def evaluate(cls, model, tokenizer, context_length, *, eval_ctx, **kwargs):
+            return ScoredResult(2.5, {"n": 3})
+
+    @staticmethod
+    def _run(*metrics):
+        return run_metrics(
+            tuple(
+                m
+                if isinstance(m, ResolvedMetric)
+                else ResolvedMetric(name=m.__name__, metric_cls=m)
+                for m in metrics
+            ),
+            generator="gen",
+            tokenizer=object(),
+            context_length=128,
+            eval_ctx="ctx",
+        )
+
+    def test_bare_score(self):
+        [row] = self._run(self.Bare)
+        assert (row.metric_name, row.result, row.details) == ("Bare", 1.5, None)
+
+    def test_scored_result_is_unwrapped(self):
+        [row] = self._run(self.Scored)
+        assert (row.metric_name, row.result, row.details) == ("Scored", 2.5, {"n": 3})
+        assert row.scoring_version == 7
+
+    def test_the_label_names_the_row(self):
+        labelled = ResolvedMetric(
+            name="Scored", metric_cls=self.Scored, label="Scored[Korean]"
+        )
+        rows = self._run(self.Bare, labelled)
+        assert [r.metric_name for r in rows] == ["Bare", "Scored[Korean]"]

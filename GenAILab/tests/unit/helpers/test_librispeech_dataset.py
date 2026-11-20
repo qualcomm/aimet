@@ -14,7 +14,7 @@ import torch
 from GenAILab.bench.datasets import (
     AUDIO_SAMPLING_RATE,
     Interleaved,
-    LazyLibriSpeechDataset,
+    LazyASRDataset,
     LibriSpeech,
     MultimodalDataset,
     decode_audio_column,
@@ -120,10 +120,10 @@ class TestDecodeAudioColumn:
             decode_audio_column(None)
 
 
-class TestLazyLibriSpeechDataset:
+class TestLazyASRDataset:
     def test_yields_only_the_fused_model_inputs(self):
         processor = _FakeASRProcessor()
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
         item = dataset[0]
         assert set(item) == {
             "input_ids",
@@ -136,12 +136,12 @@ class TestLazyLibriSpeechDataset:
 
     def test_calibration_items_are_pure_tensors(self):
         processor = _FakeASRProcessor()
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
         assert all(isinstance(v, torch.Tensor) for v in dataset[0].values())
 
     def test_include_reference_attaches_the_transcript(self):
         processor = _FakeASRProcessor()
-        dataset = LazyLibriSpeechDataset(
+        dataset = LazyASRDataset(
             _raw_dataset(), processor, context_length=512, include_reference=True
         )
         assert dataset[0]["reference"] == "HELLO WORLD 0"
@@ -149,13 +149,13 @@ class TestLazyLibriSpeechDataset:
 
     def test_len_and_iteration(self):
         processor = _FakeASRProcessor()
-        dataset = LazyLibriSpeechDataset(_raw_dataset(3), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(3), processor, context_length=512)
         assert len(dataset) == 3
         assert len(list(dataset)) == 3
 
     def test_waveform_and_rate_are_passed_to_the_processor(self):
         processor = _FakeASRProcessor()
-        dataset = LazyLibriSpeechDataset(
+        dataset = LazyASRDataset(
             _raw_dataset(seconds=0.5), processor, context_length=512
         )
         dataset[0]
@@ -167,7 +167,7 @@ class TestLazyLibriSpeechDataset:
 
     def test_n_window_defaults_to_the_processor_and_is_forwarded(self):
         processor = _FakeASRProcessor(n_window=25, mel_frames=200)
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
         assert dataset.n_window == 25
         assert dataset.mel_frame_multiple == 50
         dataset[0]
@@ -176,7 +176,7 @@ class TestLazyLibriSpeechDataset:
 
     def test_n_window_override_wins_over_the_processor(self):
         processor = _FakeASRProcessor(n_window=25)
-        dataset = LazyLibriSpeechDataset(
+        dataset = LazyASRDataset(
             _raw_dataset(), processor, context_length=512, n_window=50
         )
         assert dataset.mel_frame_multiple == 100
@@ -189,28 +189,26 @@ class TestLazyLibriSpeechDataset:
             def apply_transcription_request(self, audio, language=None, **kwargs):
                 raise AssertionError("not called")
 
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), _Bare(), context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), _Bare(), context_length=512)
         assert dataset.n_window == 50
         assert dataset.mel_frame_multiple == 100
 
     def test_mel_frames_not_a_multiple_of_2n_window_is_rejected(self):
         # 150 frames is not a multiple of 2 * 50 = 100.
         processor = _FakeASRProcessor(n_window=50, mel_frames=150)
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
         with pytest.raises(ValueError, match="not a multiple of"):
             dataset[0]
 
     def test_mel_frames_multiple_of_100_is_accepted(self):
         for frames in (100, 200, 3000):
             processor = _FakeASRProcessor(n_window=50, mel_frames=frames)
-            dataset = LazyLibriSpeechDataset(
-                _raw_dataset(), processor, context_length=512
-            )
+            dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
             assert dataset[0]["input_features"].shape[-1] == frames
 
     def test_over_context_length_warns_but_does_not_truncate(self):
         processor = _FakeASRProcessor(num_tokens=600)
-        dataset = LazyLibriSpeechDataset(_raw_dataset(2), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(2), processor, context_length=512)
         with pytest.warns(UserWarning, match="exceeding the context length"):
             item = dataset[0]
         # Truncating would desynchronise audio placeholders from mel frames.
@@ -220,7 +218,7 @@ class TestLazyLibriSpeechDataset:
         import warnings as _warnings
 
         processor = _FakeASRProcessor(num_tokens=600)
-        dataset = LazyLibriSpeechDataset(_raw_dataset(2), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(2), processor, context_length=512)
         with pytest.warns(UserWarning):
             dataset[0]
         with _warnings.catch_warnings():
@@ -329,7 +327,7 @@ class TestLibriSpeechWrapper:
         dataset = LibriSpeech.load_encoded_dataset(
             _FakeASRProcessor(), context_length=512, split="validation.clean"
         )
-        assert isinstance(dataset, LazyLibriSpeechDataset)
+        assert isinstance(dataset, LazyASRDataset)
         assert dataset.include_reference is False
         assert "reference" not in dataset[0]
 
@@ -344,6 +342,29 @@ class TestLibriSpeechWrapper:
             include_reference=True,
         )
         assert dataset[0]["reference"] == "HELLO WORLD 0"
+
+    class _Model:
+        SUPPORTED_LANGUAGES = {"en": "English", "ko": "Korean"}
+
+    def test_an_unsupported_language_fails_before_load(self, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("must not load")
+
+        monkeypatch.setattr(LibriSpeech, "load_dataset", staticmethod(boom))
+        with pytest.raises(ValueError, match="Klingon is not supported"):
+            LibriSpeech.load_encoded_dataset(
+                _FakeASRProcessor(), 512, language="Klingon", model=self._Model()
+            )
+
+    @pytest.mark.parametrize("language", ["English", "en", None])
+    def test_supported_or_auto_detected_language_loads(self, monkeypatch, language):
+        monkeypatch.setattr(
+            LibriSpeech, "load_dataset", staticmethod(lambda *a, **k: _raw_dataset(1))
+        )
+        dataset = LibriSpeech.load_encoded_dataset(
+            _FakeASRProcessor(), 512, language=language, model=self._Model()
+        )
+        assert dataset.language == language
 
 
 class _FakeChatProcessor:
@@ -373,13 +394,13 @@ class TestGenericChatTemplateBranch:
 
     def test_opens_an_assistant_turn(self):
         processor = _FakeChatProcessor()
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
         dataset[0]
         assert processor.calls[0]["add_generation_prompt"] is True
 
     def test_audio_kwargs_are_nested_for_the_processor(self):
         processor = _FakeChatProcessor()
-        dataset = LazyLibriSpeechDataset(_raw_dataset(), processor, context_length=512)
+        dataset = LazyASRDataset(_raw_dataset(), processor, context_length=512)
         dataset[0]
         audio_kwargs = processor.calls[0]["processor_kwargs"]["audio_kwargs"]
         assert audio_kwargs["sampling_rate"] == AUDIO_SAMPLING_RATE
@@ -402,7 +423,7 @@ class TestInterleavedForwarding:
             image_size=(224, 224),
         )
         (sub,) = wrapper.datasets
-        assert isinstance(sub, LazyLibriSpeechDataset)
+        assert isinstance(sub, LazyASRDataset)
         assert sub.audio_frames == 3000
         assert sub.model is model
 

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from pydantic import TypeAdapter
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from transformers import (
@@ -40,7 +41,12 @@ from GenAILab.bench.utils.generation_utils import (
     ContextLengthStoppingCriteria,
 )
 from GenAILab.qai_hub_lm.models.generator import Generator, VLM_Generator
-from GenAILab.bench.profiler import GPUMeter, MetricResult, ScoredResult
+from GenAILab.qai_hub_lm.schema.dataset import ASRDatasetSpec
+from GenAILab.bench.profiler import (
+    GPUMeter,
+    MetricResult,
+    ScoredResult,
+)
 from GenAILab.qai_hub_lm.scoring.grace.grace import (
     GRACE_VERSION,
     load_eval_prompts,
@@ -61,7 +67,6 @@ from .datasets import (
     MMMU as MMMUDataset,
     ERQA as ERQADataset,
     Where2Place as Where2PlaceDataset,
-    LibriSpeech as LibriSpeechDataset,
 )
 
 
@@ -2242,17 +2247,22 @@ _SEPARATOR_CHARS = "-‐‑‒–—―_/\\"
 def normalize_transcript(text: str) -> str:
     """Normalize an ASR reference/hypothesis for error-rate scoring.
 
-    NFKC, apostrophes folded to ASCII, lowercased, hyphens/dashes/underscores/
+    NFKC, apostrophes folded to ASCII, casefolded, hyphens/dashes/underscores/
     slashes to space, remaining punctuation and symbols dropped (letters, digits,
     marks and whitespace survive, so non-English text is not mangled), whitespace
     collapsed.
+
+    ``casefold()`` rather than ``lower()`` so caseless matching holds outside
+    ASCII (``ß`` -> ``ss``, Greek final sigma); it is followed by a second NFKC
+    because casefold can decompose a precomposed letter (``ΐ`` -> ``ι`` + two
+    combining marks), and re-composing keeps it one CER unit on both sides.
 
     Part of the scoring contract: changing it requires a ``SCORING_VERSION`` bump.
     """
     text = unicodedata.normalize("NFKC", str(text))
     for variant in _APOSTROPHE_VARIANTS:
         text = text.replace(variant, "'")
-    text = text.lower()
+    text = unicodedata.normalize("NFKC", text.casefold())
     text = "".join(" " if ch in _SEPARATOR_CHARS else ch for ch in text)
     text = "".join(
         ch
@@ -2303,7 +2313,9 @@ def char_tokens(text: str) -> list[str]:
 
 
 def corpus_error_rate(
-    references: list[str], hypotheses: list[str], unit: str = "word"
+    references: list[str],
+    hypotheses: list[str],
+    unit: str = "word",
 ) -> float:
     """Corpus-level error rate in percent.
 
@@ -2336,54 +2348,96 @@ def corpus_error_rate(
     return 100.0 * total_edits / total_reference
 
 
+#: Validates an ASR metric entry's dataset selection; built once.
+_ASR_DATASET_SPEC = TypeAdapter(ASRDatasetSpec)
+
+
 class _ASRErrorRateBase(EvaluationMetric):
     """Shared transcription + error-rate scoring for ASR metrics.
 
     Generative: each utterance is greedily decoded and compared against its
-    reference with :func:`corpus_error_rate`. Transcriptions are cached under one
-    shared collection name, so WER and CER together decode once. Lower is better.
+    reference with :func:`corpus_error_rate`. Lower is better.
+
+    The entry's ``dataset`` (default ``LibriSpeech``) and its remaining kwargs
+    are validated as an :data:`ASRDatasetSpec`, and that dataset loads the eval
+    set: the metric names no dataset itself. Transcriptions are cached per
+    dataset selection, so WER and CER on the same selection decode once.
+
+    YAML usage::
+
+        - name: WER                       # LibriSpeech test.clean, 256 samples
+        - name: WER
+          dataset: FLEURS
+          language: Korean
+        - name: CER
+          dataset: FLEURS
+          language: Japanese
+          num_samples: 64
+          label: FLEURS_CER[Japanese]     # optional row name
+
+    v2 (2026-11): transcripts are casefolded rather than lowercased
+    (``normalize_transcript``); ASCII scores as before, but a hypothesis with
+    e.g. ``ß`` or Greek final sigma can score differently from v1.
     """
 
-    SCORING_VERSION = 1
+    SCORING_VERSION = 2
 
     #: Error-rate unit: "word" (WER) or "char" (CER).
     UNIT = "word"
 
-    #: One shared cache key for all ASR error-rate metrics -- deliberately not
-    #: derived from cls.__name__, so WER and CER reuse the same decode pass.
+    #: Prefix of the transcription cache key -- deliberately not derived from
+    #: cls.__name__, so WER and CER reuse the same decode pass.
     COLLECTION_NAME = "ASRTranscriptions_generated_text"
 
-    DEFAULT_SPLIT = "test.clean"
     #: Bound the eval set: full test.clean is 2620 utterances of greedy decode.
     DEFAULT_NUM_SAMPLES = 256
-    DEFAULT_LANGUAGE = "English"
     MAX_NEW_TOKENS = 256
 
+    @staticmethod
+    def dataset_spec(dataset: str = "LibriSpeech", **kwargs):
+        """Validate an entry's dataset selection as an :data:`ASRDatasetSpec`.
+
+        Raises -- before anything is decoded or downloaded -- on a non-ASR
+        dataset, an unknown key or a wrong type.
+        """
+        if "include_reference" in kwargs:
+            raise ValueError(
+                "'include_reference' is not a metric option: the metric always "
+                "loads the reference transcripts."
+            )
+        return _ASR_DATASET_SPEC.validate_python({"name": dataset, **kwargs})
+
     @classmethod
-    def get_collection_name(cls) -> str:
-        """Cache key for the shared transcription pass."""
-        return cls.COLLECTION_NAME
+    def dataset_kwargs(cls, spec) -> dict:
+        """``load_encoded_dataset`` kwargs of ``spec``: what the entry set, over
+        the metric's sample bound. Everything else is the dataset's default."""
+        kwargs = spec.model_dump(exclude_unset=True, exclude={"name"})
+        kwargs.setdefault("num_samples", cls.DEFAULT_NUM_SAMPLES)
+        return kwargs
+
+    @classmethod
+    def get_collection_name(cls, spec=None) -> str:
+        """Cache key of the transcription pass over ``spec`` (default LibriSpeech)."""
+        spec = cls.dataset_spec() if spec is None else spec
+        selection = json.dumps(
+            {"name": spec.name, **cls.dataset_kwargs(spec)}, sort_keys=True
+        )
+        return f"{cls.COLLECTION_NAME}_{selection}"
 
     @classmethod
     def get_dataset(
         cls,
         processor,
         context_length,
-        split: str | None = None,
-        num_samples: int | None = None,
-        language: str | None = None,
+        spec=None,
         audio_frames: int | None = None,
         model=None,
-        **kwargs,
     ):
-        return LibriSpeechDataset.load_encoded_dataset(
+        spec = cls.dataset_spec() if spec is None else spec
+        return YAMLConfigParser.get_dataset(spec.name).load_encoded_dataset(
             processor,
             context_length,
-            split=split or cls.DEFAULT_SPLIT,
-            num_samples=(
-                cls.DEFAULT_NUM_SAMPLES if num_samples is None else num_samples
-            ),
-            language=cls.DEFAULT_LANGUAGE if language is None else language,
+            **cls.dataset_kwargs(spec),
             audio_frames=audio_frames,
             model=model,
             include_reference=True,
@@ -2409,7 +2463,8 @@ class _ASRErrorRateBase(EvaluationMetric):
     def transcribe_all(cls, model, processor, context_length, **kwargs) -> dict:
         """Greedily transcribe the eval set.
 
-        Returns ``{"references": [...], "hypotheses": [...]}``.
+        ``kwargs`` are :meth:`get_dataset`'s. Returns
+        ``{"references": [...], "hypotheses": [...]}``.
         """
         dataset = cls.get_dataset(processor, context_length, model=model, **kwargs)
         tokenizer = getattr(processor, "tokenizer", processor)
@@ -2453,8 +2508,13 @@ class _ASRErrorRateBase(EvaluationMetric):
         context_length: int,
         *,
         eval_ctx: EvaluationContext = None,
+        dataset: str = "LibriSpeech",
+        image_size=None,
+        audio_frames: int | None = None,
         **kwargs,
-    ) -> float:
+    ) -> ScoredResult:
+        # image_size is injected for every non-text metric; it has no meaning here.
+        spec = cls.dataset_spec(dataset, **kwargs)
         if eval_ctx is None:
             warnings.warn(
                 "No EvaluationContext provided; ASR transcriptions will not be "
@@ -2462,26 +2522,37 @@ class _ASRErrorRateBase(EvaluationMetric):
             )
 
         def collect():
-            return cls.transcribe_all(model, processor, context_length, **kwargs)
+            return cls.transcribe_all(
+                model, processor, context_length, spec=spec, audio_frames=audio_frames
+            )
 
         data = (
-            eval_ctx.get_or_compute_quant(cls.get_collection_name(), collect)
+            eval_ctx.get_or_compute_quant(cls.get_collection_name(spec), collect)
             if eval_ctx
             else collect()
         )
-        return corpus_error_rate(data["references"], data["hypotheses"], unit=cls.UNIT)
+        score = corpus_error_rate(data["references"], data["hypotheses"], unit=cls.UNIT)
+        return ScoredResult(
+            score,
+            {
+                **spec.model_dump(exclude_unset=True),
+                "unit": cls.UNIT,
+                "num_samples": len(data["references"]),
+            },
+        )
 
 
 @YAMLConfigParser.register_metric
 class WER(_ASRErrorRateBase):
-    """Word error rate (%) on LibriSpeech. Lower is better."""
+    """Word error rate (%) on an ASR dataset (default LibriSpeech). Lower is better."""
 
     UNIT = "word"
 
 
 @YAMLConfigParser.register_metric
 class CER(_ASRErrorRateBase):
-    """Character error rate (%) on LibriSpeech, spaces included. Lower is better."""
+    """Character error rate (%) on an ASR dataset (default LibriSpeech), spaces
+    included. Lower is better."""
 
     UNIT = "char"
 
@@ -2546,11 +2617,11 @@ def run_metrics(
                 details = None
                 if isinstance(result, ScoredResult):
                     result, details = result.result, result.details
-                print(f"{metric_cls.__name__} result: {result}")
+                print(f"{metric.label} result: {result}")
 
             results.append(
                 MetricResult(
-                    metric_name=metric_cls.__name__,
+                    metric_name=metric.label,
                     result=result,
                     profiler=profiler if capture_intermediate_data else None,
                     scoring_version=metric_cls.SCORING_VERSION,

@@ -129,16 +129,14 @@ def apply_quantization_chain(
                 gen_ctx = generator.on_device(torch.device("cpu"))
             else:
                 gen_ctx = contextlib.nullcontext()
-            # `generator` (needed for ``generator.pad_audio_item`` on
+            # `generator` (its language check, and ``pad_audio_item`` on a
             # statically-shaped audio export) is passed only to the loader
             # call, not merged into ``dataset_kwargs`` -- that dict is also
             # stored verbatim in ``RecipeStepStats`` for the JSON report, and
             # a live model object there is not JSON-serializable.
             load_kwargs = dict(dataset_kwargs)
-            if (
-                audio_frames is not None
-                and not issubclass(dataset_cls, TextDataset)
-                and _loader_accepts(dataset_cls, "model")
+            if not issubclass(dataset_cls, TextDataset) and _loader_accepts(
+                dataset_cls, "model"
             ):
                 load_kwargs.setdefault("model", generator)
             with gen_ctx:

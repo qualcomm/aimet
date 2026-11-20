@@ -7,13 +7,16 @@ Error rates are checked against hand-computed values; the generative path runs
 against a fake model/processor, so nothing here loads weights or audio.
 """
 
+import inspect
 import types
 
 import pytest
 import torch
 
+from GenAILab.bench.datasets import LibriSpeech
 from GenAILab.bench.metrics import (
     CER,
+    _ASRErrorRateBase,
     WER,
     char_tokens,
     corpus_error_rate,
@@ -248,9 +251,9 @@ class TestRegistrationAndContract:
         assert WER.UNIT == "word"
         assert CER.UNIT == "char"
 
-    def test_scoring_version_is_one(self):
-        assert WER.SCORING_VERSION == 1
-        assert CER.SCORING_VERSION == 1
+    def test_scoring_version_is_two(self):
+        assert WER.SCORING_VERSION == 2
+        assert CER.SCORING_VERSION == 2
 
     def test_transcriptions_are_cached_under_one_shared_key(self):
         # WER and CER must reuse a single decode pass.
@@ -279,10 +282,11 @@ class TestDecodeTranscript:
 class TestGenerativeEvaluate:
     def test_wer_over_two_utterances(self, scripted):
         # 1 substituted word over 4 reference words.
-        assert WER.evaluate(scripted, _FakeProcessor(), 512, eval_ctx=None) == 25.0
+        result = WER.evaluate(scripted, _FakeProcessor(), 512, eval_ctx=None)
+        assert result.result == 25.0
 
     def test_cer_differs_from_wer_and_matches_the_helper(self, scripted):
-        result = CER.evaluate(scripted, _FakeProcessor(), 512, eval_ctx=None)
+        result = CER.evaluate(scripted, _FakeProcessor(), 512, eval_ctx=None).result
         expected = corpus_error_rate(
             ["HELLO WORLD", "HELLO WORLD"],
             ["hello world", "hello goodbye"],
@@ -323,14 +327,19 @@ class TestGetDatasetWiring:
             return []
 
         monkeypatch.setattr(
-            "GenAILab.bench.metrics.LibriSpeechDataset.load_encoded_dataset",
+            "GenAILab.bench.datasets.LibriSpeech.load_encoded_dataset",
             staticmethod(fake_load_encoded_dataset),
         )
         WER.get_dataset(_FakeProcessor(), 512)
-        assert captured["split"] == "test.clean"
+        # Split and language are left to LibriSpeech's own defaults.
+        assert "split" not in captured and "language" not in captured
         assert captured["num_samples"] == WER.DEFAULT_NUM_SAMPLES
-        assert captured["language"] == "English"
         assert captured["include_reference"] is True
+
+    def test_librispeech_defaults_are_test_clean_in_english(self):
+        params = inspect.signature(LibriSpeech.load_encoded_dataset).parameters
+        assert params["split"].default == "test.clean"
+        assert params["language"].default == "English"
 
     def test_overrides_are_honoured(self, monkeypatch):
         captured = {}
@@ -340,16 +349,282 @@ class TestGetDatasetWiring:
             return []
 
         monkeypatch.setattr(
-            "GenAILab.bench.metrics.LibriSpeechDataset.load_encoded_dataset",
+            "GenAILab.bench.datasets.LibriSpeech.load_encoded_dataset",
             staticmethod(fake_load_encoded_dataset),
         )
-        WER.get_dataset(
-            _FakeProcessor(),
-            512,
-            split="validation.clean",
-            num_samples=4,
-            language="German",
+        spec = WER.dataset_spec(
+            split="validation.clean", num_samples=4, language="German"
         )
+        WER.get_dataset(_FakeProcessor(), 512, spec)
         assert captured["split"] == "validation.clean"
         assert captured["num_samples"] == 4
         assert captured["language"] == "German"
+
+
+class TestCasefoldNormalization:
+    """Transcripts are casefolded, not lowercased."""
+
+    def test_casefold_folds_sharp_s(self):
+        assert normalize_transcript("Straße") == "strasse"
+        assert normalize_transcript("STRASSE") == "strasse"
+
+    def test_casefold_folds_greek_final_sigma(self):
+        assert normalize_transcript("λόγος") == normalize_transcript("ΛΌΓΟΣ")
+
+    def test_casefold_recomposes_to_one_codepoint(self):
+        # casefold("ΐ") is iota + two combining marks; the second NFKC folds it
+        # back to U+0390 so CER counts one character.
+        assert normalize_transcript("ΐ") == "\u0390"
+        assert char_tokens("ΐ") == ["\u0390"]
+
+    def test_casefold_is_idempotent(self):
+        once = normalize_transcript("Größe ΐ İstanbul")
+        assert normalize_transcript(once) == once
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "HE WENT HOME, DIDN'T HE?",
+            "MISTER QUILTER IS THE APOSTLE OF THE MIDDLE CLASSES",
+            "well-known and/or 50% café",
+        ],
+    )
+    def test_casefold_matches_lower_on_ascii_and_latin1(self, text):
+        # LibriSpeech-style text normalizes as it did under lower() (v1).
+        assert normalize_transcript(text) == normalize_transcript(text.lower())
+        assert text.casefold() == text.lower()
+
+    def test_corpus_error_rate_casefolds(self):
+        refs, hyps = ["Straße"], ["strasse"]
+        assert corpus_error_rate(refs, hyps, unit="word") == 0.0
+        assert corpus_error_rate(refs, hyps, unit="char") == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Dataset selection: WER / CER with ``dataset: FLEURS``
+# ---------------------------------------------------------------------------
+
+
+class _MultilingualModel(_FakeModel):
+    # Qwen3ASRGenerator-shaped: {code: name}, read by the dataset's check.
+    SUPPORTED_LANGUAGES = {
+        "en": "English",
+        "ko": "Korean",
+        "ja": "Japanese",
+        "zh": "Chinese",
+        "de": "German",
+    }
+
+
+def _stub_transcribe(monkeypatch, data_by_language):
+    """Replace the decode loop; record the spec each pass was decoded with."""
+    calls = []
+
+    def fake(cls, model, processor, context_length, spec=None, audio_frames=None):
+        calls.append({"spec": spec, "audio_frames": audio_frames})
+        return data_by_language[spec.language or "English"]
+
+    monkeypatch.setattr(_ASRErrorRateBase, "transcribe_all", classmethod(fake))
+    return calls
+
+
+def _run(metric, model=None, eval_ctx=None, **kwargs):
+    return metric.evaluate(
+        model or _MultilingualModel([[1]]),
+        _FakeProcessor(),
+        512,
+        eval_ctx=_FakeEvalContext() if eval_ctx is None else eval_ctx,
+        **kwargs,
+    )
+
+
+class TestFleursIsNotASeparateMetric:
+    def test_only_wer_and_cer_are_registered(self):
+        with pytest.raises(LookupError):
+            YAMLConfigParser.get_metric("FLEURS")
+
+
+class TestDatasetSelectionValidation:
+    """Every bad selection must raise before a single sample is decoded."""
+
+    @pytest.fixture(autouse=True)
+    def no_decode(self, monkeypatch):
+        def boom(cls, *a, **k):
+            raise AssertionError("decode must not run")
+
+        monkeypatch.setattr(_ASRErrorRateBase, "transcribe_all", classmethod(boom))
+
+    def test_unknown_key_is_rejected(self):
+        with pytest.raises(ValueError, match="languagez"):
+            _run(WER, dataset="FLEURS", languagez="English")
+
+    def test_a_language_list_is_rejected(self):
+        # One entry per language: a list would fan one entry out into many rows.
+        with pytest.raises(ValueError, match="languages"):
+            _run(WER, dataset="FLEURS", languages=["English"])
+
+    def test_a_non_asr_dataset_is_rejected(self):
+        with pytest.raises(ValueError, match="Wikitext"):
+            _run(WER, dataset="Wikitext")
+
+    def test_wrong_type_is_rejected(self):
+        with pytest.raises(ValueError):
+            _run(WER, dataset="FLEURS", language="English", num_samples="many")
+
+    @pytest.mark.parametrize("bad", [0, -4])
+    def test_non_positive_num_samples_is_rejected(self, bad):
+        with pytest.raises(ValueError):
+            _run(WER, dataset="FLEURS", language="English", num_samples=bad)
+
+    def test_include_reference_is_not_a_metric_option(self):
+        with pytest.raises(ValueError, match="include_reference"):
+            _run(WER, dataset="FLEURS", language="English", include_reference=False)
+
+
+class TestFleursScoring:
+    DATA = {
+        "English": {"references": ["Hello, World!"], "hypotheses": ["hello there"]},
+        "Korean": {"references": ["안녕 하세요"], "hypotheses": ["안녕 하세요"]},
+        "Japanese": {"references": ["こんにちは世界"], "hypotheses": ["こんにちは"]},
+        "German": {"references": ["Straße"], "hypotheses": ["strasse"]},
+    }
+
+    @pytest.fixture
+    def calls(self, monkeypatch):
+        return _stub_transcribe(monkeypatch, self.DATA)
+
+    def test_default_dataset_is_librispeech(self, calls):
+        _run(WER)
+        assert calls[0]["spec"].name == "LibriSpeech"
+
+    def test_fleurs_defaults_are_the_datasets_own(self, calls):
+        # Only the sample bound is the metric's; split is left to
+        # FLEURS.load_encoded_dataset (test).
+        _run(WER, dataset="FLEURS", language="English")
+        spec = calls[0]["spec"]
+        assert WER.dataset_kwargs(spec) == {
+            "language": "English",
+            "num_samples": WER.DEFAULT_NUM_SAMPLES,
+        }
+
+    def test_fleurs_needs_a_language(self, calls):
+        with pytest.raises(ValueError, match="language"):
+            _run(WER, dataset="FLEURS")
+        assert not calls
+
+    def test_the_metric_name_fixes_the_unit(self, calls):
+        wer = _run(WER, dataset="FLEURS", language="Japanese")
+        cer = _run(CER, dataset="FLEURS", language="Japanese")
+        # One "word" in the reference, a different one in the hypothesis.
+        assert wer.result == pytest.approx(100.0)
+        # 7 reference chars, 5 hypothesis chars: 2 deletions.
+        assert cer.result == pytest.approx(100 * 2 / 7)
+
+    def test_english_wer(self, calls):
+        # "hello world" vs "hello there": 1 substitution over 2 words.
+        out = _run(WER, dataset="FLEURS", language="English")
+        assert out.result == pytest.approx(50.0)
+
+    def test_scoring_casefolds(self, calls):
+        # Straße vs strasse is an exact match only under casefold.
+        assert _run(WER, dataset="FLEURS", language="German").result == 0.0
+
+    def test_details(self, calls):
+        out = _run(
+            WER, dataset="FLEURS", language="Korean", split="validation", num_samples=8
+        )
+        assert out.details == {
+            "name": "FLEURS",
+            "language": "Korean",
+            "split": "validation",
+            "unit": "word",
+            "num_samples": 1,  # samples actually scored, not requested
+        }
+
+    def test_audio_frames_reach_the_decode_and_image_size_is_ignored(self, calls):
+        _run(
+            WER,
+            dataset="FLEURS",
+            language="English",
+            audio_frames=3000,
+            image_size=(1, 1),
+        )
+        assert calls[0]["audio_frames"] == 3000
+
+
+class TestTranscriptionCaching:
+    DATA = TestFleursScoring.DATA
+
+    def test_wer_and_cer_share_one_decode_per_selection(self, monkeypatch):
+        calls = _stub_transcribe(monkeypatch, self.DATA)
+        ctx = _FakeEvalContext()
+        _run(WER, eval_ctx=ctx, dataset="FLEURS", language="Korean")
+        _run(CER, eval_ctx=ctx, dataset="FLEURS", language="Korean")
+        assert len(calls) == 1
+
+    def test_each_selection_is_its_own_cache_entry(self, monkeypatch):
+        calls = _stub_transcribe(monkeypatch, self.DATA)
+        ctx = _FakeEvalContext()
+        for kw in (
+            {},
+            {"dataset": "FLEURS", "language": "English"},
+            {"dataset": "FLEURS", "language": "Korean"},
+            {"dataset": "FLEURS", "language": "English", "split": "validation"},
+            {"dataset": "FLEURS", "language": "English", "num_samples": 8},
+        ):
+            _run(WER, eval_ctx=ctx, **kw)
+        assert len(calls) == len(ctx.cache) == 5
+
+    def test_an_explicit_default_hits_the_same_entry(self):
+        default = WER.dataset_spec("FLEURS", language="Korean")
+        explicit = WER.dataset_spec(
+            "FLEURS", language="Korean", num_samples=WER.DEFAULT_NUM_SAMPLES
+        )
+        assert WER.get_collection_name(default) == WER.get_collection_name(explicit)
+
+    def test_runs_without_a_context_but_warns(self, monkeypatch):
+        _stub_transcribe(monkeypatch, self.DATA)
+        with pytest.warns(UserWarning, match="No EvaluationContext"):
+            WER.evaluate(_MultilingualModel([[1]]), _FakeProcessor(), 512)
+
+
+class TestFleursEndToEndThroughTranscribeAll:
+    """Real decode loop (fake model), so the loader kwargs and the reference pop
+    are exercised, not just the scoring."""
+
+    def test_loads_through_the_fleurs_dataset_and_scores(self, monkeypatch):
+        seen = []
+
+        def fake_load_encoded_dataset(processor, context_length, **kwargs):
+            seen.append(kwargs)
+            return _fake_items()
+
+        monkeypatch.setattr(
+            "GenAILab.bench.datasets.FLEURS.load_encoded_dataset",
+            staticmethod(fake_load_encoded_dataset),
+        )
+        model = _MultilingualModel([[1, 2], [1, 3]])
+        out = _run(WER, model=model, dataset="FLEURS", language="Korean", num_samples=2)
+        assert seen == [
+            {
+                "language": "Korean",
+                "num_samples": 2,
+                "audio_frames": None,
+                "model": model,
+                "include_reference": True,
+            }
+        ]
+        # Same scripted decode as the WER tests: one perfect, one substituted.
+        assert out.result == pytest.approx(25.0)
+
+    def test_an_unsupported_language_fails_before_download_or_decode(self, monkeypatch):
+        # The language check lives with the dataset; the metric reaches it
+        # through get_dataset(model=...), before FLEURS downloads anything.
+        def boom(*a, **k):
+            raise AssertionError("must not download")
+
+        monkeypatch.setattr(
+            "GenAILab.bench.datasets.FLEURS._load_config", staticmethod(boom)
+        )
+        with pytest.raises(ValueError, match="sw is not supported"):
+            _run(WER, dataset="FLEURS", language="Swahili")

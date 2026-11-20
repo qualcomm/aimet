@@ -346,6 +346,11 @@ def run_experiment(
                 "metrics": [
                     {
                         "name": metric.name,
+                        **(
+                            {"label": metric.label}
+                            if metric.label != metric.name
+                            else {}
+                        ),
                         **metric.metric_kwargs,
                     }
                     for metric in config.metrics

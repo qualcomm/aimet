@@ -25,6 +25,7 @@ import warnings
 
 import torch
 from transformers import AutoProcessor, PretrainedConfig, PreTrainedModel
+from transformers.models.qwen3_asr.processing_qwen3_asr import LANGUAGE_CODE_TO_NAME
 
 from .base import VLM
 from .components import AUDIO
@@ -151,6 +152,12 @@ class Qwen3ASRGenerator(VLM_Generator):
     The processor's placeholder run, sized for the real duration, must be resized
     to match or generation misaligns.
     """
+
+    #: Forced-language vocabulary, ``{code: name}`` (``"zh": "Chinese"``): the
+    #: processor's own table, so this check accepts exactly what
+    #: ``apply_transcription_request`` does. Datasets read it to reject an
+    #: unsupported language before loading anything.
+    SUPPORTED_LANGUAGES = LANGUAGE_CODE_TO_NAME
 
     def pad_audio_item(self, item: dict, audio_frames: int) -> dict:
         # The generator already pads/truncates the raw waveform with real
