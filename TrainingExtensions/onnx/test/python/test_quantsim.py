@@ -73,6 +73,7 @@ from aimet_onnx.quantsim import (
     _validate_encodings,
     _low_memory_ort_sessions_enabled,
     _with_low_memory_cuda_options,
+    _quantize_subgraphs_enabled,
 )
 from aimet_onnx.common.defs import QTYPE_ALIASES
 import aimet_onnx
@@ -1142,6 +1143,39 @@ class TestQuantSim:
                     assert (
                         tensor.name == exported_cg.get_all_ops()[name].outputs[idx].name
                     )
+
+    @pytest.mark.parametrize(
+        "make_model",
+        [
+            lambda tmp_path: single_residual_model().model,
+            models_for_tests.conv_model_with_shared_bias,
+            lambda tmp_path: models_for_tests.model_with_transposed_and_non_transposed_gemm(),
+            lambda tmp_path: models_for_tests.predicated_experts_model(),
+        ],
+        ids=["residual", "shared_bias", "transposed_weight", "if_branch_weights"],
+    )
+    def test_param_quantizers_match_per_param_search(self, make_model, tmp_path):
+        """
+        Building the sim does not search the connected graph once per parameter (that search is
+        quadratic in model size: MoE models have tens of thousands of expert weights), and the
+        param quantizers it builds hold the same shape and axes the search finds
+        """
+        with (
+            _quantize_subgraphs_enabled(True),
+            patch(
+                "aimet_onnx.quantsim.get_op_given_param_name",
+                side_effect=AssertionError("searched the ops for a parameter"),
+            ),
+        ):
+            sim = QuantizationSimModel(
+                make_model(tmp_path), providers=["CPUExecutionProvider"]
+            )
+        assert sim.param_names
+
+        for name in sim.param_names:
+            expected = sim._create_tensor_quantizer_params(name)
+            actual = sim.qc_quantize_op_dict[name].tensor_quantizer_params
+            assert actual == expected, name
 
     def test_insert_quantizer(self):
         model = single_residual_model().model

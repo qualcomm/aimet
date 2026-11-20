@@ -1103,28 +1103,49 @@ class QuantizationSimModel:
         """
         body_of = self._get_body_of_tensors()
         nodes = self._nodes_by_name()
+        param_ops = self._get_param_ops()
         for name in self.param_names:
             self._insert_quantizer(
                 name,
                 is_param=True,
                 graph=body_of.get(name, self.model.graph()),
                 nodes=nodes,
+                param_ops=param_ops,
             )
 
-    def _create_tensor_quantizer_params(self, param_name: str):
+    def _get_param_ops(self) -> Dict[str, Tuple[Op, Optional[List[int]]]]:
+        """
+        Map each parameter name to the first connected graph op holding it and its shape, so
+        quantizers can be created without scanning all ops per parameter.
+        """
+        param_ops = {}
+        for op in self.connected_graph.get_all_ops().values():
+            for param, _ in op.parameters.values():
+                param_ops.setdefault(param.name, (op, param.shape))
+        return param_ops
+
+    def _create_tensor_quantizer_params(
+        self,
+        param_name: str,
+        param_ops: Optional[Dict[str, Tuple[Op, Optional[List[int]]]]] = None,
+    ):
         """
         Creates TensorQuantizerParams object for QcQuantizeOp and QDQ node
 
         :param param_name: Name of the parameter for which the quant info object will be created
+        :param param_ops: Op and shape of each parameter by name. Searched for if not given.
         :return: TensorQuantizerParams object
         """
-        op = get_op_given_param_name(self.connected_graph, param_name)
+        if param_ops is None:
+            op = get_op_given_param_name(self.connected_graph, param_name)
+            param_shape = get_param_shape_using_connected_graph(
+                self.connected_graph, param_name
+            )
+        else:
+            op, param_shape = param_ops.get(param_name, (None, None))
         if not op:
             return None
 
-        param_shape = get_param_shape_using_connected_graph(
-            self.connected_graph, param_name
-        )
         tensor_quantizer_params = TensorQuantizerParams(param_shape)
         channel_axis, block_axis = self._get_param_quantization_axes(
             op, param_name, param_shape
@@ -1210,6 +1231,7 @@ class QuantizationSimModel:
         is_param: bool,
         graph: Optional[onnx.GraphProto] = None,
         nodes: Optional[Dict[str, onnx.NodeProto]] = None,
+        param_ops: Optional[Dict[str, Tuple[Op, Optional[List[int]]]]] = None,
     ):
         """
         Inserts a quantizer for tensor `input_name` in the graph and adds it to `self.qc_quantize_op_dict`
@@ -1220,6 +1242,7 @@ class QuantizationSimModel:
         :param is_param: True if the tensor is a parameter, False if it is an activation
         :param graph: Graph which defines `input_name`. Searched for if not given.
         :param nodes: Nodes of the model by name. Searched for if not given.
+        :param param_ops: Op and shape of each parameter by name. Searched for if not given.
         """
         if input_name in self.qc_quantize_op_dict:
             raise RuntimeError(f"Quantizer already exists for tensor {input_name}")
@@ -1230,7 +1253,9 @@ class QuantizationSimModel:
             output_name = input_name + "_qdq"
             op_mode = OpMode.oneShotQuantizeDequantize
             precision = self._param_type
-            tensor_quantizer_params = self._create_tensor_quantizer_params(input_name)
+            tensor_quantizer_params = self._create_tensor_quantizer_params(
+                input_name, param_ops
+            )
         else:
             output_name = input_name + "_updated"
             op_mode = OpMode.updateStats
