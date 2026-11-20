@@ -431,11 +431,11 @@ def get_effective_bitwidth(data_type: QuantizationDataType, bitwidth: int) -> fl
 def create_quant_group_to_candidate_dict(accuracy_list_reverse):
     """
     This will create the dictionary where key will be quantizer group and value will be the
-    order of candidates as occured in accuracy_list_reverse for the particular quantizer group
+    order of candidates as occurred in accuracy_list_reverse for the particular quantizer group
 
     :param accuracy_list_reverse: phase1 accuracy list in reversed form.
     :return: dictionary where key will be quantizer group and value will be the
-    order of candidates as occured in accuracy_list_reverse for the particular quantizer group
+    order of candidates as occurred in accuracy_list_reverse for the particular quantizer group
     """
     res_dict = {}
     for elem in accuracy_list_reverse:
@@ -459,7 +459,7 @@ def modify_candidate_in_accuracy_list(
 
     :param accuracy_list_reverse: phase1 accuracy list in reversed form.
     :param quant_group_to_candidate_dict: dictionary where key will be quantizer group and value will be the
-    order of candidates as occured in accuracy_list_reverse for the particular quantizer group
+    order of candidates as occurred in accuracy_list_reverse for the particular quantizer group
     :param:max_candidate: The maximum [bitwidth, dtype] candidate
     :return: modified accuracy_list_reverse
     """
