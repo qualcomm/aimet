@@ -28,6 +28,7 @@ from GenAILab.bench.eval_context import EvaluationContext
 from GenAILab.bench.fp_cache import DiskBackedFPCache
 from GenAILab.bench.metrics import DistanceMetric, run_metrics
 from GenAILab.bench.model_cache import DiskBackedModelCache
+from GenAILab.bench.recipe_cache import chain_model_identity
 from GenAILab.bench.recipe_chain import (
     apply_pre_quantization_chain,
     apply_quantization_chain,
@@ -168,6 +169,14 @@ def run_experiment(
     image_size = config.model.image_size
     audio_frames = config.model.audio_frames
     precomputed_encodings = config.model.encodings
+    model_identity = chain_model_identity(
+        model_id,
+        context_length,
+        sequence_length,
+        image_size,
+        audio_frames,
+        precomputed_encodings,
+    )
 
     sl_tag = (
         "dynamic"
@@ -338,6 +347,7 @@ def run_experiment(
             adaptations=config.model.adaptations,
             pre_sim=config.recipe.pre_sim,
             audio_frames=audio_frames,
+            model_identity=model_identity,
             topology=topology,
         )
 
@@ -375,6 +385,7 @@ def run_experiment(
                 adaptations=config.model.adaptations,
                 pre_sim=config.recipe.pre_sim,
                 audio_frames=audio_frames,
+                model_identity=model_identity,
             )
 
     # Finalize embedding quantization after recipes have had a chance to

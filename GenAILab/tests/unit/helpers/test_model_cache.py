@@ -125,3 +125,50 @@ class TestDiskBackedModelCache:
             cache.put("key_a", _tiny_entry())
         assert cache.get("key_a") is None
         assert [p.name for p in cache_dir.iterdir()] == []
+
+
+class TestExportIdentity:
+    """The model cache key covers everything an export depends on."""
+
+    PARAMS = {"model_id": "org/model", "context_length": 64, "sequence_length": 32}
+
+    @pytest.fixture(autouse=True)
+    def _pinned(self, monkeypatch):
+        import GenAILab.bench.model_cache as model_cache
+
+        monkeypatch.setattr(model_cache, "checkpoint_revision", lambda _: "rev1")
+        monkeypatch.setattr(model_cache, "model_fingerprint", lambda: {"code": "c1"})
+        return model_cache
+
+    def _key(self, model_cls=object, params=None):
+        return DiskBackedModelCache.build_key(
+            DiskBackedModelCache.export_identity(params or self.PARAMS, model_cls)
+        )
+
+    def test_stable(self):
+        assert self._key() == self._key()
+
+    def test_adaptation_kwargs_change_the_key(self):
+        """Adaptation kwargs are class attributes, invisible in the class name."""
+
+        class Half:
+            adaptation_identity = [["AttentionMaskScale", [(0, 0.5)]]]
+
+        class Quarter:
+            adaptation_identity = [["AttentionMaskScale", [(0, 0.25)]]]
+
+        assert self._key(Half) != self._key(Quarter)
+
+    def test_revision_changes_the_key(self, _pinned, monkeypatch):
+        before = self._key()
+        monkeypatch.setattr(_pinned, "checkpoint_revision", lambda _: "rev2")
+        assert self._key() != before
+
+    def test_fingerprint_changes_the_key(self, _pinned, monkeypatch):
+        before = self._key()
+        monkeypatch.setattr(_pinned, "model_fingerprint", lambda: {"code": "c2"})
+        assert self._key() != before
+
+    def test_params_still_count(self):
+        other = {**self.PARAMS, "context_length": 128}
+        assert self._key(params=other) != self._key()

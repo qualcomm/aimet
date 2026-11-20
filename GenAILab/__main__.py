@@ -10,6 +10,9 @@ Usage:
     # Run on GitHub Actions
     python -m GenAILab --framework torch --config GenAILab/example_config.yaml --online
 
+    # Run online with a fresh recipe cache (see ONLINE_RUN_FLAGS for what forwards)
+    python -m GenAILab --framework onnx --config cfg.yaml --online --clear-recipe-cache
+
     # Run online and wait for results to be merged locally
     python -m GenAILab --framework torch --config cfg.yaml --online --wait
 
@@ -31,7 +34,7 @@ import tempfile
 import time
 import warnings
 
-from GenAILab.bench.runner import add_run_arguments
+from GenAILab.bench.runner import ONLINE_RUN_FLAGS, add_run_arguments
 
 
 def main():
@@ -61,7 +64,10 @@ def main():
     )
 
     run_group = parser.add_argument_group(
-        "run options", "Forwarded to the experiment runner (local runs only)"
+        "run options",
+        "Forwarded to the experiment runner. With --online, only "
+        + ", ".join(ONLINE_RUN_FLAGS)
+        + " are forwarded.",
     )
     run_actions = add_run_arguments(run_group)
 
@@ -70,14 +76,15 @@ def main():
     if args.download:
         download_results(args)
     elif args.online:
-        discarded = _build_run_args(args, run_actions)
+        online = [a for a in run_actions if a.option_strings[0] in ONLINE_RUN_FLAGS]
+        forwarded = _build_run_args(args, online)
+        discarded = _build_run_args(args, [a for a in run_actions if a not in online])
         if discarded:
             warnings.warn(
                 f"Run options {discarded} are ignored in --online mode. "
-                "Only --framework, --config, and --branch are forwarded to "
-                "GitHub Actions."
+                f"Only {', '.join(ONLINE_RUN_FLAGS)} are forwarded to GitHub Actions."
             )
-        dispatch_online(args)
+        dispatch_online(args, forwarded)
     else:
         if args.wait:
             sys.exit("Error: --wait requires --online.")
@@ -144,7 +151,7 @@ def _require_gh():
     return gh
 
 
-def dispatch_online(args):
+def dispatch_online(args, run_args=()):
     gh = _require_gh()
 
     if args.branch:
@@ -176,6 +183,9 @@ def dispatch_online(args):
         "--field",
         f"ad_hoc_config_b64={config_b64}",
     ]
+    if run_args:
+        cmd += ["--field", f"run_args={' '.join(run_args)}"]
+        print(f"Forwarding run options: {' '.join(run_args)}")
     print(f"Dispatching to GitHub Actions on branch '{branch}'...")
     ret = subprocess.call(cmd)
     if ret != 0:

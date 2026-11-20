@@ -43,7 +43,12 @@ from GenAILab.bench.profiler import (
     RecipeStepStats,
     convert_gpu_meter_to_dict,
 )
-from GenAILab.bench.utils.cache_utils import staged_entry
+from GenAILab.bench.utils.cache_utils import (
+    checkpoint_revision,
+    file_digest,
+    recipe_fingerprint,
+    staged_entry,
+)
 
 if TYPE_CHECKING:
     from GenAILab.bench.yaml_config_parser import ResolvedStep
@@ -69,48 +74,6 @@ def _stable_json_hash(obj) -> str:
     """Produce a deterministic SHA-256 hex digest of a JSON-serializable object."""
     raw = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
-
-
-_cached_aimet_source_hash = None
-
-
-def _hash_aimet_sources() -> str:
-    """Hash all .py files in aimet_torch and aimet_onnx package directories.
-
-    Finds the installed location of each package via its __path__ attribute
-    and hashes every .py file (sorted for determinism). This catches source
-    changes on dev branches where the pip version string doesn't change,
-    and works without .git (e.g. code synced to a cluster).
-
-    Results are cached after the first call since source files don't change
-    within a single process.
-    """
-    global _cached_aimet_source_hash
-    if _cached_aimet_source_hash is not None:
-        return _cached_aimet_source_hash
-
-    hasher = hashlib.sha256()
-    for pkg_name in ("aimet_torch", "aimet_onnx"):
-        try:
-            pkg = __import__(pkg_name)
-            pkg_paths = getattr(pkg, "__path__", [])
-        except ImportError:
-            continue
-
-        for pkg_path in pkg_paths:
-            pkg_dir = Path(pkg_path)
-            if not pkg_dir.is_dir():
-                continue
-            # Sort for determinism across filesystems
-            for py_file in sorted(pkg_dir.rglob("*.py")):
-                try:
-                    hasher.update(str(py_file.relative_to(pkg_dir)).encode())
-                    hasher.update(py_file.read_bytes())
-                except (OSError, ValueError):
-                    continue
-
-    _cached_aimet_source_hash = hasher.hexdigest()[:32]
-    return _cached_aimet_source_hash
 
 
 def _adaptation_identity(adaptations: list) -> list:
@@ -155,44 +118,13 @@ class RecipeCache:
 
     @functools.cached_property
     def env_hash(self) -> str:
-        """Hash the environment for cache invalidation.
+        """Hash of the code and packages a recipe step runs.
 
-        Combines two signals:
-        1. pip freeze versions for non-AIMET dependencies (torch, onnxruntime)
-           that affect recipe behavior.
-        2. Source file hashes for aimet_torch/aimet_onnx packages. This catches
-           code changes on dev branches where the pip version string stays the
-           same. Works regardless of whether .git is present (e.g. code synced
-           to a cluster).
+        See :func:`recipe_fingerprint`: AIMET is hashed file by file (Python,
+        compiled extensions, configs), so a dev build whose version string never
+        changes still misses on a code change.
         """
-        from GenAILab.bench.profiler import _collect_environment  # circular
-
-        env = _collect_environment()
-        pip_freeze = env.get("pip_freeze", [])
-
-        # Non-AIMET dependency versions
-        dep_prefixes = (
-            "torch==",
-            "onnxruntime",
-            "onnx==",
-            "onnxscript==",
-            "transformers==",
-            "datasets==",
-            "accelerate==",
-        )
-        dep_versions = sorted(
-            p for p in pip_freeze if any(p.startswith(k) for k in dep_prefixes)
-        )
-
-        # Hash AIMET source files directly
-        aimet_source_hash = _hash_aimet_sources()
-
-        return _stable_json_hash(
-            {
-                "deps": dep_versions,
-                "aimet_sources": aimet_source_hash,
-            }
-        )
+        return _stable_json_hash(recipe_fingerprint())
 
     def compute_base_hash(
         self,
@@ -203,6 +135,7 @@ class RecipeCache:
         component: str = "backbone",
         pre_sim: tuple[ResolvedStep, ...] | None = None,
         adaptations: list | None = None,
+        model_identity: dict | None = None,
     ) -> str:
         """Hash for a freshly-instantiated component (before any recipes).
 
@@ -221,6 +154,10 @@ class RecipeCache:
         keyed because adaptations live on the model *class* and never reach
         ``model_kwargs``, so without it two runs differing only in an adaptation
         share encodings. As with ``pre_sim``, an empty list adds no key.
+
+        ``model_identity`` is the rest of the model section the chain depends on
+        (see :func:`chain_model_identity`): lengths, input sizes, precomputed
+        encodings and checkpoint revision, none of which are in ``model_kwargs``.
         """
         identity = {
             "model_id": model_id,
@@ -229,6 +166,7 @@ class RecipeCache:
             "env_hash": self.env_hash,
             "framework": framework,
             "component": component,
+            "model": model_identity or {},
         }
         if pre_sim:
             ps_identity = {step.name: step.recipe_kwargs for step in pre_sim}
@@ -266,6 +204,7 @@ class RecipeCache:
         component: str = "backbone",
         pre_sim: tuple[ResolvedStep, ...] | None = None,
         adaptations: list | None = None,
+        model_identity: dict | None = None,
     ) -> tuple[int, list, list[str]]:
         """Compute hashes, find the longest cached prefix, load state, and log.
 
@@ -279,6 +218,7 @@ class RecipeCache:
             component,
             pre_sim,
             adaptations,
+            model_identity,
         )
         hashes = compute_chain_hashes(self, base, recipe_list)
         skip, chain = find_cache_hit(self, hashes)
@@ -629,6 +569,45 @@ def log_cache_miss(component: str, total_steps: int):
     print(
         f"  [cache] No cache hit for {component} ({total_steps} steps) — running from scratch"
     )
+
+
+def chain_model_identity(
+    model_id: str,
+    context_length: int,
+    sequence_length,
+    image_size=None,
+    audio_frames=None,
+    encodings: str | None = None,
+) -> dict:
+    """The model-section fields a recipe chain depends on outside ``model_kwargs``.
+
+    The parser takes these out of ``model_kwargs``, so the base hash would
+    otherwise not see them: a chain calibrated at one context length would be
+    served to a run at another. ``encodings`` is keyed by the content of its
+    ``.encodings`` files, since the chain starts from whatever encodings were
+    loaded into the sim; the model files an export directory also holds are
+    not read.
+
+    A sequence-length list is keyed by its maximum, so lists sharing one (e.g.
+    ``[1, 128, 2048]`` and ``[1, 2048]``) share entries: SeqMSE and AdaScale
+    sample at the maximum. Calibration runs each sample at the smallest listed
+    length that fits it, so activation encodings it computed before a cached
+    step can differ between such lists; that is accepted here for the reuse.
+    Whether the graph is dynamic (a list of more than one length) is kept, as
+    that exports a different graph.
+    """
+    lengths = (
+        sequence_length if isinstance(sequence_length, list) else [sequence_length]
+    )
+    return {
+        "context_length": context_length,
+        "sequence_length": max(lengths),
+        "dynamic": len(lengths) > 1,
+        "image_size": image_size,
+        "audio_frames": audio_frames,
+        "encodings": file_digest(encodings, suffix=".encodings"),
+        "revision": checkpoint_revision(model_id),
+    }
 
 
 def _serialize_dataset_config(dataset_config: dict) -> dict:

@@ -53,6 +53,7 @@ def apply_quantization_chain(
     audio_frames=None,
     topology=None,
     adaptations=None,
+    model_identity=None,
 ):
     """Apply a chain of on-sim recipe steps, with automatic cache lookup and save.
 
@@ -64,6 +65,10 @@ def apply_quantization_chain(
     rotated the float model before the sim was built). It is folded into the
     cache base hash so the chain distinguishes rotated from non-rotated graphs;
     pre-sim steps are applied by ``apply_pre_quantization_chain``, not here.
+
+    ``model_identity`` (see ``chain_model_identity``) is folded into the cache
+    base hash too: lengths, input sizes, encodings and revision live outside
+    ``model_kwargs``.
 
     ``topology`` is the decoder-stack analysis of the float model (ONNX only,
     ``None`` for torch). It is passed to every step; techniques that do not need
@@ -85,6 +90,7 @@ def apply_quantization_chain(
             pre_sim,
             # Not in model_kwargs: adaptations live on the model class.
             adaptations,
+            model_identity,
         )
 
     step_stats = list(cached_step_stats)

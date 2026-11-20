@@ -18,7 +18,8 @@ from transformers import AutoConfig, PretrainedConfig
 
 from GenAILab.bench.utils.cache_utils import (
     atomic_write_json,
-    discard_entry,
+    checkpoint_revision,
+    model_fingerprint,
     staged_entry,
 )
 from GenAILab.qai_hub_lm.schema.components import (
@@ -118,27 +119,6 @@ class DiskBackedModelCache:
                 self._update_index(key, None)
             return None
 
-        entry_meta = self._read_entry_meta(key, entry_dir)
-
-        # Staleness check: compare hub config hash at cache time vs now.
-        # We can't do this for small models, since the live config would be different.
-        small_model = entry_meta.get("metadata", {}).get("small_model", False)
-        stored_hash = entry_meta.get("hub_config_hash")
-        model_id = entry_meta.get("metadata", {}).get("model_id")
-        if stored_hash is not None and model_id is not None and not small_model:
-            try:
-                current_hash = _hub_config_hash(model_id)
-                if stored_hash != current_hash:
-                    print(
-                        f"  [cache] Model cache config changed for {model_id} — invalidating"
-                    )
-                    discard_entry(entry_dir)
-                    self._update_index(key, None)
-                    return None
-            except Exception:
-                # If we can't check staleness (e.g. offline), trust the cache
-                pass
-
         # Load components from disk
         config_path = entry_dir / "config.json"
         backbone = onnx.load(str(backbone_path))
@@ -197,27 +177,14 @@ class DiskBackedModelCache:
 
         If another process published *key* first, its entry is kept.
         """
-        # Compute hub config hash for staleness checks.
-        # entry.config may have been mutated at runtime (attn_implementation,
-        # torch_dtype, etc.), so we fetch the pristine hub config separately.
-        hub_config_hash = None
-        model_id = (metadata or {}).get("model_id")
-        if model_id is not None:
-            try:
-                hub_config_hash = _hub_config_hash(model_id)
-            except Exception:
-                pass
-
         index_entry = {
             "metadata": metadata or {},
             "created": datetime.now().isoformat(),
         }
-        if hub_config_hash is not None:
-            index_entry["hub_config_hash"] = hub_config_hash
 
         with staged_entry(self._cache_dir / key, _entry_is_complete) as staging:
             self._write_entry(staging, entry)
-            # The entry's own manifest, so a lookup never needs the shared index.
+            # The entry's own manifest, readable without the shared index.
             atomic_write_json(staging / self._ENTRY_FILE, index_entry, default=str)
 
         self._update_index(key, index_entry)
@@ -304,6 +271,23 @@ class DiskBackedModelCache:
         canonical = json.dumps(params, sort_keys=True, default=str)
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
+    @staticmethod
+    def export_identity(params: dict, model_cls: type) -> dict:
+        """Everything an export of *model_cls* with config *params* depends on.
+
+        *params* is the export config (model ID, lengths, dtype, ...). Added to
+        it: the class's adaptations with their kwargs, which change the graph
+        but not the class name; the checkpoint revision, so a weight-only update
+        upstream re-exports; and the package versions and GenAILab code the
+        export runs (see :func:`model_fingerprint`).
+        """
+        return {
+            **params,
+            "adaptations": getattr(model_cls, "adaptation_identity", []),
+            "revision": checkpoint_revision(params["model_id"]),
+            "fingerprint": model_fingerprint(),
+        }
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -319,14 +303,6 @@ class DiskBackedModelCache:
                 # good one. The next update overwrites it.
                 print(f"  [cache] Model cache index corrupted — resetting")
         return self._empty_index()
-
-    def _read_entry_meta(self, key: str, entry_dir: Path) -> dict:
-        """The index record for an entry: its own manifest, else the shared index."""
-        try:
-            with open(entry_dir / self._ENTRY_FILE) as f:
-                return json.load(f)
-        except (OSError, ValueError):
-            return self._load_index()["entries"].get(key, {})
 
     def _update_index(self, key: str, index_entry: dict | None):
         """Set the index entry for *key*, or remove it when *index_entry* is ``None``.
@@ -397,34 +373,3 @@ def _log_model_export_time(metadata: dict | None, export_s: float, save_s: float
         f"  [cache] Exported{detail} in {_format_duration(export_s)} wall clock "
         f"(+ {_format_duration(save_s)} writing to the model cache)"
     )
-
-
-def _strip_private_keys(obj):
-    """Recursively remove ``_``-prefixed keys from nested dicts.
-
-    VLM configs contain nested sub-configs (``text_config``, ``vision_config``,
-    etc.) that each carry their own ``_name_or_path`` which can resolve to
-    different HuggingFace cache snapshot paths between process invocations.
-    A top-level-only filter misses these, producing non-deterministic hashes.
-    """
-    if isinstance(obj, dict):
-        return {
-            k: _strip_private_keys(v) for k, v in obj.items() if not k.startswith("_")
-        }
-    if isinstance(obj, list):
-        return [_strip_private_keys(item) for item in obj]
-    return obj
-
-
-def _hub_config_hash(model_id: str) -> str:
-    """Return a deterministic hash of the pristine hub config for *model_id*.
-
-    Fetches the config directly from HuggingFace (or local cache) and hashes
-    its canonical JSON representation.  Private keys (``_``-prefixed) are
-    recursively excluded so that local runtime metadata (like snapshot paths
-    in nested sub-configs) does not affect the hash.
-    """
-    config = AutoConfig.from_pretrained(model_id)
-    config_dict = _strip_private_keys(config.to_dict())
-    canonical = json.dumps(config_dict, sort_keys=True, default=str)
-    return hashlib.sha256(canonical.encode()).hexdigest()[:16]

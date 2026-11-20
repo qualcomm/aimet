@@ -23,6 +23,18 @@ import yaml
 _OUTPUT_ROOT = Path(__file__).resolve().parents[1] / "artifacts"
 
 
+# Runner flags an --online run may forward to the GitHub Actions job. Path flags
+# are left out: the job's upload steps expect the default directories.
+# .github/actions/genai-test re-checks every forwarded flag against this list.
+ONLINE_RUN_FLAGS = (
+    "--clear-fp-cache",
+    "--clear-model-cache",
+    "--clear-recipe-cache",
+    "--no-recipe-cache",
+    "--fail-fast",
+)
+
+
 def add_run_arguments(parser):
     """Add the runner flags to ``parser`` and return the created actions."""
     return [

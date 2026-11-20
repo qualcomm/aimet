@@ -68,3 +68,50 @@ class TestAdaptations:
         assert issubclass(result_cls, MixinA)
         assert issubclass(result_cls, MixinB)
         assert issubclass(result_cls, BaseLLM)
+
+
+class TestAdaptationIdentity:
+    """Adaptation kwargs become class attributes; the identity records them."""
+
+    def test_records_names_and_kwargs_in_order(self):
+        class BaseLLM:
+            pass
+
+        YAMLConfigParser._default_llm_cls = BaseLLM
+
+        @YAMLConfigParser.register_adaptation("Scale")
+        class Scale:
+            pass
+
+        @YAMLConfigParser.register_adaptation("Plain")
+        class Plain:
+            pass
+
+        result_cls = YAMLConfigParser.get_model_class(
+            "llama",
+            adaptations=["Scale", "Plain"],
+            adaptation_kwargs={"Scale": {"layer_multipliers": {0: 0.5}}},
+        )
+        assert result_cls.adaptation_identity == [
+            ["Scale", [("layer_multipliers", {0: 0.5})]],
+            ["Plain", []],
+        ]
+
+    def test_kwargs_change_the_identity(self):
+        class BaseLLM:
+            pass
+
+        YAMLConfigParser._default_llm_cls = BaseLLM
+
+        @YAMLConfigParser.register_adaptation("Scale")
+        class Scale:
+            pass
+
+        def identity(multiplier):
+            return YAMLConfigParser.get_model_class(
+                "llama",
+                adaptations=["Scale"],
+                adaptation_kwargs={"Scale": {"layer_multipliers": {0: multiplier}}},
+            ).adaptation_identity
+
+        assert identity(0.5) != identity(0.25)

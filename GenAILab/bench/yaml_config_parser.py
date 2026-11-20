@@ -696,6 +696,13 @@ class YAMLConfigParser:
             cls_dict = adaptation_kwargs.get(adaptation_name, {})
             result_cls = type(new_name, (info.mixin_cls, result_cls), cls_dict)
 
+        # The kwargs become class attributes, which the class name does not
+        # show, so record them for the model cache key: two runs differing only
+        # in an adaptation kwarg export different graphs.
+        result_cls.adaptation_identity = [
+            [name, sorted(adaptation_kwargs.get(name, {}).items(), key=str)]
+            for name in adaptations
+        ]
         return result_cls
 
     # ========================

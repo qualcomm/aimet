@@ -88,6 +88,10 @@ class SimCollection:
 
 
 class LLM(ABC):
+    #: The adaptations this class was built with, kwargs included, as
+    #: ``[[name, sorted kwargs], ...]``; set by ``YAMLConfigParser.get_model_class``.
+    adaptation_identity: list = []
+
     @classmethod
     def instantiate_model(
         cls, model_id: str, small_model: bool = False

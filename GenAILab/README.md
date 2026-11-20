@@ -41,6 +41,10 @@ python -m GenAILab --framework torch --config cfg.yaml \
 python -m GenAILab --framework torch --config cfg.yaml --online
 python -m GenAILab --framework torch --config cfg.yaml --online --wait
 python -m GenAILab --framework torch --config cfg.yaml --download <run_id>
+
+# Forward cache flags to the online run (--clear-*-cache, --no-recipe-cache,
+# --fail-fast; other runner flags are ignored with --online)
+python -m GenAILab --framework onnx --config cfg.yaml --online --clear-recipe-cache
 ```
 
 Every experiment in the config runs even if an earlier one fails; the run exits non-zero if any failed. For local debugging:
@@ -115,7 +119,13 @@ Caches full-precision model outputs (e.g., MMLU logits) so distance metrics can 
 
 ### Recipe Cache
 
-Caches intermediate quantization state after cacheable recipe steps (currently `SeqMSE` and `AdaScale`). The cache key is a Merkle chain hash: each step's hash extends the previous one, incorporating the recipe name, kwargs, dataset config, model ID, precision, and an environment hash (library versions + AIMET source hashes). This means shared recipe prefixes across different configs hit the same cache entry.
+Caches intermediate quantization state after cacheable recipe steps (currently `SeqMSE` and `AdaScale`). The cache key is a Merkle chain hash: each step's hash extends the previous one, incorporating the recipe name, kwargs and dataset config. The chain starts from a base hash of:
+
+- the model: ID, checkpoint revision, adaptations, context/sequence length, image size and audio frames;
+- the precision config, and the content of any precomputed `encodings`;
+- an environment hash covering the Python and quantsim config files of the AIMET packages in use (compiled extensions are left out, so clear the recipe cache after a C++/CUDA-only change), package versions (torch, transformers, onnxruntime, datasets, ...), the GenAI Lab code (`bench/` and `qai_hub_lm/`), and the GPU model.
+
+This means shared recipe prefixes across different configs hit the same cache entry, while a change to any of the above misses. Editing configs, tests or docs keeps entries.
 
 On a cache hit, the recipe chain skips already-computed steps and loads the saved checkpoint directly into the quantsim model. After each new cacheable step, the result is saved for future runs.
 
@@ -127,7 +137,13 @@ On a cache hit, the recipe chain skips already-computed steps and loads the save
 
 ### Model Cache (ONNX)
 
-Caches exported ONNX models so that repeated ONNX evaluation runs don't require re-export from Torch. The cache key is a hash of model ID, sequence/context length, adaptations, and precision config. Includes staleness detection: if the HuggingFace hub config changes (e.g., model updated upstream), the cached entry is invalidated.
+Caches exported ONNX models so that repeated ONNX evaluation runs don't require re-export from Torch. The cache key is a hash of:
+
+- the model: ID, checkpoint revision (so an upstream update re-exports), model class, adaptations with their kwargs, sequence/context length, image size, audio frames, dtype and opset;
+- the versions of the packages the export uses (torch, transformers, onnx, onnxscript, ...);
+- the GenAI Lab code (`bench/` and `qai_hub_lm/`).
+
+AIMET is not part of the key, since the export runs no AIMET code, so AIMET changes keep cached exports.
 
 | Flag | Effect |
 |------|--------|

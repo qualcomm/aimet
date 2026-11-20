@@ -41,6 +41,10 @@ inputs:
   config:
     description: 'Path to test config YAML file (caller resolves this before invoking the action)'
     required: true
+  run-args:
+    description: 'Space-separated runner flags for the primary run; each must be in ONLINE_RUN_FLAGS (GenAILab/bench/runner.py)'
+    required: false
+    default: ''
   huggingface-token:
     description: 'HuggingFace API token for model access'
     required: true
@@ -115,13 +119,32 @@ runs:
         GIT_TERMINAL_PROMPT: "0"
         MPLBACKEND: "Agg"
         QT_QPA_PLATFORM: "offscreen"
+        # Through env, never ${{ }} in the script: the input is free text.
+        RUN_ARGS: ${{ inputs.run-args }}
+        REF_NAME: ${{ github.ref_name }}
       run: |
         source .venv/bin/activate
         export PYTHONPATH=$PYTHONPATH:$(pwd)
+        read -ra EXTRA_ARGS <<< "$RUN_ARGS"
+        python - "$REF_NAME" "${EXTRA_ARGS[@]}" << 'PY_EOF'
+        import sys
+
+        from GenAILab.bench.runner import ONLINE_RUN_FLAGS
+
+        ref, flags = sys.argv[1], sys.argv[2:]
+        bad = [f for f in flags if f not in ONLINE_RUN_FLAGS]
+        if bad:
+            sys.exit(f"run_args {bad} not allowed; allowed: {list(ONLINE_RUN_FLAGS)}")
+        if (ref == "develop" or ref.startswith("release-")) and any(
+            f.startswith("--clear-") for f in flags
+        ):
+            sys.exit(f"--clear-* cache flags are not allowed on protected branch {ref!r}")
+        PY_EOF
         hf auth login --token ${{ inputs.huggingface-token }}
         python -m GenAILab --framework ${{ inputs.variant }} \
           --config "${{ inputs.config }}" \
-          --force-export
+          --force-export \
+          "${EXTRA_ARGS[@]}"
 
     # -------------------------------------------------------------------
     # Secondary ONNX evaluation (torch variant only)

@@ -26,6 +26,7 @@ from GenAILab.bench.determinism import set_seed
 from GenAILab.bench.eval_context import EvaluationContext
 from GenAILab.bench.fp_cache import DiskBackedFPCache
 from GenAILab.bench.metrics import run_metrics
+from GenAILab.bench.recipe_cache import chain_model_identity
 from GenAILab.bench.recipe_chain import (
     apply_pre_quantization_chain,
     apply_quantization_chain,
@@ -63,6 +64,14 @@ def run_experiment(
     image_size = config.model.image_size
     audio_frames = config.model.audio_frames
     precomputed_encodings = config.model.encodings
+    model_identity = chain_model_identity(
+        model_id,
+        context_length,
+        sequence_length,
+        image_size,
+        audio_frames,
+        precomputed_encodings,
+    )
 
     # Build model_kwargs for instantiate_float_model
     model_kwargs = config.model.extra_kwargs.copy()
@@ -164,6 +173,7 @@ def run_experiment(
                 adaptations=config.model.adaptations,
                 pre_sim=config.recipe.pre_sim,
                 audio_frames=audio_frames,
+                model_identity=model_identity,
             )
 
         # One chain per modality encoder. Each runs with the backbone's
@@ -194,6 +204,7 @@ def run_experiment(
                     adaptations=config.model.adaptations,
                     pre_sim=config.recipe.pre_sim,
                     audio_frames=audio_frames,
+                    model_identity=model_identity,
                 )
 
         # Finalize embedding quantization after recipes have had a chance to

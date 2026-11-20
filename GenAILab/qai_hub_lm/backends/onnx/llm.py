@@ -95,7 +95,8 @@ class LLM_ONNX(LLM):
                         "dtype": str(dtype),
                         "opset": ONNX_OPSET_VERSION,
                     }
-                    key = DiskBackedModelCache.build_key(params)
+                    identity = DiskBackedModelCache.export_identity(params, cls)
+                    key = DiskBackedModelCache.build_key(identity)
                     entry = model_cache.get_or_export(
                         key,
                         lambda: cls._export_to_cache_entry(
@@ -106,7 +107,7 @@ class LLM_ONNX(LLM):
                             tmpdir,
                             dtype=dtype,
                         ),
-                        metadata=params,
+                        metadata=identity,
                     )
             else:
                 entry = cls._export_to_cache_entry(

@@ -301,3 +301,50 @@ class TestDownloadAndMerge:
             _download_and_merge("gh", 123, str(results), ["onnx"])
 
         assert not (results / "analysis").exists()
+
+
+class TestOnlineRunArgs:
+    """--online forwards the allowlisted runner flags and drops the rest."""
+
+    def _dispatch(self, extra, tmp_path):
+        import GenAILab.__main__ as launcher
+
+        config = tmp_path / "cfg.yaml"
+        config.write_text("model: {}\n")
+        argv = ["GenAILab", "--framework", "onnx", "--config", str(config)]
+        argv += ["--online", "--branch", "dev/x", *extra]
+        with (
+            patch.object(launcher.sys, "argv", argv),
+            patch("GenAILab.__main__._require_gh", return_value="gh"),
+            patch("GenAILab.__main__.subprocess.call", return_value=0) as mock_call,
+            patch("GenAILab.__main__._poll_for_run_id", return_value=None),
+            pytest.raises(SystemExit),
+        ):
+            launcher.main()
+        return mock_call.call_args_list[0][0][0]
+
+    def _fields(self, cmd):
+        return [cmd[i + 1] for i, part in enumerate(cmd) if part == "--field"]
+
+    def test_allowed_flags_forwarded(self, tmp_path):
+        extra = ["--clear-recipe-cache", "--clear-model-cache"]
+        fields = self._fields(self._dispatch(extra, tmp_path))
+        assert "run_args=--clear-model-cache --clear-recipe-cache" in fields
+
+    def test_no_flags_no_field(self, tmp_path):
+        fields = self._fields(self._dispatch([], tmp_path))
+        assert not any(f.startswith("run_args=") for f in fields)
+
+    def test_disallowed_flags_dropped_with_warning(self, tmp_path):
+        extra = ["--clear-fp-cache", "--pdb", "--export-dir", "/x"]
+        with pytest.warns(UserWarning, match="--pdb"):
+            fields = self._fields(self._dispatch(extra, tmp_path))
+        assert "run_args=--clear-fp-cache" in fields
+        assert not any("/x" in f or "--pdb" in f for f in fields)
+
+    def test_allowlist_names_real_runner_flags(self):
+        from GenAILab.bench.runner import ONLINE_RUN_FLAGS
+
+        _, actions = _parse([])
+        flags = {a.option_strings[0] for a in actions}
+        assert set(ONLINE_RUN_FLAGS) <= flags

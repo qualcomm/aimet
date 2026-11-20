@@ -35,6 +35,7 @@ from GenAILab.bench.profiler import (
 )
 from GenAILab.qai_hub_lm.diffusion import stable_diffusion  # noqa: F401 — triggers registration
 from GenAILab.bench.diffusion.onnx_cache import DiffusionONNXCache, export_key
+from GenAILab.bench.utils.cache_utils import checkpoint_revision
 from GenAILab.qai_hub_lm.diffusion import onnx as diffusion_onnx
 from GenAILab.qai_hub_lm.diffusion.base import COMPONENTS, DiffusionComponents
 from GenAILab.qai_hub_lm.diffusion.generator import DiffusionGenerator, GenerationConfig
@@ -140,7 +141,7 @@ def run_experiment(
             generation_config,
             onnx_cache,
             device,
-            revision=_checkpoint_revision(model_config.model_id),
+            revision=checkpoint_revision(model_config.model_id),
         )
         generator = DiffusionGenerator(components, generation_config)
         if config.is_quantized:
@@ -296,22 +297,6 @@ def _onnx_components(
     gc.collect()
     torch.cuda.empty_cache()
     return onnx_components, paths
-
-
-def _checkpoint_revision(model_id: str) -> str | None:
-    """The commit hash of a Hub checkpoint, so an upstream update re-exports.
-
-    A local directory has no revision; its path is used instead.
-    """
-    if Path(model_id).is_dir():
-        return str(Path(model_id).resolve())
-    try:
-        from huggingface_hub import HfApi
-
-        return HfApi().model_info(model_id).sha
-    except Exception:  # pylint: disable=broad-exception-caught
-        # Offline: the cache is still keyed by everything else.
-        return None
 
 
 def run_metrics(

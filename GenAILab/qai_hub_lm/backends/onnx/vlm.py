@@ -115,7 +115,8 @@ class VLM_ONNX:
                     # unchanged by audio support.
                     if audio_frames is not None:
                         params["audio_frames"] = audio_frames
-                    key = DiskBackedModelCache.build_key(params)
+                    identity = DiskBackedModelCache.export_identity(params, cls)
+                    key = DiskBackedModelCache.build_key(identity)
                     entry = model_cache.get_or_export(
                         key,
                         lambda: cls._export_to_cache_entry(
@@ -128,7 +129,7 @@ class VLM_ONNX:
                             audio_frames=audio_frames,
                             dtype=dtype,
                         ),
-                        metadata=params,
+                        metadata=identity,
                     )
             else:
                 entry = cls._export_to_cache_entry(

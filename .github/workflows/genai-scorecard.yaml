@@ -60,6 +60,11 @@ on:
           - torch
           - onnx
         default: 'both'
+      run_args:
+        description: 'Space-separated runner flags, e.g. --clear-recipe-cache. Only the flags in GenAILab/bench/runner.py ONLINE_RUN_FLAGS are accepted.'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('genai-pr-{0}', github.event.pull_request.number) || github.run_id }}
@@ -157,6 +162,7 @@ jobs:
           config: ${{ steps.config.outputs.path }}
           wheel-artifacts: torch-gpu-wheel, onnx-gpu-wheel
           python-version: ${{ env.VER_PYTHON }}
+          run-args: ${{ github.event.inputs.run_args }}
           huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -188,6 +194,7 @@ jobs:
           config: ${{ steps.config.outputs.path }}
           wheel-artifacts: onnx-gpu-wheel
           python-version: ${{ env.VER_PYTHON }}
+          run-args: ${{ github.event.inputs.run_args }}
           huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
