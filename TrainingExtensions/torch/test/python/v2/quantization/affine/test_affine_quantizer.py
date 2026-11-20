@@ -2825,6 +2825,19 @@ def test_from_qnn_encoding_dict():
     assert not e.symmetry
 
 
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+@pytest.mark.parametrize(
+    "dtype, zero_point, expected_offset", [("uint4", 7.5, -8), ("int4", -0.5, 0)]
+)
+def test_shifted_qnn_encoding_round_trip(version, dtype, zero_point, expected_offset):
+    encoding_dict = {"output_dtype": dtype, "y_scale": 1.0, "y_zero_point": zero_point}
+    encoding = AffineEncoding._from_qnn_encoding_dict(encoding_dict, version=version)
+
+    assert encoding.to_qnn_encoding_dict(version) == encoding_dict
+    assert encoding.offset.item() == expected_offset
+    assert encoding.zero_point_shift == 0.5
+
+
 def test_zero_representable():
     """
     When: Run QAT with non-negative inputs only
