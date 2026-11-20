@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="aimet-flow" viewBox="0 0 840 296" role="img" aria-labelledby="aimet-flow-title aimet-flow-desc" data-lumina-zoom="">
+  <title id="aimet-flow-title">How AIMET fits into a deployment workflow</title>
+  <desc id="aimet-flow-desc">A trained PyTorch or ONNX model goes into AIMET. AIMET simulates quantization, you evaluate the
+    simulated model's accuracy, and if it is below target you apply improvement techniques (post-training quantization,
+    mixed precision, quantization-aware training) and evaluate again. Once accuracy meets the target, AIMET exports an
+    ONNX model with encodings, or an ONNX QDQ model, which you deploy with Qualcomm AI Hub, QAIRT, or ONNX Runtime.</desc>
+  <!--
+    This file is inlined into the page (`.. raw:: html` with `:file:`) rather than referenced with
+    `.. image::`, so the colors below can read the --aimet-dia-* tokens in _static/aimet-lumina.css and follow
+    the light/dark toggle. The fallback values are the light palette, used when the file is opened on its own.
+  -->
+  <style>
+    .aimet-flow { width: 100%; height: auto; display: block; margin-block: 1.75rem;
+      font-family: var(--lumina-font-sans, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif); }
+    .aimet-flow .af-panel { fill: var(--aimet-dia-panel, #e8e8fb); stroke: var(--aimet-dia-panel-edge, #a9a9f5); stroke-width: 1.5; }
+    .aimet-flow .af-card { fill: var(--aimet-dia-card, #fcfcfd); stroke: var(--aimet-dia-edge, #dde1ea); stroke-width: 1.25; }
+    .aimet-flow .af-io { fill: var(--aimet-dia-io, #f3f4f8); stroke: var(--aimet-dia-edge, #dde1ea); stroke-width: 1.25; }
+    .aimet-flow .af-card.af-c2 { stroke: color-mix(in srgb, var(--aimet-dia-2, #0f766e) 55%, transparent); stroke-width: 1.5; }
+    .aimet-flow .af-card.af-c3 { stroke: color-mix(in srgb, var(--aimet-dia-3, #6d28d9) 55%, transparent); stroke-width: 1.5; }
+    .aimet-flow .af-title { fill: var(--aimet-dia-ink, #1e2230); font-size: 16.5px; font-weight: 600; }
+    .aimet-flow .af-sub { fill: var(--aimet-dia-ink-muted, #586075); font-size: 13.5px; }
+    .aimet-flow .af-num { fill: var(--aimet-dia-1, #2323c4); font-weight: 700; }
+    .aimet-flow .af-num.af-c2 { fill: var(--aimet-dia-2, #0f766e); }
+    .aimet-flow .af-num.af-c3 { fill: var(--aimet-dia-3, #6d28d9); }
+    .aimet-flow .af-brand { fill: var(--aimet-dia-1, #2323c4); font-size: 14px; font-weight: 700; letter-spacing: 0.08em; }
+    .aimet-flow .af-note { fill: var(--aimet-dia-1, #2323c4); font-size: 12.5px; font-weight: 600; }
+    .aimet-flow .af-note.af-c2 { fill: var(--aimet-dia-2, #0f766e); }
+    .aimet-flow .af-arrow { stroke: var(--aimet-dia-ink-muted, #586075); stroke-width: 1.5; fill: none; }
+    .aimet-flow .af-arrow-head { fill: var(--aimet-dia-ink-muted, #586075); }
+    .aimet-flow .af-loop { stroke: var(--aimet-dia-2, #0f766e); stroke-width: 1.5; fill: none; }
+    .aimet-flow .af-loop-head { fill: var(--aimet-dia-2, #0f766e); }
+  </style>
+  <defs>
+    <marker id="af-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="af-arrow-head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="af-loop-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="af-loop-head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <!-- Input: trained model -->
+  <rect class="af-io" x="1" y="68" width="114" height="92" rx="10"/>
+  <text class="af-title" x="58" y="99" text-anchor="middle">Trained</text>
+  <text class="af-title" x="58" y="118" text-anchor="middle">model</text>
+  <text class="af-sub" x="58" y="141" text-anchor="middle">PyTorch or ONNX</text>
+
+  <line class="af-arrow" x1="116" y1="114" x2="138" y2="114" marker-end="url(#af-head)"/>
+
+  <!-- AIMET -->
+  <rect class="af-panel" x="140" y="8" width="546" height="280" rx="16"/>
+  <text class="af-brand" x="158" y="37">AIMET</text>
+
+  <!-- 1 Simulate -->
+  <rect class="af-card" x="156" y="74" width="156" height="80" rx="10"/>
+  <text class="af-title" x="170" y="100"><tspan class="af-num">1</tspan>  Simulate</text>
+  <text class="af-sub" x="170" y="122">Insert quantizers,</text>
+  <text class="af-sub" x="170" y="140">calibrate encodings</text>
+
+  <line class="af-arrow" x1="312" y1="114" x2="332" y2="114" marker-end="url(#af-head)"/>
+
+  <!-- 2 Evaluate -->
+  <rect class="af-card" x="334" y="74" width="156" height="80" rx="10"/>
+  <text class="af-title" x="348" y="100"><tspan class="af-num">2</tspan>  Evaluate</text>
+  <text class="af-sub" x="348" y="122">Measure accuracy</text>
+  <text class="af-sub" x="348" y="140">of the simulation</text>
+
+  <text class="af-note" x="501" y="63" text-anchor="middle">target met</text>
+  <line class="af-arrow" x1="490" y1="114" x2="510" y2="114" marker-end="url(#af-head)"/>
+
+  <!-- 4 Export -->
+  <rect class="af-card af-c3" x="512" y="74" width="158" height="80" rx="10"/>
+  <text class="af-title" x="526" y="100"><tspan class="af-num af-c3">4</tspan>  Export</text>
+  <text class="af-sub" x="526" y="122">ONNX + encodings,</text>
+  <text class="af-sub" x="526" y="140">or ONNX QDQ</text>
+
+  <!-- Evaluate <-> Improve loop -->
+  <line class="af-loop" x1="396" y1="155" x2="396" y2="194" marker-end="url(#af-loop-head)"/>
+  <line class="af-loop" x1="428" y1="194" x2="428" y2="155" marker-end="url(#af-loop-head)"/>
+  <text class="af-note af-c2" x="388" y="179" text-anchor="end">below target</text>
+  <text class="af-note af-c2" x="436" y="179">re-evaluate</text>
+
+  <!-- 3 Improve -->
+  <rect class="af-card af-c2" x="322" y="196" width="180" height="80" rx="10"/>
+  <text class="af-title" x="336" y="222"><tspan class="af-num af-c2">3</tspan>  Improve</text>
+  <text class="af-sub" x="336" y="244">PTQ techniques, mixed</text>
+  <text class="af-sub" x="336" y="262">precision, or QAT</text>
+
+  <line class="af-arrow" x1="686" y1="114" x2="708" y2="114" marker-end="url(#af-head)"/>
+
+  <!-- Output: deploy -->
+  <rect class="af-io" x="710" y="50" width="129" height="128" rx="10"/>
+  <text class="af-title" x="774" y="79" text-anchor="middle">Deploy</text>
+  <text class="af-sub" x="774" y="106" text-anchor="middle">Qualcomm AI Hub</text>
+  <text class="af-sub" x="774" y="129" text-anchor="middle">QAIRT</text>
+  <text class="af-sub" x="774" y="152" text-anchor="middle">ONNX Runtime</text>
+</svg>

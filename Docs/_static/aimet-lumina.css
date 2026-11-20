@@ -497,3 +497,268 @@
         transition: none;
     }
 }
+
+/* ==========================================================================
+ * Color system
+ *
+ * 1. Neutrals retinted from Lumina's green-gray (built for its emerald
+ *    accent) to a cool slate that sits with the #2A2AEA brand blue.
+ * 2. A small categorical palette (teal, violet, amber) used only to encode
+ *    meaning: doc section, landing-card tag, framework tab. Blue stays the
+ *    only interactive color (links, buttons, focus).
+ * 3. A thin brand-gradient strip on the header -- the one decorative use.
+ * 4. Diagram tokens (--aimet-dia-*) so inline SVGs share one palette.
+ *
+ * Every text/background pairing clears WCAG AA (4.5:1) in both themes.
+ * Lumina injects the accent/link overrides in an inline <style> after this
+ * file, so those are left alone; everything else is overridden here with
+ * higher-specificity selectors (html:root, html[data-theme=...]).
+ * ========================================================================== */
+
+html:root,
+html[data-theme="light"] {
+    --lumina-bg: #fcfcfd;
+    --lumina-bg-secondary: #f3f4f8;
+    --lumina-text: #1e2230;
+    --lumina-text-muted: #586075;
+    --lumina-border: #dde1ea;
+    --lumina-code-bg: #f5f6fa;
+    --lumina-navigation-bg: #f8f9fc;
+    --lumina-floating-bg: #fcfcfd;
+
+    --aimet-blue: #2a2aea;
+    --aimet-blue-text: #2323c4;
+    --aimet-teal: #0f766e;
+    --aimet-violet: #6d28d9;
+    --aimet-amber: #a1460a;
+    --aimet-onnx: var(--aimet-blue-text);
+    --aimet-torch: #c2410c;  /* PyTorch's orange family, darkened to clear AA */
+
+    --aimet-tint: 9%;        /* category-tinted surfaces */
+    --aimet-strip: linear-gradient(90deg, #2a2aea 0%, #7c3aed 50%, #0d9488 100%);
+}
+
+html[data-theme="dark"] {
+    --lumina-bg: #12141c;
+    --lumina-bg-secondary: #1b1e29;
+    --lumina-text: #e4e7ef;
+    --lumina-text-muted: #a3a9bb;
+    --lumina-border: #2b3040;
+    --lumina-code-bg: #181b25;
+    --lumina-navigation-bg: #141720;
+    --lumina-floating-bg: #1e2230;
+
+    --aimet-blue: #6b6bff;
+    --aimet-blue-text: #a5b4fc;
+    --aimet-teal: #2dd4bf;
+    --aimet-violet: #a78bfa;
+    --aimet-amber: #fbbf24;
+    --aimet-onnx: var(--aimet-blue-text);
+    --aimet-torch: #fb8a64;
+
+    --aimet-tint: 14%;
+    --aimet-strip: linear-gradient(90deg, #4f4fff 0%, #8b5cf6 50%, #14b8a6 100%);
+}
+
+/* -- Header brand strip -- */
+
+#lumina-header header::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--aimet-strip);
+    pointer-events: none;
+}
+
+/* -- Section colors --
+ * body[data-aimet-section] is set per page in conf.py (_add_section_context).
+ * The section color tints the page title rule, the eyebrow label above it,
+ * and the matching sidebar icon. */
+
+body { --aimet-section: var(--aimet-blue); --aimet-section-text: var(--aimet-blue-text); }
+body[data-aimet-section="tutorials"] { --aimet-section: var(--aimet-teal); --aimet-section-text: var(--aimet-teal); }
+body[data-aimet-section="techniques"] { --aimet-section: var(--aimet-violet); --aimet-section-text: var(--aimet-violet); }
+body[data-aimet-section="ptq"] { --aimet-section: var(--aimet-amber); --aimet-section-text: var(--aimet-amber); }
+body[data-aimet-section="api"] { --aimet-section: var(--aimet-blue); --aimet-section-text: var(--aimet-blue-text); }
+
+body[data-aimet-section] .lumina-article .body > section:first-of-type > h1:first-of-type::before {
+    display: block;
+    margin-bottom: 0.625rem;
+    color: var(--aimet-section-text);
+    font-family: var(--lumina-font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+body[data-aimet-section="overview"] .lumina-article .body > section:first-of-type > h1:first-of-type::before { content: "Overview"; }
+body[data-aimet-section="tutorials"] .lumina-article .body > section:first-of-type > h1:first-of-type::before { content: "Tutorials"; }
+body[data-aimet-section="techniques"] .lumina-article .body > section:first-of-type > h1:first-of-type::before { content: "Techniques"; }
+body[data-aimet-section="ptq"] .lumina-article .body > section:first-of-type > h1:first-of-type::before { content: "PTQ Techniques"; }
+body[data-aimet-section="api"] .lumina-article .body > section:first-of-type > h1:first-of-type::before { content: "API Reference"; }
+
+/* Title rule: a short bar in the section color under every page title
+ * (not the landing page, whose hero headline has its own treatment). */
+#lumina-content:not(.lumina-landing-content) .lumina-article .body > section:first-of-type > h1:first-of-type::after {
+    content: "";
+    display: block;
+    width: 3rem;
+    height: 3px;
+    margin-top: 0.875rem;
+    border-radius: 3px;
+    background: var(--aimet-section);
+}
+
+/* Section headings: a small accent tick before each h2. */
+.lumina-article h2 {
+    position: relative;
+}
+
+.lumina-article h2::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: -0.875rem;
+    top: 0.3em;
+    bottom: 0.3em;
+    width: 3px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--aimet-section) 70%, transparent);
+}
+
+/* Sidebar: each top-level section's icon wears its color. */
+.lumina-sidebar-nav > ul > li > a[href$="tutorials/index.html"] .lumina-sidebar-icon { color: var(--aimet-teal); }
+.lumina-sidebar-nav > ul > li > a[href$="techniques/index.html"]:not([href$="ptq_techniques/index.html"]) .lumina-sidebar-icon { color: var(--aimet-violet); }
+.lumina-sidebar-nav > ul > li > a[href$="ptq_techniques/index.html"] .lumina-sidebar-icon { color: var(--aimet-amber); }
+.lumina-sidebar-nav > ul > li > a[href$="apiref/index.html"] .lumina-sidebar-icon { color: var(--aimet-blue-text); }
+.lumina-sidebar-nav > ul > li > a[href$="overview/index.html"] .lumina-sidebar-icon { color: var(--aimet-blue-text); }
+
+/* -- Framework tabs: ONNX blue, PyTorch orange -- */
+
+.sd-tab-set.sd-tab-set > input:checked + label[data-sync-id="onnx"] {
+    color: var(--aimet-onnx);
+    border-bottom-color: var(--aimet-onnx);
+}
+
+.sd-tab-set.sd-tab-set > input:checked + label[data-sync-id="torch"] {
+    color: var(--aimet-torch);
+    border-bottom-color: var(--aimet-torch);
+}
+
+.sd-tab-set.sd-tab-set > label[data-sync-id="onnx"]::before,
+.sd-tab-set.sd-tab-set > label[data-sync-id="torch"]::before {
+    content: "";
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-inline-end: 0.4375rem;
+    border-radius: 50%;
+    vertical-align: 0.0625rem;
+    background: currentColor;
+    opacity: 0.35;
+}
+
+.sd-tab-set.sd-tab-set > label[data-sync-id="onnx"]::before { background: var(--aimet-onnx); }
+.sd-tab-set.sd-tab-set > label[data-sync-id="torch"]::before { background: var(--aimet-torch); }
+.sd-tab-set.sd-tab-set > input:checked + label[data-sync-id]::before { opacity: 1; }
+
+/* -- Admonitions: stronger tint plus a solid leading edge -- */
+
+.lumina-article .admonition {
+    border-inline-start-width: 4px;
+}
+
+.lumina-article .admonition.note {
+    border-inline-start-color: var(--lumina-adm-note);
+    background: color-mix(in srgb, var(--lumina-adm-note) 7%, var(--lumina-bg));
+}
+
+.lumina-article .admonition:is(.tip, .hint) {
+    border-inline-start-color: var(--lumina-adm-tip);
+    background: color-mix(in srgb, var(--lumina-adm-tip) 7%, var(--lumina-bg));
+}
+
+.lumina-article .admonition:is(.warning, .caution, .attention) {
+    border-inline-start-color: var(--lumina-adm-warning);
+    background: color-mix(in srgb, var(--lumina-adm-warning) 9%, var(--lumina-bg));
+}
+
+.lumina-article .admonition:is(.danger, .error) {
+    border-inline-start-color: var(--lumina-adm-danger);
+    background: color-mix(in srgb, var(--lumina-adm-danger) 7%, var(--lumina-bg));
+}
+
+.lumina-article .admonition.important {
+    border-inline-start-color: var(--lumina-adm-important);
+    background: color-mix(in srgb, var(--lumina-adm-important) 7%, var(--lumina-bg));
+}
+
+.lumina-article .admonition.seealso {
+    border-inline-start-color: var(--lumina-adm-seealso);
+    background: color-mix(in srgb, var(--lumina-adm-seealso) 7%, var(--lumina-bg));
+}
+
+/* Tip/hint: Lumina's emerald clashes with the blue palette; use teal. */
+html:root,
+html[data-theme="light"] { --lumina-adm-tip: #0f766e; }
+html[data-theme="dark"] { --lumina-adm-tip: #2dd4bf; }
+
+/* -- Tables: brand-tinted header, faint zebra rows -- */
+
+.lumina-article th {
+    background: color-mix(in srgb, var(--lumina-accent) 9%, var(--lumina-bg));
+}
+
+.lumina-article tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--lumina-accent) 2.5%, transparent);
+}
+
+.lumina-article tbody tr:hover {
+    background: color-mix(in srgb, var(--lumina-accent) 6%, transparent);
+}
+
+/* -- Landing page: one color per card tag -- */
+
+.lumina-landing-content .aimet-cards .sd-card-text.aimet-tag {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    gap: 0.4375rem;
+    color: var(--aimet-tag, var(--lumina-text-muted)) !important;  /* Lumina sets .sd-card-text !important */
+}
+
+.lumina-landing-content .aimet-cards .sd-card-text.aimet-tag::before {
+    content: "";
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+/* Each card's tag takes the color of the doc section it links to, matching the
+ * section colors above (body[data-aimet-section]). Keyed off the card's link target,
+ * so card order in index.rst doesn't matter. Cards outside a colored section
+ * (Release Notes, Glossary) keep the neutral tag. */
+.lumina-landing-content .aimet-cards .sd-col:has(a.sd-stretched-link[href^="overview/"]) { --aimet-tag: var(--aimet-blue-text); }
+.lumina-landing-content .aimet-cards .sd-col:has(a.sd-stretched-link[href^="tutorials/"]) { --aimet-tag: var(--aimet-teal); }
+.lumina-landing-content .aimet-cards .sd-col:has(a.sd-stretched-link[href^="techniques/"]) { --aimet-tag: var(--aimet-violet); }
+.lumina-landing-content .aimet-cards .sd-col:has(a.sd-stretched-link[href^="ptq_techniques/"]) { --aimet-tag: var(--aimet-amber); }
+.lumina-landing-content .aimet-cards .sd-col:has(a.sd-stretched-link[href^="apiref/"]) { --aimet-tag: var(--aimet-blue-text); }
+
+
+/* -- Diagram tokens (inline SVGs such as images/aimet_workflow.svg) -- */
+
+html:root,
+html[data-theme="light"],
+html[data-theme="dark"] {
+    --aimet-dia-panel: color-mix(in srgb, var(--aimet-blue) var(--aimet-tint), var(--lumina-bg));
+    --aimet-dia-panel-edge: color-mix(in srgb, var(--aimet-blue) 40%, transparent);
+    --aimet-dia-card: var(--lumina-bg);
+    --aimet-dia-io: var(--lumina-bg-secondary);
+    --aimet-dia-edge: var(--lumina-border);
+    --aimet-dia-ink: var(--lumina-text);
+    --aimet-dia-ink-muted: var(--lumina-text-muted);
+    --aimet-dia-1: var(--aimet-blue-text);   /* primary step */
+    --aimet-dia-2: var(--aimet-teal);        /* improve / iterate */
+    --aimet-dia-3: var(--aimet-violet);      /* output / export */
+}

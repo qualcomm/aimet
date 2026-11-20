@@ -1,0 +1,5 @@
+{#- Extends Lumina's layout only to tag <body> with the page's top-level doc section
+    (set by _add_section_context in conf.py). _static/aimet-lumina.css keys the section
+    colors off this attribute. -#}
+{% extends "!layout.html" %}
+{%- block body_tag %}<body{% if aimet_section %} data-aimet-section="{{ aimet_section }}"{% endif %}>{% endblock %}

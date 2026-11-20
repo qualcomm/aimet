@@ -19,6 +19,8 @@ import os
 import sys
 sys.path.append(os.path.abspath('../../TrainingExtensions/torch/src/python'))
 sys.path.append(os.path.abspath('../../TrainingExtensions/onnx/src/python'))
+# Local helpers (Pygments styles). conf.py runs with the docs source dir as cwd.
+sys.path.insert(0, os.path.abspath('_ext'))
 
 # -- Project information -----------------------------------------------------
 
@@ -52,10 +54,36 @@ def _add_landing_script(app, pagename, templatename, context, doctree):
         app.add_js_file('aimet-landing.js', loading_method='defer')
 
 
+# Top-level doc sections, keyed by docname prefix. Each page gets
+# <body data-aimet-section="..."> so _static/aimet-lumina.css can color its eyebrow
+# label and title rule by section. Pages outside these prefixes get no section color.
+_AIMET_SECTIONS = {
+    'overview': 'overview',
+    'tutorials': 'tutorials',
+    'techniques': 'techniques',
+    'ptq_techniques': 'ptq',
+    'apiref': 'api',
+}
+
+
+def _add_section_context(app, pagename, templatename, context, doctree):
+    context['aimet_section'] = _AIMET_SECTIONS.get(pagename.split('/', 1)[0], '')
+
+
+def _use_aimet_pygments(app):
+    # Swap in the palette-matched code styles. Must run on builder-inited: the
+    # builder creates its highlighters from the theme's pygments_style before that.
+    from sphinx.highlighting import PygmentsBridge
+    app.builder.highlighter = PygmentsBridge('html', 'aimet_pygments.AimetLightStyle')
+    app.builder.dark_highlighter = PygmentsBridge('html', 'aimet_pygments.AimetDarkStyle')
+
+
 def setup(app):
     app.add_config_value('included_features', included_features, 'env')
     app.connect('html-page-context', _expand_api_disclosures)
     app.connect('html-page-context', _add_landing_script)
+    app.connect('html-page-context', _add_section_context)
+    app.connect('builder-inited', _use_aimet_pygments)
 
 
 # -- General configuration ---------------------------------------------------
