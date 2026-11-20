@@ -268,7 +268,10 @@ class _HistogramObserver(_Observer[_Histogram]):
             updated_max = new_stats.max.clamp(curr_stats.bin_edges[-1], right_limit)
 
             # if the current histogram can capture new_stats within in its range
-            if updated_min == curr_stats.min and updated_max == curr_stats.max:
+            if (
+                updated_min == curr_stats.bin_edges[0]
+                and updated_max == curr_stats.bin_edges[-1]
+            ):
                 histogram_updates = curr_stats.histogram
             else:
                 dest_bin_width = (updated_max - updated_min) / self.num_bins
@@ -327,8 +330,11 @@ class _HistogramObserver(_Observer[_Histogram]):
                 max_val=updated_max,
                 device=expanded_histogram.device,
             )
+            # Keep the padding used for constant batches out of the observed range.
+            observed_min = new_stats.min.clamp(left_limit, curr_stats.min)
+            observed_max = new_stats.max.clamp(curr_stats.max, right_limit)
             self.stats[index] = _Histogram(
-                expanded_histogram, expanded_bin_edges, updated_min, updated_max
+                expanded_histogram, expanded_bin_edges, observed_min, observed_max
             )
 
     def reset_stats(self):
@@ -621,11 +627,10 @@ class PercentileEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
             )
 
             if self.percentile == 100:
-                min_index = 0
-                max_index = -1
-
-            curr_min = list_elem.bin_edges[min_index]
-            curr_max = list_elem.bin_edges[max_index]
+                curr_min, curr_max = list_elem.min.float(), list_elem.max.float()
+            else:
+                curr_min = list_elem.bin_edges[min_index]
+                curr_max = list_elem.bin_edges[max_index]
             # adjust min/max
             updated_min, updated_max = adjust_min_max(
                 curr_min, curr_max, num_steps, is_symmetric
