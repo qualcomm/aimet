@@ -627,7 +627,8 @@ class PercentileEncodingAnalyzer(EncodingAnalyzer[_Histogram]):
             )
 
             if self.percentile == 100:
-                curr_min, curr_max = list_elem.min.float(), list_elem.max.float()
+                curr_min = list_elem.min.float()
+                curr_max = list_elem.max.float()
             else:
                 curr_min = list_elem.bin_edges[min_index]
                 curr_max = list_elem.bin_edges[max_index]
