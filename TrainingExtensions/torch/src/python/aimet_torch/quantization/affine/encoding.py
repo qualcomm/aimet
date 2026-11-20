@@ -485,7 +485,8 @@ class AffineEncoding(EncodingBase, _GridMixin):
             qmax = 2 ** (bw - 1) - 1
 
         scale = encoding_dict["y_scale"]
-        offset = -encoding_dict.get("y_zero_point", 0)
+        # The effective offset is the integer offset plus the shift, e.g. -7.5 = -8 + 0.5.
+        offset, zero_point_shift = divmod(-encoding_dict.get("y_zero_point", 0), 1)
         symmetry = (not unsigned) and offset == 0
 
         return AffineEncoding(
@@ -494,6 +495,7 @@ class AffineEncoding(EncodingBase, _GridMixin):
             qmin=qmin,
             qmax=qmax,
             symmetry=symmetry,
+            zero_point_shift=zero_point_shift,
         )
 
 
