@@ -4,6 +4,8 @@
 """Tests for DiskBackedModelCache."""
 
 import json
+import os
+import time
 
 import onnx
 import pytest
@@ -125,6 +127,60 @@ class TestDiskBackedModelCache:
             cache.put("key_a", _tiny_entry())
         assert cache.get("key_a") is None
         assert [p.name for p in cache_dir.iterdir()] == []
+
+
+class TestUnusableEntries:
+    """An entry that lost files or will not load is a miss, not a crash."""
+
+    def _stored(self, tmp_path):
+        cache = DiskBackedModelCache(tmp_path / "model_cache")
+        cache.put("key_a", _tiny_entry(), metadata={"model_id": "org/model"})
+        return cache, tmp_path / "model_cache" / "key_a"
+
+    def test_entry_that_lost_a_file_is_discarded(self, tmp_path):
+        cache, entry = self._stored(tmp_path)
+        (entry / "config.json").unlink()
+        assert cache.get("key_a") is None
+        assert not entry.exists()
+        assert "key_a" not in cache._load_index()["entries"]
+
+    def test_entry_that_fails_to_load_is_discarded(self, tmp_path, monkeypatch):
+        cache, entry = self._stored(tmp_path)
+
+        def corrupt(*args, **kwargs):
+            raise OSError("stale file handle")
+
+        monkeypatch.setattr(onnx, "load", corrupt)
+        assert cache.get("key_a") is None
+        assert not entry.exists()
+
+    def test_discarded_entry_is_re_exported(self, tmp_path):
+        cache, entry = self._stored(tmp_path)
+        (entry / "config.json").unlink()
+        calls = []
+
+        def export():
+            calls.append(1)
+            return _tiny_entry()
+
+        assert cache.get_or_export("key_a", export) is not None
+        assert calls == [1]
+        assert cache.get("key_a") is not None
+
+    def test_stale_staging_is_swept_on_open(self, tmp_path):
+        cache_dir = tmp_path / "model_cache"
+        leftover = cache_dir / ".key_a.123.deadbeef"
+        leftover.mkdir(parents=True)
+        old = time.time() - 3 * 24 * 3600
+        os.utime(leftover, (old, old))
+        DiskBackedModelCache(cache_dir)
+        assert not leftover.exists()
+
+    def test_clear_removes_entries(self, tmp_path):
+        cache, entry = self._stored(tmp_path)
+        cache.clear()
+        assert cache.get("key_a") is None
+        assert list((tmp_path / "model_cache").iterdir()) == []
 
 
 class TestExportIdentity:

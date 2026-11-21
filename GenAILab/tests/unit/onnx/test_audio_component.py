@@ -15,6 +15,7 @@ import pytest
 import torch
 
 from GenAILab.bench.model_cache import DiskBackedModelCache, ModelCacheEntry
+from GenAILab.bench.utils.cache_utils import MANIFEST_FILE
 from GenAILab.bench.precision import PrecisionConfig
 from GenAILab.qai_hub_lm.models.base import SimCollection
 from GenAILab.qai_hub_lm.models.generator import VLM_Generator
@@ -208,8 +209,11 @@ class TestModelCacheEntryComponents:
             ModelCacheEntry(backbone=_tiny_onnx(), audio=_tiny_onnx()),
             metadata={"small_model": True},
         )
-        # Emulate the on-disk shape of a pre-audio entry.
-        shutil.rmtree(tmp_path / "model_cache" / "legacy_key" / "audio")
+        # Emulate the on-disk shape of a pre-audio entry, which also predates
+        # the manifest of an entry's files.
+        entry_dir = tmp_path / "model_cache" / "legacy_key"
+        shutil.rmtree(entry_dir / "audio")
+        (entry_dir / MANIFEST_FILE).unlink()
 
         got = cache.get("legacy_key")
         assert got is not None

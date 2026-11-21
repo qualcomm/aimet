@@ -142,3 +142,19 @@ class TestSharedFPCache:
         DiskBackedFPCache(cache_dir).put(("h", "a"), {"x": torch.tensor(1.0)})
         names = sorted(p.name for p in (cache_dir / "h").iterdir())
         assert names == ["a.pt"]
+
+
+class TestUnreadableEntries:
+    def test_truncated_entry_is_recomputed(self, tmp_path):
+        cache_dir = tmp_path / "fp_cache"
+        key = ("hash1", "mmlu")
+        DiskBackedFPCache(cache_dir).put(key, {"x": torch.tensor(1.0)})
+        (cache_dir / "hash1" / "mmlu.pt").write_bytes(b"trunc")
+
+        cache = DiskBackedFPCache(cache_dir)
+        assert cache.get(key) is None
+        result = cache.get_or_compute(key, lambda: {"x": torch.tensor(2.0)})
+        assert torch.equal(result["x"], torch.tensor(2.0))
+        assert torch.equal(
+            DiskBackedFPCache(cache_dir).get(key)["x"], torch.tensor(2.0)
+        )

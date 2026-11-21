@@ -5,7 +5,6 @@
 
 import json
 import os
-import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +12,11 @@ from typing import Any, Callable, Optional
 
 import torch
 
-from GenAILab.bench.utils.cache_utils import atomic_write_json
+from GenAILab.bench.utils.cache_utils import (
+    atomic_write_json,
+    clear_dir,
+    sweep_stale_staging,
+)
 
 
 class DiskBackedFPCache:
@@ -37,6 +40,9 @@ class DiskBackedFPCache:
     def __init__(self, cache_dir: str | Path):
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
+        for directory in [self._cache_dir, *self._cache_dir.iterdir()]:
+            if directory.is_dir():
+                sweep_stale_staging(directory)
         self._index = self._load_index()
         self._memory: dict[str, Any] = {}
 
@@ -56,7 +62,17 @@ class DiskBackedFPCache:
         # another process may have written it without our index knowing.
         file_path = self._cache_dir / f"{path_key}.pt"
         if file_path.exists():
-            data = torch.load(file_path, map_location="cpu", weights_only=True)
+            try:
+                data = torch.load(file_path, map_location="cpu", weights_only=True)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Lost or truncated since it was written: recompute it.
+                print(
+                    f"  [cache] FP cache entry {path_key} unreadable "
+                    f"({type(e).__name__}: {e}) — discarding"
+                )
+                file_path.unlink(missing_ok=True)
+                self._update_index(path_key, None)
+                return None
             self._memory[path_key] = data
             return data
 
@@ -112,8 +128,7 @@ class DiskBackedFPCache:
 
     def clear(self):
         """Remove **all** cached data and reset the index."""
-        shutil.rmtree(self._cache_dir)
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        clear_dir(self._cache_dir)
         self._index = self._empty_index()
         self._memory.clear()
 

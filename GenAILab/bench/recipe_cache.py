@@ -31,7 +31,6 @@ import functools
 import hashlib
 import json
 import datetime
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -45,9 +44,13 @@ from GenAILab.bench.profiler import (
 )
 from GenAILab.bench.utils.cache_utils import (
     checkpoint_revision,
+    clear_dir,
+    discard_entry,
+    entry_is_complete,
     file_digest,
     recipe_fingerprint,
     staged_entry,
+    sweep_stale_staging,
 )
 
 if TYPE_CHECKING:
@@ -94,7 +97,10 @@ def _adaptation_identity(adaptations: list) -> list:
 
 
 def _entry_is_complete(entry_dir: Path) -> bool:
-    return (entry_dir / "metadata.json").exists() and (entry_dir / "state").is_dir()
+    return entry_is_complete(
+        entry_dir,
+        lambda entry: (entry / "metadata.json").exists() and (entry / "state").is_dir(),
+    )
 
 
 class RecipeCache:
@@ -105,16 +111,21 @@ class RecipeCache:
     means the whole entry (steps and state) is there, even if a writer was
     killed mid-save. If two processes save the same chain hash, the first to
     finish wins; they are equivalent, being content-addressed.
+
+    An entry that has lost files since it was written, or cannot be read, is
+    discarded and the lookup falls back to the next shorter cached prefix. Its
+    files are all read before the sim is touched, so a failed read leaves the
+    sim as it was.
     """
 
     def __init__(self, cache_dir: str | Path):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        sweep_stale_staging(self.cache_dir)
 
     def clear(self):
         """Remove all cached data."""
-        shutil.rmtree(self.cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        clear_dir(self.cache_dir)
 
     @functools.cached_property
     def env_hash(self) -> str:
@@ -221,23 +232,52 @@ class RecipeCache:
             model_identity,
         )
         hashes = compute_chain_hashes(self, base, recipe_list)
-        skip, chain = find_cache_hit(self, hashes)
+        skip, cached_stats = 0, []
+        for i in range(len(hashes) - 1, 0, -1):
+            if not self.get(hashes[i]):
+                continue
+            # Only reading is guarded: a read failure is a damaged entry, so the
+            # next shorter prefix is tried. Applying is not, as a failure there
+            # leaves the sim half-modified and must not be run on.
+            try:
+                read = self._read(hashes[i], framework)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                self._discard(hashes[i], f"failed to load: {type(e).__name__}: {e}")
+                continue
+            cached_stats = self._apply(read, sim_component, framework)
+            skip = i
+            break
         if skip > 0:
-            cached_stats = self.load(chain, sim_component, framework)
             remaining = [step.technique_cls.__name__ for step in recipe_list[skip:]]
             log_cache_hit(component, cached_stats, len(recipe_list), remaining)
         else:
             log_cache_miss(component, len(recipe_list))
-            cached_stats = []
         return skip, cached_stats, hashes
 
     def get(self, chain_hash: str) -> dict | None:
-        """Return cache entry metadata if it exists, else None."""
-        meta_path = self.cache_dir / chain_hash / "metadata.json"
-        if meta_path.exists():
-            with open(meta_path) as f:
+        """Return cache entry metadata if the entry is whole, else None.
+
+        An entry missing any of its files is discarded.
+        """
+        entry_dir = self.cache_dir / chain_hash
+        if not entry_dir.exists():
+            return None
+        if not _entry_is_complete(entry_dir):
+            self._discard(chain_hash, "files missing")
+            return None
+        try:
+            with open(entry_dir / "metadata.json") as f:
                 return json.load(f)
-        return None
+        except (OSError, ValueError) as e:
+            self._discard(chain_hash, f"unreadable metadata: {e}")
+            return None
+
+    def _discard(self, chain_hash: str, reason: str):
+        print(
+            f"  [cache] Recipe cache entry {chain_hash[:12]}... unusable ({reason})"
+            " — discarding"
+        )
+        discard_entry(self.cache_dir / chain_hash)
 
     def get_state_dir(self, chain_hash: str) -> Path:
         """Return path to the state/ directory for a cache entry."""
@@ -353,17 +393,35 @@ class RecipeCache:
         sim_component,
         framework: str,
     ) -> list[RecipeStepStats]:
-        """Load cached weight state into sim_component and return step stats."""
+        """Load cached weight state into sim_component and return step stats.
+
+        Every file is read before *sim_component* is modified, so an entry that
+        cannot be read raises with the sim untouched.
+        """
+        return self._apply(self._read(chain_hash, framework), sim_component, framework)
+
+    def _read(self, chain_hash: str, framework: str):
+        """Read an entry's step stats and state, without touching any sim."""
         state_dir = self.cache_dir / chain_hash / "state"
         if not state_dir.exists():
-            return []
-
+            return [], None
+        step_stats = self.load_step_stats(chain_hash)
         if framework == "torch":
-            self._load_torch(state_dir, sim_component)
-        elif framework == "onnx":
-            self._load_onnx(state_dir, sim_component)
+            return step_stats, self._read_torch(state_dir)
+        if framework == "onnx":
+            return step_stats, self._read_onnx(state_dir)
+        return step_stats, None
 
-        return self.load_step_stats(chain_hash)
+    def _apply(self, read, sim_component, framework: str) -> list[RecipeStepStats]:
+        """Put state from :meth:`_read` into *sim_component*; return its step stats."""
+        step_stats, state = read
+        if state is None:
+            return step_stats
+        if framework == "torch":
+            self._apply_torch(sim_component, *state)
+        elif framework == "onnx":
+            self._apply_onnx(sim_component, *state)
+        return step_stats
 
     # ---- Torch serialization ------------------------------------------------
 
@@ -425,17 +483,19 @@ class RecipeCache:
         with open(state_dir / "quantizer_flags.json", "w") as f:
             json.dump(flags, f)
 
-    def _load_torch(self, state_dir: Path, sim_component):
+    @staticmethod
+    def _read_torch(state_dir: Path) -> tuple[dict | None, dict | None]:
         ckpt_path = state_dir / "checkpoint.pt"
-        if ckpt_path.exists():
-            sim_component.model.load_state_dict(
-                torch.load(ckpt_path, map_location="cpu"), strict=False
-            )
+        state_dict = (
+            torch.load(ckpt_path, map_location="cpu") if ckpt_path.exists() else None
+        )
+        flags = _read_json(state_dir / "quantizer_flags.json")
+        return state_dict, flags
 
-        flags_path = state_dir / "quantizer_flags.json"
-        if flags_path.exists():
-            with open(flags_path) as f:
-                flags = json.load(f)
+    def _apply_torch(self, sim_component, state_dict, flags):
+        if state_dict is not None:
+            sim_component.model.load_state_dict(state_dict, strict=False)
+        if flags is not None:
             self._restore_quantizer_flags(sim_component, flags)
 
     # ---- ONNX serialization -------------------------------------------------
@@ -466,15 +526,26 @@ class RecipeCache:
         with open(state_dir / "quantizer_flags.json", "w") as f:
             json.dump(frozen_ops, f)
 
-    def _load_onnx(self, state_dir: Path, sim_component):
+    @staticmethod
+    def _read_onnx(state_dir: Path):
+        model_path = state_dir / "model.onnx"
+        cached_model = (
+            onnx.load(str(model_path), load_external_data=True)
+            if model_path.exists()
+            else None
+        )
+        encodings = _read_json(state_dir / "model.encodings")
+        frozen_ops = _read_json(state_dir / "quantizer_flags.json")
+        return cached_model, encodings, frozen_ops
+
+    @staticmethod
+    def _apply_onnx(sim_component, cached_model, encodings, frozen_ops):
         from aimet_onnx.quantsim import load_encodings_to_sim
 
-        model_path = state_dir / "model.onnx"
-        if model_path.exists():
+        if cached_model is not None:
             # Copy initializers (weight tensors) from the cached proto into
             # into the live proto. Replacing the entire proto would bring
             # stale QcQuantizeOp quant_info C++ pointers, causing a segfault.
-            cached_model = onnx.load(str(model_path), load_external_data=True)
             cached_inits = {init.name: init for init in cached_model.graph.initializer}
 
             for i, init in enumerate(sim_component.model.model.graph.initializer):
@@ -483,27 +554,31 @@ class RecipeCache:
                         cached_inits[init.name]
                     )
 
-            del cached_model
+            del cached_model, cached_inits
             sim_component._rebuild_session()
 
-        enc_path = state_dir / "model.encodings"
-        if enc_path.exists():
+        if encodings is not None:
             load_encodings_to_sim(
                 sim_component,
-                str(enc_path),
+                encodings,
                 strict=False,
                 allow_overwrite=True,
                 disable_missing_quantizers=False,
             )
 
         # Restore per-op frozen encoding flags
-        flags_path = state_dir / "quantizer_flags.json"
-        if flags_path.exists():
-            with open(flags_path) as f:
-                frozen_ops = json.load(f)
+        if frozen_ops is not None:
             for name, was_frozen in frozen_ops.items():
                 if was_frozen and name in sim_component.qc_quantize_op_dict:
                     sim_component.qc_quantize_op_dict[name].freeze_encodings()
+
+
+def _read_json(path: Path):
+    """The parsed contents of *path*, or ``None`` if it does not exist."""
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 def _format_elapsed(ms: float) -> str:
@@ -636,15 +711,3 @@ def compute_chain_hashes(
     for step in recipe_list:
         hashes.append(recipe_cache.step_hash(hashes[-1], step))
     return hashes
-
-
-def find_cache_hit(recipe_cache: RecipeCache, hashes: list[str]) -> tuple[int, str]:
-    """Walk backwards to find the longest cached prefix.
-
-    Returns (skip_to, chain_hash) where skip_to is the number of steps
-    to skip (0 means no cache hit).
-    """
-    for i in range(len(hashes) - 1, 0, -1):
-        if recipe_cache.get(hashes[i]):
-            return i, hashes[i]
-    return 0, hashes[0]

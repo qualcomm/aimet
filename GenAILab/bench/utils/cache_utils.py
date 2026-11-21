@@ -20,7 +20,11 @@ by file content, so the fingerprints work with or without a ``.git`` directory
 code does not change while it runs.
 
 Several processes may share one cache directory; :func:`staged_entry`,
-:func:`discard_entry` and :func:`atomic_write_json` keep that safe.
+:func:`discard_entry`, :func:`clear_dir` and :func:`atomic_write_json` keep that
+safe. Each entry carries a manifest of its files (see :func:`entry_is_complete`),
+so one that lost files after it was written (an expiring filer purging it file
+by file, say) reads as a miss rather than a hit that fails halfway through
+loading.
 """
 
 import functools
@@ -30,14 +34,60 @@ import importlib.util
 import json
 import os
 import shutil
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator
 
 
+# Every private name below starts with a dot, which no entry name does, so a
+# directory listing can tell leftovers from entries.
+_PRIVATE_PREFIX = "."
+
+# Each entry's list of its own files, written last into the staging directory.
+MANIFEST_FILE = "files.json"
+
+# A staging directory is filled for as long as an export or a recipe step takes
+# to save. Older than this, its writer is taken to be dead.
+STALE_STAGING_SECONDS = 24 * 3600
+
+
 def _unique_sibling(path: Path) -> Path:
-    return path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}")
+    return path.with_name(
+        f"{_PRIVATE_PREFIX}{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    )
+
+
+def write_manifest(entry: Path):
+    """Record every file under *entry* with its size, for :func:`entry_is_complete`."""
+    files = {
+        path.relative_to(entry).as_posix(): path.stat().st_size
+        for path in sorted(entry.rglob("*"))
+        if path.is_file() and path.name != MANIFEST_FILE
+    }
+    atomic_write_json(entry / MANIFEST_FILE, {"files": files}, indent=2)
+
+
+def entry_is_complete(entry: Path, legacy_check: Callable[[Path], bool]) -> bool:
+    """Whether every file *entry*'s manifest lists is there, at its recorded size.
+
+    An entry from before manifests existed is judged by *legacy_check* instead.
+    """
+    try:
+        with open(entry / MANIFEST_FILE) as f:
+            files = json.load(f)["files"]
+    except FileNotFoundError:
+        return entry.is_dir() and legacy_check(entry)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    for rel, size in files.items():
+        try:
+            if (entry / rel).stat().st_size != size:
+                return False
+        except OSError:
+            return False
+    return True
 
 
 @contextmanager
@@ -46,10 +96,11 @@ def staged_entry(final: Path, is_complete: Callable[[Path], bool]) -> Iterator[P
 
     Readers only ever see *final* whole: it appears in one atomic rename, so an
     interrupted or concurrent writer never leaves a half-written entry behind.
-    If another process published *final* first, its entry is kept and this
-    one is discarded (entries are content-addressed, so they are equivalent).
-    A *final* that ``is_complete`` rejects is a leftover of an older, non-atomic
-    writer and is replaced.
+    The entry's manifest (:data:`MANIFEST_FILE`) is written just before the
+    rename. If another process published *final* first, its entry is kept and
+    this one is discarded (entries are content-addressed, so they are
+    equivalent). A *final* that ``is_complete`` rejects is a leftover of an
+    older, non-atomic writer, or an entry that lost files, and is replaced.
 
     The staging directory is a sibling of *final*, so the rename stays on one
     filesystem, and it is created with the process umask like any other cache
@@ -59,6 +110,7 @@ def staged_entry(final: Path, is_complete: Callable[[Path], bool]) -> Iterator[P
     staging.mkdir(parents=True)
     try:
         yield staging
+        write_manifest(staging)
         _publish(staging, final, is_complete)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -95,6 +147,59 @@ def discard_entry(entry: Path):
     except FileNotFoundError:
         return
     shutil.rmtree(doomed, ignore_errors=True)
+
+
+def clear_dir(cache_dir: Path):
+    """Empty *cache_dir* so a process using it meanwhile sees each entry whole or gone.
+
+    The directory is renamed away in one step and recreated, so no reader finds
+    an entry half-deleted, and entries another process publishes after that land
+    in the fresh directory and are kept. The old contents are then moved inside
+    the fresh directory under a private name and deleted there, so a crash
+    mid-delete leaves them where :func:`sweep_stale_staging` finds them, never
+    beside *cache_dir* in a directory the cache does not own.
+    """
+    doomed = _unique_sibling(cache_dir)
+    try:
+        os.rename(cache_dir, doomed)
+    except FileNotFoundError:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    inside = cache_dir / doomed.name
+    try:
+        os.rename(doomed, inside)
+    except OSError:
+        inside = doomed
+    shutil.rmtree(inside, ignore_errors=True)
+
+
+def sweep_stale_staging(cache_dir: Path, max_age_s: float = STALE_STAGING_SECONDS):
+    """Delete private leftovers in *cache_dir* that no live writer can still own.
+
+    A writer killed mid-save leaves its staging directory or temp file, and a
+    crash mid :func:`discard_entry` or mid :func:`clear_dir` leaves the
+    renamed-away copy. Nothing would ever delete them on a shared, persistent
+    cache. Only leftovers untouched for *max_age_s* are removed, so another
+    process's save in progress is safe.
+    """
+    try:
+        children = list(cache_dir.iterdir())
+    except FileNotFoundError:
+        return
+    cutoff = time.time() - max_age_s
+    for child in children:
+        if not child.name.startswith(_PRIVATE_PREFIX):
+            continue
+        try:
+            if child.stat().st_mtime > cutoff:
+                continue
+        except FileNotFoundError:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
 
 
 def atomic_write_json(path: Path, obj, **dump_kwargs):

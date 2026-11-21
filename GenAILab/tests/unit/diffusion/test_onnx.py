@@ -229,6 +229,22 @@ class TestONNXCache:
             DiffusionONNXCache.key_hash(self._key())
         ]
 
+    def test_entry_that_lost_a_file_is_re_exported(self, tmp_path):
+        cache = DiffusionONNXCache(tmp_path)
+        calls = []
+
+        def export(directory):
+            calls.append(directory)
+            for name in COMPONENTS:
+                (directory / name).mkdir()
+                (directory / name / diffusion_onnx.MODEL_FILE).write_bytes(b"x")
+
+        paths = cache.get_or_export(self._key(), export)
+        paths["unet"].write_bytes(b"")  # truncated after it was written
+        assert cache.paths(self._key()) is None
+        cache.get_or_export(self._key(), export)
+        assert len(calls) == 2
+
     def test_incomplete_export_is_an_error(self, tmp_path):
         cache = DiffusionONNXCache(tmp_path)
         with pytest.raises(RuntimeError, match="did not write every component"):

@@ -5,7 +5,6 @@
 
 import hashlib
 import json
-import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -19,8 +18,12 @@ from transformers import AutoConfig, PretrainedConfig
 from GenAILab.bench.utils.cache_utils import (
     atomic_write_json,
     checkpoint_revision,
+    clear_dir,
+    discard_entry,
+    entry_is_complete,
     model_fingerprint,
     staged_entry,
+    sweep_stale_staging,
 )
 from GenAILab.qai_hub_lm.schema.components import (
     MODALITY_COMPONENTS,
@@ -89,6 +92,10 @@ class DiskBackedModelCache:
     and lookups go by the entry directory, not by ``index.json`` (which is only
     a manifest for inspection and may briefly trail the directories). If two
     processes export the same key, the first to finish wins.
+
+    An entry that has lost files since it was written, or fails to load, is
+    discarded and counts as a miss, so it is re-exported rather than failing
+    the run.
     """
 
     _INDEX_FILE = "index.json"
@@ -98,6 +105,7 @@ class DiskBackedModelCache:
     def __init__(self, cache_dir: str | Path):
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
+        sweep_stale_staging(self._cache_dir)
         self._index = self._load_index()
 
     # ------------------------------------------------------------------
@@ -105,21 +113,40 @@ class DiskBackedModelCache:
     # ------------------------------------------------------------------
 
     def get(self, key: str) -> ModelCacheEntry | None:
-        """Return a cached :class:`ModelCacheEntry` if it exists on disk, else ``None``."""
+        """Return a cached :class:`ModelCacheEntry` if it exists on disk, else ``None``.
+
+        An entry missing any of its files, or one that fails to load, is
+        discarded and reported as a miss.
+        """
         entry_dir = self._cache_dir / key
-        backbone_path = entry_dir / "backbone" / "model.onnx"
-        if not backbone_path.exists():
+        if not entry_dir.exists():
             # Never cached, or another process sharing this cache has it listed
             # in the index but the files were deleted externally.
             if key in self._load_index()["entries"]:
                 print(
                     f"  [cache] Model cache stale entry for key {key} "
-                    f"(backbone not found on disk) — removing"
+                    f"(not found on disk) — removing"
                 )
                 self._update_index(key, None)
             return None
+        if not _entry_is_complete(entry_dir):
+            self._discard(key, "files missing")
+            return None
+        try:
+            return self._load_entry(entry_dir)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self._discard(key, f"failed to load: {type(e).__name__}: {e}")
+            return None
 
-        # Load components from disk
+    def _discard(self, key: str, reason: str):
+        print(f"  [cache] Model cache entry {key} unusable ({reason}) — discarding")
+        discard_entry(self._cache_dir / key)
+        self._update_index(key, None)
+
+    @staticmethod
+    def _load_entry(entry_dir: Path) -> ModelCacheEntry:
+        """Read every component of the entry in *entry_dir*."""
+        backbone_path = entry_dir / "backbone" / "model.onnx"
         config_path = entry_dir / "config.json"
         backbone = onnx.load(str(backbone_path))
 
@@ -257,12 +284,19 @@ class DiskBackedModelCache:
         _log_model_export_time(
             metadata, exported - start, time.perf_counter() - exported
         )
-        return self.get(key)
+        # Read back rather than return *result*: onnx.save_model with external
+        # data strips the tensors out of the protos it saves.
+        stored = self.get(key)
+        if stored is None:
+            raise RuntimeError(
+                f"Model cache entry {key} could not be read back right after it "
+                f"was written to {self._cache_dir}"
+            )
+        return stored
 
     def clear(self):
         """Remove **all** cached data and reset the index."""
-        shutil.rmtree(self._cache_dir)
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        clear_dir(self._cache_dir)
         self._index = self._empty_index()
 
     @staticmethod
@@ -330,7 +364,9 @@ class DiskBackedModelCache:
 
 
 def _entry_is_complete(entry_dir: Path) -> bool:
-    return (entry_dir / "backbone" / "model.onnx").exists()
+    return entry_is_complete(
+        entry_dir, lambda entry: (entry / "backbone" / "model.onnx").exists()
+    )
 
 
 _CACHE_BANNER = "\n" + "=" * 70 + "\n"
