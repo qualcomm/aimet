@@ -47,8 +47,8 @@ cd aimet
 ```
 *IMPORTANT:* Setup your pre-commit and commit-msg hook using the following way:
 ```
-cd aimet
 pip install pre-commit
+pre-commit install
 ln -s $(realpath -s .githooks/commit-msg) .git/hooks/commit-msg
 ```
 
