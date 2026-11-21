@@ -79,8 +79,8 @@ each package is obtained per platform.
 .. note::
     aimet-torch is pure Python (``py310-none-any``), so one wheel installs on
     every platform, though it is CI-tested only on Linux. aimet-onnx ships a
-    compiled extension, so it has per-platform wheels. All wheels use the
-    CPython stable ABI (``cp310-abi3``) and run on Python 3.10+ (tested through 3.13).
+    compiled extension, so its per-platform wheels use the CPython stable ABI
+    (``cp310-abi3``) and run on CPython 3.10+ (tested through 3.13).
 
 CUDA (GPU) acceleration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -107,8 +107,8 @@ Choose and install a package
 ----------------------------
 
 Use one of the following commands to install AIMET based on your choice of framework and platform.
-All wheels below use the CPython stable ABI (``cp310-abi3``) and install on any Python 3.10+ interpreter
-without needing a version-specific URL.
+aimet-onnx wheels use the CPython stable ABI (``cp310-abi3``) for CPython 3.10+; aimet-torch
+uses a platform-independent ``py310-none-any`` wheel. Neither needs a Python-version-specific URL.
 
 PyTorch
 ~~~~~~~
