@@ -296,6 +296,6 @@ jobs:
       - uses: slackapi/slack-github-action@v1.25.0
         with:
           channel-id: C0898PQVA31,C02TLE1KJ3B # channel ids in order: aimet, general
-          slack-message: ":rocket: *AIMET ${{ inputs.version }} released* :tada: \n *PyPI*\n- AIMET-ONNX: https://pypi.org/project/aimet-onnx/ \n- AIMET-TORCH: https://pypi.org/project/aimet-torch/ \n\n *Github*: https://github.com/quic/aimet/releases \n *Docs*: https://qualcomm.github.io/aimet-pages/releases/latest/index.html \n"
+          slack-message: ":rocket: *AIMET ${{ inputs.version }} released* :tada: \n *PyPI*\n- AIMET-ONNX: https://pypi.org/project/aimet-onnx/ \n- AIMET-TORCH: https://pypi.org/project/aimet-torch/ \n\n *Github*: https://github.com/qualcomm/aimet/releases \n *Docs*: https://qualcomm.github.io/aimet-pages/releases/latest/index.html \n"
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
