@@ -89,7 +89,7 @@ def _set_matmul_second_input_to_8b(quantsim_model: QuantizationSimModel):
                 quantizer.use_symmetric_encodings = True
             else:
                 quantsim_model._insert_quantizer(op.inputs[1].name, is_param=False)  # pylint: disable=protected-access
-                quantsim_model._rebuild_session()  # pylint: disable=protected-access
+                quantsim_model._invalidate_session()  # pylint: disable=protected-access
                 quantizer = quantsim_model.qc_quantize_op_dict[op.inputs[1].name]
                 quantizer.enabled = True
                 quantizer.set_bitwidth(8)

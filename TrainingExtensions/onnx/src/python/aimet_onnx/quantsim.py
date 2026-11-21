@@ -542,6 +542,7 @@ class QuantizationSimModel:
             providers = _with_low_memory_cuda_options(providers)
         self.providers = providers
 
+        self._invalidate_session()
         self.qc_quantize_op_dict = {}
         self._quant_scheme = quant_scheme
         self._param_type = param_type
@@ -653,13 +654,42 @@ class QuantizationSimModel:
         self._use_external_data = True
 
         self._sort_quantizer_nodes()
-        self.session = OrtInferenceSession(
-            self.model.model,
-            self.providers,
-            session_options=self._ort_session_options,
-            path=self._path,
-            save_as_external_data=self._use_external_data,
-        )
+
+    @property
+    def session(self) -> Optional[OrtInferenceSession]:
+        """
+        ORT session of the sim. Built on first use, and again on the first use after a change
+        to the quantizers invalidates it: building it takes minutes for large models.
+        """
+        if self._session_stale:
+            # Cleared first: while it is built, the session reads as None, as it did when it
+            # was rebuilt eagerly, instead of recursing
+            self._session_stale = False
+            try:
+                self._rebuild_session()
+            except BaseException:
+                # Still stale: the next use retries, and raises again, rather than get None
+                self._session_stale = True
+                raise
+        return self._session
+
+    @session.setter
+    def session(self, session: Optional[OrtInferenceSession]):
+        if session is not None and self._session is not None:
+            logger.info("Overwriting the sim's active ORT session")
+        self._session = session
+        self._session_stale = False
+
+    @session.deleter
+    def session(self):
+        self.session = None
+
+    def _invalidate_session(self):
+        """
+        Drops the session, so that it is rebuilt on its next use.
+        """
+        self._session = None
+        self._session_stale = True
 
     @classmethod
     def from_onnx_qdq(
@@ -2644,11 +2674,12 @@ class QuantizationSimModel:
 
     def set_quantizers(self, quantizer_dict: Dict[str, QcQuantizeOp]):
         """
-        Updates `self.qc_quantize_op_dict` with the entries in `quantizer_dict`
+        Updates `self.qc_quantize_op_dict` with the entries in `quantizer_dict`. The session is
+        rebuilt on its next use.
 
         :param quantizer_dict: Dictionary mapping tensor names to QcQuantizeOp objects
         """
-        self._set_quantizers(quantizer_dict, rebuild_session=True)
+        self._set_quantizers(quantizer_dict, rebuild_session=False)
 
     def _set_quantizers(
         self, quantizer_dict: Dict[str, QcQuantizeOp], rebuild_session: bool
@@ -2709,8 +2740,8 @@ class QuantizationSimModel:
         for atr in dst_onnx_node.attribute:
             if atr.name == "quant_info":
                 atr.i = libpymo.PtrToInt64(src_qtzr.quant_info)
-                # Session is now invalid and must be rebuilt
-                self.session = None
+                # ORT reads quant_info when it builds the session, so the session is now stale
+                self._invalidate_session()
                 return
 
     def _tie_quantizers_for_op_types(self, op_types_to_tie: List[str]):

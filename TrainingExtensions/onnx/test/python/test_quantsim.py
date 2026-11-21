@@ -5088,12 +5088,13 @@ class TestSessionOptions:
                 path=tmp_dir,
                 session_options_kwargs={"intra_op_num_threads": 3},
             )
+            session = sim.session
 
         assert (
             mock_session_cls.call_args.kwargs["session_options"]
             is sim._ort_session_options
         )
-        assert sim.session.get_session_options().intra_op_num_threads == 3
+        assert session.get_session_options().intra_op_num_threads == 3
 
     def test_unknown_session_options_kwarg_raises(self, tmp_dir):
         model = build_dummy_model()
@@ -6190,6 +6191,76 @@ class TestEncodingPropagation:
         out_delta = sim.qc_quantize_op_dict["out"].get_encodings()[0].delta
         assert sim.qc_quantize_op_dict["x"].get_encodings()[0].delta == out_delta
         assert sim.qc_quantize_op_dict["y"].get_encodings()[0].delta == out_delta
+
+    def test_session_is_built_on_first_use(self):
+        """
+        Given: A sim (an ORT session build takes minutes for large models, and the sim's
+               quantizers are usually tied before its session is first run)
+        """
+        model = models_for_tests.gather_concat_model()
+        dummy_input = make_dummy_input(model)
+        with patch(
+            "aimet_onnx.quantsim.OrtInferenceSession", wraps=OrtInferenceSession
+        ) as session_cls:
+            sim = QuantizationSimModel(model)
+
+            """
+            When: Its quantizers are tied, twice
+            Then: No session is built
+            """
+            quantizer = sim.qc_quantize_op_dict["out"]
+            sim.set_quantizers({"x": quantizer})
+            sim.set_quantizers({"y": quantizer})
+            assert session_cls.call_count == 0
+
+            """
+            When: The session is used
+            Then: It is built once, and runs the tied quantizer
+            """
+            quantizer.set_bitwidth(4)
+            sim.compute_encodings([dummy_input])
+            sim.session.run(None, dummy_input)
+            assert session_cls.call_count == 1
+            assert sim.qc_quantize_op_dict["x"].get_encodings()[0].delta == (
+                quantizer.get_encodings()[0].delta
+            )
+
+            """
+            When: A quantizer is untied after the session is built
+            Then: The next use builds a new session, which runs the untied quantizer
+            """
+            untied = quantizer._copy()
+            untied.set_bitwidth(8)
+            sim.set_quantizers({"x": untied})
+            sim.compute_encodings([dummy_input])
+            assert session_cls.call_count == 2
+            assert untied.get_encodings()[0].delta != quantizer.get_encodings()[0].delta
+
+            """
+            When: The session is dropped
+            Then: It stays dropped until it is rebuilt explicitly
+            """
+            del sim.session
+            assert sim.session is None
+            sim._rebuild_session()
+            assert sim.session is not None
+            assert session_cls.call_count == 3
+
+    def test_failed_session_build_is_retried(self):
+        """
+        Given: A sim whose first session build fails
+        When: The session is used again
+        Then: The build is retried, rather than the sim running without a session
+        """
+        model = models_for_tests.gather_concat_model()
+        sim = QuantizationSimModel(model)
+        with patch(
+            "aimet_onnx.quantsim.OrtInferenceSession",
+            side_effect=RuntimeError("out of memory"),
+        ):
+            with pytest.raises(RuntimeError, match="out of memory"):
+                sim.session
+        sim.session.run(None, make_dummy_input(model))
 
     def test_clamp_activation_encodings(self):
         model = models_for_tests.matmul_add_model()
