@@ -112,6 +112,36 @@ runs:
         echo "Using config: ${{ inputs.config }}"
         cat "${{ inputs.config }}"
 
+    - name: Resolve cache directories
+      id: cache-dirs
+      shell: bash
+      env:
+        # Through env: branch names are user-controlled text.
+        EVENT_NAME: ${{ github.event_name }}
+        REF_NAME: ${{ github.ref_name }}
+        HEAD_REF: ${{ github.head_ref }}
+        SHA: ${{ github.sha }}
+      run: |
+        # Persistent caches on VAST, under the account the job runs as.
+        # develop and release-* (outside pull requests) get one directory per
+        # commit and installed-package set; any other ref gets one per branch,
+        # so a broken cache only affects that branch's runs.
+        ROOT="/mnt/vast-ml-infra-inputs/Expire7Days/aimet/${USER:-$(id -un)}/genailab_cache"
+        if [[ "$EVENT_NAME" != "pull_request" && ( "$REF_NAME" == "develop" || "$REF_NAME" == release-* ) ]]; then
+          # Local wheels resolve to file:// paths that differ per run, ignore
+          ENV_HASH="$(.venv/bin/python -m pip freeze | sed 's/ @ file:.*//' | sort | sha256sum | cut -c1-16)"
+          DIR="$ROOT/protected/$SHA/$ENV_HASH"
+        else
+          # Pull requests run on refs/pull/N/merge; key them by their source
+          # branch. The name becomes one path component: "/" and other
+          # specials turn into "_", and a leading "." too.
+          BRANCH="${HEAD_REF:-$REF_NAME}"
+          DIR="$ROOT/branch/$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '_' | sed 's/^\./_/')"
+        fi
+        echo "Cache directory: $DIR"
+        echo "model=$DIR/model" >> "$GITHUB_OUTPUT"
+        echo "recipe=$DIR/recipe" >> "$GITHUB_OUTPUT"
+
     - name: Run tests
       shell: bash
       env:
@@ -122,6 +152,8 @@ runs:
         # Through env, never ${{ }} in the script: the input is free text.
         RUN_ARGS: ${{ inputs.run-args }}
         REF_NAME: ${{ github.ref_name }}
+        MODEL_CACHE_DIR: ${{ steps.cache-dirs.outputs.model }}
+        RECIPE_CACHE_DIR: ${{ steps.cache-dirs.outputs.recipe }}
       run: |
         source .venv/bin/activate
         export PYTHONPATH=$PYTHONPATH:$(pwd)
@@ -144,6 +176,8 @@ runs:
         python -m GenAILab --framework ${{ inputs.variant }} \
           --config "${{ inputs.config }}" \
           --force-export \
+          --model-cache-dir "$MODEL_CACHE_DIR" \
+          --recipe-cache-dir "$RECIPE_CACHE_DIR" \
           "${EXTRA_ARGS[@]}"
 
     # -------------------------------------------------------------------
