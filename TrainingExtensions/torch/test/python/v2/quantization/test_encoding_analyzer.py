@@ -930,6 +930,15 @@ class TestPercentileEncodingAnalyzer:
         assert torch.allclose(asymmetric_min, input_tensor.min())
         assert torch.allclose(asymmetric_max, input_tensor.max())
 
+    def test_100_percentile_with_zero_batch(self):
+        x = torch.tensor([0.0, 0.001])
+        zeros = torch.zeros_like(x)
+        for batches in ((zeros, x), (x, zeros), (torch.cat((zeros, x)),)):
+            analyzer = PercentileEncodingAnalyzer((), percentile=100)
+            for batch in batches:
+                analyzer.update_stats(batch)
+            assert analyzer.compute_encodings(255, False) == (x.min(), x.max())
+
     def test_compute_encodings_50_percentile(self):
         encoding_analyzer = PercentileEncodingAnalyzer((), percentile=50, num_bins=3)
         input_tensor = torch.arange(start=0, end=1001, step=1, dtype=torch.float)
