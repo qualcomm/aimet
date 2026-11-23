@@ -161,6 +161,10 @@ html_title = 'AI Model Efficiency Toolkit'
 # long enough to collide with the header's search box.
 html_short_title = 'AIMET'
 html_favicon = '_static/ai-hub-workbench-icon.png'
+# Each release is published to aimet-pages under releases/<version>/ and also served as
+# releases/latest/. Pointing canonical URLs (and Lumina's auto-generated sitemap.xml) at
+# latest keeps search engines from indexing every version as a duplicate.
+html_baseurl = 'https://qualcomm.github.io/aimet-pages/releases/latest/'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
