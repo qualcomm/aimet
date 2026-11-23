@@ -4,7 +4,6 @@
 .pylintrc
 
 Docs/
-Jenkins/
 NightlyTests/
 packaging/
 ThirdParty/

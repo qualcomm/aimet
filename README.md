@@ -42,7 +42,7 @@ Check our [Quick Start](https://qualcomm.github.io/aimet-pages/releases/latest/o
 
 ### Build from source
 
-To build the latest AIMET code from the source, see [Build, install and run AIMET from source in *Docker* environment](https://qualcomm.github.io/aimet-pages/releases/latest/overview/install/build_from_source.html#build-from-source)
+To build the latest AIMET code from the source, see [Build, install and run AIMET from source](https://qualcomm.github.io/aimet-pages/releases/latest/overview/install/build_from_source.html#build-from-source)
 
 
 ## Supported Features

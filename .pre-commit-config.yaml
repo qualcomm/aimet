@@ -14,7 +14,7 @@ repos:
     rev: v1.5.5
     hooks:
       - id: insert-license
-        files: (CMakeLists\.txt|Dockerfile.*|\.(sh|py|cmake)$)
+        files: (CMakeLists\.txt|\.(sh|py|cmake)$)
         exclude: |
           (?x)^(
             build/.*|
@@ -55,7 +55,6 @@ repos:
     hooks:
       - id: check-yaml
         args: [--allow-multiple-documents]
-        exclude: Jenkins/fast-release/environment.devenv.yml
       - id: trailing-whitespace
       - id: check-added-large-files
         args: ["--maxkb=1024"]

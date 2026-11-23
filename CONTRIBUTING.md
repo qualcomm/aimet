@@ -35,7 +35,7 @@ Contributors should develop on [their own fork](https://help.github.com/en/githu
 ## Setup
 Go to https://github.com/qualcomm/aimet and fork the repo using [these instructions](https://help.github.com/en/github/getting-started-with-github/fork-a-repo).
 
-To develop inside Docker, follow the [Requirements](packaging/docker_install.md#requirements) and [Setup](packaging/docker_install.md#setup-the-environment) sections in [docker_install.md](packaging/docker_install.md). To develop directly on your machine, see [Building from source](Docs/overview/install/build_from_source.rst). Then return to this page.
+To develop AIMET, see [Building from source](Docs/overview/install/build_from_source.rst). Then return to this page.
 
 ## Get code
 [Sync your fork](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/syncing-a-fork) with the latest from the upstream repository.
