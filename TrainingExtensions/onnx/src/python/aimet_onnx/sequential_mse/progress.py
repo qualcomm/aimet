@@ -3,7 +3,7 @@
 
 """Progress and result reporting for sequential MSE.
 
-Everything here is derived from the dependency graph and the candidate losses sequential MSE
+Everything here is derived from the levels of layers and the candidate losses sequential MSE
 already computes, so it makes no assumption about the model's architecture.
 """
 
@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import onnx_ir
 import torch
 
 from aimet_onnx.common.utils import AimetLogger
-from aimet_onnx.meta.operations import Op
 from aimet_onnx.prepare_passes.fix_node_names_in_dynamo_exported_onnx import (
     _get_name_from_metadata,
 )
@@ -30,17 +30,16 @@ _NUM_EXTREMES = 5
 _SMALLEST_CANDIDATE_WARN_FRACTION = 0.25
 
 
-def display_name(op: Op) -> str:
-    """Name for ``op`` that can be looked up in the graph and passed to ``nodes_to_exclude``.
+def display_name(node: onnx_ir.Node) -> str:
+    """Name for ``node`` that can be looked up in the graph and passed to ``nodes_to_exclude``.
 
     TorchScript exports name nodes by module path already (``/features.3/conv/Conv``), so
     that name is used as is. Dynamo exports name them ``node_linear_12`` but record the path
     in ``namespace`` metadata, so the path is shown followed by the node's name in the graph:
     ``layers.0.mlp.down_proj [node_linear_12]``.
     """
-    name = op.name
-    node = op.get_module()
-    if node is not None and not name.startswith("/"):
+    name = node.name
+    if not name.startswith("/"):
         path = _get_name_from_metadata(node)
         if path:
             return f"{_module_path(path)} [{name}]"
@@ -167,7 +166,7 @@ class _Phases:
 class SeqMseProgress:
     """Logs one line per group of weights optimized together, and a summary at the end.
 
-    :param groups: Ops to optimize, per group, in the order they are optimized.
+    :param groups: Nodes to optimize, per group, in the order they are optimized.
     :param num_candidates: Candidates searched per weight.
     :param num_batches: Calibration batches.
     :param loss_fn: Name of the loss function.
@@ -176,7 +175,7 @@ class SeqMseProgress:
 
     def __init__(
         self,
-        groups: List[List[Op]],
+        groups: List[List[onnx_ir.Node]],
         num_candidates: int,
         num_batches: int,
         loss_fn: str,

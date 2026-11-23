@@ -30,13 +30,13 @@ change. It keeps the cache in memory, with no disk offload, and doesn't resume f
 checkpoint.
 """
 
-import gc
 import os
 import tempfile
 from typing import Any, Callable, Collection, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import onnx_ir
+from onnxruntime import SessionOptions
 
 from aimet_onnx.common.utils import AimetLogger  # pylint: disable=import-error
 from aimet_onnx.ir_utils import body_initializers, outer_scope_values, walk_back
@@ -240,6 +240,8 @@ class BlockwiseSampler:
         e.g. for a model the caller doesn't change.
     :param label: Prefix for this sampler's log lines, to tell apart samplers that share a
         plan. Has no effect on sampling.
+    :param session_options: ORT session options to sample with, e.g. a sim's, which register
+        its custom ops. None registers the AIMET custom ops on default options.
     """
 
     def __init__(
@@ -250,12 +252,14 @@ class BlockwiseSampler:
         providers: Optional[Sequence[str | Tuple[str, Dict[Any, Any]]]] = None,
         may_update: Optional[Callable[[str], bool]] = None,
         label: str = "",
+        session_options: Optional[SessionOptions] = None,
     ):
         self._model = model
         self._plan = plan
         self._inputs = inputs
         self._providers = providers
         self._may_update = may_update
+        self._session_options = session_options
         self._log_prefix = f"{label}: " if label else ""
         self._name_to_value = onnx_ir.convenience.create_value_mapping(
             model.graph, include_subgraphs=False
@@ -347,6 +351,7 @@ class BlockwiseSampler:
                 missing,
                 self._providers,
                 tempdir.name,
+                self._session_options,
             )
         # Released as each sample advances, so the cache never holds two blocks' worth
         evict = [
@@ -387,7 +392,6 @@ class BlockwiseSampler:
             raise
         finally:
             del session
-            gc.collect()
             if tempdir is not None:
                 tempdir.cleanup()
         return samples
@@ -451,6 +455,7 @@ def _build_session(
     outputs: List[str],
     providers,
     tempdir: str,
+    session_options: Optional[SessionOptions] = None,
 ) -> OrtInferenceSession:
     """Session over the part of ``model`` that computes ``outputs`` from the inputs in ``feed``."""
     graph = onnx_ir.convenience.extract(model.graph, list(feed), outputs)
@@ -464,5 +469,11 @@ def _build_session(
         graph, ir_version=model.ir_version, functions=list(model.functions.values())
     )
     path = os.path.join(tempdir, "subgraph.onnx")
-    onnx_ir.save(subgraph_model, path, external_data="subgraph.data")
-    return OrtInferenceSession(path, providers)
+    onnx_ir.save(
+        subgraph_model,
+        path,
+        external_data="subgraph.data",
+        # Prevents Split's split_sizes input from being externalized
+        size_threshold_bytes=1024**2,
+    )
+    return OrtInferenceSession(path, providers, session_options=session_options)

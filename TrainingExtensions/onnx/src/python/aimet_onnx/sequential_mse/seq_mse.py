@@ -7,10 +7,11 @@
 
 # pylint: disable=no-name-in-module, ungrouped-imports, too-many-lines
 
-from typing import List, Dict, Collection, Union, Tuple, Optional
+from typing import List, Dict, Collection, Iterable, Union, Tuple, Optional
 from collections import defaultdict
 from dataclasses import dataclass
 from contextlib import contextmanager
+import functools
 import itertools
 import os
 import tempfile
@@ -24,7 +25,10 @@ from onnxruntime.quantization.onnx_quantizer import ONNXModel
 from aimet_onnx.common.libpymo import TensorQuantizerOpMode
 from aimet_onnx.common.defs import QuantScheme
 from aimet_onnx.common.utils import AimetLogger, deprecated
-from aimet_onnx.common.onnx._utils import _iterate_graphs_recursive
+from aimet_onnx.common.onnx._utils import (
+    _iterate_graphs_recursive,
+    _iterate_graphs_recursive_ir,
+)
 from aimet_onnx.qc_quantize_op import QcQuantizeOp
 from aimet_onnx.quantsim import QuantizationSimModel
 from aimet_onnx.utils import (
@@ -36,7 +40,16 @@ from aimet_onnx.utils import (
     _onnx_element_type,
     _run_session_to_numpy,
 )
-from aimet_onnx.sequential_mse.dependency_graph import DependencyNode, DependencyGraph
+from aimet_onnx.blockwise_sampler import BlockwiseSampler, SamplingPlan
+from aimet_onnx.sequential_mse.frontier import (
+    FrontierPlan,
+    SeqMseLayer,
+    find_layers,
+    get_weight_name,
+    is_supported_op,
+    plan_frontier,
+    resolve_nodes_to_exclude,
+)
 from aimet_onnx.sequential_mse.progress import (
     SeqMseProgress,
     display_name,
@@ -49,6 +62,7 @@ from aimet_onnx.sequential_mse.transform import (
 )
 
 _GPU_ALLOC_MARGIN = 0.8
+
 _logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SeqMse)
 
 
@@ -133,14 +147,14 @@ class SequentialMse:
         )
         self._ir_model = onnx_ir.load(model_path)
 
-        self.dependency_graph = DependencyGraph(
-            sim.connected_graph, data_loader, nodes_to_exclude
+        # The user-supplied exclusions plus auto-excluded ops (e.g. SpinQuant R3 online
+        # rotations), so quantizer handling stays in sync.
+        self._nodes_to_exclude = resolve_nodes_to_exclude(
+            _sim_nodes(sim), nodes_to_exclude
         )
-        # Use the dependency graph's resolved exclusion set as the single source
-        # of truth: it augments the user-supplied list with auto-excluded ops
-        # (e.g. SpinQuant R3 online rotations) so quantizer handling stays in sync.
-        self._nodes_to_exclude = self.dependency_graph.nodes_to_exclude
-        self.data_loader = data_loader
+        self._inputs = _collect_inputs(
+            data_loader, [inp.name for inp in sim.model.model.graph.input]
+        )
 
     @deprecated("Use aimet_onnx.apply_seq_mse instead")
     @staticmethod
@@ -167,11 +181,12 @@ class SequentialMse:
         """
         It performs following steps:
         1) disable the quantizer for unsupported modules
-        2) create the dependency graph
+        2) plan the levels of layers to optimize together
         3) run the onnx graph and compute encoding using seq mse algorithm
         4) re-enable the quantizer disabled in first step
         """
-        names_to_optimize = self._get_quantizer_names_to_optimize()
+        plan = self._frontier_plan()
+        names_to_optimize = self._get_quantizer_names_to_optimize(plan)
         quantizers_to_optimize = [
             self.sim.qc_quantize_op_dict[name] for name in names_to_optimize
         ]
@@ -188,7 +203,7 @@ class SequentialMse:
                 ),
                 _remove_session(self.sim),
             ):
-                self._topological_traversal()
+                self._frontier_traversal(plan, names_to_optimize)
 
     def _get_quantizers_to_be_disabled(self, names_to_optimize: List[str]) -> List[str]:
         """
@@ -214,24 +229,21 @@ class SequentialMse:
 
         return quantizers_to_be_disabled
 
-    def _get_quantizer_names_to_optimize(self) -> List[str]:
+    def _get_quantizer_names_to_optimize(self, plan: FrontierPlan) -> List[str]:
         """
-        Get list of enabled param quantizer names of the ops optimized by seq mse.
+        Get list of enabled param quantizer names of the layers the plan optimizes
+        (top-level only). Layers inside control-flow bodies are not optimized, so their
+        param quantizers are not listed here.
 
-        :return Returns the param quantizer names of supported ops.
+        :param plan: Frontier plan whose levels give the layers to optimize
+        :return Returns the param quantizer names of the layers the plan optimizes.
         """
         param_quantizer_names = []
-        for cg_op in self.dependency_graph.conn_graph.ordered_ops:
-            if not self.dependency_graph.is_supported_op(cg_op):
-                continue
-
-            if cg_op.name in self._nodes_to_exclude:
-                continue
-
-            for param_name in cg_op.parameters:
-                quantizer = self.sim.qc_quantize_op_dict.get(param_name)
-                if quantizer and quantizer.enabled:
-                    param_quantizer_names.append(param_name)
+        for layer in (layer for level in plan.levels for layer in level):
+            name = get_weight_name(layer.node)
+            quantizer = self.sim.qc_quantize_op_dict.get(name)
+            if quantizer and quantizer.enabled:
+                param_quantizer_names.append(name)
 
         return param_quantizer_names
 
@@ -264,17 +276,17 @@ class SequentialMse:
 
     def _get_min_and_max_for_candidate_selection(
         self,
-        dependency_node: DependencyNode,
+        layer: SeqMseLayer,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get recalibrated min/max values for candidate selection.
 
-        :param dependency_node: Dependency node which is to be optimized
+        :param layer: Layer to optimize
         :return: Tuple of min and max values for candidate selection.
         """
         # pylint: disable=protected-access
 
-        weight_name = self.dependency_graph.get_param_name(dependency_node)
+        weight_name = get_weight_name(layer.node)
 
         # Retrieve the quantizer and its encodings
         quantizer = self.sim.qc_quantize_op_dict[weight_name]
@@ -316,19 +328,19 @@ class SequentialMse:
 
     def _compute_encoding_from_candidate(
         self,
-        dependency_node: DependencyNode,
+        layer: SeqMseLayer,
         x_min: np.ndarray,
         x_max: np.ndarray,
     ):
         """
         Computes the encoding using candidate min and candidate max values.
 
-        :param dependency_node: Corresponding Dependency node
+        :param layer: Layer the encoding is for
         :param x_min: min values
         :param x_max: max values
         """
         # Get the parameter name and corresponding quantizer
-        weight_name = self.dependency_graph.get_param_name(dependency_node)
+        weight_name = get_weight_name(layer.node)
         quantizer = self.sim.qc_quantize_op_dict[weight_name]
 
         # Extract quantization configuration
@@ -363,12 +375,12 @@ class SequentialMse:
         quantizer.compute_encodings()
         quantizer.op_mode = TensorQuantizerOpMode.quantizeDequantize
 
-    def _freeze_encodings(self, dependency_node: DependencyNode):
+    def _freeze_encodings(self, layer: SeqMseLayer):
         """
         Freezes the encoding after the node is optimized
-        :param dependency_node: Optimized dependency node
+        :param layer: Optimized layer
         """
-        weight_name = self.dependency_graph.get_param_name(dependency_node)
+        weight_name = get_weight_name(layer.node)
         quantize_op = self.sim.qc_quantize_op_dict[weight_name]
         quantize_op.freeze_encodings()
 
@@ -395,14 +407,14 @@ class SequentialMse:
         self,
         fp_outputs: torch.Tensor,
         sim_outputs: torch.Tensor,
-        dependency_node: DependencyNode,
+        layer: SeqMseLayer,
     ) -> torch.Tensor:
         """
         Compute reconstruction loss and return the sum by reducing over all the dimensions except last channel dimension.
 
         :param fp_outputs: fp_outputs (X^W)
         :param sim_outputs: sim_outputs (X^W^)
-        :param dependency_node: Dependency node
+        :param layer: Layer the outputs are of
         :return: loss
         """
         xqwq = sim_outputs
@@ -418,7 +430,7 @@ class SequentialMse:
 
         loss_fn = loss_fn_map[self.params.loss_fn]
 
-        weight_name = self.dependency_graph.get_param_name(dependency_node)
+        weight_name = get_weight_name(layer.node)
         quantizer = self.sim.qc_quantize_op_dict[weight_name]
 
         if quantizer is None:
@@ -431,22 +443,22 @@ class SequentialMse:
 
         # Handle block-wise quantization
         if block_size > 0:
-            if dependency_node.cg_op.type == "Conv":
+            if layer.node.op_type == "Conv":
                 loss = loss_fn(xqwq, xqw, reduction="none").sum(dim=(0, 2, 3))
                 loss = loss.reshape(tensor_shape[block_axis] // block_size, -1)
                 loss = loss.permute(1, 0)
-            elif dependency_node.cg_op.type in ["Gemm", "MatMul"]:
+            elif layer.node.op_type in ["Gemm", "MatMul"]:
                 loss = loss_fn(xqwq, xqw, reduction="none").sum(dim=1)
                 if block_axis > channel_axis:
                     loss = loss.permute(1, 0)  # For transposed form of Gemm
             else:
                 raise NotImplementedError(
-                    f"Unsupported op type with block quantization: {dependency_node.cg_op.type}"
+                    f"Unsupported op type with block quantization: {layer.node.op_type}"
                 )
             return loss
 
         # Handle per-tensor and per-channel case
-        if dependency_node.cg_op.type == "Conv":
+        if layer.node.op_type == "Conv":
             # Permute to move channel dimension to the end
             xqwq = xqwq.transpose(1, xqwq.dim() - 1)
             xqw = xqw.transpose(1, xqw.dim() - 1)
@@ -462,14 +474,17 @@ class SequentialMse:
 
     def _run_seq_mse(
         self,
-        dep_nodes_to_parallelize: List[DependencyNode],
+        layers: List[SeqMseLayer],
         progress: SeqMseProgress,
+        sim_inputs: Dict[str, List[np.ndarray]],
     ):
         """
-        Run Sequential MSE for all the dep_nodes_to_parallelize at same level.
+        Run Sequential MSE for all the layers of one level.
 
-        :param dep_nodes_to_parallelize: Dependency nodes to be parallelized.
+        :param layers: Layers of the level.
         :param progress: Progress report of the run this group belongs to.
+        :param sim_inputs: Input name -> its array per calibration sample, for every input of
+            the nodes.
         """
 
         def _set_candidates(candidate_index: int):
@@ -479,12 +494,12 @@ class SequentialMse:
 
             :param candidate_index: Index of candidate
             """
-            for dep_node in dep_nodes_to_parallelize:
-                init_min_val, init_max_val = initial_min_max[dep_node.cg_op.name]
+            for layer in layers:
+                init_min_val, init_max_val = initial_min_max[layer.node.name]
                 cand_min, cand_max = self._get_candidate(
                     candidate_index, init_min_val, init_max_val
                 )
-                self._compute_encoding_from_candidate(dep_node, cand_min, cand_max)
+                self._compute_encoding_from_candidate(layer, cand_min, cand_max)
 
         def _compute_loss(
             all_fp_outputs: List[torch.Tensor], all_sim_outputs: List[torch.Tensor]
@@ -497,26 +512,26 @@ class SequentialMse:
             """
             candidate_loss = {}
 
-            for i, dep_node in enumerate(dep_nodes_to_parallelize):
+            for i, layer in enumerate(layers):
                 loss = self._compute_recon_loss(
-                    all_fp_outputs[i], all_sim_outputs[i], dep_node
+                    all_fp_outputs[i], all_sim_outputs[i], layer
                 )
-                candidate_loss[dep_node.cg_op.name] = loss
+                candidate_loss[layer.node.name] = loss
 
             return candidate_loss
 
-        def _get_dep_node_io_names(dep_nodes: List[DependencyNode]):
+        def _get_layer_io_names(layers: List[SeqMseLayer]):
             """
             Helper function to get the input and output names of subgraph.
 
-            :param dep_nodes: List of dependency nodes to be parallelized.
+            :param layers: Layers of the level.
             :return: Subgraph input and output names.
             """
             subgraph_inputs = []
             subgraph_outputs = []
-            for dep_node in dep_nodes:
-                subgraph_inputs.append(dep_node.op_input_names[0])
-                subgraph_outputs.append(dep_node.op_output_names[0])
+            for layer in layers:
+                subgraph_inputs.append(layer.op_input_names[0])
+                subgraph_outputs.append(layer.op_output_names[0])
 
             subgraph_inputs = list(set(subgraph_inputs))
             return subgraph_inputs, subgraph_outputs
@@ -525,22 +540,18 @@ class SequentialMse:
 
         # Cache the initial min and max values
         initial_min_max = {}
-        for dep_node in dep_nodes_to_parallelize:
+        for layer in layers:
             init_min_val, init_max_val = self._get_min_and_max_for_candidate_selection(
-                dep_node
+                layer
             )
-            initial_min_max[dep_node.cg_op.name] = (init_min_val, init_max_val)
+            initial_min_max[layer.node.name] = (init_min_val, init_max_val)
 
-        subgraph_inp_names, subgraph_outs_names = _get_dep_node_io_names(
-            dep_nodes_to_parallelize
-        )
+        subgraph_inp_names, subgraph_outs_names = _get_layer_io_names(layers)
 
         # For now, we only expose "symqt" input symmetry.
         assert self.params.inp_symmetry == "symqt", (
             "Only symmetric quantsim inputs ('symqt') are supported."
         )
-        sim_inputs = self.dependency_graph.get_sim_data(dep_nodes_to_parallelize)
-
         subgraph_path = self._split_onnx_graph(subgraph_inp_names, subgraph_outs_names)
         subgraph_model = onnx.load_model(subgraph_path, load_external_data=False)
 
@@ -592,14 +603,14 @@ class SequentialMse:
                 )
                 dataset_len = len(next(iter(sim_inputs.values())))
 
-            # Store accumulated loss per dep_node across candidates
+            # Store accumulated loss per layer across candidates
             total_loss = defaultdict(list)
 
             progress.start_phase("search")
             for candidate_index in range(self.params.num_candidates):
                 _set_candidates(candidate_index)
 
-                # Initialize per dep_node loss accumulator
+                # Initialize per layer loss accumulator
                 accumulated_loss = defaultdict(lambda: 0)
 
                 for batch_idx in range(dataset_len):
@@ -669,8 +680,8 @@ class SequentialMse:
         progress.start_phase("finalize")
         results = []
         # Postprocessing (not vectorized)
-        for dep_node in dep_nodes_to_parallelize:
-            loss = total_loss[dep_node.cg_op.name]
+        for layer in layers:
+            loss = total_loss[layer.node.name]
             stacked_loss = torch.stack(
                 loss, dim=0
             )  # Resulting shape depends on granularity: per-tensor and per-channel: (num_candidates, num_channels) and per-block: (num_candidates, num_channels, num_blocks)
@@ -679,13 +690,13 @@ class SequentialMse:
             best_indices = stacked_loss.min(0)[1]
             results.append(
                 weight_result(
-                    display_name(dep_node.cg_op),
+                    display_name(layer.node),
                     stacked_loss,
                     best_indices,
                     self.params.num_candidates,
                 )
             )
-            init_min, init_max = initial_min_max[dep_node.cg_op.name]
+            init_min, init_max = initial_min_max[layer.node.name]
 
             # Unsqueeze best_indices until it matches dim length of max_val
             while best_indices.ndim < init_max.ndim:
@@ -696,13 +707,13 @@ class SequentialMse:
             best_min, best_max = self._get_candidate(best_indices, init_min, init_max)
 
             # Compute and freeze parameter encodings using best candidate
-            self._compute_encoding_from_candidate(dep_node, best_min, best_max)
-            self._freeze_encodings(dep_node)
+            self._compute_encoding_from_candidate(layer, best_min, best_max)
+            self._freeze_encodings(layer)
 
-        dep_node_names = [dep_node.cg_op.name for dep_node in dep_nodes_to_parallelize]
+        layer_names = [layer.node.name for layer in layers]
         _logger.debug(
             "Computed optimal parameter encodings for ops: %s",
-            ", ".join(dep_node_names),
+            ", ".join(layer_names),
         )
         progress.end_group(results)
 
@@ -792,126 +803,81 @@ class SequentialMse:
         onnx_ir.save(model, subgraph_path)
         return subgraph_path
 
-    def _run_onnx_graph(
-        self, session: onnxruntime.InferenceSession, inputs: Dict
-    ) -> List[List[np.ndarray]]:
+    def _frontier_traversal(self, plan: FrontierPlan, names_to_optimize: List[str]):
         """
-        Run the onnx graph using onnx runtime
+        Optimize the layers level by level, sampling each level's inputs with a
+        BlockwiseSampler that advances a cache of the frontier tensors from one level to the
+        next. A level is optimized on inputs computed with every earlier level frozen.
 
-        :param session: Onnxruntime session
-        :param inputs: inputs to the model
-        :return: outputs
+        :param plan: Frontier plan giving the levels to optimize and the tensors to sample
+        :param names_to_optimize: Param quantizer names optimized by seq mse
         """
-        outputs = []
-        dataset_len = len(next(iter(inputs.values())))
-        for i in range(dataset_len):
-            input_batch = {}
-            for name, data in inputs.items():
-                input_batch[name] = data[i]
-            output = _run_session_to_numpy(session, input_batch)
-            if len(outputs) == 0:
-                outputs = [[] for _ in range(len(output))]
-            for idx, out in enumerate(output):
-                outputs[idx].append(out)
-
-        return outputs
-
-    def _cache_subgraph_input_data(self, dep_nodes: List[DependencyNode]):
-        """
-        For given dependency nodes at the same level, cache intermediate activation data
-
-        - Extract a subgraph using the parent nodes,
-        - Collect the intermediate activations by executing the subgraph,
-        - Cache these data to provide them to the next subgraph.
-
-        :param dep_nodes: List of dependency nodes at same level
-        """
-        dep_node_names = [dep_node.cg_op.name for dep_node in dep_nodes]
         _logger.debug(
-            f"Started caching inputs for dep nodes: {', '.join(dep_node_names)}"
+            "Frontier sampling plan: %d levels, block inputs %s",
+            len(plan.levels),
+            plan.block_inputs,
         )
-
-        subgraph_inp_names, subgraph_out_names = (
-            self.dependency_graph.get_subgraph_inp_out_names(dep_nodes)
+        sampler = BlockwiseSampler(
+            self._ir_model,
+            SamplingPlan(self._ir_model.graph, plan.block_inputs, plan.block_outputs),
+            self._inputs,
+            self.sim.providers,
+            may_update=functools.partial(
+                _is_unfrozen, set(names_to_optimize), self.sim.qc_quantize_op_dict
+            ),
+            session_options=self.sim._ort_session_options,  # pylint: disable=protected-access
         )
-        subgraph_inps = self.dependency_graph.dependency_node_inputs(dep_nodes)
-        assert len(subgraph_inp_names) == len(subgraph_inps)
-
-        _logger.debug(
-            f"Subgraph input names: {subgraph_inp_names}, Subgraph output names: {subgraph_out_names}"
-        )
-        sim_split_path = self._split_onnx_graph(subgraph_inp_names, subgraph_out_names)
-        with self._create_session(sim_split_path) as session:
-            subgraph_outs = self._run_onnx_graph(session, subgraph_inps)
-        self.dependency_graph.update_sim_data(subgraph_out_names, subgraph_outs)
-        _logger.debug(
-            f"Collected intermediate data for output names: {subgraph_out_names}"
-        )
-        del subgraph_inps, subgraph_outs
-
-        # Decrease the reference count for the input data.
-        for dep_node in dep_nodes:
-            for inward_node in dep_node.inward_nodes:
-                inward_node.out_degree = inward_node.out_degree - 1
-                if inward_node.out_degree == 0:
-                    self.dependency_graph.dec_ref_count(inward_node)
-
-    def _topological_traversal(self):
-        """
-        Start the topo sort from the starting ops i.e. ops having in_degree equal to zero
-        Flow:
-            - Cache intermediate activations input data before applying Seq MSE at a given level in topological order.
-            - Use cached intermediate activations and run Seq MSE in parallel.
-
-        NOTE: For the first iteration, no need to cache subgraph input data since model graph inputs are already saved.
-        """
-        sorted_order = self.dependency_graph.get_topologically_sorted_nodes()
-        groups = [
-            [
-                dep_node.cg_op
-                for dep_node in sorted_nodes
-                if self.dependency_graph.is_supported_op(dep_node.cg_op)
-            ]
-            for sorted_nodes in sorted_order.values()
-        ]
         progress = SeqMseProgress(
-            [group for group in groups if group],
+            [[layer.node for layer in level] for level in plan.levels],
             num_candidates=self.params.num_candidates,
-            num_batches=self.dependency_graph.num_samples,
+            num_batches=len(self._inputs),
             loss_fn=self.params.loss_fn,
             excluded=self._excluded_weight_names(),
         )
 
         # The summary still reports what was done if a group fails
         try:
-            for i, sorted_nodes in sorted_order.items():
-                if i != 0:
-                    progress.start_phase("cache inputs")
-                    self._cache_subgraph_input_data([node for node in sorted_nodes])
-
-                dep_nodes_to_parallelize = [
-                    dep_node
-                    for dep_node in sorted_nodes
-                    if self.dependency_graph.is_supported_op(dep_node.cg_op)
-                ]
-                if dep_nodes_to_parallelize:
-                    self._run_seq_mse(dep_nodes_to_parallelize, progress)
-
-                # Nodes without dependents are never released by _cache_subgraph_input_data, so
-                # release their inputs once they have been optimized.
-                for dep_node in sorted_nodes:
-                    if len(dep_node.outward_nodes) == 0:
-                        self.dependency_graph.dec_ref_count(dep_node)
+            for idx, level in enumerate(plan.levels):
+                progress.start_phase("cache inputs")
+                samples = sampler.sample_block(idx)
+                position = {name: i for i, name in enumerate(plan.block_inputs[idx])}
+                # Each layer's subgraph is split on its first activation input
+                sim_inputs = {
+                    layer.op_input_names[0]: [
+                        sample[position[layer.op_input_names[0]]] for sample in samples
+                    ]
+                    for layer in level
+                }
+                del samples
+                self._run_seq_mse(level, progress, sim_inputs)
+                # Free this level's inputs so the next level's sampling doesn't hold two levels
+                del sim_inputs
         finally:
             progress.finish()
+
+    def _frontier_plan(self) -> FrontierPlan:
+        """Levels of the layers to optimize, and the tensors to sample for each level."""
+        layers = find_layers(_sim_nodes(self.sim), self._nodes_to_exclude)
+        layer_names = {layer.node.name for layer in layers}
+        # SamplingPlan needs a sorted graph, and the sim appends its quantizers to the end
+        onnx_ir.passes.common.TopologicalSortPass().call(self._ir_model)
+        return plan_frontier(
+            self._ir_model.graph,
+            layers,
+            weighted_op_names=[
+                node.name
+                for node in _sim_nodes(self.sim)
+                if is_supported_op(node) and node.name not in layer_names
+            ],
+        )
 
     def _excluded_weight_names(self) -> List[str]:
         """Names of the excluded ops sequential MSE would otherwise optimize."""
         excluded = set(self._nodes_to_exclude)
         return [
-            cg_op.name
-            for cg_op in self.dependency_graph.conn_graph.ordered_ops
-            if cg_op.name in excluded and self.dependency_graph.is_supported_op(cg_op)
+            node.name
+            for node in _sim_nodes(self.sim)
+            if node.name in excluded and is_supported_op(node)
         ]
 
     @contextmanager
@@ -1026,6 +992,18 @@ class SequentialMse:
             return model, sim_inputs, num_blocks
         else:
             raise RuntimeError(f"Subgraph contains no conv or linear ops.")
+
+
+def _sim_nodes(sim: QuantizationSimModel) -> List[onnx_ir.Node]:
+    """
+    The nodes of the sim's model from before quantizers were inserted, which are named like its
+    quantizers: the nodes the sim quantizes, so those of If branches only if it quantizes them.
+    """
+    # pylint: disable=protected-access
+    graphs = _iterate_graphs_recursive_ir(
+        sim._ir_model.graph, include_if=sim._quantize_subgraphs
+    )
+    return [node for graph in graphs for node in graph]
 
 
 @contextmanager
@@ -1301,3 +1279,38 @@ def _infer_out_shapes_and_dtypes(
         del outputs
 
     return all_out_shapes, all_out_dtypes
+
+
+def _collect_inputs(
+    inputs: Iterable[Dict[str, np.ndarray]], input_names: List[str]
+) -> List[Dict[str, np.ndarray]]:
+    """
+    The calibration samples, each a dict of every graph input.
+
+    :param inputs: Calibration samples
+    :param input_names: Names of the graph inputs
+    :return: The samples, restricted to the graph inputs
+    """
+    samples = []
+    for sample in inputs:
+        if not isinstance(sample, dict):
+            raise TypeError(
+                f"Expected each input sample to be type `Dict[str, np.ndarray]` but got type {type(sample)}. "
+                "To resolve this, ensure that `inputs` argument is type `Iterable[Dict[str, np.ndarray]]`"
+            )
+        for name in input_names:
+            if name not in sample:
+                raise ValueError(
+                    f"All inputs to the graph must be present in the dataloader. {name} is missing in the dataloader"
+                )
+        samples.append({name: sample[name] for name in input_names})
+    return samples
+
+
+def _is_unfrozen(
+    names_to_optimize: Collection[str],
+    quantizer_dict: Dict[str, QcQuantizeOp],
+    name: str,
+) -> bool:
+    """Whether sequential MSE may still change the encodings of the quantizer of ``name``."""
+    return name in names_to_optimize and not quantizer_dict[name].is_encoding_frozen()

@@ -21,15 +21,19 @@ import json
 import numpy as np
 import os
 import logging
+import tempfile
 
 from aimet_onnx.common import libquant_info
 from aimet_onnx.common.utils import AimetLogger
 from aimet_onnx import apply_seq_mse
-from aimet_onnx.sequential_mse.dependency_graph import (
-    DependencyGraph,
+from aimet_onnx.blockwise_sampler import BlockwiseSampler, SamplingPlan, _build_session
+from aimet_onnx.sequential_mse.frontier import (
     SUPPORTED_MODULES,
+    find_layers,
+    get_weight_name,
+    is_supported_op,
+    plan_frontier,
 )
-from aimet_onnx.meta.connectedgraph import ConnectedGraph
 from aimet_onnx.sequential_mse.seq_mse import (
     SeqMseParams,
     SequentialMse,
@@ -141,6 +145,19 @@ def _get_weight_param_name(cg_op):
     if len(param_names) == 1:
         return param_names[0]
     return None
+
+
+def _mock_layer(op_type):
+    """A layer whose node has the initializer weight ``mock_weight``."""
+    weight = onnx_ir.Value(
+        name="mock_weight", const_value=onnx_ir.tensor(np.zeros((1, 1), np.float32))
+    )
+    graph = onnx_ir.Graph([], [], nodes=[], initializers=[weight])
+    node = onnx_ir.Node("", op_type, [onnx_ir.Value(name="x"), weight], name="mock")
+    graph.append(node)
+    layer = MagicMock()
+    layer.node = node
+    return layer
 
 
 def _onnx_model_from_op(
@@ -305,10 +322,7 @@ def test_min_max_for_candidate_selection(granularity, shape, channel_axis, block
     Test _get_min_and_max_for_candidate_selection which returns absolute min/max
     values for different quantization granularity.
     """
-    # Mock dependency node and graph
-    mock_dep_node = MagicMock()
-    mock_dep_graph = MagicMock()
-    mock_dep_graph.get_param_name.return_value = "mock_weight"
+    mock_layer = _mock_layer("Conv")
 
     calibration_tensor = np.random.randn(*shape).astype(np.float32)
 
@@ -343,9 +357,8 @@ def test_min_max_for_candidate_selection(granularity, shape, channel_axis, block
     # Mock seq_mse object w/o calling the __init__
     seq_mse = object.__new__(SequentialMse)
     seq_mse.sim = mock_sim
-    seq_mse.dependency_graph = mock_dep_graph
 
-    _, max_val = seq_mse._get_min_and_max_for_candidate_selection(mock_dep_node)
+    _, max_val = seq_mse._get_min_and_max_for_candidate_selection(mock_layer)
     if granularity == "per_tensor":  # per-tensor and per-channel are handled similarly
         max_val = np.max(max_val)
 
@@ -416,8 +429,8 @@ def test_apply_seq_mse_for_conv(
     seq_mse = SequentialMse(model, sim, seq_params, inputs)
 
     # Get the initial max tensor used to compute expected values.
-    dep_node = list(seq_mse.dependency_graph._name_to_node.values())[0]
-    _, init_max = seq_mse._get_min_and_max_for_candidate_selection(dep_node)
+    (layer,) = find_layers(sim._ir_model.graph, [])
+    _, init_max = seq_mse._get_min_and_max_for_candidate_selection(layer)
 
     # Apply seq mse optimization
     seq_mse.apply_seq_mse_algo()
@@ -548,9 +561,19 @@ def test_apply_seq_mse_for_split(param_bw, loss_fn, enable_pcq, tmp_dir):
     assert weight_quantizer_conv_3.is_encoding_frozen()
 
 
-def test_dependency_graph(tmp_dir):
-    model = model_with_split()
-    tmp_path = tmp_dir
+def _levels(seq_mse):
+    """Each level of the frontier plan as (op name, input names, output names) per layer."""
+    return [
+        [
+            (layer.node.name, layer.op_input_names, layer.op_output_names)
+            for layer in level
+        ]
+        for level in seq_mse._frontier_plan().levels
+    ]
+
+
+def _plain_seq_mse(model, tmp_dir):
+    onnx_model = model.model if hasattr(model, "model") else model
     sim = QuantizationSimModel(
         model=copy.deepcopy(model),
         quant_scheme=QuantScheme.post_training_tf,
@@ -562,97 +585,134 @@ def test_dependency_graph(tmp_dir):
             strict_symmetric=False,
             unsigned_symmetric=False,
             pcq=True,
-            dir_path=tmp_path,
+            dir_path=tmp_dir,
         ),
     )
-    seq_params = SeqMseParams(num_batches=1)
-    inputs = [make_dummy_input(model.model) for _ in range(10)]
-    seq_mse = SequentialMse(model, sim, seq_params, inputs)
+    inputs = [make_dummy_input(onnx_model) for _ in range(10)]
+    return SequentialMse(model, sim, SeqMseParams(num_batches=1), inputs)
 
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].in_degree == 0
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].out_degree == 2
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].op_input_names == [
-        "input"
-    ]
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].op_output_names == [
-        "/conv1/Conv_output_0"
-    ]
 
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].in_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].out_degree == 0
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].op_input_names == [
-        "/conv1/Conv_output_0"
-    ]
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].op_output_names == [
-        "/conv2/Conv_output_0"
-    ]
-
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].in_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].out_degree == 0
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].op_input_names == [
-        "/conv1/Conv_output_0"
-    ]
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].op_output_names == [
-        "/conv3/Conv_output_0"
+def test_frontier_levels_for_split(tmp_dir):
+    seq_mse = _plain_seq_mse(model_with_split(), tmp_dir)
+    assert _levels(seq_mse) == [
+        [("/conv1/Conv", ["input"], ["/conv1/Conv_output_0"])],
+        [
+            ("/conv2/Conv", ["/conv1/Conv_output_0"], ["/conv2/Conv_output_0"]),
+            ("/conv3/Conv", ["/conv1/Conv_output_0"], ["/conv3/Conv_output_0"]),
+        ],
     ]
 
 
-def test_residual_model_dependency_graph(tmp_dir):
-    model = single_residual_model()
-    tmp_path = tmp_dir
-    sim = QuantizationSimModel(
-        model=copy.deepcopy(model),
-        quant_scheme=QuantScheme.post_training_tf,
-        default_activation_bw=8,
-        default_param_bw=4,
-        providers=["CPUExecutionProvider"],
-        config_file=_get_config_file(
-            is_symmetric=True,
-            strict_symmetric=False,
-            unsigned_symmetric=False,
-            pcq=True,
-            dir_path=tmp_path,
-        ),
+def test_frontier_levels_for_residual_model(tmp_dir):
+    seq_mse = _plain_seq_mse(single_residual_model(), tmp_dir)
+    levels = _levels(seq_mse)
+    assert [sorted(name for name, _, _ in level) for level in levels] == [
+        ["/conv1/Conv"],
+        ["/conv2/Conv", "/conv4/Conv"],
+        ["/conv3/Conv"],
+        ["/fc/Gemm"],
+    ]
+    layers = {name: (ins, outs) for level in levels for name, ins, outs in level}
+    assert layers["/conv1/Conv"] == (["input"], ["/conv1/Conv_output_0"])
+    assert layers["/conv2/Conv"] == (
+        ["/maxpool/MaxPool_output_0"],
+        ["/conv2/Conv_output_0"],
     )
-    seq_params = SeqMseParams(num_batches=1)
-    inputs = [make_dummy_input(model.model) for _ in range(10)]
-    seq_mse = SequentialMse(model, sim, seq_params, inputs)
+    assert layers["/conv4/Conv"] == (
+        ["/maxpool/MaxPool_output_0"],
+        ["/conv4/Conv_output_0"],
+    )
+    assert layers["/conv3/Conv"] == (
+        ["/relu2/Relu_output_0"],
+        ["/conv3/Conv_output_0"],
+    )
 
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].in_degree == 0
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].out_degree == 2
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].op_input_names == [
-        "input"
-    ]
-    assert seq_mse.dependency_graph._name_to_node["/conv1/Conv"].op_output_names == [
-        "/conv1/Conv_output_0"
-    ]
 
-    assert seq_mse.dependency_graph._name_to_node["/conv4/Conv"].in_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv4/Conv"].out_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv4/Conv"].op_input_names == [
-        "/maxpool/MaxPool_output_0"
+def test_frontier_levels_for_multiple_inputs(tmp_dir):
+    """The second conv reads an Add of a graph input and the first conv's output."""
+    seq_mse = _plain_seq_mse(model_with_multiple_inputs(), tmp_dir)
+    levels = _levels(seq_mse)
+    assert [[name for name, _, _ in level] for level in levels] == [
+        ["Conv1"],
+        ["Conv2"],
     ]
-    assert seq_mse.dependency_graph._name_to_node["/conv4/Conv"].op_output_names == [
-        "/conv4/Conv_output_0"
-    ]
+    assert levels[0][0][1] == ["X1"]
+    assert levels[1][0][1] == ["ADD_0"]
 
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].in_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].out_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].op_input_names == [
-        "/maxpool/MaxPool_output_0"
-    ]
-    assert seq_mse.dependency_graph._name_to_node["/conv2/Conv"].op_output_names == [
-        "/conv2/Conv_output_0"
-    ]
 
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].in_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].out_degree == 1
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].op_input_names == [
-        "/relu2/Relu_output_0"
-    ]
-    assert seq_mse.dependency_graph._name_to_node["/conv3/Conv"].op_output_names == [
-        "/conv3/Conv_output_0"
-    ]
+def test_names_to_optimize_skips_control_flow_body_layers():
+    """
+    When: A Scan body holds a MatMul whose weight W_body is quantized, next to a top-level
+          MatMul whose weight W_top is optimized by the frontier plan
+    Then: names_to_optimize contains W_top but not W_body, since the plan never tunes
+          layers inside control-flow bodies
+    """
+    dim = models_for_tests.DIM
+    w_body = onnx.numpy_helper.from_array(
+        np.random.randn(dim, dim).astype(np.float32), "W_body"
+    )
+    w_top = onnx.numpy_helper.from_array(
+        np.random.randn(dim, dim).astype(np.float32), "W_top"
+    )
+    body = onnx.helper.make_graph(
+        [
+            onnx.helper.make_node("MatMul", ["b_c", "W_body"], ["b_m"], name="body_mm"),
+            onnx.helper.make_node("Add", ["b_m", "b_x"], ["b_co"], name="body_add"),
+        ],
+        "scan_body",
+        inputs=[
+            models_for_tests._ti("b_c", [dim, dim]),
+            models_for_tests._ti("b_x", [dim, dim]),
+        ],
+        outputs=[models_for_tests._ti("b_co", [dim, dim])],
+        initializer=[w_body],
+    )
+    model = models_for_tests._control_flow_model(
+        onnx.helper.make_graph(
+            [
+                onnx.helper.make_node(
+                    "MatMul", ["x", "W_top"], ["x_mm"], name="top_mm"
+                ),
+                onnx.helper.make_node(
+                    "Scan",
+                    ["init", "xs"],
+                    ["final"],
+                    name="the_scan",
+                    body=body,
+                    num_scan_inputs=1,
+                ),
+            ],
+            "outer",
+            inputs=[
+                models_for_tests._ti("init", [dim, dim]),
+                models_for_tests._ti("xs", [models_for_tests.TRIP, dim, dim]),
+                models_for_tests._ti("x", [dim, dim]),
+            ],
+            outputs=[
+                models_for_tests._ti("final", [dim, dim]),
+                models_for_tests._ti("x_mm", [dim, dim]),
+            ],
+            initializer=[w_top],
+        )
+    )
+    inputs = {
+        "init": np.random.randn(dim, dim).astype(np.float32),
+        "xs": np.random.randn(models_for_tests.TRIP, dim, dim).astype(np.float32),
+        "x": np.random.randn(dim, dim).astype(np.float32),
+    }
+    with _quantize_subgraphs_enabled(True):
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=["CPUExecutionProvider"],
+        )
+    seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=1), [inputs])
+
+    assert "W_body" in seq_mse.sim.qc_quantize_op_dict
+    plan = seq_mse._frontier_plan()
+    names = seq_mse._get_quantizer_names_to_optimize(plan)
+    assert "W_top" in names
+    assert "W_body" not in names
 
 
 @pytest.mark.parametrize("param_bw", [2, 31])
@@ -694,39 +754,6 @@ def test_apply_seq_mse_for_residual_model(param_bw, loss_fn, enable_pcq, tmp_dir
             assert len(param_names) == 1
             quantizer = sim.qc_quantize_op_dict[param_names[0]]
             assert quantizer.is_encoding_frozen()
-
-
-def test_model_with_multiple_inputs_dependency_graph_utils(tmp_dir):
-    model = model_with_multiple_inputs()
-    tmp_path = tmp_dir
-    sim = QuantizationSimModel(
-        model=copy.deepcopy(model),
-        quant_scheme=QuantScheme.post_training_tf,
-        default_activation_bw=8,
-        default_param_bw=4,
-        providers=["CPUExecutionProvider"],
-        config_file=_get_config_file(
-            is_symmetric=True,
-            strict_symmetric=False,
-            unsigned_symmetric=False,
-            pcq=True,
-            dir_path=tmp_path,
-        ),
-    )
-    seq_params = SeqMseParams(num_batches=1)
-    inputs = [make_dummy_input(model) for _ in range(10)]
-    seq_mse = SequentialMse(model, sim, seq_params, inputs)
-
-    starting_ops_names = [
-        op.name_op for op in seq_mse.dependency_graph.conn_graph.starting_ops
-    ]
-
-    assert starting_ops_names == ["Conv1"]
-    assert seq_mse.dependency_graph._op_names_with_model_inputs == [
-        "Conv1",
-        "ADD_0",
-        "ADD_1",
-    ]
 
 
 def test_model_with_multiple_outputs_value_info(tmp_dir):
@@ -927,7 +954,7 @@ def test_seq_mse_excludes_r3_online_rotations(tmp_dir):
     """
     When: A model contains SpinQuant R3 online rotation MatMuls
           (named ``spinquant_block{idx}_{q|k}_R3``).
-    Then: The dependency graph auto-excludes them from sequential MSE - their
+    Then: Sequential MSE auto-excludes them - their
           "weight" is a fixed Hadamard, and they would otherwise crash BQ
           sequence chunking under GQA (the Q-side and K-side rotations at the
           same level carry different folded-token sequence lengths, which ORT
@@ -976,26 +1003,170 @@ def test_seq_mse_skips_weightless_dynamic_matmul(tmp_dir):
         }
     ]
 
-    # The weightless MatMul must be present in the dependency graph (it consumes
-    # a model input) but flagged as unsupported (no static weight).
     seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=1), inputs)
-    dep_graph = seq_mse.dependency_graph
 
     """
     When: A model contains a weightless dynamic MatMul (activation x model-input.
     Then: Seq MSE optimizing (freezing) only the static-weight MatMul and skipping the weightless one,
      which has no weight param to optimize.
     """
-    assert "state_mm" in dep_graph._name_to_node
-    weighted_op = dep_graph.conn_graph.get_op_from_module_name("mm")
-    weightless_op = dep_graph.conn_graph.get_op_from_module_name("state_mm")
-    assert dep_graph.is_supported_op(weighted_op)
-    assert not dep_graph.is_supported_op(weightless_op)
+    nodes = {node.name: node for node in sim._ir_model.graph}
+    assert is_supported_op(nodes["mm"])
+    assert not is_supported_op(nodes["state_mm"])
+    assert [[name for name, _, _ in level] for level in _levels(seq_mse)] == [["mm"]]
 
     seq_mse.apply_seq_mse_algo()
 
     assert sim.qc_quantize_op_dict["w0"].is_encoding_frozen()
     assert not sim.qc_quantize_op_dict["state"].is_encoding_frozen()
+
+
+def test_find_layers_weight_through_transpose():
+    """
+    When: A MatMul reads its weight through a Transpose
+    Then: Its layer is the weight's, and the Transpose's output is not one of its activations
+    """
+    weight = onnx_ir.Value(
+        name="w", const_value=onnx_ir.tensor(np.zeros((4, 3), np.float32))
+    )
+    x = onnx_ir.Value(name="x")
+    transpose = onnx_ir.Node(
+        "",
+        "Transpose",
+        [weight],
+        name="t",
+        attributes=[onnx_ir.AttrInt64s("perm", [1, 0])],
+    )
+    layer_node = onnx_ir.Node("", "MatMul", [x, transpose.outputs[0]], name="mm")
+    graph = onnx_ir.Graph(
+        [x], layer_node.outputs, nodes=[transpose, layer_node], initializers=[weight]
+    )
+
+    (layer,) = find_layers(graph, [])
+
+    assert get_weight_name(layer.node) == "w"
+    assert layer.op_input_names == ["x"]
+
+
+def test_find_layers_skips_gemm_weight_through_transpose():
+    """
+    When: A Gemm reads its weight through a Transpose
+    Then: It is not a layer, because QuantSim only gives a Transpose-read weight a weight
+          quantizer for MatMul
+    """
+    weight = onnx_ir.Value(
+        name="w", const_value=onnx_ir.tensor(np.zeros((4, 3), np.float32))
+    )
+    x = onnx_ir.Value(name="x")
+    transpose = onnx_ir.Node(
+        "",
+        "Transpose",
+        [weight],
+        name="t",
+        attributes=[onnx_ir.AttrInt64s("perm", [1, 0])],
+    )
+    layer_node = onnx_ir.Node("", "Gemm", [x, transpose.outputs[0]], name="mm")
+    graph = onnx_ir.Graph(
+        [x], layer_node.outputs, nodes=[transpose, layer_node], initializers=[weight]
+    )
+
+    assert not is_supported_op(layer_node)
+    assert find_layers(graph, []) == []
+
+
+def test_apply_seq_mse_with_gemm_weight_through_transpose():
+    """
+    When: A Gemm reads its weight through a Transpose
+    Then: Sequential MSE runs to completion without raising, since the Gemm is not a layer
+    """
+    weight = onnx.numpy_helper.from_array(
+        np.random.randn(8, 4).astype(np.float32), name="W"
+    )
+    transpose = onnx.helper.make_node(
+        "Transpose", ["W"], ["W_t"], name="t", perm=[1, 0]
+    )
+    gemm = onnx.helper.make_node("Gemm", ["x", "W_t"], ["y"], name="gemm", transB=0)
+    graph = onnx.helper.make_graph(
+        [transpose, gemm],
+        "gemm_weight_through_transpose",
+        inputs=[
+            onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [1, 4])
+        ],
+        outputs=[
+            onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [1, 8])
+        ],
+        initializer=[weight],
+    )
+    model = onnx.helper.make_model(
+        graph, opset_imports=[onnx.helper.make_opsetid("", 13)], ir_version=10
+    )
+
+    seq_mse = _seq_mse_for(model, {"x": np.random.randn(1, 4).astype(np.float32)})
+    assert not seq_mse._frontier_plan().levels
+    seq_mse.apply_seq_mse_algo()
+
+
+def test_find_layers_skips_layer_with_no_dynamic_input():
+    """
+    When: A Gemm's non-weight input is also a constant (a valid but unusual ONNX pattern --
+          e.g. the activation got constant-folded upstream)
+    Then: find_layers does not produce a layer with an empty op_input_names list
+    """
+    a_const = onnx_ir.Value(
+        name="a", const_value=onnx_ir.tensor(np.zeros((4, 4), np.float32))
+    )
+    weight = onnx_ir.Value(
+        name="w", const_value=onnx_ir.tensor(np.zeros((4, 4), np.float32))
+    )
+    gemm = onnx_ir.Node("", "Gemm", [a_const, weight], name="g", num_outputs=1)
+    graph = onnx_ir.Graph(
+        [], gemm.outputs, nodes=[gemm], initializers=[a_const, weight]
+    )
+
+    assert find_layers(graph, []) == []
+
+
+def test_plan_frontier_outer_scope_consumer_before_producer():
+    """
+    When: A top-level If node is listed before the Add whose output its branches capture
+          as an outer-scope value by name (legal under onnx_ir's topological sort, which
+          only orders nodes by their explicit node.inputs)
+    Then: plan_frontier does not raise KeyError
+    """
+    x = onnx_ir.Value(name="x")
+    cond = onnx_ir.Value(name="cond", const_value=onnx_ir.tensor(np.array(True)))
+
+    mid = onnx_ir.Node("", "Add", [x, x], name="mid", num_outputs=1)
+    v = mid.outputs[0]
+    v.name = "v"
+
+    then_id = onnx_ir.Node("", "Identity", [v], name="then_id", num_outputs=1)
+    then_branch = onnx_ir.Graph(
+        [], then_id.outputs, nodes=[then_id], name="then_branch"
+    )
+    else_id = onnx_ir.Node("", "Identity", [v], name="else_id", num_outputs=1)
+    else_branch = onnx_ir.Graph(
+        [], else_id.outputs, nodes=[else_id], name="else_branch"
+    )
+    if_node = onnx_ir.Node(
+        "",
+        "If",
+        [cond],
+        name="n",
+        num_outputs=1,
+        attributes=[
+            onnx_ir.AttrGraph("then_branch", then_branch),
+            onnx_ir.AttrGraph("else_branch", else_branch),
+        ],
+    )
+
+    # `n` (the capturing If) is listed before `mid` (the producer of the value it
+    # captures) -- legal, since If's only explicit input is `cond`.
+    graph = onnx_ir.Graph(
+        [x, cond], list(if_node.outputs) + list(mid.outputs), nodes=[if_node, mid]
+    )
+
+    plan_frontier(graph, find_layers(graph, []))  # must not raise KeyError
 
 
 @pytest.mark.cuda
@@ -1131,11 +1302,7 @@ def test_compute_reconstruction_loss(
     loss_fn, op_type, tensor_shape, output_shape, channel_axis, block_axis, block_size
 ):
     # Setup mocks
-    mock_dep_node = MagicMock()
-    mock_dep_node.cg_op.type = op_type
-
-    mock_dep_graph = MagicMock()
-    mock_dep_graph.get_param_name.return_value = "mock_weight"
+    mock_layer = _mock_layer(op_type)
 
     mock_quantizer = MagicMock()
     mock_quantizer.tensor_quantizer_params.tensor_shape = tensor_shape
@@ -1148,7 +1315,6 @@ def test_compute_reconstruction_loss(
 
     # Mock seq_mse object w/o calling the __init__
     seq_mse = object.__new__(SequentialMse)
-    seq_mse.dependency_graph = mock_dep_graph
     seq_mse.sim = mock_sim
     seq_mse.params = MagicMock()
     seq_mse.params.loss_fn = loss_fn
@@ -1157,7 +1323,7 @@ def test_compute_reconstruction_loss(
     sim_output = torch.from_numpy(np.random.randn(*output_shape).astype(np.float32))
     float_output = torch.from_numpy(np.random.randn(*output_shape).astype(np.float32))
 
-    loss = seq_mse._compute_recon_loss(sim_output, float_output, mock_dep_node)
+    loss = seq_mse._compute_recon_loss(sim_output, float_output, mock_layer)
     print(f"actual loss: {loss.shape}")
 
     # block-wise quantization
@@ -1234,10 +1400,6 @@ def test_compute_encoding_from_candidate(
     channel_axis,
     block_axis,
 ):
-    # Setup mocks
-    mock_dep_graph = MagicMock()
-    mock_dep_graph.get_param_name.return_value = "mock_weight"
-
     # Create quantizer
     tensor_quantizer_params = TensorQuantizerParams(
         tensor_shape, channel_axis, block_axis
@@ -1267,11 +1429,10 @@ def test_compute_encoding_from_candidate(
 
     # Mock seq_mse object w/o calling the __init__
     seq_mse = object.__new__(SequentialMse)
-    seq_mse.dependency_graph = mock_dep_graph
     seq_mse.sim = mock_sim
 
-    mock_dep_node = MagicMock()
-    seq_mse._compute_encoding_from_candidate(mock_dep_node, x_min, x_max)
+    mock_layer = _mock_layer("Gemm")
+    seq_mse._compute_encoding_from_candidate(mock_layer, x_min, x_max)
     encodings = quantizer.get_encodings()
     enc_min = np.array([enc.min for enc in encodings])
     enc_max = np.array([enc.max for enc in encodings])
@@ -1403,8 +1564,8 @@ def test_bq_lpbq_single_layer(
         None, sim, seq_mse_params, [make_dummy_input(model.model) for _ in range(3)]
     )
 
-    dep_node = list(seq_mse.dependency_graph._name_to_node.values())[0]
-    _, init_max = seq_mse._get_min_and_max_for_candidate_selection(dep_node)
+    (layer,) = find_layers(sim._ir_model.graph, [])
+    _, init_max = seq_mse._get_min_and_max_for_candidate_selection(layer)
 
     seq_mse.apply_seq_mse_algo()
 
@@ -1655,7 +1816,48 @@ def test_lpbq_seq_mse_chunked_matches_full(monkeypatch):
         assert np.allclose(full_max, chunked_max)
 
 
-class TestDependencyGraph:
+def _full_model_values(seq_mse, names):
+    """``names`` per calibration sample, computed by one run of the whole model."""
+    names = list(names)
+    with tempfile.TemporaryDirectory() as tempdir:
+        session = _build_session(
+            seq_mse._ir_model, seq_mse._inputs[0], names, seq_mse.sim.providers, tempdir
+        )
+        values = [
+            _run_session_to_numpy(session, sample, names) for sample in seq_mse._inputs
+        ]
+        del session
+    return values
+
+
+def _assert_sampled_match_one_shot(seq_mse, atol=1e-6):
+    """Sampling every level blockwise gives the tensors one run of the whole model does."""
+    plan = seq_mse._frontier_plan()
+    sampler = BlockwiseSampler(
+        seq_mse._ir_model,
+        SamplingPlan(seq_mse._ir_model.graph, plan.block_inputs, plan.block_outputs),
+        seq_mse._inputs,
+        seq_mse.sim.providers,
+    )
+    graph_inputs = set(seq_mse._inputs[0])
+    for idx, names in enumerate(plan.block_inputs):
+        samples = sampler.sample_block(idx)
+        computed = [i for i, name in enumerate(names) if name not in graph_inputs]
+        if not computed:
+            continue
+        expected = _full_model_values(seq_mse, [names[i] for i in computed])
+        for sample, reference in zip(samples, expected):
+            for i, ref in zip(computed, reference):
+                assert sample[i].shape == ref.shape, names[i]
+                np.testing.assert_allclose(
+                    sample[i].astype(np.float32),
+                    ref.astype(np.float32),
+                    atol=atol,
+                    err_msg=names[i],
+                )
+
+
+class TestFrontierLevels:
     @pytest.mark.parametrize(
         "model, cached_data",
         [
@@ -1688,8 +1890,11 @@ class TestDependencyGraph:
             ),
         ],
     )
-    def test_dependency_graph(self, model, cached_data):
-        """Compare the one-shot and iterative outputs"""
+    def test_sampled_inputs_match_one_shot(self, model, cached_data):
+        """
+        When: Every level's inputs are sampled blockwise from the cached frontier
+        Then: They match one run of the whole model
+        """
         sim = QuantizationSimModel(
             copy.deepcopy(model),
             quant_scheme=QuantScheme.post_training_tf,
@@ -1698,62 +1903,62 @@ class TestDependencyGraph:
         for quantizer in sim.qc_quantize_op_dict.values():
             quantizer.enabled = False
         seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=1), [cached_data])
-        dep_graph = seq_mse.dependency_graph
+        _assert_sampled_match_one_shot(seq_mse)
 
-        one_shot_output = sim.session.run(None, cached_data)[0]
-
-        # Iterate over the topologically sorted nodes to gather intermediate outputs and
-        # provide them as inputs to the subsequent subgraph.
-        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
-        for i in range(1, len(sorted_nodes)):
-            subgraph_inp_names, subgraph_out_names = (
-                dep_graph.get_subgraph_inp_out_names(sorted_nodes[i])
-            )
-            path = seq_mse._split_onnx_graph(subgraph_inp_names, subgraph_out_names)
-            with seq_mse._create_session(path) as session:
-                outputs = session.run(
-                    None, {name: cached_data[name] for name in subgraph_inp_names}
-                )
-            cached_data.update(zip(subgraph_out_names, outputs))
-
-        # Final subgraph extraction and session run
-        model_outputs = [output.name for output in sim.model.model.graph.output]
-        path = seq_mse._split_onnx_graph(subgraph_out_names, model_outputs)
-        with seq_mse._create_session(path) as session:
-            iterative_output = session.run(
-                None, {name: cached_data[name] for name in subgraph_out_names}
-            )[0]
-
-        assert np.all(iterative_output == one_shot_output)
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            (
+                models_for_tests.concat_model(),
+                [["/conv1/Conv", "/conv2/Conv", "/conv3/Conv"], ["/fc/Gemm"]],
+            ),
+            (
+                models_for_tests.multi_input_model(),
+                [
+                    ["/conv1_a/Conv", "/conv1_b/Conv"],
+                    ["/conv2/Conv"],
+                    ["/fc1/Gemm"],
+                    ["/fc2/Gemm"],
+                ],
+            ),
+        ],
+    )
+    def test_levels(self, model, expected):
+        """Layers that read only earlier levels' outputs share a level."""
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=["CPUExecutionProvider"],
+        )
+        seq_mse = SequentialMse(
+            model, sim, SeqMseParams(num_batches=1), [make_dummy_input(model.model)]
+        )
+        assert [sorted(name for name, _, _ in level) for level in _levels(seq_mse)] == (
+            expected
+        )
 
     def test_nodes_to_exclude(self):
-        """When nodes_to_exclude are provided, they should be excluded from dependency graph"""
-        model = models_for_tests.single_residual_model().model
-        dl = [{"input": np.random.randn(1, 3, 32, 32).astype(np.float32)}]
-        dep_graph = DependencyGraph(
-            ConnectedGraph(onnx_ir.from_proto(model)),
-            dl,
+        """
+        When: A layer is excluded
+        Then: It is not planned, and the layers after it still are
+        """
+        model = models_for_tests.single_residual_model()
+        sim = QuantizationSimModel(
+            copy.deepcopy(model),
+            quant_scheme=QuantScheme.post_training_tf,
+            providers=["CPUExecutionProvider"],
+        )
+        seq_mse = SequentialMse(
+            model,
+            sim,
+            SeqMseParams(num_batches=1),
+            [make_dummy_input(model.model)],
             nodes_to_exclude=["/conv1/Conv"],
         )
-        sorted_order = dep_graph.get_topologically_sorted_nodes()
+        planned = {name for level in _levels(seq_mse) for name, _, _ in level}
 
-        for i, sorted_nodes in sorted_order.items():
-            print(f"{i}: {sorted_nodes}")
-
-        """
-        When: Given node is excluded
-        Then: The children of excluded nodes are still processed and added to dependency graph.
-        """
-
-        assert "/conv1/Conv" not in [
-            node.cg_op.name for nodes in sorted_order.values() for node in nodes
-        ]
-        assert "/conv2/Conv" in [
-            node.cg_op.name for nodes in sorted_order.values() for node in nodes
-        ]
-        assert "/fc/Gemm" in [
-            node.cg_op.name for nodes in sorted_order.values() for node in nodes
-        ]
+        assert "/conv1/Conv" not in planned
+        assert {"/conv2/Conv", "/fc/Gemm"} <= planned
 
 
 class TestBlockWiseReconLoss:
@@ -2328,59 +2533,84 @@ def _diamond_residual_model(num_blocks: int) -> onnx.ModelProto:
     return b.model(inputs, head)
 
 
-def _boundary_names(dep_graph: DependencyGraph):
-    """Dependency nodes that are neither optimizable nor readers of a model input."""
-    model_input_ops = set(dep_graph._op_names_with_model_inputs)
-    return {
-        name
-        for name, node in dep_graph._name_to_node.items()
-        if not dep_graph.is_supported_op(node.cg_op) and name not in model_input_ops
+def _decoder_levels(num_blocks):
+    """Expected levels of ``_decoder_model``, each with the frontier tensors it caches."""
+    levels = [(["in_proj"], [])]
+    residual = "in_proj"
+    for i in range(num_blocks):
+        attn = [f"blk{i}.q_proj", f"blk{i}.k_proj", f"blk{i}.v_proj"]
+        levels += [(attn, [residual]), ([f"blk{i}.o_proj"], [residual])]
+        residual = f"blk{i}.residual_add1"
+        mlp = [f"blk{i}.gate_proj", f"blk{i}.up_proj"]
+        levels += [(mlp, [residual]), ([f"blk{i}.down_proj"], [residual])]
+        residual = f"blk{i}.residual_add2"
+    return levels + [(["lm_head"], [])]
+
+
+def _residual_levels(num_blocks, branch_tensors):
+    """Expected levels of the single-op and diamond residual models."""
+    levels = [(["in_proj"], [])]
+    for i in range(num_blocks):
+        levels.append(([f"blk{i}.proj"], [f"blk{i}.{name}" for name in branch_tensors]))
+    return levels + [(["lm_head"], [])]
+
+
+def _seq_mse_for(model, inputs, providers=("CPUExecutionProvider",)):
+    sim = QuantizationSimModel(
+        copy.deepcopy(model),
+        quant_scheme=QuantScheme.post_training_tf,
+        providers=list(providers),
+    )
+    return SequentialMse(model, sim, SeqMseParams(num_batches=1), [inputs])
+
+
+def _levels_and_frontier(seq_mse):
+    """Per level, its layer names and the sampled tensors that are not layer inputs."""
+    plan = seq_mse._frontier_plan()
+    result = []
+    for level, names in zip(plan.levels, plan.block_inputs):
+        layer_inputs = {name for layer in level for name in layer.op_input_names}
+        result.append(
+            (
+                [layer.node.name for layer in level],
+                [name for name in names if name not in layer_inputs],
+            )
+        )
+    return result
+
+
+def _output_names(seq_mse, node_names):
+    names = {
+        out.name
+        for node in seq_mse._ir_model.graph
+        if node.name in node_names
+        for out in node.outputs
     }
+    assert names, "the ops are not in the graph; the test would be vacuous"
+    return names
 
 
-class TestResidualAddBoundary:
-    """Only residual Adds may become dependency boundaries of the dependency graph."""
+def _sampled_names(seq_mse):
+    return {name for names in seq_mse._frontier_plan().block_inputs for name in names}
 
-    @staticmethod
-    def _dependency_graph(model, inputs):
-        return DependencyGraph(ConnectedGraph(onnx_ir.from_proto(model)), [inputs])
+
+class TestFrontierDecoder:
+    """The frontier of a decoder is its residual stream."""
 
     @pytest.mark.parametrize("num_blocks", [1, 3])
-    def test_only_residual_adds_are_boundaries(self, num_blocks):
+    def test_frontier_is_residual_stream(self, num_blocks):
         """
-        When: A decoder with RoPE, masked attention and a SwiGLU MLP is converted to a dependency graph
-        Then: The two residual Adds of every block are the only boundary nodes
+        When: A decoder with RoPE, masked attention and a SwiGLU MLP is planned
+        Then: Each level caches only the residual stream it and later levels add onto
         """
-        dep_graph = self._dependency_graph(
-            _decoder_model(num_blocks), _decoder_inputs()
-        )
-
-        expected = {
-            f"blk{i}.residual_add{j}" for i in range(num_blocks) for j in (1, 2)
-        }
-        assert _boundary_names(dep_graph) == expected
+        seq_mse = _seq_mse_for(_decoder_model(num_blocks), _decoder_inputs())
+        assert _levels_and_frontier(seq_mse) == _decoder_levels(num_blocks)
 
     @pytest.mark.parametrize(
         "op_suffix",
         [
             "attn_qk",  # activation x activation MatMul: Q.K^T
             "attn_mask_add",  # Add of attention scores and a mask computed from a model input
-            "attn_pv",  # activation x activation MatMul: P.V
-        ],
-    )
-    def test_attention_joins_are_not_boundaries(self, op_suffix):
-        """
-        When: Attention joins have inputs that come from different dependency nodes
-        Then: They are not added to the dependency graph, so (heads, seq, seq) tensors are never cached
-        """
-        dep_graph = self._dependency_graph(_decoder_model(2), _decoder_inputs())
-
-        for i in range(2):
-            assert f"blk{i}.{op_suffix}" not in dep_graph._name_to_node
-
-    @pytest.mark.parametrize(
-        "op_suffix",
-        [
             "q_rope_cos_mul",
             "q_rope_sin_mul",
             "q_rope_add",
@@ -2388,100 +2618,42 @@ class TestResidualAddBoundary:
             "k_rope_add",
         ],
     )
-    def test_rope_ops_are_not_boundaries(self, op_suffix):
+    def test_level_internals_are_not_sampled(self, op_suffix):
         """
-        When: RoPE multiplies q/k by cos/sin computed from a model input and adds the halves
-        Then: Neither the Muls nor the RoPE Add are added to the dependency graph
+        When: Attention, RoPE and SwiGLU ops join tensors inside a level
+        Then: Their outputs are recomputed with the level, so (heads, seq, seq) tensors are
+              never cached
         """
-        dep_graph = self._dependency_graph(_decoder_model(2), _decoder_inputs())
-
-        for i in range(2):
-            assert f"blk{i}.{op_suffix}" not in dep_graph._name_to_node
-
-    def test_swiglu_mul_is_not_boundary(self):
-        """
-        When: The SwiGLU gating Mul joins the gate and up projections
-        Then: down_proj depends on gate_proj and up_proj directly
-        """
-        dep_graph = self._dependency_graph(_decoder_model(1), _decoder_inputs())
-
-        assert "blk0.swiglu_mul" not in dep_graph._name_to_node
-        down_proj = dep_graph._name_to_node["blk0.down_proj"]
-        assert {node.cg_op.name for node in down_proj.inward_nodes} == {
-            "blk0.gate_proj",
-            "blk0.up_proj",
-        }
-
-    def test_residual_add_resets_dependencies(self):
-        """
-        When: Residual Adds are boundaries
-        Then: Ops after a residual Add depend only on that Add, and fan-in does not grow with depth
-        """
-        shallow = self._dependency_graph(_decoder_model(1), _decoder_inputs())
-        deep = self._dependency_graph(_decoder_model(4), _decoder_inputs())
-
-        for i in range(1, 4):
-            q_proj = deep._name_to_node[f"blk{i}.q_proj"]
-            assert [node.cg_op.name for node in q_proj.inward_nodes] == [
-                f"blk{i - 1}.residual_add2"
-            ]
-            residual = deep._name_to_node[f"blk{i}.residual_add1"]
-            assert {node.cg_op.name for node in residual.inward_nodes} == {
-                f"blk{i - 1}.residual_add2",
-                f"blk{i}.o_proj",
-            }
-
-        def max_fan_in(dep_graph):
-            return max(
-                len(node.inward_nodes) for node in dep_graph._name_to_node.values()
-            )
-
-        assert max_fan_in(deep) == max_fan_in(shallow)
+        seq_mse = _seq_mse_for(_decoder_model(2), _decoder_inputs())
+        outputs = _output_names(seq_mse, {f"blk{i}.{op_suffix}" for i in range(2)})
+        assert not outputs & _sampled_names(seq_mse)
 
     def test_residual_add_with_single_weight_branch(self):
         """
-        When: The skip input of a residual Add comes from a non-weight op and the branch contains one weight op
-        Then: Every residual Add is a boundary and fan-in stays bounded
+        When: The skip input of a residual Add comes from a non-weight op and the branch
+              contains one weight op
+        Then: Each level caches only the skip input
         """
-        num_blocks = 6
-        dep_graph = self._dependency_graph(
-            _single_op_residual_model(num_blocks),
-            {"hidden": np.random.randn(1, _SEQ_LEN, _HIDDEN).astype(np.float32)},
-        )
-
-        assert _boundary_names(dep_graph) == {
-            f"blk{i}.residual_add" for i in range(num_blocks)
-        }
-        assert max(len(n.inward_nodes) for n in dep_graph._name_to_node.values()) <= 2
-        head = dep_graph._name_to_node["lm_head"]
-        assert [node.cg_op.name for node in head.inward_nodes] == [
-            f"blk{num_blocks - 1}.residual_add"
-        ]
+        seq_mse = _seq_mse_for(_single_op_residual_model(6), _hidden_inputs())
+        assert _levels_and_frontier(seq_mse) == _residual_levels(6, ["relu"])
 
     @pytest.mark.parametrize("num_blocks", [1, 3])
     def test_residual_add_with_forking_branch(self, num_blocks):
         """
         When: The branch of a residual Add forks and re-converges on an op inside the branch
-        Then: The residual Add is still a boundary, because the path walk expands the fork
-              point once with a weight op on the path and once without
+        Then: Each level caches the skip input and the fork's other side
         """
-        dep_graph = self._dependency_graph(
-            _diamond_residual_model(num_blocks),
-            {"hidden": np.random.randn(1, _SEQ_LEN, _HIDDEN).astype(np.float32)},
+        seq_mse = _seq_mse_for(_diamond_residual_model(num_blocks), _hidden_inputs())
+        assert _levels_and_frontier(seq_mse) == _residual_levels(
+            num_blocks, ["skip", "act"]
         )
 
-        assert _boundary_names(dep_graph) == {
-            f"blk{i}.residual_add" for i in range(num_blocks)
-        }
-        assert max(len(n.inward_nodes) for n in dep_graph._name_to_node.values()) <= 2
-
-    def test_iterative_outputs_match_one_shot(self):
+    def test_sampled_inputs_match_one_shot(self):
         """
-        When: Activations are produced level by level through the residual boundaries
-        Then: The final output matches a single run of the whole model
+        When: The decoder's level inputs are sampled blockwise from the cached frontier
+        Then: They match one run of the whole model
         """
         model = _decoder_model(2)
-        cached_data = _decoder_inputs()
         sim = QuantizationSimModel(
             copy.deepcopy(model),
             quant_scheme=QuantScheme.post_training_tf,
@@ -2489,59 +2661,10 @@ class TestResidualAddBoundary:
         )
         for quantizer in sim.qc_quantize_op_dict.values():
             quantizer.enabled = False
-        seq_mse = SequentialMse(model, sim, SeqMseParams(num_batches=1), [cached_data])
-        dep_graph = seq_mse.dependency_graph
-
-        one_shot_output = sim.session.run(None, cached_data)[0]
-
-        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
-        for i in range(1, len(sorted_nodes)):
-            inp_names, out_names = dep_graph.get_subgraph_inp_out_names(sorted_nodes[i])
-            path = seq_mse._split_onnx_graph(inp_names, out_names)
-            with seq_mse._create_session(path) as session:
-                outputs = session.run(
-                    None, {name: cached_data[name] for name in inp_names}
-                )
-            cached_data.update(zip(out_names, outputs))
-
-        model_outputs = [output.name for output in sim.model.model.graph.output]
-        path = seq_mse._split_onnx_graph(out_names, model_outputs)
-        with seq_mse._create_session(path) as session:
-            iterative_output = session.run(
-                None, {name: cached_data[name] for name in out_names}
-            )[0]
-
-        assert np.allclose(iterative_output, one_shot_output, atol=1e-6)
-
-    @pytest.mark.parametrize(
-        "model_factory",
-        [lambda: _decoder_model(2), lambda: _single_op_residual_model(3)],
-    )
-    def test_cache_is_released_after_traversal(self, model_factory):
-        """
-        When: Sequential MSE runs to completion
-        Then: Every cached activation, including the inputs of nodes without dependents, is released
-        """
-        model = model_factory()
-        model_input_names = [inp.name for inp in model.graph.input]
-        all_inputs = _decoder_inputs()
-        inputs = [
-            {name: all_inputs[name] for name in model_input_names} for _ in range(2)
-        ]
-        sim = QuantizationSimModel(
-            copy.deepcopy(model),
-            quant_scheme=QuantScheme.post_training_tf,
-            default_param_bw=4,
-            providers=["CPUExecutionProvider"],
-        )
         seq_mse = SequentialMse(
-            model, sim, SeqMseParams(num_batches=2, num_candidates=4), inputs
+            model, sim, SeqMseParams(num_batches=1), [_decoder_inputs()]
         )
-        seq_mse.apply_seq_mse_algo()
-
-        dep_graph = seq_mse.dependency_graph
-        assert dep_graph._sim_data == {}
-        assert all(count == 0 for count in dep_graph._ref_cnt_for_sim_data.values())
+        _assert_sampled_match_one_shot(seq_mse)
 
 
 # Tests on real exported Hugging Face decoders. Their graphs contain many more Adds (RoPE,
@@ -2598,19 +2721,6 @@ def _export_tiny_decoder(case, backend, dtype, num_layers):
     return onnx_model, {k: v for k, v in feed.items() if k in graph_inputs}
 
 
-def _hf_dependency_graph(
-    case, backend="torchscript", dtype=torch.float32, num_layers=2
-):
-    onnx_model, inputs = _export_tiny_decoder(case, backend, dtype, num_layers)
-    return DependencyGraph(
-        ConnectedGraph(onnx_ir.from_proto(copy.deepcopy(onnx_model))), [inputs]
-    )
-
-
-def _max_fan_in(dep_graph):
-    return max(len(node.inward_nodes) for node in dep_graph._name_to_node.values())
-
-
 # torchscript keeps the module scope in op names, so a residual Add is a direct child of the
 # decoder layer, not of self_attn / mlp / act_fn / experts.
 _LAYER_SCOPE_ADD = re.compile(r"/layers\.(\d+)/Add(_\d+)?$")
@@ -2632,62 +2742,97 @@ class TestResidualAddBoundaryHF:
             ),
             pytest.param(_GEMMA4, "dynamo", torch.float32, id="gemma4-dynamo-fp32"),
             pytest.param(_QWEN3_5, "dynamo", torch.float32, id="qwen3_5-dynamo-fp32"),
-            # torchscript cannot export bfloat16 RoPE (ComplexDouble), so bf16 uses dynamo.
-            pytest.param(_QWEN3, "dynamo", torch.bfloat16, id="qwen3-dynamo-bf16"),
-            pytest.param(_GEMMA4, "dynamo", torch.bfloat16, id="gemma4-dynamo-bf16"),
+            # torchscript cannot export bfloat16 RoPE (ComplexDouble), so bf16 uses dynamo,
+            # and the CPU EP lacks bfloat16 kernels, so bf16 runs on CUDA.
+            pytest.param(
+                _QWEN3,
+                "dynamo",
+                torch.bfloat16,
+                id="qwen3-dynamo-bf16",
+                marks=pytest.mark.cuda,
+            ),
+            pytest.param(
+                _GEMMA4,
+                "dynamo",
+                torch.bfloat16,
+                id="gemma4-dynamo-bf16",
+                marks=pytest.mark.cuda,
+            ),
         ],
     )
-    def test_boundary_count_per_layer(self, case, backend, dtype):
+    def test_every_layer_is_planned_and_sampled_tensors_are_cacheable(
+        self, case, backend, dtype
+    ):
         """
-        When: A tiny HF decoder is exported and converted to a dependency graph
-        Then: Exactly the architecture's residual Adds per layer are boundaries, so a change
-              in the exported graph cannot silently disable residual-Add detection
+        When: A tiny HF decoder is exported and planned
+        Then: Every layer with a static weight is planned, and every tensor a level samples is
+              computed from earlier levels only, and is not a quantized copy
         """
-        num_layers = 2
-        _, _, adds_per_layer = case
-        dep_graph = _hf_dependency_graph(case, backend, dtype, num_layers)
-        boundaries = _boundary_names(dep_graph)
+        providers = ["CPUExecutionProvider"]
+        if dtype == torch.bfloat16:
+            if "CUDAExecutionProvider" not in ort.get_available_providers():
+                pytest.skip("CUDA EP not available")
+            providers.insert(0, "CUDAExecutionProvider")
+        onnx_model, inputs = _export_tiny_decoder(case, backend, dtype, 2)
+        seq_mse = _seq_mse_for(copy.deepcopy(onnx_model), inputs, providers)
+        plan = seq_mse._frontier_plan()
+        sampling_plan = SamplingPlan(
+            seq_mse._ir_model.graph, plan.block_inputs, plan.block_outputs
+        )
 
-        assert len(boundaries) == adds_per_layer * num_layers
-        for name in boundaries:
-            assert dep_graph._name_to_node[name].cg_op.type == "Add"
-
-        if backend == "torchscript":
-            per_layer = {}
-            for name in boundaries:
-                match = _LAYER_SCOPE_ADD.search(name)
-                assert match, f"{name} is not an Add at decoder-layer scope"
-                per_layer[match.group(1)] = per_layer.get(match.group(1), 0) + 1
-            assert per_layer == {str(i): adds_per_layer for i in range(num_layers)}
+        planned = {layer.node.name for level in plan.levels for layer in level}
+        expected = {
+            node.name
+            for node in seq_mse.sim._ir_model.graph.all_nodes()
+            if is_supported_op(node)
+        }
+        assert planned == expected
+        for idx, names in enumerate(plan.block_inputs):
+            for name in names:
+                assert sampling_plan.is_final(name, idx), (idx, name)
+                assert not name.endswith(("_updated", "_qdq")), (idx, name)
 
     @pytest.mark.parametrize(
         "case, backend",
         [
-            pytest.param(_GEMMA4, "torchscript", id="gemma4-ts"),
+            pytest.param(_QWEN3, "torchscript", id="qwen3-ts"),
             pytest.param(_QWEN3_5, "dynamo", id="qwen3_5-dynamo"),
         ],
     )
-    def test_fan_in_independent_of_depth(self, case, backend):
+    def test_frontier_independent_of_depth(self, case, backend):
         """
-        When: The same decoder is exported with 2 and 6 layers
-        Then: The largest fan-in of any dependency node is the same, so cached activations
-              do not accumulate along the residual stream
+        When: The same decoder is exported with 3 and 6 layers
+        Then: No level samples more tensors, so cached activations do not accumulate along
+              the residual stream
+
+        Gemma4 is left out: it computes every layer's per-layer input up front, so each one
+        is cached until its layer reads it. 3 layers give Qwen3.5 a linear-attention layer
+        after the first, which also reads the residual stream.
         """
-        shallow = _hf_dependency_graph(case, backend, num_layers=2)
-        deep = _hf_dependency_graph(case, backend, num_layers=6)
 
-        assert _max_fan_in(deep) == _max_fan_in(shallow)
+        def max_sampled(num_layers):
+            onnx_model, inputs = _export_tiny_decoder(
+                case, backend, torch.float32, num_layers
+            )
+            plan = _seq_mse_for(copy.deepcopy(onnx_model), inputs)._frontier_plan()
+            return max(len(names) for names in plan.block_inputs)
 
-    def test_non_residual_adds_are_not_boundaries(self):
+        assert max_sampled(6) == max_sampled(3)
+
+    def test_non_residual_adds_are_not_sampled(self):
         """
         When: A Gemma4 MoE decoder has RoPE, tanh-GELU, expert and MoE-combine Adds
-        Then: None of them are added to the dependency graph
+        Then: None of their outputs are sampled
         """
-        dep_graph = _hf_dependency_graph(_GEMMA4_MOE)
+        onnx_model, inputs = _export_tiny_decoder(
+            _GEMMA4_MOE, "torchscript", torch.float32, 2
+        )
+        seq_mse = _seq_mse_for(copy.deepcopy(onnx_model), inputs)
         add_names = [
-            op.name for op in dep_graph.conn_graph.ordered_ops if op.type == "Add"
+            op.name
+            for op in seq_mse.sim.connected_graph.ordered_ops
+            if op.type == "Add"
         ]
-
         non_residual = {
             # MoE combine: sum of the dense-MLP and expert branches, at decoder-layer scope
             "moe_combine": [
@@ -2697,9 +2842,10 @@ class TestResidualAddBoundaryHF:
             "gelu": [n for n in add_names if "/act_fn/" in n],
             "experts": [n for n in add_names if "/experts/" in n],
         }
+        sampled = _sampled_names(seq_mse)
         for kind, names in non_residual.items():
             assert names, f"no {kind} Adds in the export; the test would be vacuous"
-            assert not set(names) & set(dep_graph._name_to_node), kind
+            assert not _output_names(seq_mse, set(names)) & sampled, kind
 
     @pytest.mark.parametrize(
         "backend, dtype, providers",
@@ -2719,11 +2865,10 @@ class TestResidualAddBoundaryHF:
             ),
         ],
     )
-    def test_iterative_outputs_match_one_shot(self, backend, dtype, providers):
+    def test_sampled_inputs_match_one_shot(self, backend, dtype, providers):
         """
-        When: A Gemma4 decoder's activations are produced level by level through the residual
-              boundaries, as SeqMSE does
-        Then: The final output matches a single run of the whole model
+        When: A Gemma4 decoder's level inputs are sampled blockwise, as SeqMSE does
+        Then: They match one run of the whole model
         """
         if "CUDAExecutionProvider" in providers and (
             "CUDAExecutionProvider" not in ort.get_available_providers()
@@ -2741,41 +2886,15 @@ class TestResidualAddBoundaryHF:
         seq_mse = SequentialMse(
             copy.deepcopy(onnx_model), sim, SeqMseParams(num_batches=1), [inputs]
         )
-        dep_graph = seq_mse.dependency_graph
-        assert _boundary_names(dep_graph)
-
-        cached_data = dict(inputs)
-        one_shot_output = _run_session_to_numpy(sim.session, cached_data)[0]
-
-        sorted_nodes = dep_graph.get_topologically_sorted_nodes()
-        for i in range(1, len(sorted_nodes)):
-            inp_names, out_names = dep_graph.get_subgraph_inp_out_names(sorted_nodes[i])
-            path = seq_mse._split_onnx_graph(inp_names, out_names)
-            with seq_mse._create_session(path) as session:
-                outputs = _run_session_to_numpy(
-                    session, {name: cached_data[name] for name in inp_names}
-                )
-            cached_data.update(zip(out_names, outputs))
-
-        model_outputs = [output.name for output in sim.model.model.graph.output]
-        path = seq_mse._split_onnx_graph(out_names, model_outputs)
-        with seq_mse._create_session(path) as session:
-            iterative_output = _run_session_to_numpy(
-                session, {name: cached_data[name] for name in out_names}
-            )[0]
-
-        assert iterative_output.shape == one_shot_output.shape
-        assert np.allclose(
-            iterative_output.astype(np.float32),
-            one_shot_output.astype(np.float32),
-            atol=1e-5 if dtype == torch.float32 else 1e-2,
+        _assert_sampled_match_one_shot(
+            seq_mse, atol=1e-5 if dtype == torch.float32 else 1e-2
         )
 
     @pytest.mark.cuda
     def test_seq_mse_runs_on_bf16_decoder(self):
         """
         When: SeqMSE runs on a bfloat16 Gemma4 decoder with quantizers enabled
-        Then: Every weight quantizer in the dependency graph is optimized and frozen, and the
+        Then: Every weight quantizer is optimized and frozen, and the
               sim can calibrate activations afterwards
         """
         if "CUDAExecutionProvider" not in ort.get_available_providers():
@@ -2914,7 +3033,7 @@ class TestSeqMseProgress:
         Then: The error propagates and the end-of-run summary is still logged
         """
 
-        def _fail(self, dep_nodes, progress):
+        def _fail(self, *args):
             raise RuntimeError("boom")
 
         monkeypatch.setattr(SequentialMse, "_run_seq_mse", _fail)
@@ -2924,3 +3043,121 @@ class TestSeqMseProgress:
             "SeqMSE: done, optimized 0 weights" in r.getMessage()
             for r in caplog.records
         )
+
+
+def _hidden_inputs():
+    return {"hidden": np.random.randn(1, _SEQ_LEN, _HIDDEN).astype(np.float32)}
+
+
+_FRONTIER_CASES = {
+    "decoder1": (lambda: _decoder_model(1), _decoder_inputs),
+    "decoder3": (lambda: _decoder_model(3), _decoder_inputs),
+    "single_op_residual": (lambda: _single_op_residual_model(3), _hidden_inputs),
+    "diamond": (lambda: _diamond_residual_model(2), _hidden_inputs),
+    "split": (model_with_split, None),
+    "residual": (single_residual_model, None),
+}
+
+
+def _frontier_sim_and_inputs(case, num_samples=2):
+    model_factory, inputs_factory = _FRONTIER_CASES[case]
+    np.random.seed(0)
+    torch.manual_seed(0)
+    model = model_factory()
+    sim = QuantizationSimModel(
+        copy.deepcopy(model),
+        quant_scheme=QuantScheme.post_training_tf,
+        default_param_bw=4,
+        providers=["CPUExecutionProvider"],
+    )
+    onnx_model = model.model if hasattr(model, "model") else model
+    inputs = [
+        inputs_factory() if inputs_factory else make_dummy_input(onnx_model)
+        for _ in range(num_samples)
+    ]
+    return model, sim, inputs
+
+
+def _frontier_seq_mse(model, sim, inputs, **kwargs):
+    params = SeqMseParams(num_batches=len(inputs), num_candidates=4)
+    return SequentialMse(model, sim, params, inputs, **kwargs)
+
+
+class TestFrontierSampling:
+    """Sequential MSE sampling each level's inputs with the frontier planner."""
+
+    @pytest.mark.parametrize("case", list(_FRONTIER_CASES))
+    def test_every_sampled_tensor_is_cacheable(self, case):
+        """
+        When: The frontier plan is given to SamplingPlan
+        Then: Every tensor a level samples is computed from earlier levels only, so the
+              sampler can cache it, and no level samples a quantized copy of a tensor
+        """
+        model, sim, inputs = _frontier_sim_and_inputs(case)
+        seq_mse = _frontier_seq_mse(model, sim, inputs)
+        plan = seq_mse._frontier_plan()
+        sampling_plan = SamplingPlan(
+            seq_mse._ir_model.graph, plan.block_inputs, plan.block_outputs
+        )
+
+        for idx, names in enumerate(plan.block_inputs):
+            for name in names:
+                assert sampling_plan.is_final(name, idx), (idx, name)
+                assert not name.endswith(("_updated", "_qdq")), (idx, name)
+
+    def test_frontier_is_flat_in_depth(self):
+        """
+        When: The decoder gets deeper
+        Then: The number of tensors a level samples does not grow, and the attention mask
+              and RoPE tables (no weight upstream) are recomputed rather than cached
+        """
+
+        def max_sampled(num_blocks):
+            model = _decoder_model(num_blocks)
+            sim = QuantizationSimModel(
+                copy.deepcopy(model),
+                quant_scheme=QuantScheme.post_training_tf,
+                providers=["CPUExecutionProvider"],
+            )
+            plan = _frontier_seq_mse(model, sim, [_decoder_inputs()])._frontier_plan()
+            sampled = {name for names in plan.block_inputs for name in names}
+            assert not {"pos", "rope_cos", "rope_sin", "attn_mask"} & sampled
+            return max(len(names) for names in plan.block_inputs)
+
+        assert max_sampled(4) == max_sampled(1)
+
+    @pytest.mark.parametrize("case", list(_FRONTIER_CASES))
+    @pytest.mark.parametrize("exclude", [False, True])
+    def test_optimizes_every_layer(self, case, exclude):
+        """
+        When: Sequential MSE runs, optionally with a layer excluded
+        Then: Exactly the weights of the layers not excluded are frozen
+        """
+        model, sim, inputs = _frontier_sim_and_inputs(case)
+        layers = [
+            node for node in sim._ir_model.graph.all_nodes() if is_supported_op(node)
+        ]
+        excluded = [layers[len(layers) // 2]] if exclude else []
+        seq_mse = _frontier_seq_mse(
+            model, sim, inputs, nodes_to_exclude=[node.name for node in excluded]
+        )
+        seq_mse.apply_seq_mse_algo()
+
+        frozen = {
+            name
+            for name, quantizer in sim.qc_quantize_op_dict.items()
+            if quantizer.is_encoding_frozen()
+        }
+        assert frozen == {
+            get_weight_name(node) for node in layers if node not in excluded
+        }
+
+    def test_missing_input_raises(self):
+        """
+        When: A calibration sample lacks a graph input
+        Then: Sequential MSE raises before optimizing anything
+        """
+        model, sim, _ = _frontier_sim_and_inputs("decoder1")
+        inputs = [{"hidden": _decoder_inputs()["hidden"]}]
+        with pytest.raises(ValueError, match="must be present in the dataloader"):
+            _frontier_seq_mse(model, sim, inputs)

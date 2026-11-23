@@ -511,6 +511,33 @@ class TestBlockwiseSampler:
         cache.clear()
         assert not cache.names() and cache.nbytes() == 0
 
+    def test_session_options(self):
+        """
+        Given: A sampler given ORT session options
+        When: Blocks are sampled
+        Then: Every session it builds uses those options
+        """
+        model, end_points = _toy_model()
+        qt_model = onnx_ir.from_proto(model)
+        plan = SamplingPlan(
+            qt_model.graph,
+            _block_inputs(qt_model.graph, end_points),
+            [[end] for _, end in end_points],
+        )
+        options = ort.SessionOptions()
+        sampler = BlockwiseSampler(
+            qt_model, plan, _toy_inputs(model), _CPU, session_options=options
+        )
+        session_cls = blockwise_sampler.OrtInferenceSession
+        with patch.object(
+            blockwise_sampler, "OrtInferenceSession", side_effect=session_cls
+        ) as session:
+            for idx in range(len(end_points)):
+                sampler.sample_block(idx)
+        assert session.call_args_list
+        for call in session.call_args_list:
+            assert call.kwargs["session_options"] is options
+
     @pytest.mark.cuda
     def test_bfloat16(self, tmp_path):
         """

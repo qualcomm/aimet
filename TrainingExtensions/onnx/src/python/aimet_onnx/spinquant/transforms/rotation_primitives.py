@@ -356,10 +356,8 @@ def is_online_rotation_op(op) -> bool:
     rather than a learnable parameter, so downstream optimizers (e.g.
     sequential MSE) should skip them.
 
-    :param op: Anything that names an op: an ``onnx_ir.Node``, an ``onnx.NodeProto``
-        (both spell the type ``op_type``) or a ConnectedGraph ``Op`` (which spells
-        it ``type``). SpinQuant itself no longer builds a ConnectedGraph, but
-        ``sequential_mse`` still calls this with one.
+    :param op: Anything that names an op: an ``onnx_ir.Node`` or an ``onnx.NodeProto``
+        (both spell the type ``op_type``), or an object that spells it ``type``.
     """
     op_type = getattr(op, "op_type", None) or getattr(op, "type", None)
     return op_type == "MatMul" and bool(_ONLINE_ROTATION_OP_RE.match(op.name))
