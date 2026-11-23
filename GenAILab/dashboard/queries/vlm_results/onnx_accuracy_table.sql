@@ -114,12 +114,26 @@ SELECT
        COALESCE(analysis->>'name', '—')                AS "Analyses",
 
        -- Accuracy columns
-       ROUND((accuracy_results->'PPL'->>'result')::numeric, 2)      AS "PPL",
-       ROUND((accuracy_results->'MMMU'->>'result')::numeric, 4)     AS "MMMU",
-       ROUND((accuracy_results->'MMLU'->>'result')::numeric, 4)     AS "MMLU",
-	   ROUND((accuracy_results->'AutogradedPrompts'->>'result')::numeric, 4) AS "AutogradedPrompts",
-	   ROUND((accuracy_results->'AutogradedMultimodalPrompts'->>'result')::numeric, 4) AS "AutogradedMultimodalPrompts",
-	   ROUND((accuracy_results->'Grace'->>'result')::numeric, 4) AS "Grace",
+       CONCAT(
+         ROUND((accuracy_results->'PPL'->>'result')::numeric, 2)::text,
+         ' (time: ' || ROUND((accuracy_results->'PPL'->>'elapsed_ms')::numeric / 3600000, 2)::text || ' hrs)'
+       ) AS "PPL",
+       CONCAT(
+         ROUND((accuracy_results->'MMMU'->>'result')::numeric, 2)::text,
+         ' (time: ' || ROUND((accuracy_results->'MMMU'->>'elapsed_ms')::numeric / 3600000, 2)::text || ' hrs)'
+       ) AS "MMMU",
+       CONCAT(
+         ROUND((accuracy_results->'MMLU'->>'result')::numeric, 2)::text,
+         ' (time: ' || ROUND((accuracy_results->'MMLU'->>'elapsed_ms')::numeric / 3600000, 2)::text || ' hrs)'
+       ) AS "MMLU",
+	   CONCAT(
+	     ROUND((accuracy_results->'AutogradedMultimodalPrompts'->>'result')::numeric, 2)::text,
+	     ' (time: ' || ROUND((accuracy_results->'AutogradedMultimodalPrompts'->>'elapsed_ms')::numeric / 3600000, 2)::text || ' hrs)'
+	   ) AS "AutogradedMultimodalPrompts",
+	   CONCAT(
+	     ROUND((accuracy_results->'Grace'->>'result')::numeric, 2)::text,
+	     ' (time: ' || ROUND((accuracy_results->'Grace'->>'elapsed_ms')::numeric / 3600000, 2)::text || ' hrs)'
+	   ) AS "Grace",
 	   -- Grace's recurring failure modes, so a regression is triageable from the
 	   -- table without opening the run log.
 	   NULLIF(

@@ -15,7 +15,7 @@ from GenAILab.bench.metrics import (
     _JSDivergenceCompute,
     _FlipsCompute,
 )
-from GenAILab.bench.profiler import ScoredResult
+from GenAILab.bench.profiler import ScoredResult, convert_metric_result_to_dict
 from GenAILab.bench.yaml_config_parser import ResolvedMetric
 
 
@@ -198,6 +198,11 @@ class TestRunMetricsResultShapes:
         [row] = self._run(self.Scored)
         assert (row.metric_name, row.result, row.details) == ("Scored", 2.5, {"n": 3})
         assert row.scoring_version == 7
+
+    def test_elapsed_time_reported_without_intermediate_capture(self):
+        [row] = self._run(self.Bare)
+        stats = convert_metric_result_to_dict(row, remove_finegrained=True)
+        assert stats["elapsed_ms"] >= 0
 
     def test_the_label_names_the_row(self):
         labelled = ResolvedMetric(

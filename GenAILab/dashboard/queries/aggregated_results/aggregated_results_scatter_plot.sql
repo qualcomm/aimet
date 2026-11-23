@@ -119,7 +119,6 @@ WITH tagged AS (
       CASE
         WHEN {{rank_by}} = 'MMLU'    THEN (accuracy_results->'MMLU'->>'scoring_version')::int
         WHEN {{rank_by}} = 'MMMU'    THEN (accuracy_results->'MMMU'->>'scoring_version')::int
-        WHEN {{rank_by}} = 'AutogradedPrompts' THEN (accuracy_results->'AutogradedPrompts'->>'scoring_version')::int
         WHEN {{rank_by}} = 'Grace'  THEN (accuracy_results->'Grace'->>'scoring_version')::int
         WHEN {{rank_by}} = 'AutogradedMultimodalPrompts' THEN (accuracy_results->'AutogradedMultimodalPrompts'->>'scoring_version')::int
         WHEN {{rank_by}} = 'PPL'     THEN (accuracy_results->'PPL'->>'scoring_version')::int
@@ -160,7 +159,6 @@ filtered AS (
   WHERE precision_tag = {{precision_tag}}
     AND (accuracy_results->'MMLU'->>'result') IS NOT NULL
     AND (accuracy_results->'PPL'->>'result') IS NOT NULL
-    AND (accuracy_results->'AutogradedPrompts'->>'result') IS NOT NULL
 ),
 -- Never rank/select across scoring versions within a bucket
 versioned AS (
@@ -182,7 +180,6 @@ ranked AS (
         CASE
           WHEN {{rank_by}} = 'MMLU'    THEN (accuracy_results->'MMLU'->>'result')::numeric
           WHEN {{rank_by}} = 'MMMU'    THEN (accuracy_results->'MMMU'->>'result')::numeric
-          WHEN {{rank_by}} = 'AutogradedPrompts' THEN (accuracy_results->'AutogradedPrompts'->>'result')::numeric
           WHEN {{rank_by}} = 'Grace'  THEN (accuracy_results->'Grace'->>'result')::numeric
           WHEN {{rank_by}} = 'AutogradedMultimodalPrompts' THEN (accuracy_results->'AutogradedMultimodalPrompts'->>'result')::numeric
           WHEN {{rank_by}} = 'PPL'     THEN -(accuracy_results->'PPL'->>'result')::numeric
@@ -198,7 +195,6 @@ SELECT
     CASE
       WHEN {{rank_by}} = 'MMLU'    THEN ROUND((accuracy_results->'MMLU'->>'result')::numeric, 4)
       WHEN {{rank_by}} = 'MMMU'    THEN ROUND((accuracy_results->'MMMU'->>'result')::numeric, 4)
-      WHEN {{rank_by}} = 'AutogradedPrompts' THEN ROUND((accuracy_results->'AutogradedPrompts'->>'result')::numeric, 4)
       WHEN {{rank_by}} = 'Grace'  THEN ROUND((accuracy_results->'Grace'->>'result')::numeric, 4)
       WHEN {{rank_by}} = 'AutogradedMultimodalPrompts' THEN ROUND((accuracy_results->'AutogradedMultimodalPrompts'->>'result')::numeric, 4)
       WHEN {{rank_by}} = 'PPL'     THEN ROUND((accuracy_results->'PPL'->>'result')::numeric, 2)
@@ -213,7 +209,6 @@ SELECT
     -- All accuracy metrics for hover tooltip
     ROUND((accuracy_results->'PPL'->>'result')::numeric, 2)      AS "PPL",
     ROUND((accuracy_results->'MMLU'->>'result')::numeric, 4)     AS "MMLU",
-    ROUND((accuracy_results->'AutogradedPrompts'->>'result')::numeric, 4) AS "AutogradedPrompts",
     ROUND((accuracy_results->'Grace'->>'result')::numeric, 4) AS "Grace",
     ROUND((accuracy_results->'MMMU'->>'result')::numeric, 4)     AS "MMMU",
     ROUND((accuracy_results->'AutogradedMultimodalPrompts'->>'result')::numeric, 4) AS "AutogradedMultimodalPrompts",

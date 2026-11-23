@@ -67,7 +67,6 @@ WITH tags AS (
     AND environment->>'variant' = 'onnx'
     AND (accuracy_results->'MMLU'->>'result') IS NOT NULL
     AND (accuracy_results->'PPL'->>'result') IS NOT NULL
-    AND (accuracy_results->'AutogradedPrompts'->>'result') IS NOT NULL
 )
 SELECT DISTINCT precision_tag
 FROM tags

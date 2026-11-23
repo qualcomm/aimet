@@ -2581,6 +2581,10 @@ def run_metrics(
     accept arbitrary extra kwargs and would raise ``TypeError`` if it were
     injected blindly. It overrides the same key in the metric's config
     kwargs: each analysis condition must write to its own directory.
+
+    Every result carries its ``GPUMeter``, so ``elapsed_ms`` reaches the stats
+    row for each metric. ``capture_intermediate_data`` only controls whether the
+    meter also records the fine-grained running series.
     """
     gpu_meter_kwargs = gpu_meter_kwargs or {}
     results = []
@@ -2588,7 +2592,8 @@ def run_metrics(
         for metric in metrics:
             metric_cls = metric.metric_cls
             with GPUMeter(
-                capture_intermediate_data=False, **gpu_meter_kwargs
+                capture_intermediate_data=capture_intermediate_data,
+                **gpu_meter_kwargs,
             ) as profiler:
                 extra_metric_kwargs = {}
                 if not issubclass(metric_cls, TextEvaluationMetric):
@@ -2623,7 +2628,7 @@ def run_metrics(
                 MetricResult(
                     metric_name=metric.label,
                     result=result,
-                    profiler=profiler if capture_intermediate_data else None,
+                    profiler=profiler,
                     scoring_version=metric_cls.SCORING_VERSION,
                     details=details,
                 )
