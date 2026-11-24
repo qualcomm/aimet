@@ -7,6 +7,7 @@ import glob
 import importlib.util
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import sysconfig
@@ -33,6 +34,13 @@ aimet_packaging_plugin = import_from_path(
 )
 
 
+_GLIBC_VERSION_RE = re.compile(r"GLIBC_(\d+(?:\.\d+)*)")
+
+
+def _version_key(version):
+    return tuple(map(int, version.split(".")))
+
+
 def _get_min_glibc_version(build_dir):
     if sys.platform != "linux":
         return None
@@ -42,20 +50,19 @@ def _get_min_glibc_version(build_dir):
     glibc_ver_list = []
     try:
         for so_file in so_file_list:
-            command = f"objdump -T {so_file} | grep GLIBC | sed 's/.*GLIBC_\\([.0-9]*\\).*/\\1/g' | sort -Vu | tail -1"
-            glibc_ver = (
-                subprocess.check_output(command, shell=True).decode("utf-8").strip()
+            symbols = subprocess.check_output(["objdump", "-T", so_file]).decode(
+                "utf-8"
             )
-            glibc_ver_list.append(glibc_ver)
-    except subprocess.CalledProcessError:
+            versions = _GLIBC_VERSION_RE.findall(symbols)
+            if versions:
+                glibc_ver_list.append(max(versions, key=_version_key))
+    except (subprocess.CalledProcessError, OSError):
         return None
 
     if not glibc_ver_list:
         return None
 
-    return sorted(
-        glibc_ver_list, key=lambda x: list(map(int, x.split("."))), reverse=True
-    )[0]
+    return max(glibc_ver_list, key=_version_key)
 
 
 def main(output_dir, build_dir):
