@@ -18,7 +18,7 @@ The same two reference recipes are applied (INT4 weights, INT16 activations):
 #. LPBQ + SeqMSE
 
 Refer to the :ref:`primary tutorial <quantization-genai-recipe>` for the recipe descriptions, system
-requirements, workflow overview, and FAQs.
+requirements, and FAQs.
 
 .. note::
 
@@ -47,147 +47,141 @@ across all models:
 
 - Embedding: INT16
 - LM Head weights: INT8
-- Calibration: ``num_batches=20``
-- SeqMSE: ``num_batches=20``
+- Calibration: ``num_iterations=20``
+- SeqMSE: ``num_iterations=20``
 
 The KV Cache precision varies per model and is shown on the second line of the Acts column.
 
 AdaScale ``num_batches`` and ``num_iterations`` vary per model and are noted inline in the Recipe column as
 ``AdaScale (b=<num_batches>, i=<num_iterations>)``.
 
+The Config column links the GenAI Lab YAML config for each quantized row. To reproduce an FP32 baseline, take
+any config for that model, remove its ``precision`` and ``recipe`` sections, and run it with ``--framework onnx``
+(the FP32 baseline is evaluated on ``aimet-onnx``).
+
 .. raw:: html
 
     <table class="perf-table">
       <colgroup>
-        <col style="width:20%"><col style="width:8%"><col style="width:11%"><col style="width:40%">
-        <col style="width:5%"><col style="width:5%"><col style="width:7%"><col style="width:4%">
+        <col style="width:18%"><col style="width:8%"><col style="width:10%"><col style="width:36%">
+        <col style="width:5%"><col style="width:5%"><col style="width:7%"><col style="width:5%"><col style="width:6%">
       </colgroup>
       <thead>
         <tr>
           <th>Model</th><th>Weights</th><th>Acts</th><th>Recipe</th>
-          <th>PPL</th><th>MMLU</th><th>Time (min)</th><th>CUDA (GB)</th>
+          <th>PPL</th><th>MMLU</th><th>Time (min)</th><th>CUDA (GB)</th><th>Config</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct">LLaMA 3.2 1B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>12.14</td><td>46.06</td><td>&lt;1</td><td>6</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>12.14</td><td>46.06</td><td>&lt;1</td><td>6</td><td>—</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant<br>AdaScale (b=128, i=2048)</td>
-          <td>13.67</td><td>42.25</td><td>151</td><td>21</td>
+          <td>13.67</td><td>42.25</td><td>151</td><td>21</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/llama-3.2-1b-instruct/pcq_spinquant_r1_adascale.yaml">YAML</a></td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT8</td><td>SeqMSE</td>
-          <td>14.07</td><td>43.09</td><td>45</td><td>29</td>
+          <td>14.07</td><td>43.09</td><td>45</td><td>29</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/llama-3.2-1b-instruct/lpbq_seqmse.yaml">YAML</a></td>
         </tr>
       </tbody>
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct">LLaMA 3.2 3B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>10.13</td><td>60.74</td><td>&lt;1</td><td>14</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>10.13</td><td>60.74</td><td>&lt;1</td><td>14</td><td>—</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant<br>AdaScale (b=128, i=1024)</td>
-          <td>11.01</td><td>58.09</td><td>395</td><td>41</td>
+          <td>11.01</td><td>58.09</td><td>395</td><td>41</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/llama-3.2-3b-instruct/pcq_spinquant_r1_adascale.yaml">YAML</a></td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT8</td><td>SeqMSE</td>
-          <td>10.69</td><td>59.08</td><td>162</td><td>51</td>
+          <td>10.69</td><td>59.08</td><td>162</td><td>51</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/llama-3.2-3b-instruct/lpbq_seqmse.yaml">YAML</a></td>
         </tr>
       </tbody>
       <tbody>
         <tr>
-          <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen2.5-0.5B">Qwen 2.5 0.5B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>13.14</td><td>46.30</td><td>&lt;1</td><td>4</td>
+          <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct">Qwen 2.5 0.5B Instruct</a></td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>13.14</td><td>46.30</td><td>&lt;1</td><td>4</td><td>—</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT16</td><td>SpinQuant<br>AdaScale (b=128, i=2048)</td>
-          <td>13.89</td><td>44.19</td><td>200</td><td>13</td>
+          <td>13.89</td><td>44.19</td><td>200</td><td>13</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/qwen2.5-0.5b-instruct/pcq_spinquant_r1_adascale.yaml">YAML</a></td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT16</td><td>SeqMSE</td>
-          <td>15.32</td><td>42.33</td><td>23</td><td>14</td>
+          <td>15.32</td><td>42.33</td><td>23</td><td>14</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/qwen2.5-0.5b-instruct/lpbq_seqmse.yaml">YAML</a></td>
         </tr>
       </tbody>
       <tbody>
         <tr>
-          <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen2.5-1.5B">Qwen 2.5 1.5B Instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>54.65</td><td>&lt;1</td><td>8</td>
+          <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct">Qwen 2.5 1.5B Instruct</a></td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>54.65</td><td>&lt;1</td><td>8</td><td>—</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT16</td><td>SpinQuant<br>AdaScale (b=128, i=1024)</td>
-          <td>13.57</td><td>49.81</td><td>183</td><td>23</td>
+          <td>13.57</td><td>49.81</td><td>183</td><td>23</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/qwen2.5-1.5b-instruct/pcq_spinquant_r1_adascale.yaml">YAML</a></td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT16</td><td>SeqMSE</td>
-          <td>14.86</td><td>49.25</td><td>68</td><td>26</td>
+          <td>14.86</td><td>49.25</td><td>68</td><td>26</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/qwen2.5-1.5b-instruct/lpbq_seqmse.yaml">YAML</a></td>
         </tr>
       </tbody>
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/Qwen/Qwen3-4B">Qwen 3 4B</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>70.06</td><td>&lt;1</td><td>17</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>12.41</td><td>70.06</td><td>&lt;1</td><td>17</td><td>—</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant<br>AdaScale (b=128, i=512)</td>
-          <td>13.85</td><td>65.07</td><td>402</td><td>48</td>
+          <td>13.85</td><td>65.07</td><td>402</td><td>48</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/qwen3-4b/pcq_spinquant_r1_adascale.yaml">YAML</a></td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT8</td><td>SeqMSE</td>
-          <td>13.10</td><td>65.66</td><td>162</td><td>39</td>
+          <td>13.10</td><td>65.66</td><td>162</td><td>39</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/qwen3-4b/lpbq_seqmse.yaml">YAML</a></td>
         </tr>
       </tbody>
       <tbody>
         <tr>
           <td rowspan="3"><a href="https://huggingface.co/microsoft/Phi-3.5-mini-instruct">Phi 3.5 mini instruct</a></td>
-          <td>FP32</td><td>FP32</td><td>—</td><td>5.77</td><td>68.89</td><td>&lt;1</td><td>16</td>
+          <td>FP32</td><td>FP32</td><td>—</td><td>5.77</td><td>68.89</td><td>&lt;1</td><td>16</td><td>—</td>
         </tr>
         <tr>
           <td>INT4 PCQ</td><td>INT16<br>KV=INT8</td><td>SpinQuant<br>AdaScale (b=32, i=256)</td>
-          <td>6.58</td><td>62.62</td><td>257</td><td>48</td>
+          <td>6.58</td><td>62.62</td><td>257</td><td>48</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/phi-3.5-mini-instruct/pcq_spinquant_r1_adascale.yaml">YAML</a></td>
         </tr>
         <tr>
           <td>INT4 LPBQ</td><td>INT16<br>KV=INT8</td><td>SeqMSE</td>
-          <td>6.45</td><td>64.63</td><td>124</td><td>38</td>
+          <td>6.45</td><td>64.63</td><td>124</td><td>38</td><td><a href="https://github.com/qualcomm/aimet/blob/develop/GenAILab/configs/recipes/phi-3.5-mini-instruct/lpbq_seqmse.yaml">YAML</a></td>
         </tr>
       </tbody>
     </table>
 
 
-Quick Start
-===========
+Reproduce the results
+=====================
 
-Quantize the `Llama 3.2 1B` model using ``aimet-torch``.
+Set up GenAI Lab as described in :ref:`Reproduce the results <quantization-genai-recipe-reproduce>`, with both
+``aimet-torch`` and ``aimet-onnx`` installed. Add a top-level ``eval_in_onnx: true`` line to the config linked in the
+results table, then run it with ``aimet-torch``:
 
-Example: Apply Recipe 1 (pcq_spinquant_adascale)
+.. code-block:: bash
 
-.. code-block:: Python
+    echo "eval_in_onnx: true" >> GenAILab/configs/recipes/llama-3.2-1b-instruct/lpbq_seqmse.yaml
+    python -m GenAILab --framework torch \
+        --config GenAILab/configs/recipes/llama-3.2-1b-instruct/lpbq_seqmse.yaml
 
-    python -m Examples.torch.quantize \
-     --model-id "meta-llama/Llama-3.2-1B-Instruct" \
-     --recipe "pcq_spinquant_adascale" \
-     --export-path "./torch_pcq" \
-     --adascale-num-batches 128 --adascale-num-iterations 2048
+This exports the quantized model and an ``onnx_eval_config.yaml`` to
+``GenAILab/artifacts/exports/<model>_<timestamp>/``, where ``<model>`` is the Hugging Face model name without the organization (e.g.
+``Llama-3.2-1B-Instruct``). The metrics
+this run prints are evaluated in ``aimet-torch`` and are not the reported numbers. Evaluate the export on
+``aimet-onnx`` to get the reported numbers:
 
-Example: Apply Recipe 2 (lpbq_seqmse)
+.. code-block:: bash
 
-.. code-block:: Python
-
-    python -m Examples.torch.quantize \
-     --model-id "meta-llama/Llama-3.2-1B-Instruct" \
-     --recipe "lpbq_seqmse" \
-     --export-path "./torch_lpbq" \
-     --seqmse-num-batches 20
-
-Evaluate the checkpoint on ``aimet-onnx``.
-
-.. code-block:: Python
-
-    python -m Examples.onnx.evaluate \
-     --model-id "meta-llama/Llama-3.2-1B-Instruct" \
-     --checkpoint "./torch_lpbq" \
-     --eval-ppl
+    python -m GenAILab --framework onnx \
+        --config GenAILab/artifacts/exports/<model>_<timestamp>/onnx_eval_config.yaml
 
 
 Contact Us

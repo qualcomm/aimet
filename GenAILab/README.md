@@ -8,6 +8,23 @@ AIMET's GenAI laboratory provides an easy way to evaluate large models against q
 - HuggingFace transformers and datasets
 - See `requirements.txt` for full list
 
+## Setup
+
+GenAI Lab is not shipped in the `aimet-onnx` / `aimet-torch` packages; run it from a clone of this repository.
+
+```bash
+git clone https://github.com/qualcomm/aimet.git && cd aimet
+bash scripts/environment/setup_genai.sh --repo-dir "$PWD"
+source .venv/bin/activate
+```
+
+The script creates a venv at `.venv`, installs the GenAI Lab requirements and AIMET from PyPI. To build AIMET
+from source instead, pass `--skip-aimet` to `setup_genai.sh`, then after activating the venv run
+`bash scripts/environment/build_aimet.sh --repo-dir "$PWD"`. See the usage notes at the top of each script for
+all options.
+
+Run all commands below from the repository root.
+
 ## Quick Start
 
 ```bash
@@ -190,7 +207,8 @@ GenAILab/
 │   │   └── onnx/               # llm.py, vlm.py, export_utils.py, generator_utils.py
 │   ├── transforms/             # Model adaptations (SHA, exportable attention, MoE)
 │   └── scoring/                # Autograded-prompt and Grace scoring
-├── configs/                    # Regression test configs
+├── configs/                    # Regression test configs; recipes/ holds the configs
+│                               #   published in the LLM recipe docs (keep them in sync)
 ├── tests/unit/                 # Unit tests
 └── dashboard/                  # Result dashboards
 ```

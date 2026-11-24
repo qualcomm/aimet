@@ -1,0 +1,34 @@
+# Run: python -m GenAILab --framework onnx --config GenAILab/configs/recipes/llama-3.2-3b-instruct/pcq_spinquant_r1_adascale.yaml
+model:
+  model_id: meta-llama/Llama-3.2-3B-Instruct
+  sequence_length: 2048
+  context_length: 4096
+precision:
+  activations: int16
+  kv_cache: int8
+  embedding: int16
+  lm_head:
+    qtype: int8
+    granularity: PCQ
+  blocks:
+    qtype: int4
+    granularity: PCQ
+recipe:
+  - name: SpinQuant
+    enable_r1: true
+    enable_r2: false
+    enable_r3: false
+  - name: AdaScale
+    num_batches: 128
+    num_iterations: 1024
+    dataset:
+      name: Wikitext
+      split: train
+  - name: Calibration
+    num_iterations: 20
+    dataset:
+      name: Wikitext
+      split: train
+metrics:
+  - name: PPL
+  - name: MMLU

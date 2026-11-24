@@ -1,0 +1,30 @@
+# Run: python -m GenAILab --framework onnx --config GenAILab/configs/recipes/qwen2.5-0.5b-instruct/lpbq_seqmse.yaml
+model:
+  model_id: Qwen/Qwen2.5-0.5B-Instruct
+  sequence_length: 2048
+  context_length: 4096
+precision:
+  activations: int16
+  kv_cache: int16
+  embedding: int16
+  lm_head:
+    qtype: int8
+    granularity: PCQ
+  blocks:
+    qtype: int4
+    granularity: LPBQ
+    block_size: 64
+recipe:
+  - name: SeqMSE
+    num_iterations: 20
+    dataset:
+      name: Wikitext
+      split: train
+  - name: Calibration
+    num_iterations: 20
+    dataset:
+      name: Wikitext
+      split: train
+metrics:
+  - name: PPL
+  - name: MMLU

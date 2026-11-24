@@ -1,0 +1,43 @@
+# Run: python -m GenAILab --framework onnx --config GenAILab/configs/recipes/qwen3-vl-8b-instruct/pcq_adascale.yaml
+model:
+  model_id: Qwen/Qwen3-VL-8B-Instruct
+  sequence_length: 2048
+  context_length: 4096
+  adaptations:
+    - FastExportable
+precision:
+  activations: int16
+  kv_cache: int8
+  embedding: int16
+  lm_head:
+    qtype: int8
+    granularity: PCQ
+  blocks:
+    qtype: int4
+    granularity: PCQ
+recipe:
+  backbone:
+    - name: AdaScale
+      num_batches: 128
+      num_iterations: 2048
+      dataset:
+        name: Wikitext
+        split: train
+    - name: Calibration
+      num_iterations: 20
+      dataset:
+        name: Interleaved
+        source_datasets:
+          - name: AOKVQA
+            split: train
+          - name: Wikitext
+            split: train
+  visual:
+    - name: Calibration
+      num_iterations: 20
+      dataset:
+        name: AOKVQA
+        split: train
+metrics:
+  - name: PPL
+  - name: MMLU

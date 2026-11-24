@@ -1,0 +1,34 @@
+# Run: python -m GenAILab --framework onnx --config GenAILab/configs/recipes/phi-3.5-mini-instruct/pcq_spinquant_r1_adascale.yaml
+model:
+  model_id: microsoft/Phi-3.5-mini-instruct
+  sequence_length: 2048
+  context_length: 4096
+precision:
+  activations: int16
+  kv_cache: int8
+  embedding: int16
+  lm_head:
+    qtype: int8
+    granularity: PCQ
+  blocks:
+    qtype: int4
+    granularity: PCQ
+recipe:
+  - name: SpinQuant
+    enable_r1: true
+    enable_r2: false
+    enable_r3: false
+  - name: AdaScale
+    num_batches: 32
+    num_iterations: 256
+    dataset:
+      name: Wikitext
+      split: train
+  - name: Calibration
+    num_iterations: 20
+    dataset:
+      name: Wikitext
+      split: train
+metrics:
+  - name: PPL
+  - name: MMLU

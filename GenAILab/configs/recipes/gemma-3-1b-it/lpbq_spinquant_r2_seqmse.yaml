@@ -1,0 +1,34 @@
+# Run: python -m GenAILab --framework onnx --config GenAILab/configs/recipes/gemma-3-1b-it/lpbq_spinquant_r2_seqmse.yaml
+model:
+  model_id: google/gemma-3-1b-it
+  sequence_length: 2048
+  context_length: 4096
+precision:
+  activations: int16
+  kv_cache: int8
+  embedding: int16
+  lm_head:
+    qtype: int8
+    granularity: PCQ
+  blocks:
+    qtype: int4
+    granularity: LPBQ
+    block_size: 64
+recipe:
+  - name: SpinQuant
+    enable_r1: false
+    enable_r2: true
+    enable_r3: false
+  - name: SeqMSE
+    num_iterations: 20
+    dataset:
+      name: Wikitext
+      split: train
+  - name: Calibration
+    num_iterations: 20
+    dataset:
+      name: Wikitext
+      split: train
+metrics:
+  - name: PPL
+  - name: MMLU
