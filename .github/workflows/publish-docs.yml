@@ -1,0 +1,199 @@
+name: Publish docs to aimet-pages
+
+# Builds the docs for a release and puts up (or updates) a PR on aimet-pages that overwrites
+# releases/<version>/ and, if <version> is the newest release there, releases/latest/.
+#
+# Run it manually on a release branch to re-upload docs after a docs fix to an already released
+# version. The release workflow also calls it to publish docs for a new release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released AIMET version whose docs to publish (must match packaging/version.txt on the selected branch)"
+        required: true
+        type: string
+      update_latest:
+        description: "Also overwrite releases/latest. auto: only if version is the newest release on aimet-pages"
+        required: false
+        type: choice
+        options: [ auto, "true", "false" ]
+        default: auto
+
+  workflow_call:
+    inputs:
+      version:
+        description: "AIMET version whose docs to publish"
+        required: true
+        type: string
+      update_latest:
+        description: "auto, true or false; see workflow_dispatch"
+        required: false
+        type: string
+        default: auto
+      reuse_docs_artifact:
+        description: "Publish the Docs artifact already built earlier in this run instead of building it"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REPO_DIR: "aimet-repo"
+  DOCS_REPO: "qualcomm/aimet-pages"
+  DOCS_REPO_DIR: "aimet-pages-repo"
+
+jobs:
+  checklist:
+    name: Validate inputs
+    if: ${{ github.repository_owner != 'qualcomm' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.REPO_DIR }}
+
+      - name: Validate version and update_latest
+        env:
+          VERSION: ${{ inputs.version }}
+          UPDATE_LATEST: ${{ inputs.update_latest }}
+        run: |
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unsupported version format '${VERSION}', expecting <major>.<minor>.<patch>"
+            exit 1
+          fi
+          repo_version=$(head -n 1 ${{ env.REPO_DIR }}/packaging/version.txt)
+          if [[ "${VERSION}" != "${repo_version}" ]]; then
+            echo "::error::Input version (${VERSION}) does not match ${{ github.ref_name }} package version (${repo_version})"
+            exit 1
+          fi
+          case "${UPDATE_LATEST}" in
+            auto|true|false) ;;
+            *) echo "::error::update_latest must be auto, true or false, got '${UPDATE_LATEST}'"; exit 1 ;;
+          esac
+
+  build_docs:
+    name: Build docs
+    needs: checklist
+    # inputs.reuse_docs_artifact is null on workflow_dispatch, so a manual run always builds.
+    if: ${{ !inputs.reuse_docs_artifact }}
+    uses: ./.github/workflows/build-wheels.yml
+    with:
+      # Only the docs variant from nightly-pipeline.yml; keep the two in sync.
+      variants: '{"include":[{"id":"onnx-torch-cpu","VER_PYTHON_BUILD":"3.12","VER_TORCH":"2.*","VER_ONNXRUNTIME":"1.19.2","PIP_INDEX":""}]}'
+      build-linux-wheel: true
+      build-windows-wheel: false
+      build-macos-wheel: false
+    secrets: inherit
+
+  publish_docs:
+    name: Put up aimet-pages PR
+    needs: [ checklist, build_docs ]
+    if: ${{ !cancelled() && needs.checklist.result == 'success' && (needs.build_docs.result == 'success' || needs.build_docs.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    # Publishing docs requires approval from aimet-deployers
+    environment: prod
+    steps:
+      - name: Setup GitHub CLI
+        run: |
+          # Ref: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+          (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+            && sudo mkdir -p -m 755 /etc/apt/keyrings \
+                  && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                  && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && sudo apt update \
+            && sudo apt install gh -y
+
+      - name: Download Docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Docs
+          path: artifacts-downloaded/Docs
+
+      - name: Checkout aimet-pages
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: ${{ env.DOCS_REPO_DIR }}
+          repository: ${{ env.DOCS_REPO }}
+          github-server-url: https://github.com
+          token: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Put up a PR for the docs
+        env:
+          GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
+          tag: ${{ inputs.version }}
+          UPDATE_LATEST: ${{ inputs.update_latest }}
+        run: |
+          set -euo pipefail
+
+          # The Docs artifact holds releases/${tag}/ (noindexed) and releases/latest/ (the same
+          # build, indexable); see Docs/CMakeLists.txt.
+          docs=${GITHUB_WORKSPACE}/artifacts-downloaded/Docs/releases
+          for d in "${tag}" latest; do
+            [ -d "${docs}/${d}" ] || { echo "::error::Docs artifact is missing releases/${d}"; exit 1; }
+          done
+
+          cd ${{ env.DOCS_REPO_DIR }}
+
+          if [ -d "releases/${tag}" ]; then
+            action="Update"
+          else
+            action="Release"
+          fi
+
+          # Only the newest release may own latest, so re-uploading docs for an older release
+          # leaves it alone.
+          if [ "${UPDATE_LATEST}" = "auto" ]; then
+            newest=$( (ls releases 2>/dev/null; echo "${tag}") \
+                      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+            if [ "${newest}" = "${tag}" ]; then
+              UPDATE_LATEST=true
+            else
+              echo "Newest release on aimet-pages is ${newest}; leaving releases/latest untouched."
+              UPDATE_LATEST=false
+            fi
+          fi
+
+          branch="docs-${tag}"
+          git checkout -b "${branch}"
+
+          # Replace each directory wholesale. Dropping it from the index too means git add records
+          # exactly what changed: new, updated and deleted pages.
+          dirs=("${tag}")
+          if [ "${UPDATE_LATEST}" = "true" ]; then
+            dirs+=(latest)
+          fi
+          for d in "${dirs[@]}"; do
+            git rm -r -q --cached --ignore-unmatch "releases/${d}"
+            rm -rf "releases/${d}"
+            mkdir -p releases
+            cp -r "${docs}/${d}" "releases/${d}"
+          done
+
+          git add -A releases/
+          if git diff --cached --quiet; then
+            echo "::notice::Docs for ${tag} on aimet-pages master are already up to date; nothing to publish."
+            exit 0
+          fi
+
+          git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/${{ env.DOCS_REPO }}.git
+          git config user.email "aimet_bot@qti.qualcomm.com"
+          git config user.name "aimet_bot"
+          git commit -m "${action} docs ${tag}" -s
+
+          # Force push: the branch is created fresh from master on every run, so it diverges from
+          # any earlier push of the same branch. This also updates an open PR from that branch.
+          git push -f public-origin "${branch}"
+
+          open_prs=$(gh pr list --repo ${{ env.DOCS_REPO }} --head "${branch}" --state open --json number --jq length)
+          if [ "${open_prs}" -gt 0 ]; then
+            echo "Updated the open aimet-pages PR from ${branch}."
+          else
+            gh pr create --repo ${{ env.DOCS_REPO }} --base master --head "${branch}" \
+              --title "${action} docs ${tag}" \
+              --body "${action} docs for ${tag} (releases/latest updated: ${UPDATE_LATEST})"
+          fi

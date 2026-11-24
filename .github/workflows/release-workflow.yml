@@ -37,8 +37,6 @@ on:
 env:
   PUBLIC_REPO: "qualcomm/aimet"
   REPO_DIR: "aimet-repo"
-  DOCS_REPO: "qualcomm/aimet-pages"
-  DOCS_REPO_DIR: "aimet-pages-repo"
 
 jobs:
   checklist:
@@ -165,7 +163,7 @@ jobs:
     secrets: inherit
 
   release_to_github:
-    if: inputs.push_to_github || inputs.push_docs
+    if: inputs.push_to_github
     name: "Release AIMET on Github"
     runs-on: ubuntu-latest
     needs: build_wheels_and_test
@@ -173,7 +171,6 @@ jobs:
     environment: prod
     steps:
       - name: Checkout internal repo
-        if: inputs.push_to_github
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
@@ -184,7 +181,6 @@ jobs:
           persist-credentials: false
 
       - name: Public release branch to public
-        if: inputs.push_to_github
         run: |
           cd ${{ env.REPO_DIR }}
           git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/qualcomm/aimet.git
@@ -194,14 +190,12 @@ jobs:
       # artifacts, which aren't wheels. The release step picks the publishable
       # ones out of these.
       - name: Download artifacts
-        if: inputs.push_to_github
         uses: actions/download-artifact@v4
         with:
           pattern: "*-wheel"
           path: artifacts-downloaded
 
       - name: Setup GitHub CLI
-        if: inputs.push_to_github || inputs.push_docs
         run: |
           # Ref: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
           (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
@@ -214,7 +208,6 @@ jobs:
             && sudo apt install gh -y
 
       - name: Release wheels on Github
-        if: inputs.push_to_github
         env:
           GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
           tag: ${{ inputs.version }}
@@ -237,69 +230,27 @@ jobs:
           title="Version ${tag}"
           gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${{ github.ref_name }} --title "${title}" --generate-notes "${wheels[@]}"
 
-      - name: Download Docs artifact
-        if: inputs.push_docs
-        uses: actions/download-artifact@v4
-        with:
-          name: Docs
-          path: artifacts-downloaded/Docs
-
-      - name: Checkout aimet-pages
-        if: inputs.push_docs
-        uses: actions/checkout@v4
-        with:
-          ref: master
-          path: ${{ env.DOCS_REPO_DIR }}
-          repository: ${{ env.DOCS_REPO }}
-          github-server-url: https://github.com
-          token: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Put up a PR for new docs
-        if: inputs.push_docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
-          tag: ${{ inputs.version }}
-        run: |
-          # The Docs artifact holds releases/${tag}/ (noindexed) and releases/latest/ (the same
-          # build, indexable); see Docs/CMakeLists.txt.
-          docs=${GITHUB_WORKSPACE}/artifacts-downloaded/Docs/releases
-          for d in ${tag} latest; do
-            [ -d ${docs}/${d} ] || { echo "Docs artifact is missing releases/${d}"; exit 1; }
-          done
-
-          # Create PR on aimet-pages
-          cd ${{ env.DOCS_REPO_DIR }}
-          git checkout -b ${{ github.ref_name }}
-
-          mkdir -p releases/${tag}
-          cp -r ${docs}/${tag}/. releases/${tag}
-
-          # Replace latest wholesale (it used to be a symlink). Dropping it from the index too
-          # means git add records exactly what changed since the last release: new, updated and
-          # deleted pages.
-          git rm -r -q --cached --ignore-unmatch releases/latest
-          rm -rf releases/latest
-          cp -r ${docs}/latest releases/latest
-
-          # Commit doc changes
-          git add -A releases/
-          git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/${{ env.DOCS_REPO }}.git
-          git config user.email "aimet_bot@qti.qualcomm.com"
-          git config user.name "aimet_bot"
-          git commit -m "Release docs ${tag}" -s
-
-          # Force push needed: aimet-pages is checked out at master and the release branch is created
-          # fresh from it, so it diverges from any existing remote branch of the same name.
-          # (Unlike quic/aimet, which is checked out directly on the release branch and fast-forwards.)
-          git push -f public-origin ${{ github.ref_name }}
-
-          # Create PR on quic/aimet-pages
-          gh pr create --repo ${{ env.DOCS_REPO }} --base master --head ${{ github.ref_name }} --title "Release ${tag}" --body "Release docs for ${tag}"
+  push_docs:
+    if: inputs.push_docs
+    name: "Publish docs to aimet-pages"
+    needs: build_wheels_and_test
+    uses: ./.github/workflows/publish-docs.yml
+    with:
+      version: ${{ inputs.version }}
+      # build_wheels_and_test already built the Docs artifact.
+      reuse_docs_artifact: true
+    secrets: inherit
 
   notify_release_on_slack:
     name: Announce release on internal channels
-    needs: [ release_aimet_torch_to_pypi, release_aimet_onnx_to_pypi, release_aimet_onnx_macos_to_pypi, release_aimet_onnx_windows_x64_to_pypi, release_aimet_onnx_windows_arm64_to_pypi, release_to_github ]
+    needs: [ release_aimet_torch_to_pypi, release_aimet_onnx_to_pypi, release_aimet_onnx_macos_to_pypi, release_aimet_onnx_windows_x64_to_pypi, release_aimet_onnx_windows_arm64_to_pypi, release_to_github, push_docs ]
+    # Announce once the wheels are on PyPI and the GitHub release and/or the docs went out; the
+    # one that was not requested is skipped. (All PyPI jobs share the push_to_pypi condition.)
+    if: >-
+      ${{ !cancelled()
+          && !contains(needs.*.result, 'failure')
+          && needs.release_aimet_torch_to_pypi.result == 'success'
+          && (needs.release_to_github.result == 'success' || needs.push_docs.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - uses: slackapi/slack-github-action@v1.25.0
