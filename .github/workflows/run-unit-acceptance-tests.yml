@@ -1,149 +1,148 @@
 name: Run Unit and Acceptance tests
 
+# One matrixed job across every platform, keyed the same way as
+# build-wheels.yml ("platform": "linux" | "windows" | "macos", and for
+# windows an "arch"). Linux variants additionally fan out over multiple
+# Python versions (e.g. "3.12,3.10") via a nested matrix; Windows/macOS
+# variants test exactly one Python version each, so they skip that fan-out.
+
 on:
   workflow_call:
     inputs:
-      env_name:
-        required: false
+      variants:
+        required: true
         type: string
-        default: aimet-dev
-      ver_python:
-        description: "Comma-separated Python versions to test, e.g. '3.10,3.11,3.12'"
-        required: false
-        type: string
-        default: "3.12"
-      ver_cuda:
-        required: false
-        type: string
-        default: ""
-      ver_torch:
-        required: false
-        type: string
-        default: ""
-      ver_onnxruntime:
-        required: false
-        type: string
-        default: ""
-      pip_index:
-        required: false
-        type: string
-        default: ""
-      run_unit_tests:
-        required: false
-        type: boolean
-        default: false
-      run_acceptance_tests:
-        required: false
-        type: boolean
-        default: false
-      include_windows_tests:
-        required: false
-        type: boolean
-        default: false
-      include_macos_tests:
-        required: false
-        type: boolean
-        default: false
-      include_linux_tests:
-        description: "Run the Ubuntu test job at all"
-        required: false
-        type: boolean
-        default: true
 
 jobs:
-  parse_python_versions:
+  # Expands each Linux variant's comma-separated ver_python into its own
+  # matrix leg; Windows/macOS variants pass through as a single leg each.
+  expand_python_versions:
     name: setup
     runs-on: tetra-ubuntu-2204
     outputs:
-      python_versions: ${{ steps.set-matrix.outputs.python_versions }}
+      matrix: ${{ steps.expand.outputs.matrix }}
     steps:
-      - name: Convert comma-separated Python versions to JSON array
-        id: set-matrix
+      - name: Expand comma-separated ver_python per variant
+        id: expand
+        env:
+          VARIANTS: ${{ inputs.variants }}
         run: |
-          # Convert "3.10,3.11,3.12" to JSON array ["3.10","3.11","3.12"]
-          versions="${{ inputs.ver_python }}"
-          json_array=$(echo "$versions" | tr ',' '\n' | jq -R . | jq -sc .)
-          echo "python_versions={\"ver_python\":$json_array}" >> $GITHUB_OUTPUT
+          # For each variant, "3.12,3.10" becomes two legs differing only in
+          # ver_python; a platform without a comma (or windows/macos, which
+          # are always single-version) stays a single leg. Variants with
+          # both RUN_UNIT_TESTS and RUN_ACCEPTANCE_TESTS off (e.g. the docs
+          # build) are dropped here -- the `matrix` context isn't available
+          # in a job-level `if:`, so this is the only place to skip them.
+          matrix=$(echo "$VARIANTS" | jq -c '
+            [ .include[] | select(.RUN_UNIT_TESTS == "ON" or .RUN_ACCEPTANCE_TESTS == "ON") | . as $base |
+              (($base.VER_PYTHON_TEST // $base.VER_PYTHON_BUILD // $base.VER_PYTHON // "3.12") | split(",")) as $versions |
+              $versions[] | $base + {ver_python: .}
+            ]
+          ' | jq -c '{include: .}')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
-  test_on_linux:
-    name: Linux py${{ matrix.ver_python }}
-    needs: [parse_python_versions]
-    # CUDA variants need a real GPU; CPU-only variants stay on the CPU pool.
-    runs-on: ${{ inputs.ver_cuda != '' && 'mlops-ci-gpu-large' || 'mlops-ci-cpu' }}
-    if: ${{ inputs.include_linux_tests && (inputs.run_unit_tests || inputs.run_acceptance_tests) }}
+  test:
+    name: >-
+      ${{ matrix.platform == 'linux' && format('{0} py{1}', matrix.id, matrix.ver_python) || matrix.id }}
+    needs: [ expand_python_versions ]
+    runs-on: >-
+      ${{
+        matrix.platform == 'windows' && (matrix.arch == 'arm64' && 'aimet-windows-arm64' || 'aimet-windows-amd64') ||
+        matrix.platform == 'macos' && 'aimet-mac-arm64' ||
+        (matrix.VER_CUDA != '' && 'mlops-ci-gpu-large' || 'mlops-ci-cpu')
+      }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.parse_python_versions.outputs.python_versions) }}
+      matrix: ${{ fromJSON(needs.expand_python_versions.outputs.matrix) }}
+    defaults:
+      run:
+        shell: ${{ matrix.platform == 'windows' && 'powershell' || 'bash' }}
     env:
       pytest_github_report: true
       pytest_use_zeros: true
+      PACKAGE: ${{ matrix.PACKAGE }}
     steps:
-      - name: Install dependencies
+      - name: Install dependencies (Linux)
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y git curl g++ ca-certificates cmake make
           rm -rf download
+
       - name: Set CUDA_HOME for GPU builds
-        if: inputs.ver_cuda != ''
+        if: matrix.VER_CUDA != ''
         run: |
           # Set CUDA_HOME for deepspeed and other CUDA-dependent packages
           echo "CUDA_HOME=/usr/local/cuda" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: "${{ inputs.env_name }}-wheel"
-          path: "downloads"
-      - name: Determine package from env_name
+
+      - name: Redirect temp directories to workspace for automated cleanup (Windows)
+        if: matrix.platform == 'windows'
         run: |
-          package="aimet_torch"
-          if [[ "${{ inputs.env_name }}" == "onnx-cpu" || "${{ inputs.env_name }}" == "onnx-gpu" ]]; then
-            package="aimet_onnx"
-          fi
-          echo "PACKAGE=$package" >> $GITHUB_ENV
+          $env:TEMP = "$env:GITHUB_WORKSPACE\temp"
+          $env:TMP = "$env:GITHUB_WORKSPACE\temp"
+
       - uses: actions/download-artifact@v4
-        if: env.PACKAGE == 'aimet_onnx'
         with:
-          name: "${{ inputs.env_name }}-tests"
+          name: "${{ matrix.id }}-wheel"
           path: "downloads"
-      # Download both aimet-torch and aimet-onnx wheels for acceptance tests
-      # for joint testing of torch and onnx packages in the same environment
+
       - uses: actions/download-artifact@v4
-        if: inputs.run_acceptance_tests
+        if: matrix.RUN_UNIT_TESTS == 'ON' && matrix.BUILD_CPP_TESTS == 'ON'
         with:
-          name: "torch-${{ inputs.ver_cuda == '' && 'cpu' || 'gpu' }}-wheel"
+          name: "${{ matrix.id }}-tests"
           path: "downloads"
+
+      # Acceptance tests exercise torch and onnx together, so both CPU/GPU
+      # wheels are downloaded regardless of which variant's leg this is.
       - uses: actions/download-artifact@v4
-        if: inputs.run_acceptance_tests
+        if: matrix.platform == 'linux' && matrix.RUN_ACCEPTANCE_TESTS == 'ON'
         with:
-          name: "onnx-${{ inputs.ver_cuda == '' && 'cpu' || 'gpu' }}-wheel"
+          name: "torch-${{ matrix.VER_CUDA == '' && 'cpu' || 'gpu' }}-linux-x86-wheel"
           path: "downloads"
-      - name: Create python virtual environment
-        if: ${{ inputs.env_name  != 'onnx-torch-cpu' }}
+
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'linux' && matrix.RUN_ACCEPTANCE_TESTS == 'ON'
+        with:
+          name: "onnx-${{ matrix.VER_CUDA == '' && 'cpu' || 'gpu' }}-linux-x86-wheel"
+          path: "downloads"
+
+      - name: Create python virtual environment (Linux)
+        if: matrix.platform == 'linux' && matrix.PACKAGE != 'docs'
         uses: ./.github/actions/setup-uv-env
         with:
-          ENV_NAME: ${{ inputs.env_name }}
+          ENV_NAME: ${{ matrix.id }}
           VER_PYTHON: ${{ matrix.ver_python }}
-      - name: Install test dependencies
-        shell: bash
+
+      - uses: ./.github/actions/setup-uv-env
+        if: matrix.platform == 'windows' || matrix.platform == 'macos'
+        with:
+          ENV_NAME: ${{ matrix.id }}
+          VER_PYTHON: ${{ matrix.ver_python }}
+
+      - name: Install test dependencies (Linux)
+        if: matrix.platform == 'linux'
         run: |
-          . ./${{ inputs.env_name }}/bin/activate
+          . ./${{ matrix.id }}/bin/activate
 
           python3 scripts/all/build_and_test.py --task install_test_deps \
             --package "$PACKAGE" \
-            --venv "${{ inputs.env_name }}" \
+            --venv "${{ matrix.id }}" \
             --wheel-dir "downloads" \
-            --ver-cuda "${{ inputs.ver_cuda }}" \
+            --ver-cuda "${{ matrix.VER_CUDA }}" \
             --only
-      - name: Run pylint
+
+      - name: Run pylint (Linux)
+        if: matrix.platform == 'linux'
         run: |
-          . ./${{ inputs.env_name }}/bin/activate
-          UV_PYTHONPATH="./${{ inputs.env_name }}/lib/python${{ matrix.ver_python }}/site-packages"
+          . ./${{ matrix.id }}/bin/activate
+          UV_PYTHONPATH="./${{ matrix.id }}/lib/python${{ matrix.ver_python }}/site-packages"
 
           # Set LD_LIBRARY_PATH for dynamic linking with libpython3.so
           PYTHON_LIB_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
           export LD_LIBRARY_PATH="${PYTHON_LIB_PATH}:${LD_LIBRARY_PATH}"
 
-          # Run pylint on aimet-onnx or aimet-torch
           if [[ "$PACKAGE" == "aimet_onnx" ]] ; then
               AIMET_ONNX_PATH=$(find $UV_PYTHONPATH -regex ".*/aimet_onnx")
               if [ -z "$AIMET_ONNX_PATH" ]; then
@@ -159,138 +158,21 @@ jobs:
           fi
 
       - name: Run Unit tests
-        if: inputs.run_unit_tests
-        run: |
-          . ./${{ inputs.env_name }}/bin/activate
-
-          python3 scripts/all/build_and_test.py --task unit_test \
-            --package "$PACKAGE" \
-            --venv "${{ inputs.env_name }}" \
-            --wheel-dir "downloads" \
-            --ver-cuda "${{ inputs.ver_cuda }}" \
-            --parallel 8 \
-            --only
+        if: matrix.RUN_UNIT_TESTS == 'ON'
+        uses: ./.github/actions/test
+        with:
+          task: unit_test
+          id: ${{ matrix.id }}
+          platform: ${{ matrix.platform }}
+          package: ${{ env.PACKAGE }}
+          ver-cuda: ${{ matrix.VER_CUDA }}
 
       - name: Run Acceptance tests
-        if: inputs.run_acceptance_tests
-        run: |
-          . ./${{ inputs.env_name }}/bin/activate
-
-          python3 scripts/all/build_and_test.py --task acceptance_test \
-            --package "$PACKAGE" \
-            --venv "${{ inputs.env_name }}" \
-            --wheel-dir "downloads" \
-            --ver-cuda "${{ inputs.ver_cuda }}" \
-            --only
-
-  test_on_windows:
-    name: Windows ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner-label }}
-    if: inputs.include_windows_tests && inputs.env_name == 'onnx-cpu' && (inputs.run_unit_tests || inputs.run_acceptance_tests)
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: X64
-            python-version: "3.10"
-            wheel-arch: x64
-            runner-label: aimet-windows-amd64
-          - arch: ARM64
-            python-version: "3.12"
-            wheel-arch: arm64
-            runner-label: aimet-windows-arm64
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Redirect temp directories to workspace for automated cleanup
-        run: |
-          $env:TEMP = "$env:GITHUB_WORKSPACE\temp"
-          $env:TMP = "$env:GITHUB_WORKSPACE\temp"
-
-      - name: Download built wheels
-        uses: actions/download-artifact@v4
+        if: matrix.RUN_ACCEPTANCE_TESTS == 'ON'
+        uses: ./.github/actions/test
         with:
-          name: "onnx-cpu-win-${{ matrix.wheel-arch }}-wheel"
-          path: "downloads"
-
-      - uses: ./.github/actions/setup-uv-env
-        with:
-          ENV_NAME: "onnx-cpu"
-          VER_PYTHON: "${{ matrix.python-version }}"
-
-      - name: Run Unit tests
-        if: inputs.run_unit_tests
-        run: |
-          .\onnx-cpu\Scripts\Activate.ps1
-
-          python scripts\all\build_and_test.py --task unit_test `
-            --package aimet_onnx `
-            --venv onnx-cpu `
-            --wheel-dir "downloads" `
-            --parallel 8 `
-            --only
-
-      - name: Run Acceptance tests
-        if: inputs.run_acceptance_tests
-        run: |
-          .\onnx-cpu\Scripts\Activate.ps1
-
-          python scripts\all\build_and_test.py --task acceptance_test `
-            --package aimet_onnx `
-            --venv onnx-cpu `
-            --wheel-dir "downloads" `
-            --parallel 8 `
-            --only
-
-  test_on_macos:
-    name: macOS
-    runs-on: aimet-mac-arm64
-    if: inputs.include_macos_tests && inputs.env_name == 'onnx-cpu' && (inputs.run_unit_tests || inputs.run_acceptance_tests)
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download built wheel
-        uses: actions/download-artifact@v4
-        with:
-          name: "onnx-cpu-macos-arm64-wheel"
-          path: "downloads"
-
-      - name: Download compiled C++ unit tests
-        if: inputs.run_unit_tests
-        uses: actions/download-artifact@v4
-        with:
-          name: "onnx-cpu-macos-arm64-tests"
-          path: "downloads"
-
-      - uses: ./.github/actions/setup-uv-env
-        with:
-          ENV_NAME: "onnx-cpu"
-          VER_PYTHON: "3.12"
-
-      - name: Run Unit tests
-        if: inputs.run_unit_tests
-        run: |
-          . ./onnx-cpu/bin/activate
-
-          python3 scripts/all/build_and_test.py --task unit_test \
-            --package aimet_onnx \
-            --venv onnx-cpu \
-            --wheel-dir "downloads" \
-            --parallel 8 \
-            --only
-
-      - name: Run Acceptance tests
-        if: inputs.run_acceptance_tests
-        run: |
-          . ./onnx-cpu/bin/activate
-
-          python3 scripts/all/build_and_test.py --task acceptance_test \
-            --package aimet_onnx \
-            --venv onnx-cpu \
-            --wheel-dir "downloads" \
-            --parallel 8 \
-            --only
-
+          task: acceptance_test
+          id: ${{ matrix.id }}
+          platform: ${{ matrix.platform }}
+          package: ${{ env.PACKAGE }}
+          ver-cuda: ${{ matrix.VER_CUDA }}

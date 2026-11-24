@@ -2,6 +2,9 @@
 
 # build artifacts directory
 build
+# ...but not our composite action of the same name
+!.github/actions/build/
+!.github/actions/build/**
 aimet-env
 TrainingExtensions/torch/test/python/data/
 TrainingExtensions/torch/test/data/

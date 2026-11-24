@@ -1,0 +1,144 @@
+################################################################################
+# Composite Action: Build
+################################################################################
+# Builds an AIMET wheel for one variant, on whichever platform that variant
+# targets. Wraps the per-platform setup (setup-python on Linux,
+# setup-uv-env's uv/Python provisioning on Windows/macOS) and the matching
+# scripts/all/build_and_test.py invocation, so callers don't need their own
+# if: matrix.platform == ... branching per step.
+#
+# Usage:
+#   steps:
+#     - uses: actions/checkout@v4
+#     - uses: ./.github/actions/build
+#       with:
+#         id: onnx-cpu-windows-x64
+#         platform: windows
+#         package: aimet_onnx
+#         ver-python: "3.12"
+#         ver-torch: ""
+#         ver-onnxruntime: "1.19.2"
+#         ver-cuda: ""
+#         pip-index: pypi
+#         gpu-flag: ""
+#         enable-tests-flag: ""
+#         arch: x64
+#         windows-vcpkg-triplet: x64-windows
+################################################################################
+
+name: Build
+description: Build an AIMET wheel for one variant, on whichever platform it targets.
+
+inputs:
+  id:
+    description: "Variant id, used as the venv name (e.g. onnx-cpu-windows-x64)"
+    required: true
+  platform:
+    description: "linux | windows | macos"
+    required: true
+  package:
+    description: "aimet_torch | aimet_onnx | docs"
+    required: true
+  ver-python:
+    required: true
+  ver-torch:
+    required: false
+    default: ""
+  ver-onnxruntime:
+    required: false
+    default: ""
+  ver-cuda:
+    required: false
+    default: ""
+  pip-index:
+    required: false
+    default: ""
+  gpu-flag:
+    description: "Linux only: '--gpu' or ''"
+    required: false
+    default: ""
+  enable-tests-flag:
+    description: "Linux only: '--enable-tests' or ''"
+    required: false
+    default: ""
+  arch:
+    description: "Windows only: x64 | arm64"
+    required: false
+    default: ""
+  windows-vcpkg-triplet:
+    description: "Windows only: x64-windows | arm64-windows"
+    required: false
+    default: ""
+  macos-deployment-target:
+    description: "macOS only, e.g. 15.0"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install macOS build dependencies
+      if: inputs.platform == 'macos'
+      shell: bash
+      run: scripts/posix/install_macos_deps.sh
+
+    - uses: actions/setup-python@v5
+      if: inputs.platform == 'linux'
+      with:
+        python-version: ${{ inputs.ver-python }}
+
+    - uses: ./.github/actions/setup-uv-env
+      if: inputs.platform == 'windows' || inputs.platform == 'macos'
+      with:
+        ENV_NAME: ${{ inputs.id }}
+        VER_PYTHON: ${{ inputs.ver-python }}
+
+    - name: "Build AIMET (${{ inputs.id }}) [Linux]"
+      if: inputs.platform == 'linux'
+      shell: bash
+      run: |
+        python3 scripts/all/build_and_test.py --task build \
+          --package "${{ inputs.package }}" \
+          ${{ inputs.gpu-flag }} \
+          --ver-python "${{ inputs.ver-python }}" \
+          --ver-torch "${{ inputs.ver-torch }}" \
+          --ver-onnxruntime "${{ inputs.ver-onnxruntime }}" \
+          --pip-index "${{ inputs.pip-index }}" \
+          ${{ inputs.enable-tests-flag }}
+
+    - name: "Build AIMET (${{ inputs.id }}) [Windows]"
+      if: inputs.platform == 'windows'
+      shell: powershell
+      run: |
+        .\${{ inputs.id }}\Scripts\Activate.ps1
+
+        python scripts\all\build_and_test.py --task build `
+          --package aimet_onnx `
+          --venv "${{ inputs.id }}" `
+          --ver-python "${{ inputs.ver-python }}" `
+          --pip-index "${{ inputs.pip-index }}" `
+          --ver-onnxruntime "${{ inputs.ver-onnxruntime }}" `
+          --windows-arch "${{ inputs.arch }}" `
+          --windows-vcpkg-triplet "${{ inputs.windows-vcpkg-triplet }}" `
+          --only
+
+    - name: "Build AIMET (${{ inputs.id }}) [macOS]"
+      if: inputs.platform == 'macos'
+      shell: bash
+      run: |
+        set -x
+        . ./${{ inputs.id }}/bin/activate
+
+        # Pin a deployment target lower than the runner's live macOS version
+        # (otherwise scikit-build-core/CMake default to it, producing a wheel
+        # tagged e.g. macosx_27_0_arm64 that pip refuses to install on any
+        # older mac even though the binary itself only links system libs).
+        python scripts/all/build_and_test.py --task build \
+          --package aimet_onnx \
+          --venv "${{ inputs.id }}" \
+          --ver-python "${{ inputs.ver-python }}" \
+          --pip-index "${{ inputs.pip-index }}" \
+          --ver-onnxruntime "${{ inputs.ver-onnxruntime }}" \
+          ${{ inputs.enable-tests-flag }} \
+          --macos-deployment-target "${{ inputs.macos-deployment-target }}" \
+          --only

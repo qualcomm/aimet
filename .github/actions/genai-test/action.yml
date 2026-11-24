@@ -16,7 +16,7 @@
 #     - uses: ./.github/actions/genai-test
 #       with:
 #         variant: torch
-#         wheel-artifacts: torch-gpu-wheel, onnx-gpu-wheel
+#         wheel-artifacts: torch-gpu-linux-x86-wheel, onnx-gpu-linux-x86-wheel
 #         huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
 #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
 #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

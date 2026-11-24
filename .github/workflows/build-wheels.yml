@@ -1,64 +1,56 @@
 name: Build wheels
 
+# One matrixed job across every platform. Each variant entry carries its own
+# "platform" ("linux" | "windows" | "macos") and, for windows, "arch"
+# ("x64" | "arm64"); runs-on and the per-platform build steps are derived
+# from those fields below instead of three separate platform-specific jobs.
+
 on:
   workflow_call:
     inputs:
       variants:
         required: true
         type: string
-      build-linux-wheel:
-        required: false
-        type: boolean
-        default: true
-      build-windows-wheel:
-        required: false
-        type: boolean
-        default: false
-      build-macos-wheel:
-        required: false
-        type: boolean
-        default: false
 
 jobs:
-  build-linux:
+  build:
     name: ${{ matrix.id }}
-    if: inputs.build-linux-wheel == true
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.variants) }}
-    # Wheel builds never request a GPU (they only need the CUDA toolkit to
-    # compile against), but they are too heavy for the lightweight
-    # tetra-ubuntu-2204 pool, so every variant builds on mlops-ci-cpu.
-    runs-on: mlops-ci-cpu
-    defaults:
-      run:
-        shell: bash
+    # Linux builds (CPU or GPU) stay on mlops-ci-cpu; Windows cross-compiles
+    # both arches from the amd64 runner; macOS builds natively on arm64.
+    runs-on: >-
+      ${{
+        matrix.platform == 'windows' && 'aimet-windows-amd64' ||
+        matrix.platform == 'macos' && 'aimet-mac-arm64' ||
+        'mlops-ci-cpu'
+      }}
     env:
       VER_PYTHON: ${{ matrix.VER_PYTHON_BUILD || matrix.VER_PYTHON || '3.12' }}
-      # id is one of: torch-cpu, torch-gpu, onnx-cpu, onnx-gpu, onnx-torch-cpu.
-      PACKAGE: ${{ (startsWith(matrix.id, 'onnx-torch') && 'docs') || (startsWith(matrix.id, 'torch') && 'aimet_torch') || 'aimet_onnx' }}
-      GPU_FLAG: ${{ endsWith(matrix.id, '-gpu') && '--gpu' || '' }}
-      ENABLE_TESTS_FLAG: ${{ (matrix.id == 'onnx-cpu' || matrix.id == 'onnx-gpu') && '--enable-tests' || '' }}
+      GPU_FLAG: ${{ matrix.platform == 'linux' && matrix.VER_CUDA != '' && '--gpu' || '' }}
+      ENABLE_TESTS_FLAG: ${{ matrix.BUILD_CPP_TESTS == 'ON' && '--enable-tests' || '' }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.VER_PYTHON }}
-
       - name: "Build AIMET (${{ matrix.id }})"
-        run: |
-          python3 scripts/all/build_and_test.py --task build \
-            --package "$PACKAGE" \
-            $GPU_FLAG \
-            --ver-python "$VER_PYTHON" \
-            --ver-torch "${{ matrix.VER_TORCH }}" \
-            --ver-onnxruntime "${{ matrix.VER_ONNXRUNTIME }}" \
-            --pip-index "${{ matrix.PIP_INDEX }}" \
-            $ENABLE_TESTS_FLAG
+        uses: ./.github/actions/build
+        with:
+          id: ${{ matrix.id }}
+          platform: ${{ matrix.platform }}
+          package: ${{ matrix.PACKAGE }}
+          ver-python: ${{ env.VER_PYTHON }}
+          ver-torch: ${{ matrix.VER_TORCH }}
+          ver-onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
+          pip-index: ${{ matrix.PIP_INDEX }}
+          gpu-flag: ${{ env.GPU_FLAG }}
+          enable-tests-flag: ${{ env.ENABLE_TESTS_FLAG }}
+          arch: ${{ matrix.arch }}
+          windows-vcpkg-triplet: ${{ matrix.windows_vcpkg_triplet }}
+          macos-deployment-target: ${{ matrix.macos_deployment_target }}
 
       - name: Upload AIMET wheel file
-        if: matrix.id != 'onnx-torch-cpu'
+        if: matrix.PACKAGE != 'docs'
         uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.id }}-wheel"
@@ -67,7 +59,7 @@ jobs:
           retention-days: 30
 
       - name: Upload compiled C++ unit tests
-        if: (matrix.id == 'onnx-cpu' || matrix.id == 'onnx-gpu') && env.ENABLE_TESTS_FLAG != ''
+        if: matrix.BUILD_CPP_TESTS == 'ON'
         uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.id }}-tests"
@@ -76,118 +68,10 @@ jobs:
           retention-days: 1
 
       - name: Upload AIMET documentation
-        if: matrix.id == 'onnx-torch-cpu'
+        if: matrix.PACKAGE == 'docs'
         uses: actions/upload-artifact@v4
         with:
           name: Docs
           path: wheelhouse/Docs/
           if-no-files-found: error
           retention-days: 30
-
-  build-windows:
-    name: Windows ${{ matrix.arch }}
-    runs-on: aimet-windows-amd64
-    if: inputs.build-windows-wheel == true
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            vcpkg-triplet: x64-windows
-            python-arch: amd64
-            python-version: "3.12"
-          - arch: arm64
-            vcpkg-triplet: arm64-windows
-            python-arch: arm64
-            python-version: "3.12"
-    defaults:
-      run:
-        shell: powershell
-    env:
-      VER_PYTHON: ${{ matrix.python-version }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-uv-env
-        with:
-          ENV_NAME: "onnx-cpu"
-          VER_PYTHON: ${{ env.VER_PYTHON }}
-
-      - name: "Build AIMET ONNX-CPU wheel package for Windows (${{ matrix.arch }})"
-        run: |
-          .\onnx-cpu\Scripts\Activate.ps1
-
-          python scripts\all\build_and_test.py --task build `
-            --package aimet_onnx `
-            --venv onnx-cpu `
-            --ver-python "${{ env.VER_PYTHON }}" `
-            --pip-index pypi `
-            --ver-onnxruntime 1.19.2 `
-            --windows-arch "${{ matrix.arch }}" `
-            --windows-vcpkg-triplet "${{ matrix.vcpkg-triplet }}" `
-            --only
-
-      - name: Upload AIMET Windows wheel file
-        uses: actions/upload-artifact@v4
-        with:
-          name: "onnx-cpu-win-${{ matrix.arch }}-wheel"
-          path: |
-            wheelhouse/aimet*.whl
-          if-no-files-found: error
-          retention-days: 30
-
-  build-macos:
-    name: macOS
-    runs-on: aimet-mac-arm64
-    if: inputs.build-macos-wheel == true
-    defaults:
-      run:
-        shell: bash
-    env:
-      VER_PYTHON: "3.12"
-      MACOSX_DEPLOYMENT_TARGET: "15.0"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install macOS build dependencies
-        run: scripts/posix/install_macos_deps.sh
-
-      - uses: ./.github/actions/setup-uv-env
-        with:
-          ENV_NAME: "onnx-cpu"
-          VER_PYTHON: ${{ env.VER_PYTHON }}
-
-      - name: "Build AIMET ONNX-CPU wheel package for macOS (arm64)"
-        run: |
-          set -x
-          . ./onnx-cpu/bin/activate
-
-          # Pin a deployment target lower than the runner's live macOS version
-          # (otherwise scikit-build-core/CMake default to it, producing a wheel
-          # tagged e.g. macosx_27_0_arm64 that pip refuses to install on any
-          # older mac even though the binary itself only links system libs).
-          python scripts/all/build_and_test.py --task build \
-            --package aimet_onnx \
-            --venv onnx-cpu \
-            --ver-python "${{ env.VER_PYTHON }}" \
-            --pip-index pypi \
-            --ver-onnxruntime 1.19.2 \
-            --enable-tests \
-            --macos-deployment-target "${{ env.MACOSX_DEPLOYMENT_TARGET }}" \
-            --only
-
-      - name: Upload AIMET macOS wheel file
-        uses: actions/upload-artifact@v4
-        with:
-          name: "onnx-cpu-macos-arm64-wheel"
-          path: |
-            wheelhouse/aimet*.whl
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload compiled C++ unit tests (macOS)
-        uses: actions/upload-artifact@v4
-        with:
-          name: "onnx-cpu-macos-arm64-tests"
-          path: build/**/MoDl*Test
-          if-no-files-found: error
-          retention-days: 1

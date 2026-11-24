@@ -88,10 +88,13 @@ jobs:
       # (PyPI rejects "+cuXXX"). The *-cpu variants keep the local version and
       # are build/test-only -- they are never published anywhere.
       - name: Torch variants
+        if: github.event_name == 'schedule' || inputs.enable_linux
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "torch-cpu",
+                 "id":              "torch-cpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_torch",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12,3.10",
                  "VER_TORCH":       "2.*",
@@ -102,7 +105,9 @@ jobs:
                  "PIP_INDEX":       ""
               },
               {
-                 "id":              "torch-gpu",
+                 "id":              "torch-gpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_torch",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "2.*",
@@ -114,11 +119,19 @@ jobs:
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
-      - name: ONNX variants
+
+      # ONNX only ever ships as a Linux + Windows + macOS wheel, so the
+      # Windows/macOS cross-compile/native variants live here too, each
+      # independently gated by its own enable_* input.
+      - name: ONNX variants (Linux)
+        if: github.event_name == 'schedule' || inputs.enable_linux
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "onnx-cpu",
+                 "id":              "onnx-cpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_onnx",
+                 "BUILD_CPP_TESTS": "ON",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12,3.10",
                  "VER_TORCH":       "",
@@ -129,7 +142,10 @@ jobs:
                  "PIP_INDEX":       ""
               },
               {
-                 "id":              "onnx-gpu",
+                 "id":              "onnx-gpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_onnx",
+                 "BUILD_CPP_TESTS": "ON",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "",
@@ -142,11 +158,68 @@ jobs:
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
 
-      - name: Doc variants
+      - name: ONNX variants (Windows)
+        if: github.event_name == 'schedule' || inputs.enable_windows
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "onnx-torch-cpu",
+                 "id":              "onnx-cpu-windows-x64",
+                 "platform":        "windows",
+                 "arch":            "x64",
+                 "PACKAGE":         "aimet_onnx",
+                 "VER_PYTHON_BUILD": "3.12",
+                 "VER_PYTHON_TEST":  "3.10",
+                 "VER_ONNXRUNTIME": "1.19.2",
+                 "windows_vcpkg_triplet": "x64-windows",
+                 "RUN_UNIT_TESTS":    "ON",
+                 "RUN_ACCEPTANCE_TESTS":    "ON",
+                 "PIP_INDEX":       "pypi"
+              },
+              {
+                 "id":              "onnx-cpu-windows-arm64",
+                 "platform":        "windows",
+                 "arch":            "arm64",
+                 "PACKAGE":         "aimet_onnx",
+                 "VER_PYTHON_BUILD": "3.12",
+                 "VER_PYTHON_TEST":  "3.12",
+                 "VER_ONNXRUNTIME": "1.19.2",
+                 "windows_vcpkg_triplet": "arm64-windows",
+                 "RUN_UNIT_TESTS":    "ON",
+                 "RUN_ACCEPTANCE_TESTS":    "ON",
+                 "PIP_INDEX":       "pypi"
+              }
+            ]')
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
+
+      - name: ONNX variants (macOS)
+        if: github.event_name == 'schedule' || inputs.enable_macos
+        run: |
+          VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "onnx-cpu-macos-arm64",
+                 "platform":        "macos",
+                 "arch":            "arm64",
+                 "PACKAGE":         "aimet_onnx",
+                 "BUILD_CPP_TESTS": "ON",
+                 "VER_PYTHON_BUILD": "3.12",
+                 "VER_PYTHON_TEST":  "3.12",
+                 "VER_ONNXRUNTIME": "1.19.2",
+                 "macos_deployment_target": "15.0",
+                 "RUN_UNIT_TESTS":    "ON",
+                 "RUN_ACCEPTANCE_TESTS":    "ON",
+                 "PIP_INDEX":       "pypi"
+              }
+            ]')
+          echo "VALUE=$VALUE" >> $GITHUB_ENV
+
+      - name: Doc variants
+        if: github.event_name == 'schedule' || inputs.enable_linux
+        run: |
+          VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
+              {
+                 "id":              "onnx-torch-cpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "docs",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "2.*",
@@ -164,41 +237,24 @@ jobs:
         run: |
           echo "value=$VALUE" >> $GITHUB_OUTPUT
 
+  # Each variant now carries its own "platform" (and, for windows, "arch"),
+  # so build-wheels.yml / run-unit-acceptance-tests.yml no longer need
+  # per-platform enable flags -- enable_linux/enable_windows/enable_macos are
+  # applied earlier, by the variants job deciding which entries to emit.
   call-build-wheels:
     name: Build
     needs: [ variants ]
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-      # inputs.enable_* is null on a schedule trigger, which has no mechanism to
-      # supply inputs at all; null coerces the same as false, so without the
-      # event_name check the nightly cron would build nothing. workflow_dispatch
-      # and workflow_call both declare these inputs with default: true, so
-      # inputs.enable_* is only ever null in the schedule case.
-      build-linux-wheel: ${{ github.event_name == 'schedule' || inputs.enable_linux }}
-      build-windows-wheel: ${{ github.event_name == 'schedule' || inputs.enable_windows }}
-      build-macos-wheel: ${{ github.event_name == 'schedule' || inputs.enable_macos }}
     secrets: inherit
 
   call-unit-acceptance-tests:
-    name: Test (${{ matrix.id }})
+    name: Test
     needs: [ variants, call-build-wheels ]
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     with:
-      ver_python: ${{ matrix.VER_PYTHON_TEST }}
-      ver_cuda: ${{ matrix.VER_CUDA }}
-      ver_torch: ${{ matrix.VER_TORCH }}
-      ver_onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
-      env_name: ${{ matrix.id }}
-      run_unit_tests: ${{ matrix.RUN_UNIT_TESTS == 'ON' }}
-      run_acceptance_tests: ${{ matrix.RUN_ACCEPTANCE_TESTS == 'ON' }}
-      pip_index: ${{ matrix.PIP_INDEX }}
-      include_linux_tests: ${{ github.event_name == 'schedule' || inputs.enable_linux }}
-      include_windows_tests: ${{ github.event_name == 'schedule' || inputs.enable_windows }}
-      include_macos_tests: ${{ github.event_name == 'schedule' || inputs.enable_macos }}
+      variants: ${{ needs.variants.outputs.matrix }}
     secrets: inherit
 
   notify_slack:
@@ -221,7 +277,7 @@ jobs:
         if [ "$RUN_FAILED" = "true" ]; then
           MSG="*⚠️ $TITLE failed*"
           # List failed/cancelled jobs, trimming matrix args down to the variant id,
-          # e.g. "onnx-cpu / Windows X64". Cancelled usually means a runner never
+          # e.g. "onnx-cpu-windows-x64". Cancelled usually means a runner never
           # picked the job up, so keep it separate from real failures.
           JOBS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100&filter=latest" \
                    --paginate --jq '.jobs[]' | jq -rs '

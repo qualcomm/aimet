@@ -1,0 +1,86 @@
+################################################################################
+# Composite Action: Test
+################################################################################
+# Runs one scripts/all/build_and_test.py test task (unit_test or
+# acceptance_test) against an already-built, already-downloaded wheel, on
+# whichever platform the variant targets.
+#
+# Separate steps per platform -- Windows self-hosted runners (aimet-windows-*)
+# don't have bash on PATH, so this can't be unified under one bash step the
+# way the shell syntax alone might suggest; PowerShell is required there.
+#
+# Usage:
+#   steps:
+#     - uses: actions/checkout@v4
+#     - uses: ./.github/actions/test
+#       with:
+#         task: unit_test
+#         id: onnx-cpu-windows-x64
+#         platform: windows
+#         package: aimet_onnx
+#         ver-cuda: ""
+################################################################################
+
+name: Test
+description: Run a build_and_test.py test task for one variant, on whichever platform it targets.
+
+inputs:
+  task:
+    description: "unit_test | acceptance_test"
+    required: true
+  id:
+    description: "Variant id, used as the venv name (e.g. onnx-cpu-windows-x64)"
+    required: true
+  platform:
+    description: "linux | windows | macos"
+    required: true
+  package:
+    description: "aimet_torch | aimet_onnx"
+    required: true
+  ver-cuda:
+    description: "Linux only"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Run ${{ inputs.task }} (${{ inputs.id }}) [Linux]"
+      if: inputs.platform == 'linux'
+      shell: bash
+      run: |
+        . ./${{ inputs.id }}/bin/activate
+
+        python3 scripts/all/build_and_test.py --task ${{ inputs.task }} \
+          --package "${{ inputs.package }}" \
+          --venv "${{ inputs.id }}" \
+          --wheel-dir "downloads" \
+          --ver-cuda "${{ inputs.ver-cuda }}" \
+          --parallel 8 \
+          --only
+
+    - name: "Run ${{ inputs.task }} (${{ inputs.id }}) [Windows]"
+      if: inputs.platform == 'windows'
+      shell: powershell
+      run: |
+        .\${{ inputs.id }}\Scripts\Activate.ps1
+
+        python scripts\all\build_and_test.py --task ${{ inputs.task }} `
+          --package "${{ inputs.package }}" `
+          --venv "${{ inputs.id }}" `
+          --wheel-dir "downloads" `
+          --parallel 8 `
+          --only
+
+    - name: "Run ${{ inputs.task }} (${{ inputs.id }}) [macOS]"
+      if: inputs.platform == 'macos'
+      shell: bash
+      run: |
+        . ./${{ inputs.id }}/bin/activate
+
+        python3 scripts/all/build_and_test.py --task ${{ inputs.task }} \
+          --package "${{ inputs.package }}" \
+          --venv "${{ inputs.id }}" \
+          --wheel-dir "downloads" \
+          --parallel 8 \
+          --only

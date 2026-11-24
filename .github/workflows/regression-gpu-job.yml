@@ -92,7 +92,7 @@ jobs:
       - name: Download AIMET wheel
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.framework }}-gpu-wheel
+          name: ${{ inputs.framework }}-gpu-linux-x86-wheel
           path: downloads
 
       - name: Install system dependencies

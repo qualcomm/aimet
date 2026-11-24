@@ -98,7 +98,9 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "torch-cpu",
+                 "id":              "torch-cpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_torch",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "2.*",
@@ -109,7 +111,9 @@ jobs:
                  "PIP_INDEX":       ""
               },
               {
-                 "id":              "torch-gpu",
+                 "id":              "torch-gpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_torch",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "2.*",
@@ -127,7 +131,10 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "onnx-cpu",
+                 "id":              "onnx-cpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_onnx",
+                 "BUILD_CPP_TESTS": "ON",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "",
@@ -138,7 +145,10 @@ jobs:
                  "PIP_INDEX":       ""
               },
               {
-                 "id":              "onnx-gpu",
+                 "id":              "onnx-gpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "aimet_onnx",
+                 "BUILD_CPP_TESTS": "ON",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "",
@@ -155,7 +165,9 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "onnx-torch-cpu",
+                 "id":              "onnx-torch-cpu-linux-x86",
+                 "platform":        "linux",
+                 "PACKAGE":         "docs",
                  "VER_PYTHON_BUILD": "3.12",
                  "VER_PYTHON_TEST":  "3.12",
                  "VER_TORCH":       "2.*",
@@ -180,29 +192,15 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-      build-windows-wheel: false
-      build-macos-wheel: false
     secrets: inherit
 
   call-run-unit-acceptance-tests:
-    name: Test (${{ matrix.id }})
+    name: Test
     if: github.repository_owner != 'qualcomm'
     needs: [ variants, call-build-wheels ]
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
-    strategy:
-      matrix: ${{ fromJSON(needs.variants.outputs.matrix) }}
     with:
-      ver_python: ${{ matrix.VER_PYTHON_TEST }}
-      ver_cuda: ${{ matrix.VER_CUDA }}
-      ver_torch: ${{ matrix.VER_TORCH }}
-      ver_onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
-      env_name: ${{ matrix.id }}
-      run_unit_tests: ${{ matrix.RUN_UNIT_TESTS == 'ON' }}
-      run_acceptance_tests: ${{ matrix.RUN_ACCEPTANCE_TESTS == 'ON' }}
-      pip_index: ${{ matrix.PIP_INDEX }}
-      include_windows_tests: false
-      include_macos_tests: false
-
+      variants: ${{ needs.variants.outputs.matrix }}
     secrets: inherit
 
   # ---------------------------------------------------------------------------
@@ -230,13 +228,13 @@ jobs:
       - name: Download aimet-torch wheel
         uses: actions/download-artifact@v4
         with:
-          name: "torch-cpu-wheel"
+          name: "torch-cpu-linux-x86-wheel"
           path: "downloads"
 
       - name: Download aimet-onnx wheel
         uses: actions/download-artifact@v4
         with:
-          name: "onnx-cpu-wheel"
+          name: "onnx-cpu-linux-x86-wheel"
           path: "downloads"
 
       - name: Install dependencies

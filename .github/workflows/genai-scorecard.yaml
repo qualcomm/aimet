@@ -103,11 +103,12 @@ jobs:
     with:
       variants: >
         {"include":[{
-          "id":"onnx-gpu",
+          "id":"onnx-gpu-linux-x86",
+          "platform":"linux",
+          "PACKAGE":"aimet_onnx",
           "VER_PYTHON":"3.12",
           "VER_ONNXRUNTIME":"1.19.2",
           "VER_CUDA":"12.6.3",
-          "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
     secrets: inherit
@@ -123,12 +124,13 @@ jobs:
     with:
       variants: >
         {"include":[{
-          "id":"torch-gpu",
+          "id":"torch-gpu-linux-x86",
+          "platform":"linux",
+          "PACKAGE":"aimet_torch",
           "VER_PYTHON":"3.12",
           "VER_TORCH":"2.*",
           "VER_ONNXRUNTIME": "",
           "VER_CUDA": "12.6.3",
-          "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
     secrets: inherit
@@ -160,7 +162,7 @@ jobs:
         with:
           variant: torch
           config: ${{ steps.config.outputs.path }}
-          wheel-artifacts: torch-gpu-wheel, onnx-gpu-wheel
+          wheel-artifacts: torch-gpu-linux-x86-wheel, onnx-gpu-linux-x86-wheel
           python-version: ${{ env.VER_PYTHON }}
           run-args: ${{ github.event.inputs.run_args }}
           huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}
@@ -192,7 +194,7 @@ jobs:
         with:
           variant: onnx
           config: ${{ steps.config.outputs.path }}
-          wheel-artifacts: onnx-gpu-wheel
+          wheel-artifacts: onnx-gpu-linux-x86-wheel
           python-version: ${{ env.VER_PYTHON }}
           run-args: ${{ github.event.inputs.run_args }}
           huggingface-token: ${{ secrets.HUGGINGFACE_TOKEN }}

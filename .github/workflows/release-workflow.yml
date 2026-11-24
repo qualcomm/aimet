@@ -114,7 +114,7 @@ jobs:
     uses: ./.github/workflows/pypi-release-pipeline.yml
     with:
       # build_wheels_and_test already produced and tested this exact wheel.
-      variant-id: onnx-gpu
+      variant-id: onnx-gpu-linux-x86
       deploy: true
     secrets: inherit
 
@@ -125,7 +125,7 @@ jobs:
     uses: ./.github/workflows/pypi-release-pipeline.yml
     with:
       # build_wheels_and_test already produced and tested this exact wheel.
-      variant-id: torch-gpu
+      variant-id: torch-gpu-linux-x86
       deploy: true
     secrets: inherit
 
@@ -147,7 +147,7 @@ jobs:
     uses: ./.github/workflows/pypi-release-pipeline.yml
     with:
       # build_wheels_and_test already produced and tested this exact wheel.
-      variant-id: onnx-cpu-win-x64
+      variant-id: onnx-cpu-windows-x64
       deploy: true
     secrets: inherit
 
@@ -158,7 +158,7 @@ jobs:
     uses: ./.github/workflows/pypi-release-pipeline.yml
     with:
       # build_wheels_and_test already produced and tested this exact wheel.
-      variant-id: onnx-cpu-win-arm64
+      variant-id: onnx-cpu-windows-arm64
       deploy: true
     secrets: inherit
 

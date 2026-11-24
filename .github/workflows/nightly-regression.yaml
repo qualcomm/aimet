@@ -65,11 +65,12 @@ jobs:
     with:
       variants: >
         {"include":[{
-          "id":"onnx-gpu",
+          "id":"onnx-gpu-linux-x86",
+          "platform":"linux",
+          "PACKAGE":"aimet_onnx",
           "VER_PYTHON":"3.12",
           "VER_ONNXRUNTIME":"1.19.2",
           "VER_CUDA":"12.6.3",
-          "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
     secrets: inherit
@@ -81,11 +82,12 @@ jobs:
     with:
       variants: >
         {"include":[{
-          "id":"torch-gpu",
+          "id":"torch-gpu-linux-x86",
+          "platform":"linux",
+          "PACKAGE":"aimet_torch",
           "VER_PYTHON":"3.12",
           "VER_TORCH":"2.*",
           "VER_CUDA":"12.6.3",
-          "ENABLE_TESTS":"OFF",
           "PIP_INDEX":""
         }]}
     secrets: inherit
