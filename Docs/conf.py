@@ -70,6 +70,17 @@ def _add_section_context(app, pagename, templatename, context, doctree):
     context['aimet_section'] = _AIMET_SECTIONS.get(pagename.split('/', 1)[0], '')
 
 
+# Every build is published to aimet-pages as releases/<version>/, which search engines
+# should not index. The release step copies it to releases/latest/ and strips exactly
+# this tag there, so only latest gets indexed. Keep the two in sync.
+_NOINDEX_META = '<meta name="robots" content="noindex,follow" />'
+
+
+def _add_noindex_meta(app, pagename, templatename, context, doctree):
+    # basic/layout.html renders `metatags` inside <head>; Lumina keeps that block.
+    context['metatags'] = context.get('metatags', '') + '\n    ' + _NOINDEX_META
+
+
 def _use_aimet_pygments(app):
     # Swap in the palette-matched code styles. Must run on builder-inited: the
     # builder creates its highlighters from the theme's pygments_style before that.
@@ -83,6 +94,7 @@ def setup(app):
     app.connect('html-page-context', _expand_api_disclosures)
     app.connect('html-page-context', _add_landing_script)
     app.connect('html-page-context', _add_section_context)
+    app.connect('html-page-context', _add_noindex_meta)
     app.connect('builder-inited', _use_aimet_pygments)
 
 
