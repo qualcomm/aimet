@@ -261,20 +261,29 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
           tag: ${{ inputs.version }}
         run: |
-          # Copy Docs to aimet-pages
-          mkdir -p ${{ env.DOCS_REPO_DIR }}/releases/${tag}
-          cp -r artifacts-downloaded/Docs/. ${{ env.DOCS_REPO_DIR }}/releases/${tag}
+          # The Docs artifact holds releases/${tag}/ (noindexed) and releases/latest/ (the same
+          # build, indexable); see Docs/CMakeLists.txt.
+          docs=${GITHUB_WORKSPACE}/artifacts-downloaded/Docs/releases
+          for d in ${tag} latest; do
+            [ -d ${docs}/${d} ] || { echo "Docs artifact is missing releases/${d}"; exit 1; }
+          done
 
           # Create PR on aimet-pages
           cd ${{ env.DOCS_REPO_DIR }}
           git checkout -b ${{ github.ref_name }}
 
-          # Update latest symlink
-          unlink releases/latest || true
-          ln -s ${tag} releases/latest
+          mkdir -p releases/${tag}
+          cp -r ${docs}/${tag}/. releases/${tag}
+
+          # Replace latest wholesale (it used to be a symlink). Dropping it from the index too
+          # means git add records exactly what changed since the last release: new, updated and
+          # deleted pages.
+          git rm -r -q --cached --ignore-unmatch releases/latest
+          rm -rf releases/latest
+          cp -r ${docs}/latest releases/latest
 
           # Commit doc changes
-          git add releases/
+          git add -A releases/
           git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/${{ env.DOCS_REPO }}.git
           git config user.email "aimet_bot@qti.qualcomm.com"
           git config user.name "aimet_bot"

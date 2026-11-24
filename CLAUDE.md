@@ -137,7 +137,7 @@ export PYTHONPATH=$WORKSPACE/aimet/TrainingExtensions/torch/src/python:$WORKSPAC
 ## Generate Documentation
 ```bash
 python3 scripts/all/build_and_test.py --task build --package docs
-# Output: wheelhouse/Docs/
+# Output: wheelhouse/Docs/releases/<version>/ and wheelhouse/Docs/releases/latest/
 ```
 
 ## Generate Wheel Packages

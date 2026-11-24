@@ -45,7 +45,7 @@ Quick start
     # Build aimet-onnx (GPU/CUDA)
     python3 scripts/all/build_and_test.py --task build --package aimet_onnx --gpu
 
-    # Build documentation (wheelhouse/Docs/index.html)
+    # Build documentation (wheelhouse/Docs/releases/<version>/index.html)
     python3 scripts/all/build_and_test.py --task build --package docs
 
 The script creates and reuses a venv at ``aimet-dev/`` by default (override with ``--venv``), and
