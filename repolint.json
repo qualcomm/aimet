@@ -154,6 +154,7 @@
               "build\/",
               "jest.config.js",
               "node_modules\/",
+              "third_party\/",
               "types\/"
             ]
           },
