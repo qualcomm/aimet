@@ -217,7 +217,7 @@ jobs:
         run: |
           VALUE=$(echo "${VALUE:-"{}"}" | jq -c '.include += [
               {
-                 "id":              "onnx-torch-cpu-linux-x86",
+                 "id":              "docs-linux-x86",
                  "platform":        "linux",
                  "PACKAGE":         "docs",
                  "VER_PYTHON_BUILD": "3.12",

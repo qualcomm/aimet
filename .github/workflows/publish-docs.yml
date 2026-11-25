@@ -95,10 +95,7 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       # Only the docs variant from nightly-pipeline.yml; keep the two in sync.
-      variants: '{"include":[{"id":"onnx-torch-cpu","VER_PYTHON_BUILD":"3.12","VER_TORCH":"2.*","VER_ONNXRUNTIME":"1.19.2","PIP_INDEX":""}]}'
-      build-linux-wheel: true
-      build-windows-wheel: false
-      build-macos-wheel: false
+      variants: '{"include":[{"id":"docs-linux-x86","platform":"linux","PACKAGE":"docs","VER_PYTHON_BUILD":"3.12","VER_TORCH":"2.*","VER_ONNXRUNTIME":"1.19.2","PIP_INDEX":""}]}'
     secrets: inherit
 
   publish_docs:
