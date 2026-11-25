@@ -3,14 +3,16 @@ name: Publish docs to aimet-pages
 # Builds the docs for a release and puts up (or updates) a PR on aimet-pages that overwrites
 # releases/<version>/ and, if <version> is the newest release there, releases/latest/.
 #
-# Run it manually on a release branch to re-upload docs after a docs fix to an already released
-# version. The release workflow also calls it to publish docs for a new release.
+# Run it manually to re-upload the docs of an already released version, e.g. on develop after a
+# docs fix lands between releases (develop's packaging/version.txt is the latest release until the
+# next one ships), or on a release branch. The release workflow also calls it to publish docs for a
+# new release.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Released AIMET version whose docs to publish (must match packaging/version.txt on the selected branch)"
+        description: "Released AIMET version whose docs to publish (must match packaging/version.txt on the selected branch and be tagged on qualcomm/aimet)"
         required: true
         type: string
       update_latest:
@@ -72,6 +74,19 @@ jobs:
             *) echo "::error::update_latest must be auto, true or false, got '${UPDATE_LATEST}'"; exit 1 ;;
           esac
 
+      # develop's version.txt is bumped ahead of the release actually shipping; don't publish docs
+      # whose install links point at wheels that don't exist yet. Skipped when the release
+      # workflow calls us, since that run is the one creating the release.
+      - name: Validate version is released
+        if: ${{ !inputs.reuse_docs_artifact }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -z "$(git ls-remote --tags https://github.com/qualcomm/aimet.git "refs/tags/${VERSION}")" ]; then
+            echo "::error::${VERSION} is not released on qualcomm/aimet (no such tag); refusing to publish its docs"
+            exit 1
+          fi
+
   build_docs:
     name: Build docs
     needs: checklist
@@ -91,8 +106,9 @@ jobs:
     needs: [ checklist, build_docs ]
     if: ${{ !cancelled() && needs.checklist.result == 'success' && (needs.build_docs.result == 'success' || needs.build_docs.result == 'skipped') }}
     runs-on: ubuntu-latest
-    # Publishing docs requires approval from aimet-deployers
-    environment: prod
+    # Requires approval from aimet-maintainers. Unlike prod, docs also allows develop so docs fixes
+    # can be published between releases.
+    environment: docs
     steps:
       - name: Setup GitHub CLI
         run: |
