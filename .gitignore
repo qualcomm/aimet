@@ -8,8 +8,6 @@ build
 aimet-env
 TrainingExtensions/torch/test/python/data/
 TrainingExtensions/torch/test/data/
-NightlyTests/torch/data/
-NightlyTests/data/
 
 # Ignore the AIMET support directories
 CD

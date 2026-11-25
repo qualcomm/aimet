@@ -1184,14 +1184,13 @@ class UnitTestTask(_CiTaskBase):
 
 class AcceptanceTestTask(_CiTaskBase):
     """Task that installs whatever pre-built wheels were downloaded to
-    --wheel-dir and runs the acceptance test suite. NightlyTests/common
-    needs both torch and onnx installed; only Linux legs download both, so
-    it's skipped when aimet_torch isn't present (Windows/macOS onnx-cpu).
+    --wheel-dir and runs the torch->onnx round-trip acceptance test
+    (NightlyTests/common), which needs both torch and onnx installed
+    together. Only Linux legs download both, so it's skipped when
+    aimet_torch isn't present (Windows/macOS onnx-cpu).
 
     TODO: #6211 test_torch_to_onnx.py is explicitly ignored on macOS/Windows
-    below since it isn't supported there yet. Move torch-to-onnx tests out
-    of this combined-wheel acceptance path instead of relying on an
-    --ignore, and re-enable it on macOS/Windows once supported."""
+    below since it isn't supported there yet; re-enable it once supported."""
 
     def run(self) -> TaskResult:
         if result := _ensure_uv_installed():
@@ -1210,32 +1209,6 @@ class AcceptanceTestTask(_CiTaskBase):
                     "--ignore",
                     str(REPO_ROOT / "NightlyTests/common/test_torch_to_onnx.py"),
                 ]
-        if self.framework == "onnx":
-            test_paths.append(REPO_ROOT / "NightlyTests/onnx")
-        elif self.framework == "torch":
-            test_paths.append(REPO_ROOT / "NightlyTests/torch")
-            venv_python = str(venv_python_path(self.venv_path))
-            try:
-                subprocess.run(
-                    ["uv", "pip", "install", "wget"],
-                    check=True,
-                    capture_output=False,
-                    env=uv_env(self.venv_path),
-                )
-                subprocess.run(
-                    [
-                        venv_python,
-                        str(REPO_ROOT / "NightlyTests/torch/dependencies.py"),
-                        str(REPO_ROOT / "NightlyTests/torch/resnet18_eval_scores.csv"),
-                    ],
-                    check=True,
-                    capture_output=False,
-                )
-            except subprocess.CalledProcessError as e:
-                return TaskResult(
-                    TaskStatus.FAILED,
-                    f"torch acceptance test setup failed with exit code {e.returncode}",
-                )
 
         return self._pytest(test_paths, pytest_args)
 

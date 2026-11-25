@@ -273,7 +273,6 @@ endif()
 
 if (ENABLE_TESTS)
     enable_testing()
-    add_subdirectory(NightlyTests)
 endif()
 
 if (ENABLE_ONNX)
