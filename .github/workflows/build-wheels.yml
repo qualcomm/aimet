@@ -27,9 +27,9 @@ jobs:
         'mlops-ci-cpu'
       }}
     env:
-      VER_PYTHON: ${{ matrix.VER_PYTHON_BUILD || matrix.VER_PYTHON || '3.12' }}
-      GPU_FLAG: ${{ matrix.platform == 'linux' && matrix.VER_CUDA != '' && '--gpu' || '' }}
-      ENABLE_TESTS_FLAG: ${{ matrix.BUILD_CPP_TESTS == 'ON' && '--enable-tests' || '' }}
+      VER_PYTHON: ${{ matrix.ver_python_build || matrix.ver_python || '3.12' }}
+      GPU_FLAG: ${{ matrix.platform == 'linux' && matrix.ver_cuda != '' && '--gpu' || '' }}
+      ENABLE_TESTS_FLAG: ${{ matrix.build_cpp_tests == 'ON' && '--enable-tests' || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,11 +38,11 @@ jobs:
         with:
           id: ${{ matrix.id }}
           platform: ${{ matrix.platform }}
-          package: ${{ matrix.PACKAGE }}
+          package: ${{ matrix.package }}
           ver-python: ${{ env.VER_PYTHON }}
-          ver-torch: ${{ matrix.VER_TORCH }}
-          ver-onnxruntime: ${{ matrix.VER_ONNXRUNTIME }}
-          pip-index: ${{ matrix.PIP_INDEX }}
+          ver-torch: ${{ matrix.ver_torch }}
+          ver-onnxruntime: ${{ matrix.ver_onnxruntime }}
+          pip-index: ${{ matrix.pip_index }}
           gpu-flag: ${{ env.GPU_FLAG }}
           enable-tests-flag: ${{ env.ENABLE_TESTS_FLAG }}
           arch: ${{ matrix.arch }}
@@ -50,7 +50,7 @@ jobs:
           macos-deployment-target: ${{ matrix.macos_deployment_target }}
 
       - name: Upload AIMET wheel file
-        if: matrix.PACKAGE != 'docs'
+        if: matrix.package != 'docs'
         uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.id }}-wheel"
@@ -59,7 +59,7 @@ jobs:
           retention-days: 30
 
       - name: Upload compiled C++ unit tests
-        if: matrix.BUILD_CPP_TESTS == 'ON'
+        if: matrix.build_cpp_tests == 'ON'
         uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.id }}-tests"
@@ -68,7 +68,7 @@ jobs:
           retention-days: 1
 
       - name: Upload AIMET documentation
-        if: matrix.PACKAGE == 'docs'
+        if: matrix.package == 'docs'
         uses: actions/upload-artifact@v4
         with:
           name: Docs

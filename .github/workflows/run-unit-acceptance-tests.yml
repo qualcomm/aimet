@@ -30,12 +30,12 @@ jobs:
           # For each variant, "3.12,3.10" becomes two legs differing only in
           # ver_python; a platform without a comma (or windows/macos, which
           # are always single-version) stays a single leg. Variants with
-          # both RUN_UNIT_TESTS and RUN_ACCEPTANCE_TESTS off (e.g. the docs
+          # both run_unit_tests and run_acceptance_tests off (e.g. the docs
           # build) are dropped here -- the `matrix` context isn't available
           # in a job-level `if:`, so this is the only place to skip them.
           matrix=$(echo "$VARIANTS" | jq -c '
-            [ .include[] | select(.RUN_UNIT_TESTS == "ON" or .RUN_ACCEPTANCE_TESTS == "ON") | . as $base |
-              (($base.VER_PYTHON_TEST // $base.VER_PYTHON_BUILD // $base.VER_PYTHON // "3.12") | split(",")) as $versions |
+            [ .include[] | select(.run_unit_tests == "ON" or .run_acceptance_tests == "ON") | . as $base |
+              (($base.ver_python_test // $base.ver_python_build // $base.ver_python // "3.12") | split(",")) as $versions |
               $versions[] | $base + {ver_python: .}
             ]
           ' | jq -c '{include: .}')
@@ -49,7 +49,7 @@ jobs:
       ${{
         matrix.platform == 'windows' && (matrix.arch == 'arm64' && 'aimet-windows-arm64' || 'aimet-windows-amd64') ||
         matrix.platform == 'macos' && 'aimet-mac-arm64' ||
-        (matrix.VER_CUDA != '' && 'mlops-ci-gpu-large' || 'mlops-ci-cpu')
+        (matrix.ver_cuda != '' && 'mlops-ci-gpu-large' || 'mlops-ci-cpu')
       }}
     strategy:
       fail-fast: false
@@ -60,7 +60,7 @@ jobs:
     env:
       pytest_github_report: true
       pytest_use_zeros: true
-      PACKAGE: ${{ matrix.PACKAGE }}
+      package: ${{ matrix.package }}
     steps:
       - name: Install dependencies (Linux)
         if: matrix.platform == 'linux'
@@ -70,7 +70,7 @@ jobs:
           rm -rf download
 
       - name: Set CUDA_HOME for GPU builds
-        if: matrix.VER_CUDA != ''
+        if: matrix.ver_cuda != ''
         run: |
           # Set CUDA_HOME for deepspeed and other CUDA-dependent packages
           echo "CUDA_HOME=/usr/local/cuda" >> $GITHUB_ENV
@@ -89,7 +89,7 @@ jobs:
           path: "downloads"
 
       - uses: actions/download-artifact@v4
-        if: matrix.RUN_UNIT_TESTS == 'ON' && matrix.BUILD_CPP_TESTS == 'ON'
+        if: matrix.run_unit_tests == 'ON' && matrix.build_cpp_tests == 'ON'
         with:
           name: "${{ matrix.id }}-tests"
           path: "downloads"
@@ -97,19 +97,19 @@ jobs:
       # Acceptance tests exercise torch and onnx together, so both CPU/GPU
       # wheels are downloaded regardless of which variant's leg this is.
       - uses: actions/download-artifact@v4
-        if: matrix.platform == 'linux' && matrix.RUN_ACCEPTANCE_TESTS == 'ON'
+        if: matrix.platform == 'linux' && matrix.run_acceptance_tests == 'ON'
         with:
-          name: "torch-${{ matrix.VER_CUDA == '' && 'cpu' || 'gpu' }}-linux-x86-wheel"
+          name: "torch-${{ matrix.ver_cuda == '' && 'cpu' || 'gpu' }}-linux-x86-wheel"
           path: "downloads"
 
       - uses: actions/download-artifact@v4
-        if: matrix.platform == 'linux' && matrix.RUN_ACCEPTANCE_TESTS == 'ON'
+        if: matrix.platform == 'linux' && matrix.run_acceptance_tests == 'ON'
         with:
-          name: "onnx-${{ matrix.VER_CUDA == '' && 'cpu' || 'gpu' }}-linux-x86-wheel"
+          name: "onnx-${{ matrix.ver_cuda == '' && 'cpu' || 'gpu' }}-linux-x86-wheel"
           path: "downloads"
 
       - name: Create python virtual environment (Linux)
-        if: matrix.platform == 'linux' && matrix.PACKAGE != 'docs'
+        if: matrix.platform == 'linux' && matrix.package != 'docs'
         uses: ./.github/actions/setup-uv-env
         with:
           ENV_NAME: ${{ matrix.id }}
@@ -127,10 +127,10 @@ jobs:
           . ./${{ matrix.id }}/bin/activate
 
           python3 scripts/all/build_and_test.py --task install_test_deps \
-            --package "$PACKAGE" \
+            --package "$package" \
             --venv "${{ matrix.id }}" \
             --wheel-dir "downloads" \
-            --ver-cuda "${{ matrix.VER_CUDA }}" \
+            --ver-cuda "${{ matrix.ver_cuda }}" \
             --only
 
       - name: Run pylint (Linux)
@@ -143,13 +143,13 @@ jobs:
           PYTHON_LIB_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
           export LD_LIBRARY_PATH="${PYTHON_LIB_PATH}:${LD_LIBRARY_PATH}"
 
-          if [[ "$PACKAGE" == "aimet_onnx" ]] ; then
+          if [[ "$package" == "aimet_onnx" ]] ; then
               AIMET_ONNX_PATH=$(find $UV_PYTHONPATH -regex ".*/aimet_onnx")
               if [ -z "$AIMET_ONNX_PATH" ]; then
                 echo "aimet_onnx package not found in $UV_PYTHONPATH"
               fi
               python -m pylint --rcfile=.pylintrc $AIMET_ONNX_PATH
-          elif [[ "$PACKAGE" == "aimet_torch" ]] ; then
+          elif [[ "$package" == "aimet_torch" ]] ; then
             AIMET_TORCH_PATH=$(find $UV_PYTHONPATH -regex ".*/aimet_torch")
             if [ -z "$AIMET_TORCH_PATH" ]; then
               echo "aimet_torch package not found in $UV_PYTHONPATH"
@@ -158,21 +158,21 @@ jobs:
           fi
 
       - name: Run Unit tests
-        if: matrix.RUN_UNIT_TESTS == 'ON'
+        if: matrix.run_unit_tests == 'ON'
         uses: ./.github/actions/test
         with:
           task: unit_test
           id: ${{ matrix.id }}
           platform: ${{ matrix.platform }}
-          package: ${{ env.PACKAGE }}
-          ver-cuda: ${{ matrix.VER_CUDA }}
+          package: ${{ env.package }}
+          ver-cuda: ${{ matrix.ver_cuda }}
 
       - name: Run Acceptance tests
-        if: matrix.RUN_ACCEPTANCE_TESTS == 'ON'
+        if: matrix.run_acceptance_tests == 'ON'
         uses: ./.github/actions/test
         with:
           task: acceptance_test
           id: ${{ matrix.id }}
           platform: ${{ matrix.platform }}
-          package: ${{ env.PACKAGE }}
-          ver-cuda: ${{ matrix.VER_CUDA }}
+          package: ${{ env.package }}
+          ver-cuda: ${{ matrix.ver_cuda }}

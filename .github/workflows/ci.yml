@@ -100,28 +100,28 @@ jobs:
               {
                  "id":              "torch-cpu-linux-x86",
                  "platform":        "linux",
-                 "PACKAGE":         "aimet_torch",
-                 "VER_PYTHON_BUILD": "3.12",
-                 "VER_PYTHON_TEST":  "3.12",
-                 "VER_TORCH":       "2.*",
-                 "VER_ONNXRUNTIME": "",
-                 "VER_CUDA":        "",
-                 "RUN_UNIT_TESTS":    "ON",
-                 "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "PIP_INDEX":       ""
+                 "package":         "aimet_torch",
+                 "ver_python_build": "3.12",
+                 "ver_python_test":  "3.12",
+                 "ver_torch":       "2.*",
+                 "ver_onnxruntime": "",
+                 "ver_cuda":        "",
+                 "run_unit_tests":    "ON",
+                 "run_acceptance_tests":    "OFF",
+                 "pip_index":       ""
               },
               {
                  "id":              "torch-gpu-linux-x86",
                  "platform":        "linux",
-                 "PACKAGE":         "aimet_torch",
-                 "VER_PYTHON_BUILD": "3.12",
-                 "VER_PYTHON_TEST":  "3.12",
-                 "VER_TORCH":       "2.*",
-                 "VER_ONNXRUNTIME": "",
-                 "VER_CUDA":        "13.2.0",
-                 "RUN_UNIT_TESTS":    "ON",
-                 "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "PIP_INDEX":       ""
+                 "package":         "aimet_torch",
+                 "ver_python_build": "3.12",
+                 "ver_python_test":  "3.12",
+                 "ver_torch":       "2.*",
+                 "ver_onnxruntime": "",
+                 "ver_cuda":        "13.2.0",
+                 "run_unit_tests":    "ON",
+                 "run_acceptance_tests":    "OFF",
+                 "pip_index":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -133,30 +133,30 @@ jobs:
               {
                  "id":              "onnx-cpu-linux-x86",
                  "platform":        "linux",
-                 "PACKAGE":         "aimet_onnx",
-                 "BUILD_CPP_TESTS": "ON",
-                 "VER_PYTHON_BUILD": "3.12",
-                 "VER_PYTHON_TEST":  "3.12",
-                 "VER_TORCH":       "",
-                 "VER_ONNXRUNTIME": "1.19.2",
-                 "VER_CUDA":        "",
-                 "RUN_UNIT_TESTS":    "ON",
-                 "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "PIP_INDEX":       ""
+                 "package":         "aimet_onnx",
+                 "build_cpp_tests": "ON",
+                 "ver_python_build": "3.12",
+                 "ver_python_test":  "3.12",
+                 "ver_torch":       "",
+                 "ver_onnxruntime": "1.19.2",
+                 "ver_cuda":        "",
+                 "run_unit_tests":    "ON",
+                 "run_acceptance_tests":    "OFF",
+                 "pip_index":       ""
               },
               {
                  "id":              "onnx-gpu-linux-x86",
                  "platform":        "linux",
-                 "PACKAGE":         "aimet_onnx",
-                 "BUILD_CPP_TESTS": "ON",
-                 "VER_PYTHON_BUILD": "3.12",
-                 "VER_PYTHON_TEST":  "3.12",
-                 "VER_TORCH":       "",
-                 "VER_ONNXRUNTIME": "1.19.2",
-                 "VER_CUDA":        "13.2.0",
-                 "RUN_UNIT_TESTS":    "ON",
-                 "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "PIP_INDEX":       ""
+                 "package":         "aimet_onnx",
+                 "build_cpp_tests": "ON",
+                 "ver_python_build": "3.12",
+                 "ver_python_test":  "3.12",
+                 "ver_torch":       "",
+                 "ver_onnxruntime": "1.19.2",
+                 "ver_cuda":        "13.2.0",
+                 "run_unit_tests":    "ON",
+                 "run_acceptance_tests":    "OFF",
+                 "pip_index":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV
@@ -167,15 +167,15 @@ jobs:
               {
                  "id":              "docs-linux-x86",
                  "platform":        "linux",
-                 "PACKAGE":         "docs",
-                 "VER_PYTHON_BUILD": "3.12",
-                 "VER_PYTHON_TEST":  "3.12",
-                 "VER_TORCH":       "2.*",
-                 "VER_ONNXRUNTIME": "1.19.2",
-                 "VER_CUDA":        "",
-                 "RUN_UNIT_TESTS":    "OFF",
-                 "RUN_ACCEPTANCE_TESTS":    "OFF",
-                 "PIP_INDEX":       ""
+                 "package":         "docs",
+                 "ver_python_build": "3.12",
+                 "ver_python_test":  "3.12",
+                 "ver_torch":       "2.*",
+                 "ver_onnxruntime": "1.19.2",
+                 "ver_cuda":        "",
+                 "run_unit_tests":    "OFF",
+                 "run_acceptance_tests":    "OFF",
+                 "pip_index":       ""
               }
             ]')
           echo "VALUE=$VALUE" >> $GITHUB_ENV

@@ -58,12 +58,12 @@ jobs:
         {"include":[{
           "id":"onnx-gpu-linux-x86",
           "platform":"linux",
-          "PACKAGE":"aimet_onnx",
-          "BUILD_CPP_TESTS":"ON",
-          "VER_PYTHON":"3.12",
-          "VER_ONNXRUNTIME":"1.19.2",
-          "VER_CUDA":"12.6.3",
-          "PIP_INDEX":""
+          "package":"aimet_onnx",
+          "build_cpp_tests":"ON",
+          "ver_python":"3.12",
+          "ver_onnxruntime":"1.19.2",
+          "ver_cuda":"12.6.3",
+          "pip_index":""
         }]}
     secrets: inherit
 
@@ -76,11 +76,11 @@ jobs:
         {"include":[{
           "id":"torch-gpu-linux-x86",
           "platform":"linux",
-          "PACKAGE":"aimet_torch",
-          "VER_PYTHON":"3.12",
-          "VER_TORCH":"2.*",
-          "VER_CUDA":"12.6.3",
-          "PIP_INDEX":""
+          "package":"aimet_torch",
+          "ver_python":"3.12",
+          "ver_torch":"2.*",
+          "ver_cuda":"12.6.3",
+          "pip_index":""
         }]}
     secrets: inherit
 
