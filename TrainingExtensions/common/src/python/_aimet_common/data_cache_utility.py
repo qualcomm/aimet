@@ -86,7 +86,7 @@ def copy_cache_mnist_to_local_build():
             dst_dir,
         )
 
-        # Verify whether the data already exists (check existance of one known file)
+        # Verify whether the data already exists (check existence of one known file)
         if not os.path.exists(os.path.join(dst_dir, "processed", "training.pt")):
             logger.info(
                 "MNIST Cache is set but data is not present, copying to local build"

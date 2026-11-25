@@ -229,7 +229,7 @@ def determine_preceding_op_input_product_index_in_multi_input_op(
 ):
     """Originally, the preceding op's product was one of the inputs for the Concat op. Since a Split Op
     is getting inserted in the  middle between them, Split Op's product must be inserted exactly in the same
-    position as the preceding op's product. For that purpose, determine teh preceding op's product's
+    position as the preceding op's product. For that purpose, determine the preceding op's product's
     index position."""
 
     preceding_op_dotted_name = preceding_op.dotted_name

@@ -401,7 +401,7 @@ class SequentialMseBase(ABC):
         """
         Run Sequential MSE
 
-        :param fp32_modules: List of FP32 candidate modules in order of occurence
+        :param fp32_modules: List of FP32 candidate modules in order of occurrence
         :param model: FP32 model
         :param quant_model: QuantizationSimModel object
         :param params: Sequential MSE parameters

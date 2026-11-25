@@ -632,7 +632,7 @@ class MaskPropagator:
         """
         This function is called as a final step during mask propagation.
         Make sure Split Op's input mask and output masks are the same.
-        Propagate the masks downstream so that Ops downstream have teh updated mask.
+        Propagate the masks downstream so that Ops downstream have the updated mask.
 
         :param op: the Split Op for which masks are validated and adjusted.
         """

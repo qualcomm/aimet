@@ -306,7 +306,7 @@ class AddInternalConnectivity(InternalConnectivity):
         if len(input_mask_and_length_tuple) < 2:
             # As an intended design strategy, winnower ignores certain types of Ops in ConnectedGraph's parse_xnode().
             # Because of this, in ConnectedGraph's connect_xnode(), an Add Op could have only one input.
-            # This happens with teh Inception V3 models.
+            # This happens with the Inception V3 models.
             # In this scenarios, the Add Op doesn't have an impact on winnowing and is ignored.
             # The Add Op can not be ignored during graph construction since there could be a legitimate Add Op in the
             # model (e.g., ResNet18) where both the inputs are NOT ignored.

@@ -343,7 +343,7 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
                         )
                     except RuntimeError as e:
                         logger.info(
-                            "Exception occured while setting Quantizers to Candidate: %s",
+                            "Exception occurred while setting Quantizers to Candidate: %s",
                             e,
                         )
 
@@ -402,7 +402,7 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
                         )
                         # Sort accuracy list, first by descending accuracy score, then by descending order of addition of bitwidths if accuracy
                         # scores are identical, if that is also identical we sort by relative bit ops change in descending order
-                        # If bit ops reduction is also the same, then we sort in ascending order based on occurence of
+                        # If bit ops reduction is also the same, then we sort in ascending order based on occurrence of
                         # quantizer group in the model
                         accuracy_list = sort_accuracy_list(
                             accuracy_list, index_of_quantizer_group
@@ -429,7 +429,7 @@ class GreedyMixedPrecisionAlgo(MixedPrecisionAlgo):
                     )
                 except RuntimeError as e:
                     logger.info(
-                        "Exception occured while setting Quantizers to Candidate: %s", e
+                        "Exception occurred while setting Quantizers to Candidate: %s", e
                     )
 
         logger.info("Completed Accuracy list computation")
