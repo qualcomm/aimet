@@ -298,6 +298,15 @@ class BlockwiseSampler:
         self.cache_activations_on_disk = cache_activations_on_disk
         self.disable_caching_until_block = disable_caching_until_block
 
+        # Mixed attention layers receive different kwargs from the parent forward.
+        # Chaining block outputs alone would reuse the preceding layer's mask.
+        for module in self.sim.model.modules():
+            config = getattr(module, "config", None)
+            layer_types = getattr(config, "layer_types", None)
+            if layer_types and len(set(layer_types)) > 1:
+                self.disable_caching_until_block = len(self.blocks) - 1
+                break
+
     @torch.no_grad()
     def run_inference(
         self, sample, start_block: int = 0
@@ -416,6 +425,11 @@ class BlockwiseSampler:
                 self.sim.model.to(device)
                 for block in self.blocks:
                     block.to("cpu")
+                # A resumed full forward still executes the completed prefix.
+                for block in self.blocks[
+                    : min(start_block, self.disable_caching_until_block)
+                ]:
+                    block.to(device)
             else:
                 self.sim.model.to("cpu")
 
