@@ -1,4 +1,4 @@
-name: Fast Release Nightly CI/CD Pipeline
+name: Nightly CI/CD Pipeline
 
 on:
   schedule:
