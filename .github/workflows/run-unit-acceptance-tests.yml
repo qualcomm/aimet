@@ -45,6 +45,9 @@ jobs:
     name: >-
       ${{ matrix.platform == 'linux' && format('{0} py{1}', matrix.id, matrix.ver_python) || matrix.id }}
     needs: [ expand_python_versions ]
+    # GitHub fails a job whose matrix is empty, e.g. when only the docs variant was selected,
+    # which fails this workflow and the CI gate. Skipping the job leaves the workflow green.
+    if: needs.expand_python_versions.outputs.matrix != '{"include":[]}'
     runs-on: >-
       ${{
         matrix.platform == 'windows' && (matrix.arch == 'arm64' && 'aimet-windows-arm64' || 'aimet-windows-amd64') ||
