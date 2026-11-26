@@ -71,7 +71,7 @@ def _add_section_context(app, pagename, templatename, context, doctree):
 
 
 # Every build is published to aimet-pages as releases/<version>/, which search engines
-# should not index. The release step copies it to releases/latest/ and strips exactly
+# should not index. make_publish_layout.py copies it to releases/latest/ and strips exactly
 # this tag there, so only latest gets indexed. Keep the two in sync.
 _NOINDEX_META = '<meta name="robots" content="noindex,follow" />'
 
@@ -174,9 +174,13 @@ html_title = 'AI Model Efficiency Toolkit'
 html_short_title = 'AIMET'
 html_favicon = '_static/ai-hub-workbench-icon.png'
 # Each release is published to aimet-pages under releases/<version>/ and also served as
-# releases/latest/. Pointing canonical URLs (and Lumina's auto-generated sitemap.xml) at
-# latest keeps search engines from indexing every version as a duplicate.
+# releases/latest/. This base URL gives releases/latest/ self-referential canonical links
+# and Lumina's auto-generated sitemap.xml; make_publish_layout.py removes both (and
+# Lumina's robots.txt) from releases/<version>/, which stays noindex only.
 html_baseurl = 'https://qualcomm.github.io/aimet-pages/releases/latest/'
+# search.html is noindex (Sphinx), so listing it in the sitemap would only draw a
+# "Submitted URL marked noindex" warning in Search Console.
+sitemap_excludes = ['search.html']
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
