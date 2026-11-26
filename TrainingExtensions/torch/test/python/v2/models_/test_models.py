@@ -1703,6 +1703,27 @@ class ModelWithReversedMulOrdering(torch.nn.Module):
         return (torch.randn(1, 10),)
 
 
+class TopKIndexRescale(torch.nn.Module):
+    """
+    TopK whose float values are rescaled by a float constant, and whose
+    integer indices are rescaled by an integer constant and used as gather indices
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.score = torch.nn.Linear(8, 16)
+        self.proj = torch.nn.Linear(8, 64)
+
+    def forward(self, x):
+        values, indices = self.score(x).topk(2, dim=-1)
+        block_indices = indices * 4
+        return values * 0.5, torch.gather(self.proj(x), -1, block_indices)
+
+    @staticmethod
+    def dummy_input():
+        return (torch.randn(1, 8),)
+
+
 class RescaleModelWithSharedScaleFactor(torch.nn.Module):
     def __init__(self):
         super().__init__()

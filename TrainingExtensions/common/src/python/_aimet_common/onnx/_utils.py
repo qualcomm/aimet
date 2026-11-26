@@ -2547,9 +2547,23 @@ def _get_effective_encoding(
         _is_grid_preserving_op(producer.op_type, domain=producer.domain)
         and producer.input
     ):
+        # Only float outputs inherit the input grid.
+        # Integer outputs such as TopK indices don't share the input's grid
+        if producer.domain == "" and not _is_float_output(
+            producer.op_type, list(producer.output).index(tensor)
+        ):
+            return None
         return _get_effective_encoding(producer.input[0], producers, encodings)
 
     return None
+
+
+_FLOAT_TENSOR_TYPES = (
+    TensorProto.FLOAT,
+    TensorProto.FLOAT16,
+    TensorProto.BFLOAT16,
+    TensorProto.DOUBLE,
+)
 
 
 def _is_constant_scalar(
@@ -2585,6 +2599,10 @@ def _derive_const_rescale_op_output_encodings(
         if node.input[scale_idx] in encodings:
             continue  # Skip if rescaling factor is quantized
         if not _is_constant_scalar(node.input[scale_idx], constants, base_dir):
+            continue
+        if constants[node.input[scale_idx]].data_type not in _FLOAT_TENSOR_TYPES:
+            # Mul/Div inputs and outputs share one dtype, so a non-float factor
+            # means integer arithmetic (e.g. index computation) that must not be encoded
             continue
         const_factor = to_array(constants[node.input[scale_idx]], base_dir=base_dir)
         if const_factor.item() <= 0:

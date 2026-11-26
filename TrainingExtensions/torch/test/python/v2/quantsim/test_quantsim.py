@@ -3530,6 +3530,64 @@ def test_sim_export_with_propagated_rescale_encodings(
     assert np.isclose(q_float, np.round(q_float), atol=1e-6)
 
 
+@pytest.mark.parametrize("export_via", ["sim.onnx.export", "sim.export"])
+def test_export_skips_rescale_encodings_for_integer_tensors(tmp_path, export_via):
+    """
+    Given: TopK whose integer indices are rescaled by an integer constant and used
+           as gather indices, while its float values are rescaled by a float constant
+
+                   +-> values --> Mul(0.5) ---> out
+      scores -> TopK
+                   +-> indices -> Mul(4) -> Gather -> out
+    """
+    model = test_models.TopKIndexRescale().eval()
+    (dummy_input,) = model.dummy_input()
+    sim = QuantizationSimModel(model, dummy_input)
+    sim.compute_encodings(lambda m: m(dummy_input))
+
+    """
+    When: Export the model
+    """
+    if export_via == "sim.onnx.export":
+        sim.onnx.export(
+            (dummy_input,),
+            str(tmp_path / "model.onnx"),
+            encoding_version="2.0.0",
+            dynamo=False,
+        )
+    else:
+        sim.export(tmp_path, "model", dummy_input)
+    onnx_model = onnx.load(str(tmp_path / "model.onnx"))
+    with open(tmp_path / "model.encodings") as f:
+        encodings = json.load(f)
+    if export_via == "sim.onnx.export":
+        encoded_tensors = {enc["name"] for enc in encodings["encodings"]}
+    else:
+        encoded_tensors = {enc["name"] for enc in encodings["activation_encodings"]}
+
+    topk = next(node for node in onnx_model.graph.node if node.op_type == "TopK")
+    values, indices = topk.output
+    consumers = {
+        inp: node for node in onnx_model.graph.node for inp in node.input if inp
+    }
+    int_mul = consumers[indices]
+    float_mul = consumers[values]
+    assert int_mul.op_type == float_mul.op_type == "Mul"
+    int_factor = next(inp for inp in int_mul.input if inp != indices)
+
+    """
+    Then: TopK indices, the integer Mul output and its integer constant have no encoding
+    """
+    assert indices not in encoded_tensors
+    assert int_mul.output[0] not in encoded_tensors
+    assert int_factor not in encoded_tensors
+
+    """
+    Then: The float Mul output still gets its derived encoding
+    """
+    assert float_mul.output[0] in encoded_tensors
+
+
 @pytest.mark.parametrize(
     "model_factory",
     [
