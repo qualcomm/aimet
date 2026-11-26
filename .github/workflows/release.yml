@@ -68,7 +68,11 @@ jobs:
       push_docs: true
       run_weekly: false
       run_genai: false
-    secrets: inherit
+    secrets:
+      AIMET_BOT_PUB_GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      SLACK_NOTIFIER_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
 
   release_via_manual_workflow:
     if: ${{ github.event_name == 'workflow_dispatch' && github.repository_owner != 'qualcomm' }}
@@ -81,4 +85,8 @@ jobs:
       push_docs: ${{ inputs.push_docs }}
       run_weekly: true
       run_genai: true
-    secrets: inherit
+    secrets:
+      AIMET_BOT_PUB_GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      SLACK_NOTIFIER_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}

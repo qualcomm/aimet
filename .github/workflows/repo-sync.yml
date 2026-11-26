@@ -43,16 +43,20 @@ jobs:
           # public-origin URL below and the push fails as github-actions[bot].
           persist-credentials: false
       - name: Push to public repository
+        env:
+          INPUT_SRC_BRANCH: ${{ inputs.src_branch }}
+          INPUT_DST_BRANCH: ${{ inputs.dst_branch }}
+          AIMET_BOT_PUB_GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
         run: |
           # Set src and dst branch as per workflow event
-          if [[ ${{ github.event_name }} == "push" ]]; then
+          if [[ ${GITHUB_EVENT_NAME} == "push" ]]; then
             SRC_BRANCH="${{ env.DEFAULT_SRC_BRANCH }}"
             DST_BRANCH="${{ env.DEFAULT_DST_BRANCH }}"
           else
-            SRC_BRANCH="${{ inputs.src_branch }}"
-            DST_BRANCH="${{ inputs.dst_branch }}"
+            SRC_BRANCH="${INPUT_SRC_BRANCH}"
+            DST_BRANCH="${INPUT_DST_BRANCH}"
           fi
 
           cd ${INTERNAL_REPO_DIR}
-          git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/qualcomm/aimet.git
+          git remote add public-origin https://${AIMET_BOT_PUB_GITHUB_TOKEN}@github.com/qualcomm/aimet.git
           git push public-origin $SRC_BRANCH:$DST_BRANCH

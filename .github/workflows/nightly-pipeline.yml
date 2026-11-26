@@ -26,6 +26,9 @@ on:
 
   # Call workflow from other workflows
   workflow_call:
+    secrets:
+      SLACK_NOTIFIER_TOKEN:
+        required: false
     inputs:
       ref_name:
         description: "Branch to run nightly tests on"
@@ -62,11 +65,13 @@ jobs:
     steps:
       - name: Set input ref_name if provided, otherwise current working ref
         id: set_branch_name
+        env:
+          INPUT_REF_NAME: ${{ inputs.ref_name }}
         run: |
-          if [[ -n "${{ inputs.ref_name }}" ]]; then
-            REF_BRANCH="${{ inputs.ref_name }}"
+          if [[ -n "${INPUT_REF_NAME}" ]]; then
+            REF_BRANCH="${INPUT_REF_NAME}"
           else
-            REF_BRANCH="${{ github.ref_name }}"
+            REF_BRANCH="${GITHUB_REF_NAME}"
           fi
 
           echo "REF_BRANCH=${REF_BRANCH}" >> "$GITHUB_OUTPUT"
@@ -247,15 +252,15 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-    secrets: inherit
 
   call-unit-acceptance-tests:
     name: Test
     needs: [ variants, call-build-wheels ]
+    permissions:
+      contents: read
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-    secrets: inherit
 
   notify_slack:
     # Post on pass and on failure so a missing message means the run is stuck.
@@ -273,7 +278,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         RUN_FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
       run: |
-        TITLE="[${{ github.ref_name }}] Nightly Build & Tests - for Release"
+        TITLE="[${GITHUB_REF_NAME}] Nightly Build & Tests - for Release"
         if [ "$RUN_FAILED" = "true" ]; then
           MSG="*⚠️ $TITLE failed*"
           # List failed/cancelled jobs, trimming matrix args down to the variant id,

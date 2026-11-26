@@ -22,13 +22,15 @@ jobs:
 
       - name: Validate version in source branch
         id: validate
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           repo_version=`head -n 1 ${{ env.REPO_DIR }}/packaging/version.txt`
           input_version_parts=`echo $repo_version | grep -o '\.' | wc -l`
 
           # Validate version in source branch
           if [[ ${input_version_parts} != 2 ]]; then
-              echo "Incorrect version in ${{ github.ref_name }}. Got ${{ inputs.version }}, expecting semantic versioning i.e. <major>.<minor>.<patch>"
+              echo "Incorrect version in ${GITHUB_REF_NAME}. Got ${INPUT_VERSION}, expecting semantic versioning i.e. <major>.<minor>.<patch>"
               echo "Refer to https://semver.org/"
               exit 1
           fi
@@ -57,7 +59,8 @@ jobs:
   nightly_for_release_branch:
     needs: create_release_branch
     name: Nightly pipeline
-    secrets: inherit
+    secrets:
+      SLACK_NOTIFIER_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
     uses: ./.github/workflows/nightly-pipeline.yml
     with:
       ref_name: ${{ needs.create_release_branch.outputs.release_branch }}

@@ -23,6 +23,9 @@ on:
         default: auto
 
   workflow_call:
+    secrets:
+      AIMET_BOT_PUB_GITHUB_TOKEN:
+        required: false
     inputs:
       version:
         description: "AIMET version whose docs to publish"
@@ -66,7 +69,7 @@ jobs:
           fi
           repo_version=$(head -n 1 ${{ env.REPO_DIR }}/packaging/version.txt)
           if [[ "${VERSION}" != "${repo_version}" ]]; then
-            echo "::error::Input version (${VERSION}) does not match ${{ github.ref_name }} package version (${repo_version})"
+            echo "::error::Input version (${VERSION}) does not match ${GITHUB_REF_NAME} package version (${repo_version})"
             exit 1
           fi
           case "${UPDATE_LATEST}" in
@@ -96,7 +99,6 @@ jobs:
     with:
       # Only the docs variant from nightly-pipeline.yml; keep the two in sync.
       variants: '{"include":[{"id":"docs-linux-x86","platform":"linux","package":"docs","ver_python_build":"3.12","ver_torch":"2.*","ver_onnxruntime":"1.19.2","pip_index":""}]}'
-    secrets: inherit
 
   publish_docs:
     name: Put up aimet-pages PR

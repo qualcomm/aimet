@@ -3,6 +3,15 @@ name: Release to AIMET public (callable workflow)
 on:
 
   workflow_call:
+    secrets:
+      AIMET_BOT_PUB_GITHUB_TOKEN:
+        required: false
+      PYPI_TOKEN:
+        required: false
+      SLACK_NOTIFIER_TOKEN:
+        required: false
+      TEST_PYPI_TOKEN:
+        required: false
     inputs:
       version:
         description: "AIMET version to release"
@@ -45,11 +54,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate if input version follows semantic versioning
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          echo Target release branch: ${{ inputs.version }}
-          input_version=`echo ${{ inputs.version }} | grep -o '\.' | wc -l`
+          echo Target release branch: ${INPUT_VERSION}
+          input_version=`echo ${INPUT_VERSION} | grep -o '\.' | wc -l`
           if [[ ${input_version} != 2 ]]; then
-              echo "Unsupported version format. Got ${{ inputs.version }}, expecting semantic versioning i.e. <major>.<minor>.<patch>"
+              echo "Unsupported version format. Got ${INPUT_VERSION}, expecting semantic versioning i.e. <major>.<minor>.<patch>"
               echo "Refer to https://semver.org/"
               exit 1
           fi
@@ -60,10 +71,12 @@ jobs:
           path: ${{ env.REPO_DIR }}
           fetch-depth: 0
       - name: Validate if release branch has same version as input version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           repo_version=`cat ${{ env.REPO_DIR }}/packaging/version.txt`
-          if [[ ${{ inputs.version }} != ${repo_version} ]]; then
-            echo "input release version(${{ inputs.version }}) does not match ${{ github.ref_name }} package version(${repo_version})."
+          if [[ ${INPUT_VERSION} != ${repo_version} ]]; then
+            echo "input release version(${INPUT_VERSION}) does not match ${GITHUB_REF_NAME} package version(${repo_version})."
             echo "Please update release version in <aimet_repo>/packaging/version.txt"
             exit 1
           fi
@@ -71,7 +84,8 @@ jobs:
   build_wheels_and_test:
     needs: checklist
     name: Run nightly to build wheels and test basic tests
-    secrets: inherit
+    secrets:
+      SLACK_NOTIFIER_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
     uses: ./.github/workflows/nightly-pipeline.yml
     with:
       ref_name: ${{ github.ref_name }}
@@ -116,7 +130,9 @@ jobs:
       # build_wheels_and_test already produced and tested this exact wheel.
       variant-id: onnx-gpu-linux-x86
       deploy: true
-    secrets: inherit
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
 
   release_aimet_torch_to_pypi:
     if: inputs.push_to_pypi
@@ -127,7 +143,9 @@ jobs:
       # build_wheels_and_test already produced and tested this exact wheel.
       variant-id: torch-gpu-linux-x86
       deploy: true
-    secrets: inherit
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
 
   release_aimet_onnx_macos_to_pypi:
     if: inputs.push_to_pypi
@@ -138,7 +156,9 @@ jobs:
       # build_wheels_and_test already produced and tested this exact wheel.
       variant-id: onnx-cpu-macos-arm64
       deploy: true
-    secrets: inherit
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
 
   release_aimet_onnx_windows_x64_to_pypi:
     if: inputs.push_to_pypi
@@ -149,7 +169,9 @@ jobs:
       # build_wheels_and_test already produced and tested this exact wheel.
       variant-id: onnx-cpu-windows-x64
       deploy: true
-    secrets: inherit
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
 
   release_aimet_onnx_windows_arm64_to_pypi:
     if: inputs.push_to_pypi
@@ -160,7 +182,9 @@ jobs:
       # build_wheels_and_test already produced and tested this exact wheel.
       variant-id: onnx-cpu-windows-arm64
       deploy: true
-    secrets: inherit
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+      TEST_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
 
   release_to_github:
     if: inputs.push_to_github
@@ -181,10 +205,12 @@ jobs:
           persist-credentials: false
 
       - name: Public release branch to public
+        env:
+          AIMET_BOT_PUB_GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
         run: |
           cd ${{ env.REPO_DIR }}
-          git remote add public-origin https://${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}@github.com/qualcomm/aimet.git
-          git push public-origin ${{ github.ref_name }}:${{ github.ref_name }}
+          git remote add public-origin https://${AIMET_BOT_PUB_GITHUB_TOKEN}@github.com/qualcomm/aimet.git
+          git push public-origin ${GITHUB_REF_NAME}:${GITHUB_REF_NAME}
 
       # Every wheel artifact (Linux and Windows); excludes the Docs and *-tests
       # artifacts, which aren't wheels. The release step picks the publishable
@@ -228,7 +254,7 @@ jobs:
 
           # Create release on public repo
           title="Version ${tag}"
-          gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${{ github.ref_name }} --title "${title}" --generate-notes "${wheels[@]}"
+          gh release create "${tag}" --repo ${{ env.PUBLIC_REPO }} --target ${GITHUB_REF_NAME} --title "${title}" --generate-notes "${wheels[@]}"
 
   push_docs:
     if: inputs.push_docs
@@ -239,7 +265,8 @@ jobs:
       version: ${{ inputs.version }}
       # build_wheels_and_test already built the Docs artifact.
       reuse_docs_artifact: true
-    secrets: inherit
+    secrets:
+      AIMET_BOT_PUB_GITHUB_TOKEN: ${{ secrets.AIMET_BOT_PUB_GITHUB_TOKEN }}
 
   notify_release_on_slack:
     name: Announce release on internal channels

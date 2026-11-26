@@ -96,38 +96,66 @@ runs:
     - name: "Build AIMET (${{ inputs.id }}) [Linux]"
       if: inputs.platform == 'linux'
       shell: bash
+      env:
+        INPUT_PACKAGE: ${{ inputs.package }}
+        INPUT_GPU_FLAG: ${{ inputs.gpu-flag }}
+        INPUT_VER_PYTHON: ${{ inputs.ver-python }}
+        INPUT_VER_TORCH: ${{ inputs.ver-torch }}
+        INPUT_VER_ONNXRUNTIME: ${{ inputs.ver-onnxruntime }}
+        INPUT_PIP_INDEX: ${{ inputs.pip-index }}
+        INPUT_ENABLE_TESTS_FLAG: ${{ inputs.enable-tests-flag }}
       run: |
+        gpu_flag=()
+        enable_tests_flag=()
+        if [[ "$INPUT_GPU_FLAG" == "--gpu" ]]; then gpu_flag=(--gpu); fi
+        if [[ "$INPUT_ENABLE_TESTS_FLAG" == "--enable-tests" ]]; then enable_tests_flag=(--enable-tests); fi
         python3 scripts/all/build_and_test.py --task build \
-          --package "${{ inputs.package }}" \
-          ${{ inputs.gpu-flag }} \
-          --ver-python "${{ inputs.ver-python }}" \
-          --ver-torch "${{ inputs.ver-torch }}" \
-          --ver-onnxruntime "${{ inputs.ver-onnxruntime }}" \
-          --pip-index "${{ inputs.pip-index }}" \
-          ${{ inputs.enable-tests-flag }}
+          --package "$INPUT_PACKAGE" \
+          "${gpu_flag[@]}" \
+          --ver-python "$INPUT_VER_PYTHON" \
+          --ver-torch "$INPUT_VER_TORCH" \
+          --ver-onnxruntime "$INPUT_VER_ONNXRUNTIME" \
+          --pip-index "$INPUT_PIP_INDEX" \
+          "${enable_tests_flag[@]}"
 
     - name: "Build AIMET (${{ inputs.id }}) [Windows]"
       if: inputs.platform == 'windows'
       shell: powershell
+      env:
+        INPUT_ID: ${{ inputs.id }}
+        INPUT_VER_PYTHON: ${{ inputs.ver-python }}
+        INPUT_PIP_INDEX: ${{ inputs.pip-index }}
+        INPUT_VER_ONNXRUNTIME: ${{ inputs.ver-onnxruntime }}
+        INPUT_ARCH: ${{ inputs.arch }}
+        INPUT_WINDOWS_VCPKG_TRIPLET: ${{ inputs.windows-vcpkg-triplet }}
       run: |
-        .\${{ inputs.id }}\Scripts\Activate.ps1
+        & ".\$env:INPUT_ID\Scripts\Activate.ps1"
 
         python scripts\all\build_and_test.py --task build `
           --package aimet_onnx `
-          --venv "${{ inputs.id }}" `
-          --ver-python "${{ inputs.ver-python }}" `
-          --pip-index "${{ inputs.pip-index }}" `
-          --ver-onnxruntime "${{ inputs.ver-onnxruntime }}" `
-          --windows-arch "${{ inputs.arch }}" `
-          --windows-vcpkg-triplet "${{ inputs.windows-vcpkg-triplet }}" `
+          --venv "$env:INPUT_ID" `
+          --ver-python "$env:INPUT_VER_PYTHON" `
+          --pip-index "$env:INPUT_PIP_INDEX" `
+          --ver-onnxruntime "$env:INPUT_VER_ONNXRUNTIME" `
+          --windows-arch "$env:INPUT_ARCH" `
+          --windows-vcpkg-triplet "$env:INPUT_WINDOWS_VCPKG_TRIPLET" `
           --only
 
     - name: "Build AIMET (${{ inputs.id }}) [macOS]"
       if: inputs.platform == 'macos'
       shell: bash
+      env:
+        INPUT_ID: ${{ inputs.id }}
+        INPUT_VER_PYTHON: ${{ inputs.ver-python }}
+        INPUT_PIP_INDEX: ${{ inputs.pip-index }}
+        INPUT_VER_ONNXRUNTIME: ${{ inputs.ver-onnxruntime }}
+        INPUT_ENABLE_TESTS_FLAG: ${{ inputs.enable-tests-flag }}
+        INPUT_MACOS_DEPLOYMENT_TARGET: ${{ inputs.macos-deployment-target }}
       run: |
         set -x
-        . ./${{ inputs.id }}/bin/activate
+        . "./${INPUT_ID}/bin/activate"
+        enable_tests_flag=()
+        if [[ "$INPUT_ENABLE_TESTS_FLAG" == "--enable-tests" ]]; then enable_tests_flag=(--enable-tests); fi
 
         # Pin a deployment target lower than the runner's live macOS version
         # (otherwise scikit-build-core/CMake default to it, producing a wheel
@@ -135,10 +163,10 @@ runs:
         # older mac even though the binary itself only links system libs).
         python scripts/all/build_and_test.py --task build \
           --package aimet_onnx \
-          --venv "${{ inputs.id }}" \
-          --ver-python "${{ inputs.ver-python }}" \
-          --pip-index "${{ inputs.pip-index }}" \
-          --ver-onnxruntime "${{ inputs.ver-onnxruntime }}" \
-          ${{ inputs.enable-tests-flag }} \
-          --macos-deployment-target "${{ inputs.macos-deployment-target }}" \
+          --venv "$INPUT_ID" \
+          --ver-python "$INPUT_VER_PYTHON" \
+          --pip-index "$INPUT_PIP_INDEX" \
+          --ver-onnxruntime "$INPUT_VER_ONNXRUNTIME" \
+          "${enable_tests_flag[@]}" \
+          --macos-deployment-target "$INPUT_MACOS_DEPLOYMENT_TARGET" \
           --only

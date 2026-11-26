@@ -48,26 +48,35 @@ runs:
     - name: "Run ${{ inputs.task }} (${{ inputs.id }}) [Linux]"
       if: inputs.platform == 'linux'
       shell: bash
+      env:
+        INPUT_TASK: ${{ inputs.task }}
+        INPUT_ID: ${{ inputs.id }}
+        INPUT_PACKAGE: ${{ inputs.package }}
+        INPUT_VER_CUDA: ${{ inputs.ver-cuda }}
       run: |
-        . ./${{ inputs.id }}/bin/activate
+        . "./${INPUT_ID}/bin/activate"
 
-        python3 scripts/all/build_and_test.py --task ${{ inputs.task }} \
-          --package "${{ inputs.package }}" \
-          --venv "${{ inputs.id }}" \
+        python3 scripts/all/build_and_test.py --task "$INPUT_TASK" \
+          --package "$INPUT_PACKAGE" \
+          --venv "$INPUT_ID" \
           --wheel-dir "downloads" \
-          --ver-cuda "${{ inputs.ver-cuda }}" \
+          --ver-cuda "$INPUT_VER_CUDA" \
           --parallel 8 \
           --only
 
     - name: "Run ${{ inputs.task }} (${{ inputs.id }}) [Windows]"
       if: inputs.platform == 'windows'
       shell: powershell
+      env:
+        INPUT_TASK: ${{ inputs.task }}
+        INPUT_ID: ${{ inputs.id }}
+        INPUT_PACKAGE: ${{ inputs.package }}
       run: |
-        .\${{ inputs.id }}\Scripts\Activate.ps1
+        & ".\$env:INPUT_ID\Scripts\Activate.ps1"
 
-        python scripts\all\build_and_test.py --task ${{ inputs.task }} `
-          --package "${{ inputs.package }}" `
-          --venv "${{ inputs.id }}" `
+        python scripts\all\build_and_test.py --task "$env:INPUT_TASK" `
+          --package "$env:INPUT_PACKAGE" `
+          --venv "$env:INPUT_ID" `
           --wheel-dir "downloads" `
           --parallel 8 `
           --only
@@ -75,12 +84,16 @@ runs:
     - name: "Run ${{ inputs.task }} (${{ inputs.id }}) [macOS]"
       if: inputs.platform == 'macos'
       shell: bash
+      env:
+        INPUT_TASK: ${{ inputs.task }}
+        INPUT_ID: ${{ inputs.id }}
+        INPUT_PACKAGE: ${{ inputs.package }}
       run: |
-        . ./${{ inputs.id }}/bin/activate
+        . "./${INPUT_ID}/bin/activate"
 
-        python3 scripts/all/build_and_test.py --task ${{ inputs.task }} \
-          --package "${{ inputs.package }}" \
-          --venv "${{ inputs.id }}" \
+        python3 scripts/all/build_and_test.py --task "$INPUT_TASK" \
+          --package "$INPUT_PACKAGE" \
+          --venv "$INPUT_ID" \
           --wheel-dir "downloads" \
           --parallel 8 \
           --only

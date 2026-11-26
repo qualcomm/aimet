@@ -192,16 +192,16 @@ jobs:
     uses: ./.github/workflows/build-wheels.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-    secrets: inherit
 
   call-run-unit-acceptance-tests:
     name: Test
     if: github.repository_owner != 'qualcomm'
     needs: [ variants, call-build-wheels ]
+    permissions:
+      contents: read
     uses: ./.github/workflows/run-unit-acceptance-tests.yml
     with:
       variants: ${{ needs.variants.outputs.matrix }}
-    secrets: inherit
 
   # ---------------------------------------------------------------------------
   # GenAI unit + integration tests, using freshly built AIMET wheels from the

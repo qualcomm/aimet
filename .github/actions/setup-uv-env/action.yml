@@ -39,6 +39,9 @@ runs:
     - name: Create uv environment (Windows)
       shell: powershell
       if: runner.os == 'Windows'
+      env:
+        INPUT_VER_PYTHON: ${{ inputs.VER_PYTHON }}
+        INPUT_ENV_NAME: ${{ inputs.ENV_NAME }}
       run: |
         # `uv python install <ver>` on aarch64 Windows still fetches the
         # x86_64 CPython build (as of uv 0.12.5), producing a win_amd64
@@ -49,31 +52,37 @@ runs:
         if ($isArm64) {
           $pyZip = Join-Path $env:GITHUB_WORKSPACE "python-arm64.zip"
           $pyDir = Join-Path $env:GITHUB_WORKSPACE "python-arm64"
-          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/pythonarm64/${{ inputs.VER_PYTHON }}" -OutFile $pyZip
+          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/pythonarm64/$env:INPUT_VER_PYTHON" -OutFile $pyZip
           New-Item -ItemType Directory -Force -Path $pyDir | Out-Null
           Expand-Archive -Path $pyZip -DestinationPath $pyDir -Force
           $pyExe = Join-Path $pyDir "tools\python.exe"
-          uv venv --python "$pyExe" "${{ inputs.ENV_NAME }}"
+          uv venv --python "$pyExe" "$env:INPUT_ENV_NAME"
         } else {
           # Force a uv-managed CPython (latest patch release) instead of the
           # runner's system install, which is 3.10.0 for 3.10 -- a patch
           # release whose typing.ForwardRef lacks `is_class` and breaks
           # libraries like pydantic 2.14.0. --native-tls matches the other
           # uv calls on these runners, which need the Windows cert store.
-          uv venv --managed-python --native-tls --python "${{ inputs.VER_PYTHON }}" "${{ inputs.ENV_NAME }}"
+          uv venv --managed-python --native-tls --python "$env:INPUT_VER_PYTHON" "$env:INPUT_ENV_NAME"
         }
-        .\"${{ inputs.ENV_NAME }}"\Scripts\Activate.ps1
+        .\"$env:INPUT_ENV_NAME"\Scripts\Activate.ps1
     - name: Install uv (Linux)
       if: runner.os != 'Windows'
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        enable-cache: false
+
+    - name: Configure uv (Linux)
+      if: runner.os != 'Windows'
       shell: bash
-      id: linux_init
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "UV_LINK_MODE=symlink" >> $GITHUB_ENV
+      run: echo "UV_LINK_MODE=symlink" >> $GITHUB_ENV
 
     - name: Create uv environment (Linux/macOS)
       shell: bash
       if: runner.os != 'Windows'
+      env:
+        INPUT_VER_PYTHON: ${{ inputs.VER_PYTHON }}
+        INPUT_ENV_NAME: ${{ inputs.ENV_NAME }}
       run: |
-        uv venv --native-tls --python "${{ inputs.VER_PYTHON }}" "${{ inputs.ENV_NAME }}"
-        . "./${{ inputs.ENV_NAME }}/bin/activate"
+        uv venv --native-tls --python "${INPUT_VER_PYTHON}" "${INPUT_ENV_NAME}"
+        . "./${INPUT_ENV_NAME}/bin/activate"

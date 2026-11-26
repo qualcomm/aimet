@@ -65,7 +65,6 @@ jobs:
           "ver_cuda":"12.6.3",
           "pip_index":""
         }]}
-    secrets: inherit
 
   build-aimet-torch-gpu:
     name: Build AIMET (Torch + GPU)
@@ -82,7 +81,6 @@ jobs:
           "ver_cuda":"12.6.3",
           "pip_index":""
         }]}
-    secrets: inherit
 
   #=============================================================================
   # ONNX Weekly Regression (GPU Runner 1)
@@ -102,7 +100,12 @@ jobs:
       filter-model: ${{ github.event.inputs.filter_model }}
       filter-test: ${{ github.event.inputs.filter_test }}
       baseline-source: ${{ github.event.inputs.baseline_source == 'custom' && github.event.inputs.baseline_source_custom || github.event.inputs.baseline_source || 'own' }}
-    secrets: inherit
+    secrets:
+      AIMET_BOT_AIHUB_DEV_TOKEN: ${{ secrets.AIMET_BOT_AIHUB_DEV_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+      READER_APP_PRIVATE_KEY: ${{ secrets.READER_APP_PRIVATE_KEY }}
 
   #=============================================================================
   # Torch Weekly Regression (GPU Runner 2, runs in PARALLEL)
@@ -122,7 +125,12 @@ jobs:
       filter-model: ${{ github.event.inputs.filter_model }}
       filter-test: ${{ github.event.inputs.filter_test }}
       baseline-source: ${{ github.event.inputs.baseline_source == 'custom' && github.event.inputs.baseline_source_custom || github.event.inputs.baseline_source || 'own' }}
-    secrets: inherit
+    secrets:
+      AIMET_BOT_AIHUB_DEV_TOKEN: ${{ secrets.AIMET_BOT_AIHUB_DEV_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+      READER_APP_PRIVATE_KEY: ${{ secrets.READER_APP_PRIVATE_KEY }}
 
   #=============================================================================
   # Results
@@ -234,9 +242,9 @@ jobs:
           python3 AIMETRegression/workflow/issue_body.py \
             --onnx-summary "summaries/onnx/comparison_summary.json" \
             --torch-summary "summaries/torch/comparison_summary.json" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --suite "weekly" \
-            --branch "${{ github.ref_name }}" \
+            --branch "${GITHUB_REF_NAME}" \
             --title-out /tmp/issue_title.txt \
             > /tmp/issue_body.md
 
@@ -261,20 +269,25 @@ jobs:
       - name: Generate Slack message
         if: steps.check_signal.outputs.notify_slack == 'true'
         id: slack_msg
+        env:
+          ONNX_WEEKLY_RESULT: ${{ needs.onnx-weekly.result }}
+          TORCH_WEEKLY_RESULT: ${{ needs.torch-weekly.result }}
+          FAILED_STAGE: ${{ steps.check_signal.outputs.failed_stage }}
+          ISSUE_URL: ${{ steps.create_issue.outputs.issue_url }}
         run: |
           MSG=$(python3 AIMETRegression/workflow/summary.py \
-            --onnx-status "${{ needs.onnx-weekly.result }}" \
-            --torch-status "${{ needs.torch-weekly.result }}" \
+            --onnx-status "${ONNX_WEEKLY_RESULT}" \
+            --torch-status "${TORCH_WEEKLY_RESULT}" \
             --onnx-summary "summaries/onnx/comparison_summary.json" \
             --torch-summary "summaries/torch/comparison_summary.json" \
             --suite "weekly" \
-            --trigger "${{ github.event_name }}" \
+            --trigger "${GITHUB_EVENT_NAME}" \
             --format slack \
-            --branch "${{ github.ref_name }}" \
-            --failed-stage "${{ steps.check_signal.outputs.failed_stage }}" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
-          if [ -n "${{ steps.create_issue.outputs.issue_url }}" ]; then
-            MSG="$MSG"$'\n'"Issue: ${{ steps.create_issue.outputs.issue_url }}"
+            --branch "${GITHUB_REF_NAME}" \
+            --failed-stage "${FAILED_STAGE}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          if [ -n "${ISSUE_URL}" ]; then
+            MSG="$MSG"$'\n'"Issue: ${ISSUE_URL}"
           fi
           echo "message<<EOF" >> $GITHUB_OUTPUT
           echo "$MSG" >> $GITHUB_OUTPUT

@@ -111,7 +111,6 @@ jobs:
           "ver_cuda":"12.6.3",
           "pip_index":""
         }]}
-    secrets: inherit
 
   build-aimet-torch-gpu:
     name: Build aimet_torch
@@ -133,7 +132,6 @@ jobs:
           "ver_cuda": "12.6.3",
           "pip_index":""
         }]}
-    secrets: inherit
 
   # ===========================================================================
   # Run tests (independent — torch doesn't wait for ONNX or vice versa)
@@ -155,9 +153,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Resolve config
         id: config
+        env:
+          AD_HOC_CONFIG_B64: ${{ github.event.inputs.ad_hoc_config_b64 }}
         run: |
           bash scripts/all/resolve_genai_config.sh torch "${{ env.CADENCE }}" \
-            "${{ github.event.inputs.ad_hoc_config_b64 }}"
+            "${AD_HOC_CONFIG_B64}"
       - uses: ./.github/actions/genai-test
         with:
           variant: torch
@@ -187,9 +187,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Resolve config
         id: config
+        env:
+          AD_HOC_CONFIG_B64: ${{ github.event.inputs.ad_hoc_config_b64 }}
         run: |
           bash scripts/all/resolve_genai_config.sh onnx "${{ env.CADENCE }}" \
-            "${{ github.event.inputs.ad_hoc_config_b64 }}"
+            "${AD_HOC_CONFIG_B64}"
       - uses: ./.github/actions/genai-test
         with:
           variant: onnx

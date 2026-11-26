@@ -2,6 +2,11 @@ name: PyPI release pipeline
 
 on:
   workflow_call:
+    secrets:
+      PYPI_TOKEN:
+        required: false
+      TEST_PYPI_TOKEN:
+        required: false
     inputs:
       variant-id:
         description: "Variant id whose prebuilt wheel to publish"

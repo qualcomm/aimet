@@ -76,9 +76,11 @@ runs:
 
     - name: Collect requested wheels
       shell: bash
+      env:
+        INPUT_WHEEL_ARTIFACTS: ${{ inputs.wheel-artifacts }}
       run: |
         mkdir -p wheels
-        IFS=',' read -ra ARTIFACTS <<< "${{ inputs.wheel-artifacts }}"
+        IFS=',' read -ra ARTIFACTS <<< "${INPUT_WHEEL_ARTIFACTS}"
         for artifact in "${ARTIFACTS[@]}"; do
           artifact="$(echo "$artifact" | xargs)"  # trim whitespace
           if [ -d "downloads/$artifact" ]; then
@@ -92,25 +94,29 @@ runs:
 
     - name: Setup environment
       shell: bash
+      env:
+        INPUT_PYTHON_VERSION: ${{ inputs.python-version }}
       run: |
         bash scripts/environment/setup_genai.sh \
           --with-aws \
-          --wheels-dir "${{ github.workspace }}/wheels" \
-          --repo-dir "${{ github.workspace }}" \
-          --python-version "${{ inputs.python-version }}"
+          --wheels-dir "${GITHUB_WORKSPACE}/wheels" \
+          --repo-dir "${GITHUB_WORKSPACE}" \
+          --python-version "${INPUT_PYTHON_VERSION}"
 
     # -------------------------------------------------------------------
     # Run tests
     # -------------------------------------------------------------------
     - name: Validate config
       shell: bash
+      env:
+        INPUT_CONFIG: ${{ inputs.config }}
       run: |
-        if [ ! -s "${{ inputs.config }}" ]; then
-          echo "Error: Config file '${{ inputs.config }}' does not exist or is empty."
+        if [ ! -s "${INPUT_CONFIG}" ]; then
+          echo "Error: Config file '${INPUT_CONFIG}' does not exist or is empty."
           exit 1
         fi
-        echo "Using config: ${{ inputs.config }}"
-        cat "${{ inputs.config }}"
+        echo "Using config: ${INPUT_CONFIG}"
+        cat "${INPUT_CONFIG}"
 
     - name: Resolve cache directories
       id: cache-dirs
@@ -154,6 +160,9 @@ runs:
         REF_NAME: ${{ github.ref_name }}
         MODEL_CACHE_DIR: ${{ steps.cache-dirs.outputs.model }}
         RECIPE_CACHE_DIR: ${{ steps.cache-dirs.outputs.recipe }}
+        INPUT_HUGGINGFACE_TOKEN: ${{ inputs.huggingface-token }}
+        INPUT_VARIANT: ${{ inputs.variant }}
+        INPUT_CONFIG: ${{ inputs.config }}
       run: |
         source .venv/bin/activate
         export PYTHONPATH=$PYTHONPATH:$(pwd)
@@ -172,9 +181,9 @@ runs:
         ):
             sys.exit(f"--clear-* cache flags are not allowed on protected branch {ref!r}")
         PY_EOF
-        hf auth login --token ${{ inputs.huggingface-token }}
-        python -m GenAILab --framework ${{ inputs.variant }} \
-          --config "${{ inputs.config }}" \
+        hf auth login --token ${INPUT_HUGGINGFACE_TOKEN}
+        python -m GenAILab --framework ${INPUT_VARIANT} \
+          --config "${INPUT_CONFIG}" \
           --force-export \
           --model-cache-dir "$MODEL_CACHE_DIR" \
           --recipe-cache-dir "$RECIPE_CACHE_DIR" \
@@ -223,18 +232,21 @@ runs:
     - name: Write run metadata
       if: always()
       shell: bash
+      env:
+        RUN_MODE: ${{ github.event.inputs.run_mode || 'regression' }}
+        INPUT_VARIANT: ${{ inputs.variant }}
       run: |
         mkdir -p GenAILab/artifacts/results
         cat > GenAILab/artifacts/results/run_metadata.json << METADATA_EOF
         {
-          "run_id": "${{ github.run_id }}",
-          "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-          "actor": "${{ github.actor }}",
-          "trigger": "${{ github.event_name }}",
-          "run_mode": "${{ github.event.inputs.run_mode || 'regression' }}",
-          "variant": "${{ inputs.variant }}",
-          "branch": "${{ github.ref_name }}",
-          "commit_sha": "${{ github.sha }}"
+          "run_id": "${GITHUB_RUN_ID}",
+          "run_url": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+          "actor": "${GITHUB_ACTOR}",
+          "trigger": "${GITHUB_EVENT_NAME}",
+          "run_mode": "${RUN_MODE}",
+          "variant": "${INPUT_VARIANT}",
+          "branch": "${GITHUB_REF_NAME}",
+          "commit_sha": "${GITHUB_SHA}"
         }
         METADATA_EOF
         # Secondary ONNX eval metadata (variant corrected to onnx)
@@ -314,13 +326,16 @@ runs:
     - name: Upload to S3
       if: always()
       shell: bash
+      env:
+        INPUT_AWS_BUCKET_NAME: ${{ inputs.aws-bucket-name }}
+        INPUT_VARIANT: ${{ inputs.variant }}
       run: |
-        BUCKET_PREFIX="s3://${{ inputs.aws-bucket-name }}/${{ github.run_id }}"
+        BUCKET_PREFIX="s3://${INPUT_AWS_BUCKET_NAME}/${GITHUB_RUN_ID}"
         # The ingest Lambda moves each <export>.zip to the artifacts bucket and
         # each <export>_results.zip to the results bucket.
-        aws s3 cp GenAILab/artifacts/exports/ "$BUCKET_PREFIX/${{ inputs.variant }}/" \
+        aws s3 cp GenAILab/artifacts/exports/ "$BUCKET_PREFIX/${INPUT_VARIANT}/" \
           --recursive --exclude "*" --include "*.zip" --no-progress
-        aws s3 cp GenAILab/artifacts/results/ "$BUCKET_PREFIX/${{ inputs.variant }}/" \
+        aws s3 cp GenAILab/artifacts/results/ "$BUCKET_PREFIX/${INPUT_VARIANT}/" \
           --recursive --exclude "*" --include "run_metadata.json" --no-progress
         # Secondary ONNX results/exports under onnx/ prefix
         if [ -d GenAILab/artifacts/secondary_exports ]; then
@@ -336,7 +351,7 @@ runs:
         # already in staging, so it goes up last.
         if [ -f GenAILab/artifacts/results/profiling_data.csv ]; then
           aws s3 cp GenAILab/artifacts/results/profiling_data.csv \
-            "$BUCKET_PREFIX/${{ inputs.variant }}/" --no-progress
+            "$BUCKET_PREFIX/${INPUT_VARIANT}/" --no-progress
         fi
         if [ -f GenAILab/artifacts/secondary_results/profiling_data.csv ]; then
           aws s3 cp GenAILab/artifacts/secondary_results/profiling_data.csv \

@@ -73,7 +73,6 @@ jobs:
           "ver_cuda":"12.6.3",
           "pip_index":""
         }]}
-    secrets: inherit
 
   build-aimet-torch-gpu:
     name: Build AIMET (Torch + GPU)
@@ -90,7 +89,6 @@ jobs:
           "ver_cuda":"12.6.3",
           "pip_index":""
         }]}
-    secrets: inherit
 
   #=============================================================================
   # ONNX Regression
@@ -109,7 +107,12 @@ jobs:
       filter-model: ${{ github.event.inputs.filter_model }}
       filter-test: ${{ github.event.inputs.filter_test }}
       baseline-source: ${{ github.event.inputs.baseline_source == 'custom' && github.event.inputs.baseline_source_custom || github.event.inputs.baseline_source || 'own' }}
-    secrets: inherit
+    secrets:
+      AIMET_BOT_AIHUB_DEV_TOKEN: ${{ secrets.AIMET_BOT_AIHUB_DEV_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+      READER_APP_PRIVATE_KEY: ${{ secrets.READER_APP_PRIVATE_KEY }}
 
   #=============================================================================
   # Torch Regression
@@ -128,7 +131,12 @@ jobs:
       filter-model: ${{ github.event.inputs.filter_model }}
       filter-test: ${{ github.event.inputs.filter_test }}
       baseline-source: ${{ github.event.inputs.baseline_source == 'custom' && github.event.inputs.baseline_source_custom || github.event.inputs.baseline_source || 'own' }}
-    secrets: inherit
+    secrets:
+      AIMET_BOT_AIHUB_DEV_TOKEN: ${{ secrets.AIMET_BOT_AIHUB_DEV_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+      READER_APP_PRIVATE_KEY: ${{ secrets.READER_APP_PRIVATE_KEY }}
 
   #=============================================================================
   # Results
@@ -168,14 +176,18 @@ jobs:
           path: summaries/torch
 
       - name: Generate summary
+        env:
+          ONNX_REGRESSION_RESULT: ${{ needs.onnx-regression.result }}
+          TORCH_REGRESSION_RESULT: ${{ needs.torch-regression.result }}
+          SUITE: ${{ github.event.inputs.suite || 'nightly' }}
         run: |
           python3 AIMETRegression/workflow/summary.py \
-            --onnx-status "${{ needs.onnx-regression.result }}" \
-            --torch-status "${{ needs.torch-regression.result }}" \
+            --onnx-status "${ONNX_REGRESSION_RESULT}" \
+            --torch-status "${TORCH_REGRESSION_RESULT}" \
             --onnx-summary "summaries/onnx/comparison_summary.json" \
             --torch-summary "summaries/torch/comparison_summary.json" \
-            --suite "${{ github.event.inputs.suite || 'nightly' }}" \
-            --trigger "${{ github.event_name }}" \
+            --suite "${SUITE}" \
+            --trigger "${GITHUB_EVENT_NAME}" \
             >> $GITHUB_STEP_SUMMARY
 
       - name: Check failure signal
@@ -236,12 +248,14 @@ jobs:
 
       - name: Generate issue body
         if: steps.check_signal.outputs.notify == 'true'
+        env:
+          SUITE: ${{ github.event.inputs.suite || 'nightly' }}
         run: |
           python3 AIMETRegression/workflow/issue_body.py \
             --onnx-summary "summaries/onnx/comparison_summary.json" \
             --torch-summary "summaries/torch/comparison_summary.json" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --suite "${{ github.event.inputs.suite || 'nightly' }}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --suite "${SUITE}" \
             --title-out /tmp/issue_title.txt \
             > /tmp/issue_body.md
 
@@ -266,20 +280,26 @@ jobs:
       - name: Generate Slack message
         if: steps.check_signal.outputs.notify_slack == 'true'
         id: slack_msg
+        env:
+          ONNX_REGRESSION_RESULT: ${{ needs.onnx-regression.result }}
+          TORCH_REGRESSION_RESULT: ${{ needs.torch-regression.result }}
+          SUITE: ${{ github.event.inputs.suite || 'nightly' }}
+          FAILED_STAGE: ${{ steps.check_signal.outputs.failed_stage }}
+          ISSUE_URL: ${{ steps.create_issue.outputs.issue_url }}
         run: |
           MSG=$(python3 AIMETRegression/workflow/summary.py \
-            --onnx-status "${{ needs.onnx-regression.result }}" \
-            --torch-status "${{ needs.torch-regression.result }}" \
+            --onnx-status "${ONNX_REGRESSION_RESULT}" \
+            --torch-status "${TORCH_REGRESSION_RESULT}" \
             --onnx-summary "summaries/onnx/comparison_summary.json" \
             --torch-summary "summaries/torch/comparison_summary.json" \
-            --suite "${{ github.event.inputs.suite || 'nightly' }}" \
-            --trigger "${{ github.event_name }}" \
+            --suite "${SUITE}" \
+            --trigger "${GITHUB_EVENT_NAME}" \
             --format slack \
-            --branch "${{ github.ref_name }}" \
-            --failed-stage "${{ steps.check_signal.outputs.failed_stage }}" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
-          if [ -n "${{ steps.create_issue.outputs.issue_url }}" ]; then
-            MSG="$MSG"$'\n'"Issue: ${{ steps.create_issue.outputs.issue_url }}"
+            --branch "${GITHUB_REF_NAME}" \
+            --failed-stage "${FAILED_STAGE}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+          if [ -n "${ISSUE_URL}" ]; then
+            MSG="$MSG"$'\n'"Issue: ${ISSUE_URL}"
           fi
           echo "message<<EOF" >> $GITHUB_OUTPUT
           echo "$MSG" >> $GITHUB_OUTPUT

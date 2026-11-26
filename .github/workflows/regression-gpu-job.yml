@@ -6,6 +6,17 @@ name: Regression GPU Job
 
 on:
   workflow_call:
+    secrets:
+      AIMET_BOT_AIHUB_DEV_TOKEN:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      HUGGINGFACE_TOKEN:
+        required: false
+      READER_APP_PRIVATE_KEY:
+        required: false
     inputs:
       framework:
         description: "Framework to run: onnx or torch"
@@ -189,11 +200,16 @@ jobs:
           unzip -q "${IMAGENET_DIR}/imagenet.zip" -d "$IMAGENET_DIR"
           rm "${IMAGENET_DIR}/imagenet.zip"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
       - name: Setup Python environment
+        env:
+          INPUT_FRAMEWORK: ${{ inputs.framework }}
         run: |
           set -e
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          export PATH="$HOME/.local/bin:$PATH"
 
           # uv downloads and manages the requested interpreter itself
           uv venv .venv --python "${{ env.VER_PYTHON }}" --seed
@@ -202,7 +218,7 @@ jobs:
           # Torch is needed by both frameworks (qai-hub-models pulls it for model export).
           # object-detection-metrics is only used by the torch suites' detection models.
           EXTRA_PACKAGES=""
-          if [ "${{ inputs.framework }}" = "torch" ]; then
+          if [ "${INPUT_FRAMEWORK}" = "torch" ]; then
             EXTRA_PACKAGES="object-detection-metrics"
           fi
 
@@ -226,7 +242,7 @@ jobs:
             torch==${{ env.VER_TORCH }} \
             torchvision
 
-          if [ "${{ inputs.framework }}" = "onnx" ]; then
+          if [ "${INPUT_FRAMEWORK}" = "onnx" ]; then
             # Reinstall last so onnxruntime-gpu's __init__.py wins over plain onnxruntime (transitive of qai-hub-models).
             # Off 1.19.2: its cudnn_conv_algo_search=EXHAUSTIVE default is non-deterministic across sessions. Capped at <=1.26.0 since >=1.27 needs CUDA 13.
             uv pip install --reinstall --no-deps "onnxruntime-gpu<=1.26.0"
@@ -265,7 +281,7 @@ jobs:
           # everything else from the pip-installed package normally.
           python "$AIHM_SRC_DIR/src/qai_hub_models/scripts/setup_external_repos.py" --all
 
-          python -c "import aimet_${{ inputs.framework }} as aimet; print('AIMET version:', aimet.__version__)"
+          python -c "import aimet_${INPUT_FRAMEWORK} as aimet; print('AIMET version:', aimet.__version__)"
 
       - name: Verify ONNX Runtime GPU
         if: ${{ inputs.framework == 'onnx' }}
@@ -317,12 +333,14 @@ jobs:
           # timm/transformers-backed models (mobile_vit, sequencer2d, ...) as
           # "not run". huggingface_hub reads HF_TOKEN with priority.
           HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          INPUT_FILTER_MODEL: ${{ inputs.filter-model }}
+          INPUT_FILTER_TEST: ${{ inputs.filter-test }}
         run: |
           . .venv/bin/activate
           python -m AIMETRegression.suite_runner \
             --suite "$INPUT_SUITE" \
-            --filter-model "${{ inputs.filter-model }}" \
-            --filter-test "${{ inputs.filter-test }}"
+            --filter-model "${INPUT_FILTER_MODEL}" \
+            --filter-test "${INPUT_FILTER_TEST}"
 
       - name: Compare with baseline
         run: |
@@ -370,7 +388,7 @@ jobs:
           from AIMETRegression.workflow.artifacts import ArtifactManager, WorkflowConfig
           config = WorkflowConfig.from_env()
           manager = ArtifactManager(config)
-          print(manager.get_artifact_name('${{ github.ref_name }}', '$INPUT_SUITE'))
+          print(manager.get_artifact_name('${GITHUB_REF_NAME}', '$INPUT_SUITE'))
           ")
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
 
